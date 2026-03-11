@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>215327865638-ljhffqcahema6ji95jp7danhq7k23etn.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.215327865638-ljhffqcahema6ji95jp7danhq7k23etn</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>215327865638-4i2sdhes7cpe7v43f5jsilbqljvve5n5.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyBfLD1gWhd-HKY6ENvMUmd_jtvy49IdZgk</string>
+	<key>GCM_SENDER_ID</key>
+	<string>215327865638</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>kim.jisub.unipad</string>
+	<key>PROJECT_ID</key>
+	<string>unipad-e41ab</string>
+	<key>STORAGE_BUCKET</key>
+	<string>unipad-e41ab.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:215327865638:ios:5037cc8c97ab2e4bbc1fe7</string>
+	<key>DATABASE_URL</key>
+	<string>https://unipad-e41ab.firebaseio.com</string>
+</dict>
+</plist>

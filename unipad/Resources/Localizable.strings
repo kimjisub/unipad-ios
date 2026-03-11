@@ -1,0 +1,192 @@
+/* Words */
+"accept" = "Accept";
+"cancel" = "Cancel";
+"warning" = "Warning";
+"error" = "ERROR";
+"errOccur" = "An error has occurred.";
+"wait_a_sec" = "Just wait a moment…";
+"importing" = "Importing";
+"loading" = "Loading";
+"loading_phase_info" = "Reading info…";
+"loading_phase_keysound" = "Loading sounds…";
+"loading_phase_keyled" = "Loading LEDs…";
+"loading_phase_autoplay" = "Loading autoplay…";
+"loading_phase_audio" = "Loading audio…";
+"download" = "Download";
+"downloadWaiting" = "Download Waiting";
+"downloading" = "Downloading";
+"downloaded" = "Downloaded";
+"success" = "Success";
+"failed" = "Failed";
+"delete" = "Delete";
+"edit" = "Edit";
+"update" = "Update";
+"ignore" = "Ignore";
+"apply" = "Apply";
+"restart" = "Restart";
+"quit" = "Quit";
+"menu" = "Menu";
+"website" = "Website";
+"measuring" = "Measuring…";
+"notice" = "Notice";
+"newUniPack" = "New UniPack";
+"exceptionOccurred" = "Exception Occurred";
+
+/* Menu */
+"reconnect_launchpad" = "Reconnect Launchpad";
+"import_unipack" = "Import UniPack";
+"store" = "Store";
+
+/* Setting */
+"setting" = "Settings";
+"information" = "Information";
+"select_theme" = "Select Theme";
+"storage_location" = "Storage Location";
+"github" = "Github";
+"openSourceLicense" = "Open Source License";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "Tap to copy";
+"fcm_token_unavailable" = "FCM token unavailable";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+
+/* Community */
+"community" = "Community";
+"officialHomepage" = "Official Website";
+"officialFacebook" = "Official Facebook";
+"facebookCommunity" = "Facebook Community";
+"naverCafe" = "Naver Cafe";
+"discord" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"email" = "0226unipad@gmail.com";
+
+/* UniPack Info */
+"title" = "Title";
+"producerName" = "Producer";
+"padSize" = "Pad Size";
+"numChain" = "Chains";
+"fileSize" = "File Size";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Autoplay";
+"practiceMode" = "Practice";
+"feedbackLight" = "Feedback light";
+"traceLog" = "Trace Log";
+"traceLogClear" = "Trace Log has been reset.";
+"record" = "Record";
+"hideUI" = "Hide UI";
+"watermark" = "Watermark";
+"proLightMode" = "Pro Light Mode";
+
+/* Version */
+"update_available" = "Update available";
+
+/* Permissions */
+"permissionRequire" = "Storage access is required for saving project files.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "Do you want to delete this project?";
+"importComplete" = "Analysis complete!";
+"importFailed" = "Failed to analyze…";
+"copied" = "Copied to clipboard.";
+"outOfMemory" = "Out of memory.\nFree some memory and retry.";
+"unipackNotFound" = "UniPack not found.";
+
+/* Guide */
+"guide_download_new" = "Download new packs";
+"guide_import_external" = "Import downloaded packs";
+"guide_restore_packs" = "Recover missing packs";
+
+/* Launchpad */
+"launchpadConnecting" = "Connecting launchpad…";
+"midiDevicesNotDetected" = "MIDI Devices Not Detected";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Can't quit while downloading the pack";
+"UnableToAccessServer" = "Unable to access server.";
+"SPP_downloadCount" = "Download count";
+"STP_count" = "Store UniPacks";
+"STP_downloadedCount" = "Downloaded UniPacks";
+
+/* Theme */
+"theme" = "Theme";
+"theme_import_success" = "Theme imported successfully.";
+"theme_import_failed" = "Failed to import theme.";
+"theme_add_title" = "Add Theme";
+"theme_add_zip" = "Import ZIP file";
+"theme_add_zip_desc" = "Import a .zip theme file from your device.";
+"theme_add_create" = "Create your own theme";
+"theme_add_create_desc" = "Learn how to create a custom theme.";
+"theme_apk_deprecated" = "APK-based themes are deprecated. Use ZIP themes instead.";
+"theme_delete_title" = "Delete Theme";
+"theme_type_builtin" = "Built-in";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Title";
+"sort_producer" = "Producer";
+"sort_download_date" = "Download Date";
+
+/* Main Panels */
+"MTP_count" = "UniPacks Count";
+"MTP_size" = "UniPacks Size";
+"MPT_playCount" = "Play Count";
+"MPP_padSize" = "Pad Size";
+"MPP_chain" = "Chain";
+"MPP_soundFiles" = "Sound files";
+"MPP_ledEvents" = "Led Events";
+"MPP_fileSize" = "File Size";
+"MPP_openCount" = "Open Count";
+"MPP_downloadDate" = "Downloaded Date";
+"MPP_lastPlayed" = "Last Played";
+
+/* Transfer */
+"transfer_title" = "Transfer UniPacks";
+"transfer_source" = "Source";
+"transfer_target" = "Target";
+"transfer_mode_copy" = "Copy";
+"transfer_mode_move" = "Move";
+"transfer_select_all" = "Select All";
+"transfer_deselect_all" = "Deselect All";
+"transfer_start" = "Start";
+"transfer_done" = "Done";
+"transfer_no_items" = "No UniPacks selected";
+"transfer_result_transferred" = "Transferred";
+"transfer_result_skipped" = "Skipped";
+"transfer_result_failed" = "Failed";
+"transfer_selected_count" = "%d selected";
+
+/* Backup */
+"backup_section" = "Backup";
+"backup_title" = "Backup";
+"backup_description" = "Export packs to backup";
+"restore_title" = "Restore";
+"restore_description" = "Restore packs from backup";
+"backup_guide_title" = "Connect Backup Folder";
+"backup_guide_description" = "Connect the Documents/Unipad folder to back up or restore your UniPacks.\nThis folder persists even when the app is uninstalled.";
+"backup_guide_step1" = "1. A folder picker will open";
+"backup_guide_step2" = "2. If Documents/Unipad exists, select it";
+"backup_guide_step3" = "3. If not, create a \"Unipad\" folder in Documents and select it";
+"backup_guide_continue" = "Continue";
+"backup_no_items" = "No UniPacks to backup.";
+"backup_failed" = "Backup failed.";
+"restore_success" = "Restore completed successfully.";
+"restore_failed" = "Restore failed.";
+
+/* Settings Categories */
+"settings_device" = "Device";
+"settings_info" = "Information";
+"settings_storage" = "Storage";
+"settings_theme" = "Theme";
+"settings_developer" = "Developer";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";

@@ -1,0 +1,410 @@
+import SwiftUI
+import QuartzCore
+
+struct PadGridView: View {
+    let columns: Int
+    let rows: Int
+    let isSquareButton: Bool
+    let padColors: [[Color]]
+    let padLedColors: [[Color]]
+    let padItems: [[ChannelManager.Item?]]
+    var btnImage: PlatformImage? = nil
+    var btnPressedImage: PlatformImage? = nil
+    var phantomImage: PlatformImage? = nil
+    var phantomVariantImage: PlatformImage? = nil
+    var renderVersion: Int = 0
+    var padGuideTargets: [[Int64]] = []
+    var traceLogTexts: ((Int, Int) -> String?)? = nil
+    var onPadTouch: (Int, Int, Bool) -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let cellSize = min(
+                geometry.size.width / CGFloat(columns),
+                geometry.size.height / CGFloat(rows)
+            )
+            let gridWidth = cellSize * CGFloat(columns)
+            let gridHeight = cellSize * CGFloat(rows)
+            let offsetX = (geometry.size.width - gridWidth) / 2
+            let offsetY = (geometry.size.height - gridHeight) / 2
+
+            ZStack {
+                Canvas { context, size in
+                    let nowMs = Int64(CACurrentMediaTime() * 1000)
+
+                    let resolvedBtnImage = btnImage.flatMap {
+                        context.resolve(Image(platformImage: $0))
+                    }
+                    let resolvedBtnPressedImage = btnPressedImage.flatMap {
+                        context.resolve(Image(platformImage: $0))
+                    }
+                    let resolvedPhantomImage = phantomImage.flatMap {
+                        context.resolve(Image(platformImage: $0))
+                    }
+                    let resolvedPhantomVariantImage = phantomVariantImage.flatMap {
+                        context.resolve(Image(platformImage: $0))
+                    }
+
+                    let phantomEnabled = rows < 16 && columns < 16
+                    let centerX = rows / 2 - 1
+                    let centerY = columns / 2 - 1
+                    let shouldUseVariant = phantomEnabled &&
+                        isSquareButton &&
+                        rows % 2 == 0 &&
+                        columns % 2 == 0 &&
+                        resolvedPhantomVariantImage != nil
+
+                    for x in 0..<rows {
+                        for y in 0..<columns {
+                            let rect = CGRect(
+                                x: offsetX + CGFloat(y) * cellSize + 1,
+                                y: offsetY + CGFloat(x) * cellSize + 1,
+                                width: cellSize - 2,
+                                height: cellSize - 2
+                            )
+
+                            let ledColor = (x < padLedColors.count && y < padLedColors[x].count)
+                                ? padLedColors[x][y]
+                                : Color.clear
+                            let item = (x < padItems.count && y < padItems[x].count)
+                                ? padItems[x][y]
+                                : nil
+
+                            if item?.channel == .pressed {
+                                if let pressedImg = resolvedBtnPressedImage {
+                                    context.draw(pressedImg, in: rect)
+                                } else if let btnImg = resolvedBtnImage {
+                                    context.draw(btnImg, in: rect)
+                                } else {
+                                    context.fill(
+                                        Path(roundedRect: rect, cornerRadius: 4),
+                                        with: .color(Color(hex: 0x2A2A2A))
+                                    )
+                                }
+                            } else if let btnImg = resolvedBtnImage {
+                                context.draw(btnImg, in: rect)
+                            } else {
+                                context.fill(
+                                    Path(roundedRect: rect, cornerRadius: 4),
+                                    with: .color(Color(hex: 0x2A2A2A))
+                                )
+                            }
+
+                            if ledColor != .clear {
+                                context.fill(
+                                    Path(roundedRect: rect, cornerRadius: 4),
+                                    with: .color(ledColor.opacity(0.7))
+                                )
+                            }
+
+                            // Guide countdown mask animation
+                            let guideTarget = (x < padGuideTargets.count && y < padGuideTargets[x].count)
+                                ? padGuideTargets[x][y]
+                                : 0
+                            if guideTarget > 0 {
+                                let remaining = max(0, guideTarget - nowMs)
+                                let duration = max(Int64(100), guideTarget - (nowMs - Int64(AutoPlayRunner.guideLookaheadMs)))
+                                let progress = CGFloat(1.0 - Double(remaining) / Double(duration))
+                                let clamped = min(max(progress, 0), 1)
+                                let maxBorder = min(rect.width, rect.height) / 2
+                                let revealed = maxBorder * clamped
+                                let maskRect = CGRect(
+                                    x: rect.minX + revealed,
+                                    y: rect.minY + revealed,
+                                    width: rect.width - revealed * 2,
+                                    height: rect.height - revealed * 2
+                                )
+                                if maskRect.width > 0 && maskRect.height > 0 {
+                                    context.fill(
+                                        Path(roundedRect: maskRect, cornerRadius: 2),
+                                        with: .color(Color.black.opacity(0.85))
+                                    )
+                                }
+                            }
+
+                            guard phantomEnabled else { continue }
+
+                            let variantRotation: Angle?
+                            if shouldUseVariant {
+                                if x == centerX && y == centerY {
+                                    variantRotation = .degrees(0)
+                                } else if x == centerX + 1 && y == centerY {
+                                    variantRotation = .degrees(270)
+                                } else if x == centerX && y == centerY + 1 {
+                                    variantRotation = .degrees(90)
+                                } else if x == centerX + 1 && y == centerY + 1 {
+                                    variantRotation = .degrees(180)
+                                } else {
+                                    variantRotation = nil
+                                }
+                            } else {
+                                variantRotation = nil
+                            }
+
+                            if let rotation = variantRotation,
+                               let variant = resolvedPhantomVariantImage {
+                                let center = CGPoint(x: rect.midX, y: rect.midY)
+                                var rotatedContext = context
+                                rotatedContext.translateBy(x: center.x, y: center.y)
+                                rotatedContext.rotate(by: rotation)
+                                rotatedContext.translateBy(x: -center.x, y: -center.y)
+                                rotatedContext.draw(variant, in: rect)
+                            } else if let phantom = resolvedPhantomImage {
+                                context.draw(phantom, in: rect)
+                            }
+                        }
+                    }
+                }
+                .allowsHitTesting(false)
+
+                if let traceLogTexts {
+                    ForEach(0..<rows, id: \.self) { x in
+                        ForEach(0..<columns, id: \.self) { y in
+                            if let text = traceLogTexts(x, y) {
+                                Text(text)
+                                    .font(.system(size: max(cellSize * 0.18, 6)))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(3)
+                                    .minimumScaleFactor(0.5)
+                                    .frame(width: cellSize - 4, height: cellSize - 4)
+                                    .position(
+                                        x: offsetX + CGFloat(y) * cellSize + cellSize / 2,
+                                        y: offsetY + CGFloat(x) * cellSize + cellSize / 2
+                                    )
+                            }
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+
+                MultiTouchView(
+                    gridOrigin: CGPoint(x: offsetX, y: offsetY),
+                    cellSize: cellSize,
+                    rows: rows,
+                    columns: columns,
+                    onPadTouch: onPadTouch
+                )
+            }
+        }
+        .clipped()
+    }
+}
+
+// MARK: - Multi-touch Handler
+
+private struct MultiTouchModifier: ViewModifier {
+    let gridOrigin: CGPoint
+    let cellSize: CGFloat
+    let rows: Int
+    let columns: Int
+    let onPadTouch: (Int, Int, Bool) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                MultiTouchView(
+                    gridOrigin: gridOrigin,
+                    cellSize: cellSize,
+                    rows: rows,
+                    columns: columns,
+                    onPadTouch: onPadTouch
+                )
+            }
+    }
+}
+
+extension View {
+    func multiTouchHandler(
+        gridOrigin: CGPoint,
+        cellSize: CGFloat,
+        rows: Int,
+        columns: Int,
+        onPadTouch: @escaping (Int, Int, Bool) -> Void
+    ) -> some View {
+        modifier(MultiTouchModifier(
+            gridOrigin: gridOrigin,
+            cellSize: cellSize,
+            rows: rows,
+            columns: columns,
+            onPadTouch: onPadTouch
+        ))
+    }
+}
+
+#if canImport(UIKit)
+import UIKit
+
+struct MultiTouchView: UIViewRepresentable {
+    let gridOrigin: CGPoint
+    let cellSize: CGFloat
+    let rows: Int
+    let columns: Int
+    let onPadTouch: (Int, Int, Bool) -> Void
+
+    func makeUIView(context: Context) -> MultiTouchUIView {
+        let view = MultiTouchUIView()
+        view.isMultipleTouchEnabled = true
+        view.gridOrigin = gridOrigin
+        view.cellSize = cellSize
+        view.rows = rows
+        view.columns = columns
+        view.onPadTouch = onPadTouch
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: MultiTouchUIView, context: Context) {
+        uiView.gridOrigin = gridOrigin
+        uiView.cellSize = cellSize
+        uiView.rows = rows
+        uiView.columns = columns
+        uiView.onPadTouch = onPadTouch
+    }
+}
+
+class MultiTouchUIView: UIView {
+    var gridOrigin: CGPoint = .zero
+    var cellSize: CGFloat = 0
+    var rows: Int = 0
+    var columns: Int = 0
+    var onPadTouch: ((Int, Int, Bool) -> Void)?
+
+    private var activeTouches: [UITouch: (Int, Int)] = [:]
+
+    private func padAt(_ point: CGPoint) -> (Int, Int)? {
+        let col = Int((point.x - gridOrigin.x) / cellSize)
+        let row = Int((point.y - gridOrigin.y) / cellSize)
+        guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
+        return (row, col)
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let point = touch.location(in: self)
+            guard let (row, col) = padAt(point) else { continue }
+            activeTouches[touch] = (row, col)
+            onPadTouch?(row, col, true)
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let point = touch.location(in: self)
+            let next = padAt(point)
+            let prev = activeTouches[touch]
+
+            if let prev, next == nil {
+                onPadTouch?(prev.0, prev.1, false)
+                activeTouches.removeValue(forKey: touch)
+                continue
+            }
+
+            guard let (row, col) = next else { continue }
+            if let prev, prev != (row, col) {
+                onPadTouch?(prev.0, prev.1, false)
+                activeTouches[touch] = (row, col)
+                onPadTouch?(row, col, true)
+            } else if prev == nil {
+                activeTouches[touch] = (row, col)
+                onPadTouch?(row, col, true)
+            }
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            if let (row, col) = activeTouches.removeValue(forKey: touch) {
+                onPadTouch?(row, col, false)
+            }
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touchesEnded(touches, with: event)
+    }
+}
+
+#elseif canImport(AppKit)
+import AppKit
+
+struct MultiTouchView: NSViewRepresentable {
+    let gridOrigin: CGPoint
+    let cellSize: CGFloat
+    let rows: Int
+    let columns: Int
+    let onPadTouch: (Int, Int, Bool) -> Void
+
+    func makeNSView(context: Context) -> MultiTouchNSView {
+        let view = MultiTouchNSView()
+        view.gridOrigin = gridOrigin
+        view.cellSize = cellSize
+        view.rows = rows
+        view.columns = columns
+        view.onPadTouch = onPadTouch
+        return view
+    }
+
+    func updateNSView(_ nsView: MultiTouchNSView, context: Context) {
+        nsView.gridOrigin = gridOrigin
+        nsView.cellSize = cellSize
+        nsView.rows = rows
+        nsView.columns = columns
+        nsView.onPadTouch = onPadTouch
+    }
+}
+
+class MultiTouchNSView: NSView {
+    var gridOrigin: CGPoint = .zero
+    var cellSize: CGFloat = 0
+    var rows: Int = 0
+    var columns: Int = 0
+    var onPadTouch: ((Int, Int, Bool) -> Void)?
+
+    private var activeCell: (Int, Int)?
+
+    private func padAt(_ point: CGPoint) -> (Int, Int)? {
+        let flippedY = bounds.height - point.y
+        let col = Int((point.x - gridOrigin.x) / cellSize)
+        let row = Int((flippedY - gridOrigin.y) / cellSize)
+        guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
+        return (row, col)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let (row, col) = padAt(point) else { return }
+        activeCell = (row, col)
+        onPadTouch?(row, col, true)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let next = padAt(point)
+
+        if activeCell != nil, next == nil {
+            if let (row, col) = activeCell {
+                onPadTouch?(row, col, false)
+            }
+            activeCell = nil
+            return
+        }
+
+        guard let (row, col) = next else { return }
+        if let prev = activeCell, prev != (row, col) {
+            onPadTouch?(prev.0, prev.1, false)
+            activeCell = (row, col)
+            onPadTouch?(row, col, true)
+        } else if activeCell == nil {
+            activeCell = (row, col)
+            onPadTouch?(row, col, true)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let (row, col) = activeCell {
+            onPadTouch?(row, col, false)
+            activeCell = nil
+        }
+    }
+}
+#endif

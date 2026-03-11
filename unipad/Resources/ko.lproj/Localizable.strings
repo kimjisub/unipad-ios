@@ -1,0 +1,192 @@
+/* Words */
+"accept" = "확인";
+"cancel" = "취소";
+"warning" = "경고";
+"error" = "에러";
+"errOccur" = "문제가 발생하였습니다.";
+"wait_a_sec" = "잠시만 기다려주세요…";
+"importing" = "불러오는 중";
+"loading" = "로딩중";
+"loading_phase_info" = "정보 읽는 중…";
+"loading_phase_keysound" = "사운드 로딩 중…";
+"loading_phase_keyled" = "LED 로딩 중…";
+"loading_phase_autoplay" = "오토플레이 로딩 중…";
+"loading_phase_audio" = "오디오 로딩 중…";
+"download" = "다운로드";
+"downloadWaiting" = "다운로드 대기중";
+"downloading" = "다운로드 중";
+"downloaded" = "다운로드 됨";
+"success" = "성공";
+"failed" = "실패";
+"delete" = "삭제";
+"edit" = "수정";
+"update" = "업데이트";
+"ignore" = "무시";
+"apply" = "적용";
+"restart" = "재시작";
+"quit" = "나가기";
+"menu" = "메뉴";
+"website" = "웹사이트";
+"measuring" = "측정중…";
+"notice" = "공지";
+"newUniPack" = "새로운 유니팩";
+"exceptionOccurred" = "예외 오류 발생";
+
+/* Menu */
+"reconnect_launchpad" = "런치패드 다시 연결하기";
+"import_unipack" = "유니팩 불러오기";
+"store" = "스토어";
+
+/* Setting */
+"setting" = "설정";
+"information" = "정보";
+"select_theme" = "테마 선택";
+"storage_location" = "저장소 위치";
+"github" = "Github";
+"openSourceLicense" = "오픈소스 라이선스";
+"FCMToken" = "FCM 토큰";
+"tap_to_copy" = "탭해서 복사";
+"fcm_token_unavailable" = "FCM 토큰을 사용할 수 없습니다";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+
+/* Community */
+"community" = "커뮤니티";
+"officialHomepage" = "공식 웹사이트";
+"officialFacebook" = "공식 페이스북";
+"facebookCommunity" = "페이스북 커뮤니티";
+"naverCafe" = "네이버 카페";
+"discord" = "디스코드";
+"kakaotalk" = "카카오톡";
+"email" = "0226unipad@gmail.com";
+
+/* UniPack Info */
+"title" = "제목";
+"producerName" = "제작자";
+"padSize" = "패드 크기";
+"numChain" = "체인 개수";
+"fileSize" = "용량";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "자동재생";
+"practiceMode" = "연습모드";
+"feedbackLight" = "피드백 표시";
+"traceLog" = "순서 기록";
+"traceLogClear" = "순서 기록이 초기화되었습니다.";
+"record" = "녹음";
+"hideUI" = "UI 숨기기";
+"watermark" = "워터마크";
+"proLightMode" = "프로 라이트 모드";
+
+/* Version */
+"update_available" = "업데이트 가능";
+
+/* Permissions */
+"permissionRequire" = "프로젝트 파일 저장을 위해서 저장소 접근 권한이 필요합니다.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "유니팩을 삭제하시겠습니까?";
+"importComplete" = "불러오기 성공!";
+"importFailed" = "불러오기 실패…";
+"copied" = "클립보드에 복사되었습니다.";
+"outOfMemory" = "메모리 공간이 부족합니다.\n메모리 확보 후 다시 시도해주세요.";
+"unipackNotFound" = "유니팩이 발견되지 않았습니다.";
+
+/* Guide */
+"guide_download_new" = "새로운 팩 다운로드";
+"guide_import_external" = "다운로드한 팩 불러오기";
+"guide_restore_packs" = "사라진 팩 복구하기";
+
+/* Launchpad */
+"launchpadConnecting" = "런치패드 연결중…";
+"midiDevicesNotDetected" = "MIDI 장치가 감지되지 않았습니다.";
+
+/* Store */
+"canNotQuitWhileDownloading" = "다운로드중에 종료할 수 없습니다";
+"UnableToAccessServer" = "서버에 접속할 수 없습니다.";
+"SPP_downloadCount" = "다운로드 수";
+"STP_count" = "유니팩 개수";
+"STP_downloadedCount" = "다운로드한 유니팩";
+
+/* Theme */
+"theme" = "테마";
+"theme_import_success" = "테마를 불러왔습니다.";
+"theme_import_failed" = "테마 불러오기에 실패했습니다.";
+"theme_add_title" = "테마 추가";
+"theme_add_zip" = "ZIP 파일 가져오기";
+"theme_add_zip_desc" = "기기에서 .zip 테마 파일을 가져옵니다.";
+"theme_add_create" = "직접 테마 만들기";
+"theme_add_create_desc" = "커스텀 테마를 만드는 방법을 알아보세요.";
+"theme_apk_deprecated" = "APK 기반 테마는 더 이상 지원하지 않습니다. ZIP 테마를 사용해주세요.";
+"theme_delete_title" = "테마 삭제";
+"theme_type_builtin" = "내장";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "제목";
+"sort_producer" = "제작자";
+"sort_download_date" = "다운로드 날짜";
+
+/* Main Panels */
+"MTP_count" = "유니팩 개수";
+"MTP_size" = "유니팩 용량";
+"MPT_playCount" = "플레이 횟수";
+"MPP_padSize" = "패드 크기";
+"MPP_chain" = "체인";
+"MPP_soundFiles" = "사운드 파일";
+"MPP_ledEvents" = "Led 이벤트";
+"MPP_fileSize" = "용량";
+"MPP_openCount" = "플레이 횟수";
+"MPP_downloadDate" = "다운로드한 날짜";
+"MPP_lastPlayed" = "최근 플레이";
+
+/* Transfer */
+"transfer_title" = "유니팩 전송";
+"transfer_source" = "원본";
+"transfer_target" = "대상";
+"transfer_mode_copy" = "복사";
+"transfer_mode_move" = "이동";
+"transfer_select_all" = "전체 선택";
+"transfer_deselect_all" = "전체 해제";
+"transfer_start" = "시작";
+"transfer_done" = "완료";
+"transfer_no_items" = "선택된 유니팩이 없습니다";
+"transfer_result_transferred" = "전송됨";
+"transfer_result_skipped" = "건너뜀";
+"transfer_result_failed" = "실패";
+"transfer_selected_count" = "%d개 선택됨";
+
+/* Backup */
+"backup_section" = "백업";
+"backup_title" = "백업";
+"backup_description" = "유니팩을 백업 파일로 내보내기";
+"restore_title" = "복구";
+"restore_description" = "백업 파일에서 유니팩 복구";
+"backup_guide_title" = "백업 폴더 연결";
+"backup_guide_description" = "유니팩을 백업하거나 복구하려면 Documents/Unipad 폴더를 연결하세요.\n이 폴더는 앱을 삭제해도 유지됩니다.";
+"backup_guide_step1" = "1. 폴더 선택 화면이 열립니다";
+"backup_guide_step2" = "2. Documents/Unipad 폴더가 있으면 선택하세요";
+"backup_guide_step3" = "3. 없으면 Documents에 \"Unipad\" 폴더를 만든 후 선택하세요";
+"backup_guide_continue" = "계속";
+"backup_no_items" = "백업할 유니팩이 없습니다.";
+"backup_failed" = "백업에 실패했습니다.";
+"restore_success" = "복구가 완료되었습니다.";
+"restore_failed" = "복구에 실패했습니다.";
+
+/* Settings Categories */
+"settings_device" = "기기";
+"settings_info" = "정보";
+"settings_storage" = "저장소";
+"settings_theme" = "테마";
+"settings_developer" = "개발자";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
