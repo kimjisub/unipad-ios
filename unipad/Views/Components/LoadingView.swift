@@ -6,19 +6,24 @@ struct LoadingView: View {
     var detail: String?
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             Text(String(localized: "loading"))
-                .font(.headline)
+                .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)
 
+            Spacer().frame(height: 16)
+
             ProgressView(value: progress, total: 1.0)
-                .tint(AppColors.skyblue)
-                .frame(maxWidth: .infinity)
+                .tint(Color(hex: 0x4FC3F7))
+                .background(Color(hex: 0x333333))
+                .frame(maxWidth: .infinity, maxHeight: 6)
+
+            Spacer().frame(height: 12)
 
             if !phase.isEmpty {
                 Text(detail ?? phase)
-                    .font(.subheadline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: 0xCCCCCC))
             }
         }
         .padding(24)

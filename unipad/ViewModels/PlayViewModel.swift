@@ -235,17 +235,20 @@ final class PlayViewModel {
             $0.locked = false
         }
 
-        if !unipack.squareButton {
+        if unipack.squareButton {
+            if !unipack.keyLedExist {
+                scbLed.visible = false
+                scbLed.locked = true
+            }
+            if !unipack.autoPlayExist {
+                scbAutoPlay.visible = false
+                scbAutoPlay.locked = true
+            }
+        } else {
             [scbFeedbackLight, scbLed, scbAutoPlay, scbTraceLog, scbRecord].forEach {
                 $0.visible = false
                 $0.locked = true
             }
-        }
-        if !unipack.keyLedExist || !unipack.squareButton {
-            scbLed.locked = true
-        }
-        if !unipack.autoPlayExist || !unipack.squareButton {
-            scbAutoPlay.locked = true
         }
     }
 
@@ -412,12 +415,7 @@ final class PlayViewModel {
         chain.addObserver { [weak self] curr, _ in
             guard let self, let unipack = self.unipack else { return }
 
-            if self.scbRecord.checked {
-                let currTime = Self.currentTimeMs()
-                self.addRecordLog("d \(currTime - self.recPrevEventMs)")
-                self.addRecordLog("chain \(curr + 1)")
-                self.recPrevEventMs = currTime
-            }
+            self.chainBtnsRefresh()
 
             for i in 0..<unipack.buttonX {
                 for j in 0..<unipack.buttonY {
@@ -425,7 +423,14 @@ final class PlayViewModel {
                     unipack.ledPush(c: curr, x: i, y: j, num: 0)
                 }
             }
-            self.chainBtnsRefresh()
+
+            if self.scbRecord.checked {
+                let currTime = Self.currentTimeMs()
+                self.addRecordLog("d \(currTime - self.recPrevEventMs)")
+                self.addRecordLog("chain \(curr + 1)")
+                self.recPrevEventMs = currTime
+            }
+
             self.padRenderVersion &+= 1
         }
     }
@@ -448,21 +453,12 @@ final class PlayViewModel {
         chain.setValue(c)
     }
 
-    /// Clear all pad states (sound, LED events, pressed channel)
+    /// Clear all pad states by simulating release on every pad
     func padInit() {
         guard let unipack else { return }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
-                soundEngine?.soundOff(x: i, y: j)
-                if let ledRunner, ledRunner.isEventExist(x: i, y: j) {
-                    ledRunner.eventOff(x: i, y: j)
-                }
-                if let cm = channelManager {
-                    cm.remove(x: i, y: j, channel: .pressed)
-                    refreshPadFromChannel(x: i, y: j)
-                } else {
-                    clearPadColor(x: i, y: j)
-                }
+                padTouch(x: i, y: j, isDown: false)
             }
         }
     }
@@ -502,6 +498,8 @@ final class PlayViewModel {
         if isDown {
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
+            soundEngine?.soundOn(x: x, y: y)
+
             if scbRecord.checked {
                 let currTime = Self.currentTimeMs()
                 addRecordLog("d \(currTime - recPrevEventMs)")
@@ -512,8 +510,6 @@ final class PlayViewModel {
             if scbTraceLog.checked {
                 traceLogLog(x: x, y: y)
             }
-
-            soundEngine?.soundOn(x: x, y: y)
             if scbFeedbackLight.checked {
                 if let cm = channelManager {
                     cm.add(x: x, y: y, channel: .pressed, color: -1, code: Self.pressedVelocity)
@@ -646,7 +642,9 @@ final class PlayViewModel {
     // MARK: - Option Window
 
     func toggleOptionWindow(_ show: Bool? = nil) {
-        isOptionWindowVisible = show ?? !isOptionWindowVisible
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isOptionWindowVisible = show ?? !isOptionWindowVisible
+        }
         refreshWatermark()
     }
 
@@ -796,6 +794,7 @@ final class PlayViewModel {
     func redrawAllLaunchpadLeds() {
         guard let unipack, let cm = channelManager else { return }
         let driver = MidiManager.shared.driver
+        driver.sendClearLed()
         for x in 0..<unipack.buttonX {
             for y in 0..<unipack.buttonY {
                 if let item = cm.get(x: x, y: y) {
@@ -805,7 +804,7 @@ final class PlayViewModel {
                 }
             }
         }
-        for i in 0..<Self.functionKeyCount {
+        for i in 0..<Self.circleArraySize {
             if let item = cm.get(x: -1, y: i) {
                 driver.sendFunctionKeyLed(f: i, velocity: item.code)
             } else {
@@ -877,10 +876,47 @@ final class PlayViewModel {
         #endif
     }
 
+    // MARK: - Volume Observer
+
+    private var volumeObservation: NSKeyValueObservation?
+
+    func startVolumeObserver() {
+        #if canImport(UIKit)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setActive(true)
+        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.updateVolumeUI()
+            }
+        }
+        #endif
+    }
+
+    func stopVolumeObserver() {
+        volumeObservation?.invalidate()
+        volumeObservation = nil
+    }
+
+    // MARK: - Lifecycle
+
+    func onPause() {
+        MidiManager.shared.driver.sendClearLed()
+        MidiManager.shared.controller = nil
+        stopVolumeObserver()
+    }
+
+    func onResume() {
+        guard uiLoaded else { return }
+        setupMidiController()
+        redrawAllLaunchpadLeds()
+        startVolumeObserver()
+    }
+
     // MARK: - Cleanup
 
     func cleanup() {
         enable = false
+        stopVolumeObserver()
         MidiManager.shared.driver.sendClearLed()
         MidiManager.shared.controller = nil
         midiControllerAdapter = nil
@@ -912,6 +948,8 @@ final class PlayViewModel {
         startReady = true
         initSetting()
         setupMidiController()
+        startVolumeObserver()
+        updateVolumeUI()
         logger.info("Sound loading complete, startReady=true")
     }
 }
@@ -948,7 +986,7 @@ private final class SoundLoadingAdapter: SoundEngine.LoadingListener {
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
             self?.viewModel?.soundLoadingActive = false
-            self?.viewModel?.unipackLoadError = error.localizedDescription
+            self?.viewModel?.toastMessage = String(localized: "outOfCPU")
             self?.viewModel?.quitRequested = true
         }
     }

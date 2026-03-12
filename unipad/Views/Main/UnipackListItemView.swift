@@ -9,6 +9,8 @@ struct UnipackListItemView: View {
     let isSelected: Bool
     let flagColor: Color
     var flagText: String?
+    var flagExpandedWidth: CGFloat = 105
+    var indicatorFontSize: CGFloat = 9
     var onTap: () -> Void
     var onPlay: () -> Void
 
@@ -19,9 +21,14 @@ struct UnipackListItemView: View {
         ZStack(alignment: .leading) {
             // Flag area
             HStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 5)
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 5,
+                    bottomLeadingRadius: 5,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
                     .fill(flagColor)
-                    .frame(width: isSelected ? 105 : 10, height: itemHeight)
+                    .frame(width: isSelected ? flagExpandedWidth : 10, height: itemHeight)
                     .overlay {
                         if isSelected {
                             if let flagText, !flagText.isEmpty {
@@ -33,9 +40,9 @@ struct UnipackListItemView: View {
                                     .padding(.horizontal, 4)
                             } else {
                                 Button(action: onPlay) {
-                                    HStack(spacing: 4) {
+                                    HStack(spacing: 0) {
                                         Image(systemName: "play.fill")
-                                            .font(.system(size: 14))
+                                            .font(.system(size: 24))
                                         Text("Play")
                                             .font(.system(size: 13))
                                     }
@@ -44,21 +51,18 @@ struct UnipackListItemView: View {
                             }
                         }
                     }
-                    .animation(.easeInOut(duration: Self.animationDuration), value: isSelected)
-
                 Spacer()
             }
 
             // Content area
             HStack(spacing: 0) {
                 Color.clear
-                    .frame(width: isSelected ? 105 : 10)
-                    .animation(.easeInOut(duration: Self.animationDuration), value: isSelected)
+                    .frame(width: isSelected ? flagExpandedWidth : 10)
 
                 HStack(spacing: 0) {
                     if isBookmarked {
                         Image(systemName: "bookmark.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: 20))
                             .foregroundStyle(AppColors.green)
                             .padding(.leading, 4)
                     }
@@ -79,8 +83,8 @@ struct UnipackListItemView: View {
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 1) {
-                        IndicatorLabel(text: "LED", isOn: hasLed)
-                        IndicatorLabel(text: "AUTOPLAY", isOn: hasAutoPlay)
+                        IndicatorLabel(text: "LED", isOn: hasLed, fontSize: indicatorFontSize)
+                        IndicatorLabel(text: "AUTOPLAY", isOn: hasAutoPlay, fontSize: indicatorFontSize)
                     }
                     .padding(.trailing, 15)
                 }
@@ -100,20 +104,19 @@ struct UnipackListItemView: View {
         .padding(.horizontal, 16)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+        .animation(.easeInOut(duration: Self.animationDuration), value: isSelected)
+        .animation(.easeInOut(duration: Self.animationDuration), value: flagColor)
     }
 }
 
 private struct IndicatorLabel: View {
     let text: String
     let isOn: Bool
+    var fontSize: CGFloat = 9
 
     var body: some View {
-        HStack(spacing: 2) {
-            Text("\(text) ")
-                .font(.system(size: 9))
-            Text("●")
-                .font(.system(size: 6))
-        }
-        .foregroundStyle(isOn ? AppColors.green : AppColors.pink)
+        Text("\(text) ●")
+            .font(.system(size: fontSize))
+            .foregroundStyle(isOn ? AppColors.green : AppColors.pink)
     }
 }

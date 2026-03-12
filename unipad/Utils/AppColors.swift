@@ -15,9 +15,6 @@ enum AppColors {
     /// Dark surface high - Android Compose DarkSurfaceHigh
     static let darkSurfaceHigh = Color(hex: 0x283446)
 
-    /// Dark surface highest - Android Compose DarkSurfaceHighest
-    static let darkSurfaceHighest = Color(hex: 0x334155)
-
     // MARK: - Text Colors
 
     /// Primary text - Android gray1
@@ -71,7 +68,7 @@ enum AppColors {
     static let traceLog = Color(hex: 0x161E2B)
 
     /// Option window background - Android option_window
-    static let optionWindow = Color(hex: 0xFFFFFF)
+    static let optionWindow = Color(hex: 0x161E2B)
 
     /// Option window checkbox - Android option_window_checkbox
     static let optionWindowCheckbox = Color(hex: 0x414F66)
@@ -81,6 +78,6 @@ enum AppColors {
     /// Navigation sidebar selected item
     static let navItemSelected = Color(hex: 0x1E2E44)
 
-    /// Card divider
-    static let divider = Color(hex: 0x2A3648)
+    /// Card divider - matches Android surfaceVariant (Background2)
+    static let divider = Color(hex: 0x414F66)
 }

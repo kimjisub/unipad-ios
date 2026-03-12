@@ -39,7 +39,29 @@ final class SoundEngine {
         self.unipack = unipack
         self.chain = chain
         self.loadingListener = loadingListener
+
+        // Configure AVAudioSession BEFORE reading engine format
+        #if canImport(UIKit)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setPreferredSampleRate(48_000)
+            try session.setPreferredIOBufferDuration(0.005)
+            try session.setActive(true)
+            logger.info("AVAudioSession configured for playback")
+        } catch {
+            logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
+            self.playbackFormat = engine.mainMixerNode.outputFormat(forBus: 0)
+            self.playerCount = 1
+            self.stopID = []
+            self.nodePlayID = []
+            loadingListener.onException(error)
+            return
+        }
+        #endif
+
         self.playbackFormat = engine.mainMixerNode.outputFormat(forBus: 0)
+        logger.info("Playback format: sampleRate=\(self.playbackFormat.sampleRate), channels=\(self.playbackFormat.channelCount)")
 
         let table = unipack.soundTable
         var soundCount = 0
@@ -65,22 +87,6 @@ final class SoundEngine {
         )
         nodePlayID = Array(repeating: 0, count: playerCount)
 
-        // Configure AVAudioSession for playback
-        #if canImport(UIKit)
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
-            try session.setPreferredSampleRate(48_000)
-            try session.setPreferredIOBufferDuration(0.005)
-            try session.setActive(true)
-            logger.info("AVAudioSession configured for playback")
-        } catch {
-            logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
-            loadingListener.onException(error)
-            return
-        }
-        #endif
-
         for _ in 0..<playerCount {
             let node = AVAudioPlayerNode()
             engine.attach(node)
@@ -88,6 +94,7 @@ final class SoundEngine {
             playerNodes.append(node)
         }
 
+        engine.prepare()
         do {
             try engine.start()
             logger.info("AVAudioEngine started successfully with \(self.playerCount) player nodes")
@@ -96,6 +103,16 @@ final class SoundEngine {
             loadingListener.onException(error)
             return
         }
+
+        #if canImport(UIKit)
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleInterruption(notification)
+        }
+        #endif
 
         loadingListener.onStart(soundCount: soundCount)
 
@@ -202,8 +219,35 @@ final class SoundEngine {
         }
     }
 
+    private func ensureEngineRunning() {
+        guard !engine.isRunning else { return }
+        do {
+            try engine.start()
+            logger.info("AVAudioEngine restarted")
+        } catch {
+            logger.error("Failed to restart AVAudioEngine: \(error.localizedDescription)")
+        }
+    }
+
+    #if canImport(UIKit)
+    private func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        if type == .ended {
+            let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            if options.contains(.shouldResume) {
+                ensureEngineRunning()
+            }
+        }
+    }
+    #endif
+
     func soundOn(x: Int, y: Int) {
         let c = chain.value
+        ensureEngineRunning()
 
         // Stop previous sound on this pad (using unique play ID, like Android's stream ID)
         stopByPlayID(stopID[c][x][y])

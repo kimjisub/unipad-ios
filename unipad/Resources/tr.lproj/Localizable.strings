@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "Kabul Et";
+"cancel" = "İptal";
+"warning" = "Uyarı";
+"error" = "Hata";
+"errOccur" = "Bir hata oluştu.";
+"wait_a_sec" = "Bir an bekleyin…";
+"importing" = "İçe aktarılıyor";
+"loading" = "Yükleniyor";
+"loading_phase_info" = "Bilgi okunuyor…";
+"loading_phase_keysound" = "Sesler yükleniyor…";
+"loading_phase_keyled" = "LED'ler yükleniyor…";
+"loading_phase_autoplay" = "Otomatik oynatma yükleniyor…";
+"loading_phase_audio" = "Ses yükleniyor…";
+"download" = "İndir";
+"downloadWaiting" = "İndirme Bekleniyor";
+"downloading" = "İndiriliyor";
+"downloaded" = "İndirildi";
+"success" = "Başarılı";
+"failed" = "Başarısız";
+"delete" = "Sil";
+"add_bookmark" = "Yer İmi";
+"remove_bookmark" = "Yer İmi Kaldır";
+"edit" = "Düzenle";
+"update" = "Güncelle";
+"ignore" = "Yoksay";
+"apply" = "Uygula";
+"restart" = "Yeniden Başlat";
+"quit" = "Çık";
+"menu" = "Menü";
+"website" = "Web Sitesi";
+"measuring" = "Ölçülüyor…";
+"notice" = "Bildirim";
+"newUniPack" = "Yeni UniPack";
+"exceptionOccurred" = "İstisna Oluştu";
+
+/* Menu */
+"reconnect_launchpad" = "Launchpad'ı Yeniden Bağla";
+"import_unipack" = "UniPack İçe Aktar";
+"store" = "Mağaza";
+
+/* Setting */
+"setting" = "Ayarlar";
+"information" = "Bilgi";
+"select_theme" = "Tema Seç";
+"storage_location" = "Depolama Konumu";
+"github" = "Github";
+"openSourceLicense" = "Açık Kaynak Lisansı";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "Kopyalamak için dokunun";
+"fcm_token_unavailable" = "FCM token kullanılamıyor";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "Türkçe";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "Topluluk";
+"officialHomepage" = "Resmi Web Sitesi";
+"officialHomepage_" = "UniPad Resmi Web Sitesi";
+"officialFacebook" = "Resmi Facebook";
+"officialFacebook_" = "Teknik Destek";
+"facebookCommunity" = "Facebook Topluluğu";
+"facebookCommunity_" = "İngilizce";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "Korece";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Teknik Destek Dışında";
+"email" = "0226unipad@gmail.com";
+"email_" = "Teknik Destek Dışında";
+
+/* UniPack Info */
+"title" = "Başlık";
+"producerName" = "Yapımcı";
+"padSize" = "Pad Boyutu";
+"numChain" = "Zincirler";
+"fileSize" = "Dosya Boyutu";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Otomatik Oynatma";
+"practiceMode" = "Alıştırma";
+"feedbackLight" = "Geri bildirim ışığı";
+"traceLog" = "İzleme Günlüğü";
+"traceLogClear" = "İzleme günlüğü sıfırlandı.";
+"record" = "Kaydet";
+"hideUI" = "Arayüzü Gizle";
+"watermark" = "Filigran";
+"proLightMode" = "Pro Işık Modu";
+
+/* Version */
+"update_available" = "Güncelleme mevcut";
+
+/* Permissions */
+"permissionRequire" = "Proje dosyalarını kaydetmek için depolama erişimi gereklidir.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "Bu projeyi silmek istiyor musunuz?";
+"importComplete" = "Analiz tamamlandı!";
+"importFailed" = "Analiz başarısız…";
+"copied" = "Panoya kopyalandı.";
+"outOfMemory" = "Yetersiz bellek.\nBelleği boşaltın ve tekrar deneyin.";
+"unipackNotFound" = "UniPack bulunamadı.";
+
+/* Guide */
+"guide_download_new" = "Yeni paketler indir";
+"guide_import_external" = "İndirilen paketleri içe aktar";
+"guide_restore_packs" = "Kayıp paketleri kurtar";
+
+/* Launchpad */
+"launchpadConnecting" = "Launchpad bağlanıyor…";
+"midiDevicesNotDetected" = "MIDI Cihazları Algılanmadı";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Pak indirilirken çıkılamaz";
+"UnableToAccessServer" = "Sunucuya erişilemiyor.";
+"SPP_downloadCount" = "İndirme sayısı";
+"STP_count" = "Mağazadaki UniPack";
+"STP_downloadedCount" = "İndirilen UniPack";
+
+/* Theme */
+"theme" = "Tema";
+"theme_import_success" = "Tema başarıyla içe aktarıldı.";
+"theme_import_failed" = "Tema içe aktarılamadı.";
+"theme_add_title" = "Tema Ekle";
+"theme_add_zip" = "ZIP dosyası içe aktar";
+"theme_add_zip_desc" = "Cihazınızdan bir .zip tema dosyası içe aktarın.";
+"theme_add_create" = "Kendi temanızı oluşturun";
+"theme_add_create_desc" = "Özel tema oluşturmayı öğrenin.";
+"theme_import_invalid" = "Geçersiz tema dosyası.";
+"theme_apk_deprecated" = "APK tabanlı temalar artık desteklenmemektedir. Lütfen bunun yerine ZIP temaları kullanın.";
+"theme_delete_title" = "Temayı Sil";
+"theme_delete_confirm %@" = "\"%@\" silinsin mi?";
+"theme_type_builtin" = "Yerleşik";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Başlık";
+"sort_producer" = "Yapımcı";
+"sort_play_count" = "Oynatma Sayısı";
+"sort_last_opened_date" = "Son Açılma";
+"sort_download_date" = "İndirme Tarihi";
+
+/* Main Panels */
+"MTP_count" = "UniPack Sayısı";
+"MTP_size" = "UniPack Boyutu";
+"MPT_playCount" = "Oynatma Sayısı";
+"MPT_theme" = "Tema";
+"MPP_padSize" = "Pad Boyutu";
+"MPP_chain" = "Zincir";
+"MPP_soundFiles" = "Ses Dosyaları";
+"MPP_ledEvents" = "Led Olayları";
+"MPP_fileSize" = "Dosya Boyutu";
+"MPP_openCount" = "Oynatma Sayısı";
+"MPP_downloadedDate" = "İndirme Tarihi";
+"MPP_lastPlayed" = "Son Oynama";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "UniPack Aktarımı";
+"transfer_source" = "Kaynak";
+"transfer_target" = "Hedef";
+"transfer_mode_copy" = "Kopyala";
+"transfer_mode_move" = "Taşı";
+"transfer_select_all" = "Tümünü Seç";
+"transfer_deselect_all" = "Tümünü Kaldır";
+"transfer_start" = "Başlat";
+"transfer_done" = "Tamamlandı";
+"transfer_no_items" = "UniPack seçilmedi";
+"transfer_result_transferred" = "Aktarıldı";
+"transfer_result_skipped" = "Atlandı";
+"transfer_result_failed" = "Başarısız";
+"transfer_selected_count" = "%d seçili";
+"transfer_copying" = "Kopyalanıyor: %@";
+"transfer_moving" = "Taşınıyor: %@";
+
+/* Backup */
+"backup_section" = "Yedekleme";
+"backup_title" = "Yedekleme";
+"backup_description" = "UniPack'ları yedek klasörüne kopyala";
+"restore_title" = "Geri Yükleme";
+"restore_description" = "Yedek klasöründen UniPack'ları kopyala";
+"backup_guide_title" = "Yedek Klasörü Bağla";
+"backup_guide_description" = "UniPack'larınızı yedeklemek veya geri yüklemek için Documents/Unipad klasörünü bağlayın.\nBu klasör uygulama kaldırılsa bile korunur.";
+"backup_guide_step1" = "1. Klasör seçici açılacak";
+"backup_guide_step2" = "2. Documents/Unipad varsa, onu seçin";
+"backup_guide_step3" = "3. Yoksa, Documents içinde \"Unipad\" klasörü oluşturun ve seçin";
+"backup_guide_continue" = "Devam";
+"backup_no_items" = "Yedeklenecek UniPack yok.";
+"backup_failed" = "Yedekleme başarısız.";
+"restore_success" = "Geri yükleme tamamlandı.";
+"restore_failed" = "Geri yükleme başarısız.";
+
+/* Settings Categories */
+"settings_device" = "Cihaz";
+"settings_info" = "Bilgi";
+"settings_storage" = "Depolama";
+"settings_theme" = "Tema";
+"settings_developer" = "Geliştirici";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "Uygulama Deposu (Önerilen)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Web Sitesi";
+"cd_bookmark" = "Yer İmi";
+"cd_delete" = "Sil";
+"cd_logo" = "UniPad Logosu";
+"cd_autoplay_prev" = "Önceki";
+"cd_autoplay_play" = "Oynat";
+"cd_autoplay_pause" = "Duraklat";
+"cd_autoplay_next" = "Sonraki";
+
+/* Search */
+"no_search_results" = "Sonuç bulunamadı";
+
+/* Transfer Format */
+"transfer_format_label" = "Biçim";
+"transfer_format_folder" = "Klasör";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Tema uygulanamadı.\nUygulamayı yeniden başlatın.";
+"skinErr" = "Tema uygulanamadı.\nTemayı sıfırlayın.";
+"requireRestart" = "Uygulama yeniden başlatma gerekiyor.";
+"doYouWantToRestartApp" = "Uygulamayı yeniden başlatmak istiyor musunuz?";
+
+/* Performance */
+"outOfCPU" = "Cihaz özellikleri nedeniyle\npak başlatılamadı.\nTekrar deneyin.";
+"remapDone" = "AutoPlay yeniden eşleme başarıyla tamamlandı.";
+"remapFail" = "AutoPlay mevcut değil.";
+"newVersionFound" = "Yeni sürüm tespit edildi.";
+
+/* Additional */
+"MPP_playCount" = "Oynatma Sayısı";
+"mb" = "MB";

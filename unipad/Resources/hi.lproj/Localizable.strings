@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "स्वीकार करें";
+"cancel" = "रद्द करें";
+"warning" = "चेतावनी";
+"error" = "त्रुटि";
+"errOccur" = "एक त्रुटि हुई है।";
+"wait_a_sec" = "कृपया प्रतीक्षा करें…";
+"importing" = "आयात हो रहा है";
+"loading" = "लोड हो रहा है";
+"loading_phase_info" = "जानकारी पढ़ रहा है…";
+"loading_phase_keysound" = "ध्वनियां लोड हो रही हैं…";
+"loading_phase_keyled" = "LED लोड हो रहे हैं…";
+"loading_phase_autoplay" = "ऑटोप्ले लोड हो रहा है…";
+"loading_phase_audio" = "ऑडियो लोड हो रहा है…";
+"download" = "डाउनलोड";
+"downloadWaiting" = "डाउनलोड प्रतीक्षा";
+"downloading" = "डाउनलोड हो रहा है";
+"downloaded" = "डाउनलोड हुआ";
+"success" = "सफल";
+"failed" = "विफल";
+"delete" = "हटाएं";
+"add_bookmark" = "बुकमार्क";
+"remove_bookmark" = "बुकमार्क हटाएं";
+"edit" = "संपादित करें";
+"update" = "अपडेट";
+"ignore" = "अनदेखा करें";
+"apply" = "लागू करें";
+"restart" = "पुनः आरंभ";
+"quit" = "बाहर निकलें";
+"menu" = "मेनू";
+"website" = "वेबसाइट";
+"measuring" = "माप रहा है…";
+"notice" = "सूचना";
+"newUniPack" = "नया UniPack";
+"exceptionOccurred" = "अपवाद हुआ";
+
+/* Menu */
+"reconnect_launchpad" = "Launchpad पुनः कनेक्ट करें";
+"import_unipack" = "UniPack आयात करें";
+"store" = "स्टोर";
+
+/* Setting */
+"setting" = "सेटिंग";
+"information" = "जानकारी";
+"select_theme" = "थीम चुनें";
+"storage_location" = "स्टोरेज स्थान";
+"github" = "Github";
+"openSourceLicense" = "ओपन सोर्स लाइसेंस";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "कॉपी करने के लिए टैप करें";
+"fcm_token_unavailable" = "FCM token उपलब्ध नहीं";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "हिन्दी";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "समुदाय";
+"officialHomepage" = "आधिकारिक वेबसाइट";
+"officialHomepage_" = "UniPad आधिकारिक वेबसाइट";
+"officialFacebook" = "आधिकारिक Facebook";
+"officialFacebook_" = "तकनीकी सहायता";
+"facebookCommunity" = "Facebook समुदाय";
+"facebookCommunity_" = "अंग्रेज़ी";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "कोरियाई";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "तकनीकी सहायता के अलावा";
+"email" = "0226unipad@gmail.com";
+"email_" = "तकनीकी सहायता के अलावा";
+
+/* UniPack Info */
+"title" = "शीर्षक";
+"producerName" = "निर्माता";
+"padSize" = "पैड आकार";
+"numChain" = "चेन";
+"fileSize" = "फ़ाइल आकार";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "ऑटोप्ले";
+"practiceMode" = "अभ्यास";
+"feedbackLight" = "फीडबैक लाइट";
+"traceLog" = "ट्रेस लॉग";
+"traceLogClear" = "ट्रेस लॉग रीसेट हो गया है।";
+"record" = "रिकॉर्ड";
+"hideUI" = "UI छुपाएं";
+"watermark" = "वॉटरमार्क";
+"proLightMode" = "प्रो लाइट मोड";
+
+/* Version */
+"update_available" = "अपडेट उपलब्ध";
+
+/* Permissions */
+"permissionRequire" = "प्रोजेक्ट फ़ाइलें सहेजने के लिए स्टोरेज एक्सेस आवश्यक है।";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "क्या आप इस प्रोजेक्ट को हटाना चाहते हैं?";
+"importComplete" = "विश्लेषण पूर्ण!";
+"importFailed" = "विश्लेषण विफल…";
+"copied" = "क्लिपबोर्ड पर कॉपी हुआ।";
+"outOfMemory" = "मेमोरी समाप्त.\nकुछ मेमोरी खाली करें और पुनः प्रयास करें।";
+"unipackNotFound" = "UniPack नहीं मिला।";
+
+/* Guide */
+"guide_download_new" = "नए पैक डाउनलोड करें";
+"guide_import_external" = "डाउनलोड किए पैक आयात करें";
+"guide_restore_packs" = "गायब पैक पुनर्प्राप्त करें";
+
+/* Launchpad */
+"launchpadConnecting" = "Launchpad कनेक्ट हो रहा है…";
+"midiDevicesNotDetected" = "MIDI डिवाइस नहीं मिले";
+
+/* Store */
+"canNotQuitWhileDownloading" = "पैक डाउनलोड के दौरान बाहर नहीं निकल सकते";
+"UnableToAccessServer" = "सर्वर तक पहुंच नहीं हो पा रही।";
+"SPP_downloadCount" = "डाउनलोड गिनती";
+"STP_count" = "स्टोर UniPack";
+"STP_downloadedCount" = "डाउनलोड किए UniPack";
+
+/* Theme */
+"theme" = "थीम";
+"theme_import_success" = "थीम सफलतापूर्वक आयात हुई।";
+"theme_import_failed" = "थीम आयात विफल।";
+"theme_add_title" = "थीम जोड़ें";
+"theme_add_zip" = "ZIP फ़ाइल आयात करें";
+"theme_add_zip_desc" = "अपने डिवाइस से .zip थीम फ़ाइल आयात करें।";
+"theme_add_create" = "अपनी खुद की थीम बनाएं";
+"theme_add_create_desc" = "कस्टम थीम बनाने का तरीका जानें।";
+"theme_import_invalid" = "अमान्य थीम फ़ाइल।";
+"theme_apk_deprecated" = "APK आधारित थीम अब समर्थित नहीं हैं। कृपया इसके बजाय ZIP थीम का उपयोग करें।";
+"theme_delete_title" = "थीम हटाएं";
+"theme_delete_confirm %@" = "\"%@\" हटाएं?";
+"theme_type_builtin" = "अंतर्निहित";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "शीर्षक";
+"sort_producer" = "निर्माता";
+"sort_play_count" = "प्ले गिनती";
+"sort_last_opened_date" = "अंतिम खोला";
+"sort_download_date" = "डाउनलोड तिथि";
+
+/* Main Panels */
+"MTP_count" = "UniPack की संख्या";
+"MTP_size" = "UniPack का आकार";
+"MPT_playCount" = "प्ले गिनती";
+"MPT_theme" = "थीम";
+"MPP_padSize" = "पैड आकार";
+"MPP_chain" = "चेन";
+"MPP_soundFiles" = "साउंड फ़ाइलें";
+"MPP_ledEvents" = "Led इवेंट";
+"MPP_fileSize" = "फ़ाइल आकार";
+"MPP_openCount" = "प्ले गिनती";
+"MPP_downloadedDate" = "डाउनलोड तिथि";
+"MPP_lastPlayed" = "अंतिम खेला";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "UniPacks स्थानांतरित करें";
+"transfer_source" = "स्रोत";
+"transfer_target" = "लक्ष्य";
+"transfer_mode_copy" = "कॉपी";
+"transfer_mode_move" = "स्थानांतरित";
+"transfer_select_all" = "सभी चुनें";
+"transfer_deselect_all" = "सभी हटाएं";
+"transfer_start" = "शुरू";
+"transfer_done" = "पूर्ण";
+"transfer_no_items" = "कोई UniPack चयनित नहीं";
+"transfer_result_transferred" = "स्थानांतरित";
+"transfer_result_skipped" = "छोड़ा गया";
+"transfer_result_failed" = "विफल";
+"transfer_selected_count" = "%d चयनित";
+"transfer_copying" = "कॉपी हो रहा है: %@";
+"transfer_moving" = "स्थानांतरित हो रहा है: %@";
+
+/* Backup */
+"backup_section" = "बैकअप";
+"backup_title" = "बैकअप";
+"backup_description" = "UniPacks को बैकअप फ़ोल्डर में कॉपी करें";
+"restore_title" = "पुनर्स्थापित";
+"restore_description" = "बैकअप फ़ोल्डर से UniPacks कॉपी करें";
+"backup_guide_title" = "बैकअप फ़ोल्डर कनेक्ट करें";
+"backup_guide_description" = "अपने UniPacks का बैकअप या पुनर्स्थापना करने के लिए Documents/Unipad फ़ोल्डर कनेक्ट करें।\nयह फ़ोल्डर ऐप अनइंस्टॉल करने पर भी बना रहता है।";
+"backup_guide_step1" = "1. फ़ोल्डर चयनकर्ता खुलेगा";
+"backup_guide_step2" = "2. यदि Documents/Unipad मौजूद है, तो उसे चुनें";
+"backup_guide_step3" = "3. यदि नहीं, तो Documents में \"Unipad\" फ़ोल्डर बनाएं और उसे चुनें";
+"backup_guide_continue" = "जारी रखें";
+"backup_no_items" = "बैकअप के लिए कोई UniPack नहीं।";
+"backup_failed" = "बैकअप विफल।";
+"restore_success" = "पुनर्स्थापना पूर्ण।";
+"restore_failed" = "पुनर्स्थापना विफल।";
+
+/* Settings Categories */
+"settings_device" = "डिवाइस";
+"settings_info" = "जानकारी";
+"settings_storage" = "स्टोरेज";
+"settings_theme" = "थीम";
+"settings_developer" = "डेवलपर";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "ऐप स्टोरेज (अनुशंसित)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "वेबसाइट";
+"cd_bookmark" = "बुकमार्क";
+"cd_delete" = "हटाएं";
+"cd_logo" = "UniPad लोगो";
+"cd_autoplay_prev" = "पिछला";
+"cd_autoplay_play" = "चलाएं";
+"cd_autoplay_pause" = "रुकें";
+"cd_autoplay_next" = "अगला";
+
+/* Search */
+"no_search_results" = "कोई परिणाम नहीं मिला";
+
+/* Transfer Format */
+"transfer_format_label" = "प्रारूप";
+"transfer_format_folder" = "फ़ोल्डर";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "स्किन लागू करने में विफल।\nऐप को पुनः आरंभ करें।";
+"skinErr" = "स्किन लागू करने में विफल।\nस्किन रीसेट करें।";
+"requireRestart" = "ऐप पुनः आरंभ करना आवश्यक है।";
+"doYouWantToRestartApp" = "क्या आप ऐप को पुनः आरंभ करना चाहते हैं?";
+
+/* Performance */
+"outOfCPU" = "डिवाइस की विशिष्टताओं के कारण\nपैक शुरू नहीं हो सका।\nपुनः प्रयास करें।";
+"remapDone" = "ऑटोप्ले रीमैपिंग सफलतापूर्वक पूरी हो गई।";
+"remapFail" = "ऑटोप्ले मौजूद नहीं है।";
+"newVersionFound" = "नया संस्करण पाया गया।";
+
+/* Additional */
+"MPP_playCount" = "प्ले गिनती";
+"mb" = "MB";

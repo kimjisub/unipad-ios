@@ -53,6 +53,26 @@ final class ThemeViewModel {
             )
         ]
 
+        // Bundled asset themes
+        let themeBundleURL = Bundle.main.url(forResource: "BundledThemes", withExtension: "bundle")
+        let themeBundle = themeBundleURL.flatMap { Bundle(url: $0) }
+        for themeName in ThemeManager.bundledThemeNames() {
+            let themeId = "\(ThemeManager.bundledThemePrefix)\(themeName)"
+            if let themeDir = themeBundle?.url(forResource: themeName, withExtension: nil),
+               let resources = try? FolderThemeResources(themeDir: themeDir, fullLoad: false) {
+                items.append(ThemeItem(
+                    id: themeId,
+                    name: resources.name,
+                    author: resources.author,
+                    version: resources.version,
+                    type: .builtin,
+                    isDeletable: false,
+                    icon: resources.icon
+                ))
+            }
+        }
+
+        // User-imported ZIP themes
         let fm = FileManager.default
         let themesDir = Self.themesDirectory
         if let contents = try? fm.contentsOfDirectory(at: themesDir, includingPropertiesForKeys: [.isDirectoryKey]) {
@@ -117,14 +137,16 @@ final class ThemeViewModel {
                 try normalizeThemeResources(at: destDir)
                 _ = try FolderThemeResources(themeDir: destDir, fullLoad: false)
             } else {
-                throw NSError(domain: "ThemeImport", code: 2)
+                try? fm.removeItem(at: destDir)
+                importResultMessage = "\(String(localized: "theme_import_invalid"))"
+                return
             }
 
             loadThemes()
             importResultMessage = String(localized: "theme_import_success")
         } catch {
             try? fm.removeItem(at: destDir)
-            importResultMessage = String(localized: "theme_import_failed")
+            importResultMessage = "\(String(localized: "theme_import_failed"))\n\(error.localizedDescription)"
         }
     }
 

@@ -17,5 +17,6 @@ enum Route: Hashable {
         var targetType: String?
         var mode: String?
         var title: String?
+        var isBackup: Bool?
     }
 }

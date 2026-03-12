@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "接受";
+"cancel" = "取消";
+"warning" = "警告";
+"error" = "错误";
+"errOccur" = "发生错误。";
+"wait_a_sec" = "请稍等…";
+"importing" = "导入中";
+"loading" = "加载中";
+"loading_phase_info" = "读取信息中…";
+"loading_phase_keysound" = "加载音效中…";
+"loading_phase_keyled" = "加载LED中…";
+"loading_phase_autoplay" = "加载自动播放中…";
+"loading_phase_audio" = "加载音频中…";
+"download" = "下载";
+"downloadWaiting" = "等待下载";
+"downloading" = "下载中";
+"downloaded" = "已下载";
+"success" = "成功";
+"failed" = "失败";
+"delete" = "删除";
+"add_bookmark" = "书签";
+"remove_bookmark" = "取消书签";
+"edit" = "编辑";
+"update" = "更新";
+"ignore" = "忽略";
+"apply" = "应用";
+"restart" = "重新启动";
+"quit" = "退出";
+"menu" = "菜单";
+"website" = "网站";
+"measuring" = "测量中…";
+"notice" = "通知";
+"newUniPack" = "新 UniPack";
+"exceptionOccurred" = "发生异常";
+
+/* Menu */
+"reconnect_launchpad" = "重新连接 Launchpad";
+"import_unipack" = "导入 UniPack";
+"store" = "商店";
+
+/* Setting */
+"setting" = "设置";
+"information" = "信息";
+"select_theme" = "选择主题";
+"storage_location" = "存储位置";
+"github" = "Github";
+"openSourceLicense" = "开源许可";
+"FCMToken" = "FCM 令牌";
+"tap_to_copy" = "点击复制";
+"fcm_token_unavailable" = "FCM令牌不可用";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "简体中文";
+"translated_by" = "Translated by 203Null";
+
+/* Community */
+"community" = "社区";
+"officialHomepage" = "官方网站";
+"officialHomepage_" = "UniPad 官方网站";
+"officialFacebook" = "官方 Facebook";
+"officialFacebook_" = "技术支持";
+"facebookCommunity" = "Facebook 社区";
+"facebookCommunity_" = "英文";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "韩文";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "非技术支持";
+"email" = "0226unipad@gmail.com";
+"email_" = "非技术支持";
+
+/* UniPack Info */
+"title" = "标题";
+"producerName" = "作者";
+"padSize" = "按键矩阵尺寸";
+"numChain" = "页数";
+"fileSize" = "文件大小";
+
+/* UniPack Function */
+"led" = "灯光";
+"autoPlay" = "自动播放";
+"practiceMode" = "练习";
+"feedbackLight" = "反馈灯光";
+"traceLog" = "记录按键";
+"traceLogClear" = "按键记录已重置。";
+"record" = "录制";
+"hideUI" = "隐藏UI";
+"watermark" = "UI灯光";
+"proLightMode" = "Pro灯光模式";
+
+/* Version */
+"update_available" = "有可用更新";
+
+/* Permissions */
+"permissionRequire" = "保存项目文件需要访问存储的权限。";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "您想删除此项目吗？";
+"importComplete" = "分析完成！";
+"importFailed" = "分析失败…";
+"copied" = "已复制到剪贴板。";
+"outOfMemory" = "内存不足。\n释放一些内存并重试。";
+"unipackNotFound" = "找不到 UniPack。";
+
+/* Guide */
+"guide_download_new" = "下载新包";
+"guide_import_external" = "导入已下载的包";
+"guide_restore_packs" = "恢复丢失的包";
+
+/* Launchpad */
+"launchpadConnecting" = "正在连接 launchpad…";
+"midiDevicesNotDetected" = "未检测到 MIDI 设备";
+
+/* Store */
+"canNotQuitWhileDownloading" = "下载包时不能退出";
+"UnableToAccessServer" = "无法访问服务器。";
+"SPP_downloadCount" = "下载量";
+"STP_count" = "商店 UniPacks";
+"STP_downloadedCount" = "已下载的 UniPacks";
+
+/* Theme */
+"theme" = "主题";
+"theme_import_success" = "主题导入成功。";
+"theme_import_failed" = "主题导入失败。";
+"theme_add_title" = "添加主题";
+"theme_add_zip" = "导入 ZIP 文件";
+"theme_add_zip_desc" = "从设备导入 .zip 主题文件。";
+"theme_add_create" = "创建自己的主题";
+"theme_add_create_desc" = "了解如何创建自定义主题。";
+"theme_import_invalid" = "无效的主题文件。";
+"theme_apk_deprecated" = "APK主题已停止支持，请改用ZIP主题。";
+"theme_delete_title" = "删除主题";
+"theme_delete_confirm %@" = "删除 \"%@\"？";
+"theme_type_builtin" = "内置";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "标题";
+"sort_producer" = "作者";
+"sort_play_count" = "演奏次数";
+"sort_last_opened_date" = "上次打开日期";
+"sort_download_date" = "下载日期";
+
+/* Main Panels */
+"MTP_count" = "UniPacks 数量";
+"MTP_size" = "UniPacks 大小";
+"MPT_playCount" = "演奏次数";
+"MPT_theme" = "主题";
+"MPP_padSize" = "按键矩阵大小";
+"MPP_chain" = "页数";
+"MPP_soundFiles" = "采样数量";
+"MPP_ledEvents" = "灯光数量";
+"MPP_fileSize" = "文件大小";
+"MPP_openCount" = "演奏次数";
+"MPP_downloadedDate" = "下载日期";
+"MPP_lastPlayed" = "最后播放";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "传输 UniPacks";
+"transfer_source" = "来源";
+"transfer_target" = "目标";
+"transfer_mode_copy" = "复制";
+"transfer_mode_move" = "移动";
+"transfer_select_all" = "全选";
+"transfer_deselect_all" = "取消全选";
+"transfer_start" = "开始";
+"transfer_done" = "完成";
+"transfer_no_items" = "未选择 UniPacks";
+"transfer_result_transferred" = "已传输";
+"transfer_result_skipped" = "已跳过";
+"transfer_result_failed" = "失败";
+"transfer_selected_count" = "已选择 %d 个";
+"transfer_copying" = "复制中: %@";
+"transfer_moving" = "移动中: %@";
+
+/* Backup */
+"backup_section" = "备份";
+"backup_title" = "备份";
+"backup_description" = "将 UniPacks 复制到备份文件夹";
+"restore_title" = "恢复";
+"restore_description" = "从备份文件夹复制 UniPacks";
+"backup_guide_title" = "连接备份文件夹";
+"backup_guide_description" = "连接 Documents/Unipad 文件夹以备份或恢复您的 UniPacks。\n即使卸载应用，此文件夹仍会保留。";
+"backup_guide_step1" = "1. 将打开文件夹选择器";
+"backup_guide_step2" = "2. 如果 Documents/Unipad 存在，请选择它";
+"backup_guide_step3" = "3. 如果不存在，请在 Documents 中创建 \"Unipad\" 文件夹并选择";
+"backup_guide_continue" = "继续";
+"backup_no_items" = "没有可备份的UniPack。";
+"backup_failed" = "备份失败。";
+"restore_success" = "恢复完成。";
+"restore_failed" = "恢复失败。";
+
+/* Settings Categories */
+"settings_device" = "设备";
+"settings_info" = "信息";
+"settings_storage" = "存储";
+"settings_theme" = "主题";
+"settings_developer" = "开发者";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "应用存储 (推荐)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "网站";
+"cd_bookmark" = "书签";
+"cd_delete" = "删除";
+"cd_logo" = "UniPad 标志";
+"cd_autoplay_prev" = "上一个";
+"cd_autoplay_play" = "播放";
+"cd_autoplay_pause" = "暂停";
+"cd_autoplay_next" = "下一个";
+
+/* Search */
+"no_search_results" = "未找到结果";
+
+/* Transfer Format */
+"transfer_format_label" = "格式";
+"transfer_format_folder" = "文件夹";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "皮肤应用失败。\n请重启应用。";
+"skinErr" = "皮肤应用失败。\n请重置皮肤。";
+"requireRestart" = "需要重启应用。";
+"doYouWantToRestartApp" = "是否重启应用？";
+
+/* Performance */
+"outOfCPU" = "由于设备性能限制\n无法启动此包。\n请重试。";
+"remapDone" = "自动播放重新映射已完成。";
+"remapFail" = "自动播放不存在。";
+"newVersionFound" = "检测到新版本。";
+
+/* Additional */
+"MPP_playCount" = "演奏次数";
+"mb" = "MB";

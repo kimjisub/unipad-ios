@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "Chấp nhận";
+"cancel" = "Hủy";
+"warning" = "Cảnh báo";
+"error" = "LỖI";
+"errOccur" = "Đã xảy ra lỗi.";
+"wait_a_sec" = "Chờ một chút…";
+"importing" = "Đang nhập";
+"loading" = "Đang tải";
+"loading_phase_info" = "Đang đọc thông tin…";
+"loading_phase_keysound" = "Đang tải âm thanh…";
+"loading_phase_keyled" = "Đang tải LED…";
+"loading_phase_autoplay" = "Đang tải tự động phát…";
+"loading_phase_audio" = "Đang tải audio…";
+"download" = "Tải xuống";
+"downloadWaiting" = "Chờ Tải xuống";
+"downloading" = "Đang tải xuống";
+"downloaded" = "Đã tải xuống";
+"success" = "Thành công";
+"failed" = "Thất bại";
+"delete" = "Xóa";
+"add_bookmark" = "Đánh dấu";
+"remove_bookmark" = "Bỏ đánh dấu";
+"edit" = "Chỉnh sửa";
+"update" = "Cập nhật";
+"ignore" = "Bỏ qua";
+"apply" = "Áp dụng";
+"restart" = "Khởi động lại";
+"quit" = "Thoát";
+"menu" = "Menu";
+"website" = "Trang web";
+"measuring" = "Đang đo…";
+"notice" = "Thông báo";
+"newUniPack" = "UniPack Mới";
+"exceptionOccurred" = "Đã Xảy Ra Ngoại Lệ";
+
+/* Menu */
+"reconnect_launchpad" = "Kết nối lại Launchpad";
+"import_unipack" = "Nhập UniPack";
+"store" = "Cửa hàng";
+
+/* Setting */
+"setting" = "Cài đặt";
+"information" = "Thông tin";
+"select_theme" = "Chọn Giao diện";
+"storage_location" = "Vị trí Lưu trữ";
+"github" = "Github";
+"openSourceLicense" = "Giấy phép Mã nguồn Mở";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "Nhấn để sao chép";
+"fcm_token_unavailable" = "FCM token không khả dụng";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "Tiếng Việt";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "Cộng đồng";
+"officialHomepage" = "Trang chủ Chính thức";
+"officialHomepage_" = "Trang chủ Chính thức UniPad";
+"officialFacebook" = "Facebook Chính thức";
+"officialFacebook_" = "Hỗ trợ Kỹ thuật";
+"facebookCommunity" = "Cộng đồng Facebook";
+"facebookCommunity_" = "Tiếng Anh";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "Tiếng Hàn";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Ngoài Hỗ trợ Kỹ thuật";
+"email" = "0226unipad@gmail.com";
+"email_" = "Ngoài Hỗ trợ Kỹ thuật";
+
+/* UniPack Info */
+"title" = "Tiêu đề";
+"producerName" = "Nhà sản xuất";
+"padSize" = "Kích thước Pad";
+"numChain" = "Chuỗi";
+"fileSize" = "Kích thước File";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Tự động phát";
+"practiceMode" = "Luyện tập";
+"feedbackLight" = "Đèn phản hồi";
+"traceLog" = "Nhật ký Truy vết";
+"traceLogClear" = "Nhật ký truy vết đã được đặt lại.";
+"record" = "Ghi âm";
+"hideUI" = "Ẩn UI";
+"watermark" = "Watermark";
+"proLightMode" = "Chế độ Pro Light";
+
+/* Version */
+"update_available" = "Có bản cập nhật";
+
+/* Permissions */
+"permissionRequire" = "Cần quyền truy cập bộ nhớ để lưu file dự án.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "Bạn có muốn xóa dự án này không?";
+"importComplete" = "Phân tích hoàn tất!";
+"importFailed" = "Phân tích thất bại…";
+"copied" = "Đã sao chép vào clipboard.";
+"outOfMemory" = "Hết bộ nhớ.\nGiải phóng bộ nhớ và thử lại.";
+"unipackNotFound" = "Không tìm thấy UniPack.";
+
+/* Guide */
+"guide_download_new" = "Tải pack mới";
+"guide_import_external" = "Nhập pack đã tải";
+"guide_restore_packs" = "Khôi phục pack bị mất";
+
+/* Launchpad */
+"launchpadConnecting" = "Đang kết nối launchpad…";
+"midiDevicesNotDetected" = "Không Phát Hiện Thiết Bị MIDI";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Không thể thoát khi đang tải pack";
+"UnableToAccessServer" = "Không thể truy cập máy chủ.";
+"SPP_downloadCount" = "Số lượt tải";
+"STP_count" = "UniPack trong Cửa hàng";
+"STP_downloadedCount" = "UniPack Đã tải";
+
+/* Theme */
+"theme" = "Giao diện";
+"theme_import_success" = "Nhập giao diện thành công.";
+"theme_import_failed" = "Nhập giao diện thất bại.";
+"theme_add_title" = "Thêm Giao Diện";
+"theme_add_zip" = "Nhập file ZIP";
+"theme_add_zip_desc" = "Nhập file giao diện .zip từ thiết bị của bạn.";
+"theme_add_create" = "Tạo giao diện riêng";
+"theme_add_create_desc" = "Tìm hiểu cách tạo giao diện tùy chỉnh.";
+"theme_import_invalid" = "File giao diện không hợp lệ.";
+"theme_apk_deprecated" = "Giao diện dạng APK không còn được hỗ trợ. Vui lòng sử dụng giao diện ZIP thay thế.";
+"theme_delete_title" = "Xóa Giao diện";
+"theme_delete_confirm %@" = "Xóa \"%@\"?";
+"theme_type_builtin" = "Tích hợp";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Tiêu đề";
+"sort_producer" = "Nhà sản xuất";
+"sort_play_count" = "Số lần Chơi";
+"sort_last_opened_date" = "Mở Lần cuối";
+"sort_download_date" = "Ngày Tải xuống";
+
+/* Main Panels */
+"MTP_count" = "Số lượng UniPack";
+"MTP_size" = "Kích thước UniPack";
+"MPT_playCount" = "Số lần Chơi";
+"MPT_theme" = "Giao diện";
+"MPP_padSize" = "Kích thước Pad";
+"MPP_chain" = "Chuỗi";
+"MPP_soundFiles" = "File Âm thanh";
+"MPP_ledEvents" = "Sự kiện Led";
+"MPP_fileSize" = "Kích thước File";
+"MPP_openCount" = "Số lần Chơi";
+"MPP_downloadedDate" = "Ngày Tải xuống";
+"MPP_lastPlayed" = "Chơi Lần cuối";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "Chuyển UniPacks";
+"transfer_source" = "Nguồn";
+"transfer_target" = "Đích";
+"transfer_mode_copy" = "Sao chép";
+"transfer_mode_move" = "Di chuyển";
+"transfer_select_all" = "Chọn tất cả";
+"transfer_deselect_all" = "Bỏ chọn tất cả";
+"transfer_start" = "Bắt đầu";
+"transfer_done" = "Hoàn tất";
+"transfer_no_items" = "Chưa chọn UniPack nào";
+"transfer_result_transferred" = "Đã chuyển";
+"transfer_result_skipped" = "Đã bỏ qua";
+"transfer_result_failed" = "Thất bại";
+"transfer_selected_count" = "Đã chọn %d";
+"transfer_copying" = "Đang sao chép: %@";
+"transfer_moving" = "Đang di chuyển: %@";
+
+/* Backup */
+"backup_section" = "Sao lưu";
+"backup_title" = "Sao lưu";
+"backup_description" = "Sao chép UniPacks vào thư mục sao lưu";
+"restore_title" = "Khôi phục";
+"restore_description" = "Sao chép UniPacks từ thư mục sao lưu";
+"backup_guide_title" = "Kết nối thư mục sao lưu";
+"backup_guide_description" = "Kết nối thư mục Documents/Unipad để sao lưu hoặc khôi phục UniPacks của bạn.\nThư mục này vẫn tồn tại ngay cả khi gỡ ứng dụng.";
+"backup_guide_step1" = "1. Trình chọn thư mục sẽ mở";
+"backup_guide_step2" = "2. Nếu Documents/Unipad tồn tại, hãy chọn nó";
+"backup_guide_step3" = "3. Nếu không, tạo thư mục \"Unipad\" trong Documents và chọn nó";
+"backup_guide_continue" = "Tiếp tục";
+"backup_no_items" = "Không có UniPack để sao lưu.";
+"backup_failed" = "Sao lưu thất bại.";
+"restore_success" = "Khôi phục hoàn tất.";
+"restore_failed" = "Khôi phục thất bại.";
+
+/* Settings Categories */
+"settings_device" = "Thiết bị";
+"settings_info" = "Thông tin";
+"settings_storage" = "Bộ nhớ";
+"settings_theme" = "Giao diện";
+"settings_developer" = "Nhà phát triển";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "Bộ nhớ Ứng dụng (Khuyến nghị)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Trang web";
+"cd_bookmark" = "Đánh dấu";
+"cd_delete" = "Xóa";
+"cd_logo" = "Logo UniPad";
+"cd_autoplay_prev" = "Trước";
+"cd_autoplay_play" = "Phát";
+"cd_autoplay_pause" = "Tạm dừng";
+"cd_autoplay_next" = "Tiếp theo";
+
+/* Search */
+"no_search_results" = "Không tìm thấy kết quả";
+
+/* Transfer Format */
+"transfer_format_label" = "Định dạng";
+"transfer_format_folder" = "Thư mục";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Không thể áp dụng skin.\nKhởi động lại ứng dụng.";
+"skinErr" = "Không thể áp dụng skin.\nĐặt lại skin.";
+"requireRestart" = "Cần khởi động lại ứng dụng.";
+"doYouWantToRestartApp" = "Bạn có muốn khởi động lại ứng dụng không?";
+
+/* Performance */
+"outOfCPU" = "Không thể khởi động pack\ndo cấu hình thiết bị.\nHãy thử lại.";
+"remapDone" = "Ánh xạ lại AutoPlay đã hoàn tất thành công.";
+"remapFail" = "AutoPlay không tồn tại.";
+"newVersionFound" = "Đã phát hiện phiên bản mới.";
+
+/* Additional */
+"MPP_playCount" = "Số lần Chơi";
+"mb" = "MB";

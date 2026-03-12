@@ -7,16 +7,53 @@ struct MainView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var vm = MainViewModel()
     @State private var showDeleteConfirmation = false
+    @State private var showImportResult = false
 
     var body: some View {
-        rightPanel
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                // Left panel (40%)
+                leftPanel
+                    .frame(width: geometry.size.width * 0.4)
+
+                // Right panel (60%)
+                rightPanel
+                    .frame(width: geometry.size.width * 0.6)
+            }
+        }
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
+        .onKeyPress(.escape) {
+            if vm.selectedItem != nil {
+                vm.toggleSelection(vm.selectedItem!)
+                return .handled
+            }
+            return .ignored
+        }
         .onAppear {
             vm.modelContainer = modelContext.container
             vm.refreshList()
             vm.updateStats()
+            vm.versionCheck()
+            vm.onLaunchpadPlay = { item in
+                vm.recordOpen(item)
+                router.navigate(to: .play(packPath: item.unipack.getPathString()))
+            }
+            vm.setupMidiController()
         }
+        .onDisappear {
+            vm.removeMidiController()
+        }
+        #if canImport(UIKit)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            vm.removeMidiController()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            vm.setupMidiController()
+            vm.refreshList()
+            vm.versionCheck()
+        }
+        #endif
         .fileImporter(
             isPresented: Binding(
                 get: { vm.isImporting },
@@ -35,6 +72,7 @@ struct MainView: View {
 
                 if url.pathExtension.lowercased() == "zip" {
                     vm.isImportingInProgress = true
+                    let existingIds = Set(vm.unipackItems.map { $0.id })
                     Task {
                         let importer = UniPackImporter()
                         await importer.importPack(from: url, to: workspace, delegate: nil)
@@ -42,6 +80,8 @@ struct MainView: View {
                             vm.isImportingInProgress = false
                             vm.refreshList()
                             vm.updateStats()
+                            vm.showImportResultForNew(existingIds: existingIds)
+                            showImportResult = true
                         }
                     }
                 } else {
@@ -51,12 +91,15 @@ struct MainView: View {
                         try FileManagerExtensions.copyDirectory(from: url, to: destDir)
                         vm.refreshList()
                         vm.updateStats()
+                        vm.showImportSuccessForFolder(destDir)
                     } catch {
                         vm.importResult = .error(error.localizedDescription)
                     }
+                    showImportResult = true
                 }
             case .failure(let error):
                 vm.importResult = .error(error.localizedDescription)
+                showImportResult = true
             }
         }
         .alert(String(localized: "warning"), isPresented: $showDeleteConfirmation) {
@@ -70,6 +113,51 @@ struct MainView: View {
             }
         } message: {
             Text(String(localized: "doYouWantToDeleteUniPack"))
+        }
+        .overlay {
+            if showImportResult, let result = vm.importResult {
+                ZStack {
+                    Color.black.opacity(0.5).ignoresSafeArea()
+                        .onTapGesture {
+                            showImportResult = false
+                            vm.importResult = nil
+                        }
+
+                    VStack(spacing: 0) {
+                        // Title bar
+                        Text({
+                            switch result {
+                            case .success: String(localized: "importComplete")
+                            case .warning: String(localized: "warning")
+                            case .error: String(localized: "importFailed")
+                            }
+                        }())
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x1A1A1A))
+                        .padding(.top, 16)
+                        .padding(.bottom, 8)
+
+                        ImportResultDialog(result: result, onDismiss: {})
+
+                        // OK button
+                        Divider()
+                        Button {
+                            showImportResult = false
+                            vm.importResult = nil
+                        } label: {
+                            Text(String(localized: "accept"))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(AppColors.blue)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                    }
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 40)
+                    .frame(maxWidth: 360)
+                }
+            }
         }
         .overlay {
             if vm.isImportingInProgress {
@@ -91,17 +179,69 @@ struct MainView: View {
         }
     }
 
+    // MARK: - Left Panel
+
+    @ViewBuilder
+    private var leftPanel: some View {
+        let _ = vm.detailLoadVersion
+        VStack {
+            Group {
+                if let selected = vm.selectedItem {
+                    MainPackPanel(
+                        item: selected,
+                        onBookmarkToggle: { vm.toggleBookmark(selected) },
+                        onDelete: {
+                            vm.deleteTargetItem = selected
+                            showDeleteConfirmation = true
+                        },
+                        onYouTube: {
+                            let query = "UniPad \(selected.unipack.title) \(selected.unipack.producerName)"
+                                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                            if let url = URL(string: "https://www.youtube.com/results?search_query=\(query)") {
+                                PlatformHelpers.openURL(url)
+                            }
+                        },
+                        onWebsite: selected.unipack.website.flatMap { urlString in
+                            { if let url = URL(string: urlString) { PlatformHelpers.openURL(url) } }
+                        }
+                    )
+                    .transition(.opacity)
+                } else {
+                    MainTotalPanel(
+                        openCount: vm.totalOpenCount,
+                        unipackCount: vm.unipackCount,
+                        unipackCapacity: vm.unipackCapacity,
+                        themeName: vm.currentThemeName,
+                        updateAvailable: vm.updateAvailable,
+                        onSettingsClick: { router.navigate(to: .settings) },
+                        onUpdateClick: {
+                            if let url = URL(string: "https://apps.apple.com/app/unipad/id1668033585") {
+                                PlatformHelpers.openURL(url)
+                            }
+                        }
+                    )
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.5), value: vm.selectedItem?.id)
+        }
+        .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 0))
+    }
+
     // MARK: - Right Panel
 
     @ViewBuilder
     private var rightPanel: some View {
         VStack(spacing: 0) {
-            headerSummary
-            if vm.unipackItems.isEmpty && !vm.isRefreshing {
+            if vm.unipackItems.isEmpty && !vm.isRefreshing && vm.searchQuery.isEmpty {
                 emptyStateView
             } else {
                 sortBar
-                packList
+                if vm.unipackItems.isEmpty && !vm.searchQuery.isEmpty {
+                    searchEmptyView
+                } else {
+                    packList
+                }
             }
         }
     }
@@ -110,76 +250,37 @@ struct MainView: View {
 
     @State private var showSearch = false
 
-    private var headerSummary: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("UniPad")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text(vm.appVersion)
-                        .font(.system(size: 11))
-                        .foregroundStyle(AppColors.textPrimary)
-                }
-
-                Spacer()
-
-                Button {
-                    router.navigate(to: .settings)
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .frame(width: 40, height: 40)
-                        .background(AppColors.darkSurfaceHigh)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-            }
-
-            HStack(spacing: 10) {
-                SummaryChip(label: String(localized: "MPT_playCount"), value: "\(vm.totalOpenCount)")
-                SummaryChip(label: String(localized: "MTP_count"), value: vm.unipackCount.map(String.init) ?? "-")
-                SummaryChip(label: String(localized: "MTP_size"), value: vm.unipackCapacity.map { "\($0) MB" } ?? "-")
-            }
-
-            if vm.updateAvailable {
-                Text(String(localized: "update_available"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(AppColors.blue)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-    }
-
     private var sortBar: some View {
         VStack(spacing: 4) {
             HStack {
-                Menu {
-                    ForEach(MainViewModel.SortMethod.allCases, id: \.rawValue) { method in
-                        Button(method.displayName) {
-                            vm.updateSortMethod(method)
+                HStack(spacing: 0) {
+                    Menu {
+                        ForEach(MainViewModel.SortMethod.allCases, id: \.rawValue) { method in
+                            Button(method.displayName) {
+                                vm.updateSortMethod(method)
+                            }
                         }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
+                    } label: {
                         Text(vm.sortMethod.displayName)
                             .font(.system(size: 12))
                             .foregroundStyle(AppColors.textPrimary)
-
-                        Image(systemName: vm.sortAscending ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppColors.textPrimary)
-                            .onTapGesture {
-                                vm.toggleSortOrder()
-                            }
+                            .padding(.leading, 10)
+                            .padding(.vertical, 4)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(AppColors.darkSurfaceHigh)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                    Button {
+                        vm.toggleSortOrder()
+                    } label: {
+                        Image(systemName: vm.sortAscending ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 18))
+                            .foregroundStyle(AppColors.textPrimary)
+                            .padding(.trailing, 10)
+                            .padding(.vertical, 4)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
                 }
+                .background(AppColors.darkSurfaceHigh)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 Spacer()
 
@@ -193,7 +294,7 @@ struct MainView: View {
                     }
                 } label: {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16))
+                        .font(.system(size: 20))
                         .foregroundStyle(showSearch ? AppColors.blue : AppColors.textPrimary)
                 }
                 .frame(width: 36, height: 36)
@@ -202,7 +303,7 @@ struct MainView: View {
                     router.navigate(to: .store)
                 } label: {
                     Image(systemName: "cart")
-                        .font(.system(size: 16))
+                        .font(.system(size: 20))
                         .foregroundStyle(AppColors.textPrimary)
                 }
                 .frame(width: 36, height: 36)
@@ -211,7 +312,7 @@ struct MainView: View {
                     vm.isImporting = true
                 } label: {
                     Image(systemName: "folder")
-                        .font(.system(size: 16))
+                        .font(.system(size: 20))
                         .foregroundStyle(AppColors.textPrimary)
                 }
                 .frame(width: 36, height: 36)
@@ -227,60 +328,94 @@ struct MainView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 8))
     }
 
     // MARK: - Pack List
 
     private var packList: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) {
-                ForEach(vm.unipackItems) { item in
-                    UnipackListItemView(
-                        title: item.unipack.criticalError
-                            ? String(localized: "errOccur")
-                            : item.unipack.title,
-                        subtitle: item.unipack.criticalError
-                            ? item.unipack.getPathString()
-                            : item.unipack.producerName,
-                        hasLed: item.unipack.keyLedExist,
-                        hasAutoPlay: item.unipack.autoPlayExist,
-                        isBookmarked: item.isBookmarked,
-                        isSelected: false,
-                        flagColor: item.unipack.criticalError ? AppColors.red : AppColors.skyblue,
-                        flagText: "PLAY",
-                        onTap: {
-                            vm.recordOpen(item)
-                            router.navigate(to: .play(packPath: item.unipack.getPathString()))
-                        },
-                        onPlay: {
-                            vm.recordOpen(item)
-                            router.navigate(to: .play(packPath: item.unipack.getPathString()))
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(vm.unipackItems) { item in
+                        let isSelected = vm.selectedItem?.id == item.id
+                        UnipackListItemView(
+                            title: item.unipack.criticalError
+                                ? String(localized: "errOccur")
+                                : item.unipack.title,
+                            subtitle: item.unipack.criticalError
+                                ? item.unipack.getPathString()
+                                : item.unipack.producerName,
+                            hasLed: item.unipack.keyLedExist,
+                            hasAutoPlay: item.unipack.autoPlayExist,
+                            isBookmarked: item.isBookmarked,
+                            isSelected: isSelected,
+                            flagColor: isSelected
+                                ? AppColors.red
+                                : (item.unipack.criticalError ? AppColors.red : AppColors.skyblue),
+                            onTap: {
+                                vm.toggleSelection(item)
+                            },
+                            onPlay: {
+                                vm.recordOpen(item)
+                                router.navigate(to: .play(packPath: item.unipack.getPathString()))
+                            }
+                        )
+                        .id(item.id)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                vm.deleteTargetItem = item
+                                showDeleteConfirmation = true
+                            } label: {
+                                Label(String(localized: "delete"), systemImage: "trash")
+                            }
                         }
-                    )
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            vm.deleteTargetItem = item
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label(String(localized: "delete"), systemImage: "trash")
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                vm.toggleBookmark(item)
+                            } label: {
+                                Label(
+                                    item.isBookmarked ? String(localized: "remove_bookmark") : String(localized: "add_bookmark"),
+                                    systemImage: item.isBookmarked ? "bookmark.slash" : "bookmark.fill"
+                                )
+                            }
+                            .tint(AppColors.green)
                         }
                     }
-                }
 
-                guidingActionsRow
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    guidingActionsRow
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+                .padding(.vertical, 4)
             }
-            .padding(.vertical, 4)
-        }
-        .refreshable {
-            vm.refreshList()
+            .refreshable {
+                vm.refreshList()
+            }
+            .onChange(of: vm.scrollToItemId) { _, itemId in
+                guard let itemId else { return }
+                withAnimation {
+                    proxy.scrollTo(itemId, anchor: .center)
+                }
+                vm.scrollToItemId = nil
+            }
         }
     }
 
     // MARK: - Empty State / Guiding Actions
+
+    private var searchEmptyView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 40))
+                .foregroundStyle(AppColors.textPrimary.opacity(0.5))
+            Text(String(localized: "no_search_results"))
+                .font(.system(size: 14))
+                .foregroundStyle(AppColors.textPrimary)
+            Spacer()
+        }
+    }
 
     private var emptyStateView: some View {
         VStack {
@@ -305,13 +440,6 @@ struct MainView: View {
                 text: String(localized: "guide_import_external")
             ) {
                 vm.isImporting = true
-            }
-
-            GuidingChip(
-                icon: "gearshape",
-                text: String(localized: "guide_restore_packs")
-            ) {
-                router.navigate(to: .settingsStorage)
             }
         }
     }
@@ -345,23 +473,3 @@ private struct GuidingChip: View {
     }
 }
 
-private struct SummaryChip: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(AppColors.textPrimary)
-            Text(value)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.white)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(AppColors.darkSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-}

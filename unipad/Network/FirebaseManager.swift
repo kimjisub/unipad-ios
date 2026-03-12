@@ -47,6 +47,7 @@ protocol CrashlyticsServiceProtocol: Sendable {
 /// Protocol for Firebase Remote Config.
 protocol RemoteConfigServiceProtocol: Sendable {
     func configureForAppLaunch() async
+    func getString(_ key: String) -> String
 }
 
 // MARK: - Store Item Model
@@ -205,6 +206,7 @@ final class CrashlyticsServiceStub: CrashlyticsServiceProtocol {
 
 final class RemoteConfigServiceStub: RemoteConfigServiceProtocol {
     func configureForAppLaunch() async {}
+    func getString(_ key: String) -> String { "" }
 }
 
 #if canImport(FirebaseAnalytics)
@@ -291,6 +293,10 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
 #endif
         remoteConfig.configSettings = settings
         _ = try? await remoteConfig.fetchAndActivate()
+    }
+
+    func getString(_ key: String) -> String {
+        RemoteConfig.remoteConfig().configValue(forKey: key).stringValue ?? ""
     }
 }
 #endif

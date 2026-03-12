@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "Принять";
+"cancel" = "Отмена";
+"warning" = "Предупреждение";
+"error" = "ОШИБКА";
+"errOccur" = "Произошла ошибка.";
+"wait_a_sec" = "Подождите немного…";
+"importing" = "Импорт";
+"loading" = "Загрузка";
+"loading_phase_info" = "Чтение информации…";
+"loading_phase_keysound" = "Загрузка звуков…";
+"loading_phase_keyled" = "Загрузка LED…";
+"loading_phase_autoplay" = "Загрузка автовоспроизведения…";
+"loading_phase_audio" = "Загрузка аудио…";
+"download" = "Скачать";
+"downloadWaiting" = "Ожидание загрузки";
+"downloading" = "Скачивание";
+"downloaded" = "Загружено";
+"success" = "Успешно";
+"failed" = "Ошибка";
+"delete" = "Удалить";
+"add_bookmark" = "Закладка";
+"remove_bookmark" = "Убрать закладку";
+"edit" = "Редактировать";
+"update" = "Обновить";
+"ignore" = "Игнорировать";
+"apply" = "Применить";
+"restart" = "Перезапустить";
+"quit" = "Выйти";
+"menu" = "Меню";
+"website" = "Веб-сайт";
+"measuring" = "Измерение…";
+"notice" = "Уведомление";
+"newUniPack" = "Новый UniPack";
+"exceptionOccurred" = "Произошло исключение";
+
+/* Menu */
+"reconnect_launchpad" = "Переподключить Launchpad";
+"import_unipack" = "Импорт UniPack";
+"store" = "Магазин";
+
+/* Setting */
+"setting" = "Настройки";
+"information" = "Информация";
+"select_theme" = "Выбрать тему";
+"storage_location" = "Расположение хранилища";
+"github" = "Github";
+"openSourceLicense" = "Лицензия открытого кода";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "Нажмите для копирования";
+"fcm_token_unavailable" = "FCM-токен недоступен";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "Русский";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "Сообщество";
+"officialHomepage" = "Официальный сайт";
+"officialHomepage_" = "Официальный сайт UniPad";
+"officialFacebook" = "Официальный Facebook";
+"officialFacebook_" = "Техническая поддержка";
+"facebookCommunity" = "Сообщество Facebook";
+"facebookCommunity_" = "Английский";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "Корейский";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Кроме технической поддержки";
+"email" = "0226unipad@gmail.com";
+"email_" = "Кроме технической поддержки";
+
+/* UniPack Info */
+"title" = "Название";
+"producerName" = "Создатель";
+"padSize" = "Размер пэда";
+"numChain" = "Цепочки";
+"fileSize" = "Размер файла";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Автовоспроизведение";
+"practiceMode" = "Практика";
+"feedbackLight" = "Подсветка отклика";
+"traceLog" = "Журнал действий";
+"traceLogClear" = "Журнал действий сброшен.";
+"record" = "Запись";
+"hideUI" = "Скрыть UI";
+"watermark" = "Водяной знак";
+"proLightMode" = "Режим Pro Light";
+
+/* Version */
+"update_available" = "Доступно обновление";
+
+/* Permissions */
+"permissionRequire" = "Для сохранения файлов проекта необходим доступ к хранилищу.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "Вы хотите удалить этот проект?";
+"importComplete" = "Анализ завершён!";
+"importFailed" = "Ошибка анализа…";
+"copied" = "Скопировано в буфер обмена.";
+"outOfMemory" = "Недостаточно памяти.\nОсвободите память и повторите.";
+"unipackNotFound" = "UniPack не найден.";
+
+/* Guide */
+"guide_download_new" = "Скачать новые паки";
+"guide_import_external" = "Импортировать скачанные паки";
+"guide_restore_packs" = "Восстановить потерянные паки";
+
+/* Launchpad */
+"launchpadConnecting" = "Подключение launchpad…";
+"midiDevicesNotDetected" = "MIDI устройства не обнаружены";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Нельзя выйти во время загрузки пака";
+"UnableToAccessServer" = "Не удаётся подключиться к серверу.";
+"SPP_downloadCount" = "Количество загрузок";
+"STP_count" = "UniPack в магазине";
+"STP_downloadedCount" = "Загруженные UniPack";
+
+/* Theme */
+"theme" = "Тема";
+"theme_import_success" = "Тема успешно импортирована.";
+"theme_import_failed" = "Не удалось импортировать тему.";
+"theme_add_title" = "Добавить тему";
+"theme_add_zip" = "Импортировать ZIP-файл";
+"theme_add_zip_desc" = "Импортировать .zip файл темы с вашего устройства.";
+"theme_add_create" = "Создать свою тему";
+"theme_add_create_desc" = "Узнайте как создать пользовательскую тему.";
+"theme_import_invalid" = "Недопустимый файл темы.";
+"theme_apk_deprecated" = "Темы на основе APK больше не поддерживаются. Пожалуйста используйте ZIP-темы.";
+"theme_delete_title" = "Удалить тему";
+"theme_delete_confirm %@" = "Удалить \"%@\"?";
+"theme_type_builtin" = "Встроенная";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Название";
+"sort_producer" = "Создатель";
+"sort_play_count" = "Количество игр";
+"sort_last_opened_date" = "Последнее открытие";
+"sort_download_date" = "Дата загрузки";
+
+/* Main Panels */
+"MTP_count" = "Количество UniPack";
+"MTP_size" = "Размер UniPack";
+"MPT_playCount" = "Количество игр";
+"MPT_theme" = "Тема";
+"MPP_padSize" = "Размер пэда";
+"MPP_chain" = "Цепочка";
+"MPP_soundFiles" = "Звуковые файлы";
+"MPP_ledEvents" = "События Led";
+"MPP_fileSize" = "Размер файла";
+"MPP_openCount" = "Количество игр";
+"MPP_downloadedDate" = "Дата загрузки";
+"MPP_lastPlayed" = "Последняя игра";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "Перенос UniPacks";
+"transfer_source" = "Источник";
+"transfer_target" = "Назначение";
+"transfer_mode_copy" = "Копировать";
+"transfer_mode_move" = "Переместить";
+"transfer_select_all" = "Выбрать всё";
+"transfer_deselect_all" = "Снять выделение";
+"transfer_start" = "Начать";
+"transfer_done" = "Готово";
+"transfer_no_items" = "UniPacks не выбраны";
+"transfer_result_transferred" = "Перенесено";
+"transfer_result_skipped" = "Пропущено";
+"transfer_result_failed" = "Ошибка";
+"transfer_selected_count" = "Выбрано: %d";
+"transfer_copying" = "Копирование: %@";
+"transfer_moving" = "Перемещение: %@";
+
+/* Backup */
+"backup_section" = "Резервное копирование";
+"backup_title" = "Резервная копия";
+"backup_description" = "Копировать UniPacks в папку резервного копирования";
+"restore_title" = "Восстановление";
+"restore_description" = "Копировать UniPacks из папки резервного копирования";
+"backup_guide_title" = "Подключить папку резервного копирования";
+"backup_guide_description" = "Подключите папку Documents/Unipad для резервного копирования или восстановления ваших UniPacks.\nЭта папка сохраняется даже при удалении приложения.";
+"backup_guide_step1" = "1. Откроется выбор папки";
+"backup_guide_step2" = "2. Если Documents/Unipad существует выберите её";
+"backup_guide_step3" = "3. Если нет создайте папку \"Unipad\" в Documents и выберите её";
+"backup_guide_continue" = "Продолжить";
+"backup_no_items" = "Нет UniPacks для резервного копирования.";
+"backup_failed" = "Резервное копирование не удалось.";
+"restore_success" = "Восстановление завершено.";
+"restore_failed" = "Восстановление не удалось.";
+
+/* Settings Categories */
+"settings_device" = "Устройство";
+"settings_info" = "Информация";
+"settings_storage" = "Хранилище";
+"settings_theme" = "Тема";
+"settings_developer" = "Разработчик";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "Хранилище приложения (Рекомендуется)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Веб-сайт";
+"cd_bookmark" = "Закладка";
+"cd_delete" = "Удалить";
+"cd_logo" = "Логотип UniPad";
+"cd_autoplay_prev" = "Предыдущий";
+"cd_autoplay_play" = "Воспроизвести";
+"cd_autoplay_pause" = "Пауза";
+"cd_autoplay_next" = "Следующий";
+
+/* Search */
+"no_search_results" = "Результатов не найдено";
+
+/* Transfer Format */
+"transfer_format_label" = "Формат";
+"transfer_format_folder" = "Папка";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Не удалось применить скин.\nПерезапустите приложение.";
+"skinErr" = "Не удалось применить скин.\nСбросьте скин.";
+"requireRestart" = "Требуется перезапуск приложения.";
+"doYouWantToRestartApp" = "Хотите перезапустить приложение?";
+
+/* Performance */
+"outOfCPU" = "Не удалось запустить пак\nиз-за характеристик устройства.\nПопробуйте снова.";
+"remapDone" = "Переназначение AutoPlay успешно завершено.";
+"remapFail" = "AutoPlay не существует.";
+"newVersionFound" = "Обнаружена новая версия.";
+
+/* Additional */
+"MPP_playCount" = "Количество игр";
+"mb" = "MB";

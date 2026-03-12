@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "Tanggapin";
+"cancel" = "Kanselahin";
+"warning" = "Babala";
+"error" = "Error";
+"errOccur" = "May naganap na error.";
+"wait_a_sec" = "Sandali lang…";
+"importing" = "Ini-import";
+"loading" = "Naglo-load";
+"loading_phase_info" = "Binabasa ang info…";
+"loading_phase_keysound" = "Nilo-load ang mga tunog…";
+"loading_phase_keyled" = "Nilo-load ang mga LED…";
+"loading_phase_autoplay" = "Nilo-load ang autoplay…";
+"loading_phase_audio" = "Nilo-load ang audio…";
+"download" = "I-download";
+"downloadWaiting" = "Naghihintay ng Download";
+"downloading" = "Nagda-download";
+"downloaded" = "Na-download na";
+"success" = "Tagumpay";
+"failed" = "Nabigo";
+"delete" = "Tanggalin";
+"add_bookmark" = "Bookmark";
+"remove_bookmark" = "Alisin Bookmark";
+"edit" = "I-edit";
+"update" = "I-update";
+"ignore" = "Balewalain";
+"apply" = "Ilapat";
+"restart" = "I-restart";
+"quit" = "Lumabas";
+"menu" = "Menu";
+"website" = "Website";
+"measuring" = "Sinusukat…";
+"notice" = "Abiso";
+"newUniPack" = "Bagong UniPack";
+"exceptionOccurred" = "May Naganap na Exception";
+
+/* Menu */
+"reconnect_launchpad" = "Ikonekta Muli ang Launchpad";
+"import_unipack" = "Mag-import ng UniPack";
+"store" = "Tindahan";
+
+/* Setting */
+"setting" = "Setting";
+"information" = "Impormasyon";
+"select_theme" = "Pumili ng Tema";
+"storage_location" = "Lokasyon ng Storage";
+"github" = "Github";
+"openSourceLicense" = "Open Source na Lisensya";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "I-tap para kopyahin";
+"fcm_token_unavailable" = "Hindi available ang FCM token";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "Filipino";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "Komunidad";
+"officialHomepage" = "Opisyal na Website";
+"officialHomepage_" = "Opisyal na Website ng UniPad";
+"officialFacebook" = "Opisyal na Facebook";
+"officialFacebook_" = "Teknikal na Suporta";
+"facebookCommunity" = "Komunidad sa Facebook";
+"facebookCommunity_" = "Ingles";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "Koreano";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Maliban sa Teknikal na Suporta";
+"email" = "0226unipad@gmail.com";
+"email_" = "Maliban sa Teknikal na Suporta";
+
+/* UniPack Info */
+"title" = "Pamagat";
+"producerName" = "Producer";
+"padSize" = "Laki ng Pad";
+"numChain" = "Mga Chain";
+"fileSize" = "Laki ng File";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Autoplay";
+"practiceMode" = "Pagsasanay";
+"feedbackLight" = "Feedback light";
+"traceLog" = "Trace Log";
+"traceLogClear" = "Na-reset na ang Trace Log.";
+"record" = "I-record";
+"hideUI" = "Itago ang UI";
+"watermark" = "Watermark";
+"proLightMode" = "Pro Light Mode";
+
+/* Version */
+"update_available" = "May available na update";
+
+/* Permissions */
+"permissionRequire" = "Kailangan ang access sa storage para sa pag-save ng mga project file.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "Gusto mo bang tanggalin ang project na ito?";
+"importComplete" = "Tapos na ang pagsusuri!";
+"importFailed" = "Nabigong magsuri…";
+"copied" = "Kinopya sa clipboard.";
+"outOfMemory" = "Walang sapat na memorya.\nMagpalaya ng memorya at subukan muli.";
+"unipackNotFound" = "Hindi nahanap ang UniPack.";
+
+/* Guide */
+"guide_download_new" = "Mag-download ng bagong packs";
+"guide_import_external" = "I-import ang na-download na packs";
+"guide_restore_packs" = "I-recover ang nawawalang packs";
+
+/* Launchpad */
+"launchpadConnecting" = "Kumokonekta sa launchpad…";
+"midiDevicesNotDetected" = "Hindi Nakita ang mga MIDI Device";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Hindi makakalabas habang nagda-download ng pack";
+"UnableToAccessServer" = "Hindi ma-access ang server.";
+"SPP_downloadCount" = "Bilang ng download";
+"STP_count" = "UniPack sa Tindahan";
+"STP_downloadedCount" = "Na-download na UniPack";
+
+/* Theme */
+"theme" = "Tema";
+"theme_import_success" = "Matagumpay na na-import ang tema.";
+"theme_import_failed" = "Nabigong mag-import ng tema.";
+"theme_add_title" = "Magdagdag ng Tema";
+"theme_add_zip" = "I-import ang ZIP file";
+"theme_add_zip_desc" = "Mag-import ng .zip tema file mula sa iyong device.";
+"theme_add_create" = "Gumawa ng sariling tema";
+"theme_add_create_desc" = "Alamin kung paano gumawa ng custom na tema.";
+"theme_import_invalid" = "Hindi valid na file ng tema.";
+"theme_apk_deprecated" = "Ang mga temang nakabatay sa APK ay hindi na sinusuportahan. Mangyaring gumamit ng ZIP na tema sa halip.";
+"theme_delete_title" = "Tanggalin ang Tema";
+"theme_delete_confirm %@" = "Tanggalin ang \"%@\"?";
+"theme_type_builtin" = "Built-in";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Pamagat";
+"sort_producer" = "Producer";
+"sort_play_count" = "Bilang ng Paglalaro";
+"sort_last_opened_date" = "Huling Binuksan";
+"sort_download_date" = "Petsa ng Download";
+
+/* Main Panels */
+"MTP_count" = "Bilang ng UniPack";
+"MTP_size" = "Laki ng UniPack";
+"MPT_playCount" = "Bilang ng Paglalaro";
+"MPT_theme" = "Tema";
+"MPP_padSize" = "Laki ng Pad";
+"MPP_chain" = "Chain";
+"MPP_soundFiles" = "Mga Sound file";
+"MPP_ledEvents" = "Mga Led Event";
+"MPP_fileSize" = "Laki ng File";
+"MPP_openCount" = "Bilang ng Paglalaro";
+"MPP_downloadedDate" = "Petsa ng Download";
+"MPP_lastPlayed" = "Huling Nilaro";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "I-transfer ang UniPacks";
+"transfer_source" = "Pinagmulan";
+"transfer_target" = "Patutunguhan";
+"transfer_mode_copy" = "Kopyahin";
+"transfer_mode_move" = "Ilipat";
+"transfer_select_all" = "Piliin Lahat";
+"transfer_deselect_all" = "Alisin Lahat";
+"transfer_start" = "Simulan";
+"transfer_done" = "Tapos na";
+"transfer_no_items" = "Walang napiling UniPack";
+"transfer_result_transferred" = "Na-transfer";
+"transfer_result_skipped" = "Nilaktawan";
+"transfer_result_failed" = "Nabigo";
+"transfer_selected_count" = "%d ang napili";
+"transfer_copying" = "Kinokopya: %@";
+"transfer_moving" = "Inililipat: %@";
+
+/* Backup */
+"backup_section" = "Backup";
+"backup_title" = "Backup";
+"backup_description" = "Kopyahin ang UniPacks sa backup folder";
+"restore_title" = "I-restore";
+"restore_description" = "Kopyahin ang UniPacks mula sa backup folder";
+"backup_guide_title" = "Ikonekta ang Backup Folder";
+"backup_guide_description" = "Ikonekta ang Documents/Unipad folder para i-backup o i-restore ang iyong mga UniPack.\nAng folder na ito ay mananatili kahit i-uninstall ang app.";
+"backup_guide_step1" = "1. Magbubukas ang folder picker";
+"backup_guide_step2" = "2. Kung may Documents/Unipad, piliin ito";
+"backup_guide_step3" = "3. Kung wala, gumawa ng \"Unipad\" folder sa Documents at piliin ito";
+"backup_guide_continue" = "Magpatuloy";
+"backup_no_items" = "Walang UniPack na i-backup.";
+"backup_failed" = "Nabigong mag-backup.";
+"restore_success" = "Tagumpay ang pag-restore.";
+"restore_failed" = "Nabigong mag-restore.";
+
+/* Settings Categories */
+"settings_device" = "Device";
+"settings_info" = "Impormasyon";
+"settings_storage" = "Storage";
+"settings_theme" = "Tema";
+"settings_developer" = "Developer";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "App Storage (Inirerekomenda)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Website";
+"cd_bookmark" = "Bookmark";
+"cd_delete" = "Tanggalin";
+"cd_logo" = "Logo ng UniPad";
+"cd_autoplay_prev" = "Nakaraan";
+"cd_autoplay_play" = "I-play";
+"cd_autoplay_pause" = "I-pause";
+"cd_autoplay_next" = "Susunod";
+
+/* Search */
+"no_search_results" = "Walang nahanap na resulta";
+
+/* Transfer Format */
+"transfer_format_label" = "Format";
+"transfer_format_folder" = "Folder";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Hindi ma-apply ang skin.\nI-restart ang app.";
+"skinErr" = "Hindi ma-apply ang skin.\nI-reset ang skin.";
+"requireRestart" = "Kailangang i-restart ang app.";
+"doYouWantToRestartApp" = "Gusto mo bang i-restart ang app?";
+
+/* Performance */
+"outOfCPU" = "Hindi ma-start ang pack\ndahil sa specs ng device.\nSubukan ulit.";
+"remapDone" = "Matagumpay na natapos ang AutoPlay remapping.";
+"remapFail" = "Walang AutoPlay.";
+"newVersionFound" = "May bagong version na nakita.";
+
+/* Additional */
+"MPP_playCount" = "Bilang ng Paglalaro";
+"mb" = "MB";

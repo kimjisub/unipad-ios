@@ -6,16 +6,16 @@ struct StoreView: View {
     @State private var showDownloadingGuardAlert = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Left panel (40%)
-            leftPanel
-                .frame(maxWidth: .infinity)
-                .layoutPriority(2)
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                // Left panel (40%)
+                leftPanel
+                    .frame(width: geometry.size.width * 0.4)
 
-            // Right panel (60%)
-            rightPanel
-                .frame(maxWidth: .infinity)
-                .layoutPriority(3)
+                // Right panel (60%)
+                rightPanel
+                    .frame(width: geometry.size.width * 0.6)
+            }
         }
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
@@ -34,18 +34,23 @@ struct StoreView: View {
     @ViewBuilder
     private var leftPanel: some View {
         VStack {
-            if let selected = vm.selectedItem {
-                StorePackPanel(
-                    item: selected,
-                    onDownload: { vm.startDownload(selected) },
-                    onYouTube: { vm.openYouTubeSearch(for: selected) }
-                )
-            } else {
-                StoreTotalPanel(
-                    storeCount: vm.storeItems.count,
-                    downloadedCount: vm.downloadedCount
-                )
+            Group {
+                if let selected = vm.selectedItem {
+                    StorePackPanel(
+                        item: selected,
+                        onDownload: { vm.startDownload(selected) },
+                        onYouTube: { vm.openYouTubeSearch(for: selected) }
+                    )
+                    .transition(.opacity)
+                } else {
+                    StoreTotalPanel(
+                        storeCount: vm.storeItems.count,
+                        downloadedCount: vm.downloadedCount
+                    )
+                    .transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.5), value: vm.selectedItem?.id)
         }
         .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 0))
     }
@@ -71,7 +76,7 @@ struct StoreView: View {
 
                 Image(systemName: "cart")
                     .foregroundStyle(AppColors.skyblue)
-                    .font(.system(size: 16))
+                    .font(.system(size: 20))
 
                 Text(String(localized: "store"))
                     .font(.system(size: 16, weight: .bold))
@@ -83,8 +88,7 @@ struct StoreView: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(EdgeInsets(top: 8, leading: 4, bottom: 4, trailing: 16))
 
             if vm.storeItems.isEmpty {
                 Spacer()
@@ -94,7 +98,7 @@ struct StoreView: View {
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 48))
+                            .font(.system(size: 80))
                             .foregroundStyle(AppColors.textPrimary)
                         Text(String(localized: "UnableToAccessServer"))
                             .font(.system(size: 13))
@@ -117,7 +121,8 @@ struct StoreView: View {
                             )
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
                 }
             }
         }
@@ -149,6 +154,8 @@ private struct StoreListItemView: View {
             isSelected: item.isToggle,
             flagColor: flagColor,
             flagText: item.downloading ? item.playText : (item.isToggle ? (item.downloaded ? String(localized: "downloaded") : String(localized: "download")) : nil),
+            flagExpandedWidth: 100,
+            indicatorFontSize: 12,
             onTap: onTap,
             onPlay: onFlagTap
         )
@@ -237,16 +244,19 @@ private struct StorePackPanel: View {
                 .fill(Color.white)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(item.title)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x1A1A1A))
-                    .lineLimit(1)
+                MarqueeText(
+                    text: item.title,
+                    font: .system(size: 16, weight: .bold),
+                    color: Color(hex: 0x1A1A1A),
+                    fontSize: 16
+                )
 
                 HStack {
-                    Text(item.producerName)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color(hex: 0x666666))
-                        .lineLimit(1)
+                    MarqueeText(
+                        text: item.producerName,
+                        font: .system(size: 12),
+                        color: Color(hex: 0x666666)
+                    )
                     Spacer()
                     Button(action: onYouTube) {
                         Image(systemName: "play.rectangle")
@@ -298,6 +308,10 @@ private struct StorePackPanel: View {
                 if item.downloading {
                     ProgressView(value: parseProgress(item.playText))
                         .tint(AppColors.blue)
+                        .background(Color(hex: 0xE0E0E0))
+                        .frame(height: 6)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .animation(.easeInOut(duration: 0.3), value: parseProgress(item.playText))
                     Text(item.playText)
                         .font(.system(size: 11))
                         .foregroundStyle(Color(hex: 0x888888))

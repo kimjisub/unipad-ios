@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "ยอมรับ";
+"cancel" = "ยกเลิก";
+"warning" = "คำเตือน";
+"error" = "ข้อผิดพลาด";
+"errOccur" = "เกิดข้อผิดพลาด";
+"wait_a_sec" = "กรุณารอสักครู่…";
+"importing" = "กำลังนำเข้า";
+"loading" = "กำลังโหลด";
+"loading_phase_info" = "กำลังอ่านข้อมูล…";
+"loading_phase_keysound" = "กำลังโหลดเสียง…";
+"loading_phase_keyled" = "กำลังโหลด LED…";
+"loading_phase_autoplay" = "กำลังโหลดเล่นอัตโนมัติ…";
+"loading_phase_audio" = "กำลังโหลดเสียง…";
+"download" = "ดาวน์โหลด";
+"downloadWaiting" = "รอดาวน์โหลด";
+"downloading" = "กำลังดาวน์โหลด";
+"downloaded" = "ดาวน์โหลดแล้ว";
+"success" = "สำเร็จ";
+"failed" = "ล้มเหลว";
+"delete" = "ลบ";
+"add_bookmark" = "บุ๊กมาร์ก";
+"remove_bookmark" = "ลบบุ๊กมาร์ก";
+"edit" = "แก้ไข";
+"update" = "อัปเดต";
+"ignore" = "ข้าม";
+"apply" = "ใช้งาน";
+"restart" = "เริ่มใหม่";
+"quit" = "ออก";
+"menu" = "เมนู";
+"website" = "เว็บไซต์";
+"measuring" = "กำลังวัด…";
+"notice" = "ประกาศ";
+"newUniPack" = "UniPack ใหม่";
+"exceptionOccurred" = "เกิดข้อยกเว้น";
+
+/* Menu */
+"reconnect_launchpad" = "เชื่อมต่อ Launchpad ใหม่";
+"import_unipack" = "นำเข้า UniPack";
+"store" = "ร้านค้า";
+
+/* Setting */
+"setting" = "ตั้งค่า";
+"information" = "ข้อมูล";
+"select_theme" = "เลือกธีม";
+"storage_location" = "ตำแหน่งจัดเก็บ";
+"github" = "Github";
+"openSourceLicense" = "สัญญาอนุญาตโอเพนซอร์ส";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "แตะเพื่อคัดลอก";
+"fcm_token_unavailable" = "FCM token ไม่พร้อมใช้งาน";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "ไทย";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "ชุมชน";
+"officialHomepage" = "เว็บไซต์ทางการ";
+"officialHomepage_" = "เว็บไซต์ทางการ UniPad";
+"officialFacebook" = "Facebook ทางการ";
+"officialFacebook_" = "สนับสนุนด้านเทคนิค";
+"facebookCommunity" = "ชุมชน Facebook";
+"facebookCommunity_" = "อังกฤษ";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "เกาหลี";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "นอกเหนือจากการสนับสนุนด้านเทคนิค";
+"email" = "0226unipad@gmail.com";
+"email_" = "นอกเหนือจากการสนับสนุนด้านเทคนิค";
+
+/* UniPack Info */
+"title" = "ชื่อ";
+"producerName" = "ผู้ผลิต";
+"padSize" = "ขนาด Pad";
+"numChain" = "Chain";
+"fileSize" = "ขนาดไฟล์";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "เล่นอัตโนมัติ";
+"practiceMode" = "ฝึกซ้อม";
+"feedbackLight" = "ไฟตอบสนอง";
+"traceLog" = "บันทึกการติดตาม";
+"traceLogClear" = "บันทึกการติดตามถูกรีเซ็ตแล้ว";
+"record" = "บันทึก";
+"hideUI" = "ซ่อน UI";
+"watermark" = "ลายน้ำ";
+"proLightMode" = "โหมด Pro Light";
+
+/* Version */
+"update_available" = "มีอัปเดตใหม่";
+
+/* Permissions */
+"permissionRequire" = "ต้องการสิทธิ์เข้าถึงพื้นที่จัดเก็บเพื่อบันทึกไฟล์โปรเจกต์";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "คุณต้องการลบโปรเจกต์นี้หรือไม่?";
+"importComplete" = "วิเคราะห์เสร็จสิ้น!";
+"importFailed" = "วิเคราะห์ล้มเหลว…";
+"copied" = "คัดลอกไปยังคลิปบอร์ดแล้ว";
+"outOfMemory" = "หน่วยความจำไม่เพียงพอ\nกรุณาเคลียร์หน่วยความจำแล้วลองใหม่";
+"unipackNotFound" = "ไม่พบ UniPack";
+
+/* Guide */
+"guide_download_new" = "ดาวน์โหลดแพ็คใหม่";
+"guide_import_external" = "นำเข้าแพ็คที่ดาวน์โหลด";
+"guide_restore_packs" = "กู้คืนแพ็คที่หายไป";
+
+/* Launchpad */
+"launchpadConnecting" = "กำลังเชื่อมต่อ launchpad…";
+"midiDevicesNotDetected" = "ไม่พบอุปกรณ์ MIDI";
+
+/* Store */
+"canNotQuitWhileDownloading" = "ไม่สามารถออกขณะกำลังดาวน์โหลด pack";
+"UnableToAccessServer" = "ไม่สามารถเข้าถึงเซิร์ฟเวอร์";
+"SPP_downloadCount" = "จำนวนดาวน์โหลด";
+"STP_count" = "UniPack ในร้านค้า";
+"STP_downloadedCount" = "UniPack ที่ดาวน์โหลด";
+
+/* Theme */
+"theme" = "ธีม";
+"theme_import_success" = "นำเข้าธีมสำเร็จ";
+"theme_import_failed" = "นำเข้าธีมล้มเหลว";
+"theme_add_title" = "เพิ่มธีม";
+"theme_add_zip" = "นำเข้าไฟล์ ZIP";
+"theme_add_zip_desc" = "นำเข้าไฟล์ธีม .zip จากอุปกรณ์ของคุณ";
+"theme_add_create" = "สร้างธีมของคุณเอง";
+"theme_add_create_desc" = "เรียนรู้วิธีสร้างธีมที่กำหนดเอง";
+"theme_import_invalid" = "ไฟล์ธีมไม่ถูกต้อง";
+"theme_apk_deprecated" = "ธีมแบบ APK ไม่รองรับอีกต่อไป กรุณาใช้ธีม ZIP แทน";
+"theme_delete_title" = "ลบธีม";
+"theme_delete_confirm %@" = "ลบ \"%@\" หรือไม่?";
+"theme_type_builtin" = "ในตัว";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "ชื่อ";
+"sort_producer" = "ผู้ผลิต";
+"sort_play_count" = "จำนวนครั้งที่เล่น";
+"sort_last_opened_date" = "เปิดล่าสุด";
+"sort_download_date" = "วันที่ดาวน์โหลด";
+
+/* Main Panels */
+"MTP_count" = "จำนวน UniPack";
+"MTP_size" = "ขนาด UniPack";
+"MPT_playCount" = "จำนวนครั้งที่เล่น";
+"MPT_theme" = "ธีม";
+"MPP_padSize" = "ขนาด Pad";
+"MPP_chain" = "Chain";
+"MPP_soundFiles" = "ไฟล์เสียง";
+"MPP_ledEvents" = "เหตุการณ์ Led";
+"MPP_fileSize" = "ขนาดไฟล์";
+"MPP_openCount" = "จำนวนครั้งที่เล่น";
+"MPP_downloadedDate" = "วันที่ดาวน์โหลด";
+"MPP_lastPlayed" = "เล่นล่าสุด";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "ถ่ายโอน UniPacks";
+"transfer_source" = "ต้นทาง";
+"transfer_target" = "ปลายทาง";
+"transfer_mode_copy" = "คัดลอก";
+"transfer_mode_move" = "ย้าย";
+"transfer_select_all" = "เลือกทั้งหมด";
+"transfer_deselect_all" = "ยกเลิกทั้งหมด";
+"transfer_start" = "เริ่ม";
+"transfer_done" = "เสร็จสิ้น";
+"transfer_no_items" = "ไม่ได้เลือก UniPack";
+"transfer_result_transferred" = "ถ่ายโอนแล้ว";
+"transfer_result_skipped" = "ข้ามแล้ว";
+"transfer_result_failed" = "ล้มเหลว";
+"transfer_selected_count" = "เลือก %d รายการ";
+"transfer_copying" = "กำลังคัดลอก: %@";
+"transfer_moving" = "กำลังย้าย: %@";
+
+/* Backup */
+"backup_section" = "สำรองข้อมูล";
+"backup_title" = "สำรองข้อมูล";
+"backup_description" = "คัดลอก UniPacks ไปยังโฟลเดอร์สำรอง";
+"restore_title" = "กู้คืน";
+"restore_description" = "คัดลอก UniPacks จากโฟลเดอร์สำรอง";
+"backup_guide_title" = "เชื่อมต่อโฟลเดอร์สำรองข้อมูล";
+"backup_guide_description" = "เชื่อมต่อโฟลเดอร์ Documents/Unipad เพื่อสำรองหรือกู้คืน UniPacks ของคุณ\nโฟลเดอร์นี้จะยังคงอยู่แม้ถอนการติดตั้งแอป";
+"backup_guide_step1" = "1. ตัวเลือกโฟลเดอร์จะเปิดขึ้น";
+"backup_guide_step2" = "2. หาก Documents/Unipad มีอยู่ ให้เลือก";
+"backup_guide_step3" = "3. หากไม่มี ให้สร้างโฟลเดอร์ \"Unipad\" ใน Documents แล้วเลือก";
+"backup_guide_continue" = "ดำเนินการต่อ";
+"backup_no_items" = "ไม่มี UniPack ที่จะสำรอง";
+"backup_failed" = "สำรองข้อมูลล้มเหลว";
+"restore_success" = "กู้คืนเสร็จสิ้น";
+"restore_failed" = "กู้คืนล้มเหลว";
+
+/* Settings Categories */
+"settings_device" = "อุปกรณ์";
+"settings_info" = "ข้อมูล";
+"settings_storage" = "พื้นที่จัดเก็บ";
+"settings_theme" = "ธีม";
+"settings_developer" = "นักพัฒนา";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "พื้นที่แอป (แนะนำ)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "เว็บไซต์";
+"cd_bookmark" = "บุ๊กมาร์ก";
+"cd_delete" = "ลบ";
+"cd_logo" = "โลโก้ UniPad";
+"cd_autoplay_prev" = "ก่อนหน้า";
+"cd_autoplay_play" = "เล่น";
+"cd_autoplay_pause" = "หยุดชั่วคราว";
+"cd_autoplay_next" = "ถัดไป";
+
+/* Search */
+"no_search_results" = "ไม่พบผลลัพธ์";
+
+/* Transfer Format */
+"transfer_format_label" = "รูปแบบ";
+"transfer_format_folder" = "โฟลเดอร์";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "ไม่สามารถใช้สกินได้\nรีสตาร์ทแอป";
+"skinErr" = "ไม่สามารถใช้สกินได้\nรีเซ็ตสกิน";
+"requireRestart" = "จำเป็นต้องรีสตาร์ทแอป";
+"doYouWantToRestartApp" = "คุณต้องการรีสตาร์ทแอปหรือไม่?";
+
+/* Performance */
+"outOfCPU" = "ไม่สามารถเริ่มแพ็คได้\nเนื่องจากสเปคของอุปกรณ์\nลองอีกครั้ง";
+"remapDone" = "การแมปใหม่ AutoPlay เสร็จสมบูรณ์";
+"remapFail" = "ไม่มี AutoPlay";
+"newVersionFound" = "ตรวจพบเวอร์ชันใหม่";
+
+/* Additional */
+"MPP_playCount" = "จำนวนครั้งที่เล่น";
+"mb" = "MB";

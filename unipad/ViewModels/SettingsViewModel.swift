@@ -26,13 +26,13 @@ final class SettingsViewModel {
     }
 
     let communityLinks: [CommunityLink] = [
-        CommunityLink(title: String(localized: "officialHomepage"), subtitle: "unipad.io", url: "https://unipad.io", iconName: "globe"),
-        CommunityLink(title: String(localized: "officialFacebook"), subtitle: "Technical Support", url: "https://www.facebook.com/playunipad", iconName: "person.2"),
-        CommunityLink(title: String(localized: "facebookCommunity"), subtitle: "English", url: "https://www.facebook.com/groups/playunipad", iconName: "person.3"),
-        CommunityLink(title: String(localized: "naverCafe"), subtitle: "Korean", url: "https://cafe.naver.com/unipad", iconName: "cup.and.saucer"),
-        CommunityLink(title: String(localized: "discord"), subtitle: "Discord", url: "https://discord.gg/ESDgyNs", iconName: "message"),
-        CommunityLink(title: String(localized: "kakaotalk"), subtitle: "Dev. kimjisub", url: "https://qr.kakao.com/talk/R4p8KwFLXRZsqEjA1FrAnACDyfc-", iconName: "bubble.left"),
-        CommunityLink(title: String(localized: "email"), subtitle: "0226unipad@gmail.com", url: "mailto:0226unipad@gmail.com", iconName: "envelope"),
+        CommunityLink(title: String(localized: "officialHomepage"), subtitle: String(localized: "officialHomepage_"), url: "https://unipad.io", iconName: "globe"),
+        CommunityLink(title: String(localized: "officialFacebook"), subtitle: String(localized: "officialFacebook_"), url: "https://www.facebook.com/playunipad", iconName: "person.2"),
+        CommunityLink(title: String(localized: "facebookCommunity"), subtitle: String(localized: "facebookCommunity_"), url: "https://www.facebook.com/groups/playunipad", iconName: "person.3"),
+        CommunityLink(title: String(localized: "naverCafe"), subtitle: String(localized: "naverCafe_"), url: "https://cafe.naver.com/unipad", iconName: "cup.and.saucer"),
+        CommunityLink(title: String(localized: "discord"), subtitle: String(localized: "discord_"), url: "https://discord.gg/ESDgyNs", iconName: "message"),
+        CommunityLink(title: String(localized: "kakaotalk"), subtitle: String(localized: "kakaotalk_"), url: "https://qr.kakao.com/talk/R4p8KwFLXRZsqEjA1FrAnACDyfc-", iconName: "bubble.left"),
+        CommunityLink(title: String(localized: "email"), subtitle: String(localized: "email_"), url: "mailto:0226unipad@gmail.com", iconName: "envelope"),
     ]
 
     // MARK: - Storage

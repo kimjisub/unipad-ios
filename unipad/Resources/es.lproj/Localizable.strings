@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "Aceptar";
+"cancel" = "Cancelar";
+"warning" = "Advertencia";
+"error" = "ERROR";
+"errOccur" = "Ha ocurrido un error.";
+"wait_a_sec" = "Espera un momento…";
+"importing" = "Importando";
+"loading" = "Cargando";
+"loading_phase_info" = "Leyendo información…";
+"loading_phase_keysound" = "Cargando sonidos…";
+"loading_phase_keyled" = "Cargando LEDs…";
+"loading_phase_autoplay" = "Cargando autoplay…";
+"loading_phase_audio" = "Cargando audio…";
+"download" = "Descargar";
+"downloadWaiting" = "Esperando Descarga";
+"downloading" = "Descargando";
+"downloaded" = "Descargado";
+"success" = "Éxito";
+"failed" = "Falló";
+"delete" = "Eliminar";
+"add_bookmark" = "Marcador";
+"remove_bookmark" = "Quitar Marcador";
+"edit" = "Editar";
+"update" = "Actualizar";
+"ignore" = "Ignorar";
+"apply" = "Aplicar";
+"restart" = "Reiniciar";
+"quit" = "Salir";
+"menu" = "Menú";
+"website" = "Sitio Web";
+"measuring" = "Midiendo…";
+"notice" = "Aviso";
+"newUniPack" = "Nuevo UniPack";
+"exceptionOccurred" = "Ocurrió una Excepción";
+
+/* Menu */
+"reconnect_launchpad" = "Reconectar Launchpad";
+"import_unipack" = "Importar UniPack";
+"store" = "Tienda";
+
+/* Setting */
+"setting" = "Configuración";
+"information" = "Información";
+"select_theme" = "Seleccionar Tema";
+"storage_location" = "Ubicación de Almacenamiento";
+"github" = "Github";
+"openSourceLicense" = "Licencia de Código Abierto";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "Toca para copiar";
+"fcm_token_unavailable" = "Token FCM no disponible";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "Español";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "Comunidad";
+"officialHomepage" = "Sitio Web Oficial";
+"officialHomepage_" = "Sitio Web Oficial de UniPad";
+"officialFacebook" = "Facebook Oficial";
+"officialFacebook_" = "Soporte Técnico";
+"facebookCommunity" = "Comunidad de Facebook";
+"facebookCommunity_" = "Inglés";
+"naverCafe" = "Naver Café";
+"naverCafe_" = "Coreano";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Excepto Soporte Técnico";
+"email" = "0226unipad@gmail.com";
+"email_" = "Excepto Soporte Técnico";
+
+/* UniPack Info */
+"title" = "Título";
+"producerName" = "Productor";
+"padSize" = "Tamaño del Pad";
+"numChain" = "Cadenas";
+"fileSize" = "Tamaño del Archivo";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Reproducción Automática";
+"practiceMode" = "Práctica";
+"feedbackLight" = "Luz de retroalimentación";
+"traceLog" = "Registro de Secuencia";
+"traceLogClear" = "El registro de secuencia se ha restablecido.";
+"record" = "Grabar";
+"hideUI" = "Ocultar UI";
+"watermark" = "Marca de agua";
+"proLightMode" = "Modo Pro Light";
+
+/* Version */
+"update_available" = "Actualización disponible";
+
+/* Permissions */
+"permissionRequire" = "Se requiere acceso al almacenamiento para guardar archivos del proyecto.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "¿Deseas eliminar este proyecto?";
+"importComplete" = "¡Análisis completado!";
+"importFailed" = "Error al analizar…";
+"copied" = "Copiado al portapapeles.";
+"outOfMemory" = "Sin memoria.\nLibera algo de memoria e intenta de nuevo.";
+"unipackNotFound" = "UniPack no encontrado.";
+
+/* Guide */
+"guide_download_new" = "Descargar nuevos packs";
+"guide_import_external" = "Importar packs descargados";
+"guide_restore_packs" = "Recuperar packs faltantes";
+
+/* Launchpad */
+"launchpadConnecting" = "Conectando launchpad…";
+"midiDevicesNotDetected" = "No se detectaron dispositivos MIDI";
+
+/* Store */
+"canNotQuitWhileDownloading" = "No se puede salir mientras se descarga el pack";
+"UnableToAccessServer" = "No se puede acceder al servidor.";
+"SPP_downloadCount" = "Cantidad de descargas";
+"STP_count" = "UniPacks en Tienda";
+"STP_downloadedCount" = "UniPacks Descargados";
+
+/* Theme */
+"theme" = "Tema";
+"theme_import_success" = "Tema importado exitosamente.";
+"theme_import_failed" = "Error al importar el tema.";
+"theme_add_title" = "Agregar Tema";
+"theme_add_zip" = "Importar archivo ZIP";
+"theme_add_zip_desc" = "Importar un archivo de tema .zip desde tu dispositivo.";
+"theme_add_create" = "Crear tu propio tema";
+"theme_add_create_desc" = "Aprende cómo crear un tema personalizado.";
+"theme_import_invalid" = "Archivo de tema no válido.";
+"theme_apk_deprecated" = "Los temas APK ya no son compatibles. Usa temas ZIP en su lugar.";
+"theme_delete_title" = "Eliminar Tema";
+"theme_delete_confirm %@" = "¿Eliminar \"%@\"?";
+"theme_type_builtin" = "Integrado";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Título";
+"sort_producer" = "Productor";
+"sort_play_count" = "Veces Jugado";
+"sort_last_opened_date" = "Última Apertura";
+"sort_download_date" = "Fecha de Descarga";
+
+/* Main Panels */
+"MTP_count" = "Cantidad de UniPacks";
+"MTP_size" = "Tamaño de UniPacks";
+"MPT_playCount" = "Veces Jugado";
+"MPT_theme" = "Tema";
+"MPP_padSize" = "Tamaño del Pad";
+"MPP_chain" = "Cadena";
+"MPP_soundFiles" = "Archivos de Sonido";
+"MPP_ledEvents" = "Eventos Led";
+"MPP_fileSize" = "Tamaño del Archivo";
+"MPP_openCount" = "Veces Jugado";
+"MPP_downloadedDate" = "Fecha de Descarga";
+"MPP_lastPlayed" = "Última Vez Jugado";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "Transferir UniPacks";
+"transfer_source" = "Origen";
+"transfer_target" = "Destino";
+"transfer_mode_copy" = "Copiar";
+"transfer_mode_move" = "Mover";
+"transfer_select_all" = "Seleccionar Todo";
+"transfer_deselect_all" = "Deseleccionar Todo";
+"transfer_start" = "Iniciar";
+"transfer_done" = "Listo";
+"transfer_no_items" = "No hay UniPacks seleccionados";
+"transfer_result_transferred" = "Transferido";
+"transfer_result_skipped" = "Omitido";
+"transfer_result_failed" = "Falló";
+"transfer_selected_count" = "%d seleccionados";
+"transfer_copying" = "Copiando: %@";
+"transfer_moving" = "Moviendo: %@";
+
+/* Backup */
+"backup_section" = "Respaldo";
+"backup_title" = "Respaldo";
+"backup_description" = "Copiar UniPacks a carpeta de respaldo";
+"restore_title" = "Restaurar";
+"restore_description" = "Copiar UniPacks desde carpeta de respaldo";
+"backup_guide_title" = "Conectar carpeta de respaldo";
+"backup_guide_description" = "Conecta la carpeta Documents/Unipad para respaldar o restaurar tus UniPacks.\nEsta carpeta persiste incluso al desinstalar la app.";
+"backup_guide_step1" = "1. Se abrirá un selector de carpetas";
+"backup_guide_step2" = "2. Si Documents/Unipad existe selecciónala";
+"backup_guide_step3" = "3. Si no crea una carpeta \"Unipad\" en Documents y selecciónala";
+"backup_guide_continue" = "Continuar";
+"backup_no_items" = "No hay UniPacks para respaldar.";
+"backup_failed" = "Respaldo fallido.";
+"restore_success" = "Restauración completada.";
+"restore_failed" = "Restauración fallida.";
+
+/* Settings Categories */
+"settings_device" = "Dispositivo";
+"settings_info" = "Información";
+"settings_storage" = "Almacenamiento";
+"settings_theme" = "Tema";
+"settings_developer" = "Desarrollador";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "Almacenamiento de App (Recomendado)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Sitio Web";
+"cd_bookmark" = "Marcador";
+"cd_delete" = "Eliminar";
+"cd_logo" = "Logo de UniPad";
+"cd_autoplay_prev" = "Anterior";
+"cd_autoplay_play" = "Reproducir";
+"cd_autoplay_pause" = "Pausar";
+"cd_autoplay_next" = "Siguiente";
+
+/* Search */
+"no_search_results" = "No se encontraron resultados";
+
+/* Transfer Format */
+"transfer_format_label" = "Formato";
+"transfer_format_folder" = "Carpeta";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Error al aplicar el skin.\nReinicia la app.";
+"skinErr" = "Error al aplicar el skin.\nRestablece el skin.";
+"requireRestart" = "Se requiere reiniciar la app.";
+"doYouWantToRestartApp" = "¿Deseas reiniciar la app?";
+
+/* Performance */
+"outOfCPU" = "No se pudo iniciar el pack\npor las especificaciones del dispositivo.\nInténtalo de nuevo.";
+"remapDone" = "La reasignación de AutoPlay se completó con éxito.";
+"remapFail" = "AutoPlay no existe.";
+"newVersionFound" = "Nueva versión detectada.";
+
+/* Additional */
+"MPP_playCount" = "Veces Jugado";
+"mb" = "MB";

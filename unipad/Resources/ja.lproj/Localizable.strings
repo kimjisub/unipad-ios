@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "承諾";
+"cancel" = "キャンセル";
+"warning" = "警告";
+"error" = "エラー";
+"errOccur" = "エラーが発生しました。";
+"wait_a_sec" = "少々お待ちください…";
+"importing" = "インポート中";
+"loading" = "読み込み中";
+"loading_phase_info" = "情報を読み込み中…";
+"loading_phase_keysound" = "サウンドを読み込み中…";
+"loading_phase_keyled" = "LEDを読み込み中…";
+"loading_phase_autoplay" = "オートプレイを読み込み中…";
+"loading_phase_audio" = "オーディオを読み込み中…";
+"download" = "ダウンロード";
+"downloadWaiting" = "ダウンロード待機中";
+"downloading" = "ダウンロード中";
+"downloaded" = "ダウンロード済み";
+"success" = "成功";
+"failed" = "失敗";
+"delete" = "削除";
+"add_bookmark" = "ブックマーク";
+"remove_bookmark" = "ブックマーク解除";
+"edit" = "編集";
+"update" = "更新";
+"ignore" = "無視";
+"apply" = "適用";
+"restart" = "再起動";
+"quit" = "終了";
+"menu" = "メニュー";
+"website" = "ウェブサイト";
+"measuring" = "計測中…";
+"notice" = "お知らせ";
+"newUniPack" = "新しいUniPack";
+"exceptionOccurred" = "例外が発生しました";
+
+/* Menu */
+"reconnect_launchpad" = "Launchpadを再接続";
+"import_unipack" = "UniPackをインポート";
+"store" = "ストア";
+
+/* Setting */
+"setting" = "設定";
+"information" = "情報";
+"select_theme" = "テーマを選択";
+"storage_location" = "保存先";
+"github" = "Github";
+"openSourceLicense" = "オープンソースライセンス";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "タップしてコピー";
+"fcm_token_unavailable" = "FCMトークンは利用できません";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "日本語";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "コミュニティ";
+"officialHomepage" = "公式ウェブサイト";
+"officialHomepage_" = "UniPad公式ウェブサイト";
+"officialFacebook" = "公式Facebook";
+"officialFacebook_" = "テクニカルサポート";
+"facebookCommunity" = "Facebookコミュニティ";
+"facebookCommunity_" = "英語";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "韓国語";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "テクニカルサポート以外";
+"email" = "0226unipad@gmail.com";
+"email_" = "テクニカルサポート以外";
+
+/* UniPack Info */
+"title" = "タイトル";
+"producerName" = "制作者";
+"padSize" = "パッドサイズ";
+"numChain" = "チェーン";
+"fileSize" = "ファイルサイズ";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "自動再生";
+"practiceMode" = "練習";
+"feedbackLight" = "フィードバックライト";
+"traceLog" = "トレースログ";
+"traceLogClear" = "トレースログがリセットされました。";
+"record" = "録音";
+"hideUI" = "UIを非表示";
+"watermark" = "ウォーターマーク";
+"proLightMode" = "Proライトモード";
+
+/* Version */
+"update_available" = "アップデートがあります";
+
+/* Permissions */
+"permissionRequire" = "プロジェクトファイルの保存にストレージへのアクセスが必要です。";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "このプロジェクトを削除しますか？";
+"importComplete" = "分析完了！";
+"importFailed" = "分析に失敗しました…";
+"copied" = "クリップボードにコピーしました。";
+"outOfMemory" = "メモリ不足です。\nメモリを解放してから再試行してください。";
+"unipackNotFound" = "UniPackが見つかりません。";
+
+/* Guide */
+"guide_download_new" = "新しいパックをダウンロード";
+"guide_import_external" = "ダウンロードしたパックをインポート";
+"guide_restore_packs" = "消えたパックを復元";
+
+/* Launchpad */
+"launchpadConnecting" = "Launchpadに接続中…";
+"midiDevicesNotDetected" = "MIDIデバイスが検出されません";
+
+/* Store */
+"canNotQuitWhileDownloading" = "パックのダウンロード中は終了できません";
+"UnableToAccessServer" = "サーバーにアクセスできません。";
+"SPP_downloadCount" = "ダウンロード数";
+"STP_count" = "ストアのUniPack";
+"STP_downloadedCount" = "ダウンロード済みUniPack";
+
+/* Theme */
+"theme" = "テーマ";
+"theme_import_success" = "テーマのインポートに成功しました。";
+"theme_import_failed" = "テーマのインポートに失敗しました。";
+"theme_add_title" = "テーマを追加";
+"theme_add_zip" = "ZIPファイルをインポート";
+"theme_add_zip_desc" = "デバイスから.zipテーマファイルをインポートします。";
+"theme_add_create" = "自分のテーマを作成";
+"theme_add_create_desc" = "カスタムテーマの作り方を学びましょう。";
+"theme_import_invalid" = "無効なテーマファイルです。";
+"theme_apk_deprecated" = "APK形式のテーマはサポートを終了しました。ZIPテーマをご利用ください。";
+"theme_delete_title" = "テーマを削除";
+"theme_delete_confirm %@" = "\"%@\" を削除しますか？";
+"theme_type_builtin" = "内蔵";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "タイトル";
+"sort_producer" = "制作者";
+"sort_play_count" = "再生回数";
+"sort_last_opened_date" = "最終オープン日";
+"sort_download_date" = "ダウンロード日";
+
+/* Main Panels */
+"MTP_count" = "UniPack数";
+"MTP_size" = "UniPackサイズ";
+"MPT_playCount" = "再生回数";
+"MPT_theme" = "テーマ";
+"MPP_padSize" = "パッドサイズ";
+"MPP_chain" = "チェーン";
+"MPP_soundFiles" = "サウンドファイル";
+"MPP_ledEvents" = "Ledイベント";
+"MPP_fileSize" = "ファイルサイズ";
+"MPP_openCount" = "再生回数";
+"MPP_downloadedDate" = "ダウンロード日";
+"MPP_lastPlayed" = "最終再生";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "UniPacksを転送";
+"transfer_source" = "転送元";
+"transfer_target" = "転送先";
+"transfer_mode_copy" = "コピー";
+"transfer_mode_move" = "移動";
+"transfer_select_all" = "すべて選択";
+"transfer_deselect_all" = "すべて解除";
+"transfer_start" = "開始";
+"transfer_done" = "完了";
+"transfer_no_items" = "UniPackが選択されていません";
+"transfer_result_transferred" = "転送済み";
+"transfer_result_skipped" = "スキップ";
+"transfer_result_failed" = "失敗";
+"transfer_selected_count" = "%d件選択中";
+"transfer_copying" = "コピー中: %@";
+"transfer_moving" = "移動中: %@";
+
+/* Backup */
+"backup_section" = "バックアップ";
+"backup_title" = "バックアップ";
+"backup_description" = "UniPacksをバックアップフォルダにコピー";
+"restore_title" = "復元";
+"restore_description" = "バックアップフォルダからUniPacksをコピー";
+"backup_guide_title" = "バックアップフォルダを接続";
+"backup_guide_description" = "UniPacksのバックアップまたは復元のためにDocuments/Unipadフォルダを接続してください。\nこのフォルダはアプリをアンインストールしても保持されます。";
+"backup_guide_step1" = "1. フォルダ選択画面が開きます";
+"backup_guide_step2" = "2. Documents/Unipadが存在する場合、それを選択してください";
+"backup_guide_step3" = "3. ない場合、Documentsに\"Unipad\"フォルダを作成して選択してください";
+"backup_guide_continue" = "続行";
+"backup_no_items" = "バックアップするUniPackがありません。";
+"backup_failed" = "バックアップに失敗しました。";
+"restore_success" = "復元が完了しました。";
+"restore_failed" = "復元に失敗しました。";
+
+/* Settings Categories */
+"settings_device" = "デバイス";
+"settings_info" = "情報";
+"settings_storage" = "ストレージ";
+"settings_theme" = "テーマ";
+"settings_developer" = "開発者";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "アプリストレージ（推奨）";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "ウェブサイト";
+"cd_bookmark" = "ブックマーク";
+"cd_delete" = "削除";
+"cd_logo" = "UniPadロゴ";
+"cd_autoplay_prev" = "前へ";
+"cd_autoplay_play" = "再生";
+"cd_autoplay_pause" = "一時停止";
+"cd_autoplay_next" = "次へ";
+
+/* Search */
+"no_search_results" = "検索結果がありません";
+
+/* Transfer Format */
+"transfer_format_label" = "形式";
+"transfer_format_folder" = "フォルダ";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "スキンの適用に失敗しました。\nアプリを再起動してください。";
+"skinErr" = "スキンの適用に失敗しました。\nスキンをリセットしてください。";
+"requireRestart" = "アプリの再起動が必要です。";
+"doYouWantToRestartApp" = "アプリを再起動しますか？";
+
+/* Performance */
+"outOfCPU" = "デバイスの仕様により\nパックを開始できませんでした。\nもう一度お試しください。";
+"remapDone" = "オートプレイの再マッピングが完了しました。";
+"remapFail" = "オートプレイが存在しません。";
+"newVersionFound" = "新しいバージョンが検出されました。";
+
+/* Additional */
+"MPP_playCount" = "再生回数";
+"mb" = "MB";

@@ -19,6 +19,8 @@
 "success" = "성공";
 "failed" = "실패";
 "delete" = "삭제";
+"add_bookmark" = "북마크";
+"remove_bookmark" = "북마크 해제";
 "edit" = "수정";
 "update" = "업데이트";
 "ignore" = "무시";
@@ -48,16 +50,25 @@
 "tap_to_copy" = "탭해서 복사";
 "fcm_token_unavailable" = "FCM 토큰을 사용할 수 없습니다";
 "copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "한국어";
+"translated_by" = "Translated by Kimjisub";
 
 /* Community */
 "community" = "커뮤니티";
 "officialHomepage" = "공식 웹사이트";
+"officialHomepage_" = "유니패드 공식 웹사이트";
 "officialFacebook" = "공식 페이스북";
+"officialFacebook_" = "기술 지원";
 "facebookCommunity" = "페이스북 커뮤니티";
+"facebookCommunity_" = "영어";
 "naverCafe" = "네이버 카페";
+"naverCafe_" = "한국어";
 "discord" = "디스코드";
+"discord_" = "Discord";
 "kakaotalk" = "카카오톡";
+"kakaotalk_" = "기술 지원 외의 문의";
 "email" = "0226unipad@gmail.com";
+"email_" = "기술 지원 외의 문의";
 
 /* UniPack Info */
 "title" = "제목";
@@ -100,6 +111,8 @@
 /* Launchpad */
 "launchpadConnecting" = "런치패드 연결중…";
 "midiDevicesNotDetected" = "MIDI 장치가 감지되지 않았습니다.";
+"midi_open_panel" = "열기";
+"midi_connected_banner %@" = "MIDI 연결됨: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "다운로드중에 종료할 수 없습니다";
@@ -117,28 +130,34 @@
 "theme_add_zip_desc" = "기기에서 .zip 테마 파일을 가져옵니다.";
 "theme_add_create" = "직접 테마 만들기";
 "theme_add_create_desc" = "커스텀 테마를 만드는 방법을 알아보세요.";
+"theme_import_invalid" = "유효하지 않은 테마 파일입니다.";
 "theme_apk_deprecated" = "APK 기반 테마는 더 이상 지원하지 않습니다. ZIP 테마를 사용해주세요.";
 "theme_delete_title" = "테마 삭제";
+"theme_delete_confirm %@" = "\"%@\"을(를) 삭제하시겠습니까?";
 "theme_type_builtin" = "내장";
 "theme_type_zip" = "ZIP";
 
 /* Sort */
 "sort_title" = "제목";
 "sort_producer" = "제작자";
+"sort_play_count" = "플레이 횟수";
+"sort_last_opened_date" = "최근 연 날짜";
 "sort_download_date" = "다운로드 날짜";
 
 /* Main Panels */
 "MTP_count" = "유니팩 개수";
 "MTP_size" = "유니팩 용량";
 "MPT_playCount" = "플레이 횟수";
+"MPT_theme" = "테마";
 "MPP_padSize" = "패드 크기";
 "MPP_chain" = "체인";
 "MPP_soundFiles" = "사운드 파일";
 "MPP_ledEvents" = "Led 이벤트";
 "MPP_fileSize" = "용량";
 "MPP_openCount" = "플레이 횟수";
-"MPP_downloadDate" = "다운로드한 날짜";
+"MPP_downloadedDate" = "다운로드한 날짜";
 "MPP_lastPlayed" = "최근 플레이";
+"MPP_notPlayedYet" = "-";
 
 /* Transfer */
 "transfer_title" = "유니팩 전송";
@@ -155,6 +174,8 @@
 "transfer_result_skipped" = "건너뜀";
 "transfer_result_failed" = "실패";
 "transfer_selected_count" = "%d개 선택됨";
+"transfer_copying" = "복사 중: %@";
+"transfer_moving" = "이동 중: %@";
 
 /* Backup */
 "backup_section" = "백업";
@@ -190,3 +211,41 @@
 "midi_matrix" = "Matrix";
 "midi_midi_fighter" = "Midi Fighter";
 "midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "앱 저장소 (권장)";
+
+/* Accessibility */
+"cd_youtube" = "유튜브";
+"cd_website" = "웹사이트";
+"cd_bookmark" = "북마크";
+"cd_delete" = "삭제";
+"cd_logo" = "유니패드 로고";
+"cd_autoplay_prev" = "이전";
+"cd_autoplay_play" = "재생";
+"cd_autoplay_pause" = "일시정지";
+"cd_autoplay_next" = "다음";
+
+/* Search */
+"no_search_results" = "검색 결과가 없습니다";
+
+/* Transfer Format */
+"transfer_format_label" = "형식";
+"transfer_format_folder" = "폴더";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "스킨 적용에 실패했습니다.\n앱을 재시작하세요.";
+"skinErr" = "스킨 적용에 실패했습니다.\n스킨을 초기화하세요.";
+"requireRestart" = "앱 재시작이 필요합니다.";
+"doYouWantToRestartApp" = "앱을 재시작하시겠습니까?";
+
+/* Performance */
+"outOfCPU" = "기기 사양으로 인해\n팩을 시작할 수 없습니다.\n다시 시도해주세요.";
+"remapDone" = "오토플레이 재매핑이 완료되었습니다.";
+"remapFail" = "오토플레이가 존재하지 않습니다.";
+"newVersionFound" = "새로운 버전이 감지되었습니다.";
+
+/* Additional */
+"MPP_playCount" = "플레이 횟수";
+"mb" = "MB";

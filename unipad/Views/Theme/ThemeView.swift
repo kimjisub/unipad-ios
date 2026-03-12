@@ -11,17 +11,17 @@ struct ThemeView: View {
     @State private var showImportResultAlert = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            if !isFullscreen {
-                themeListPanel
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(1.5)
-                    .transition(.move(edge: .leading))
-            }
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                if !isFullscreen {
+                    themeListPanel
+                        .frame(width: geometry.size.width * 0.4)
+                        .transition(.move(edge: .leading))
+                }
 
-            previewPanel
-                .frame(maxWidth: .infinity)
-                .layoutPriority(3)
+                previewPanel
+                    .frame(maxWidth: .infinity)
+            }
         }
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
@@ -38,7 +38,7 @@ struct ThemeView: View {
             }
         } message: {
             if let target = deleteTarget {
-                Text("Delete \"\(target.name)\"?")
+                Text(String(localized: "theme_delete_confirm \(target.name)"))
             }
         }
         .fileImporter(
@@ -74,8 +74,8 @@ struct ThemeView: View {
                 .padding(.trailing, 4)
 
                 Text(String(localized: "theme"))
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(AppColors.textPrimary)
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
 
                 Spacer()
 
@@ -86,11 +86,11 @@ struct ThemeView: View {
                         .foregroundStyle(AppColors.textPrimary)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 8)
             .padding(.vertical, 8)
 
             ScrollView {
-                LazyVStack(spacing: 6) {
+                LazyVStack(spacing: 3) {
                     ForEach(Array(vm.themes.enumerated()), id: \.element.id) { index, theme in
                         ThemeListItemView(
                             theme: theme,
@@ -111,7 +111,7 @@ struct ThemeView: View {
                 .padding(.vertical, 4)
             }
         }
-        .background(AppColors.background1)
+        .background(Color(hex: 0x111825))
     }
 
     private var addThemeGuideItem: some View {
@@ -121,7 +121,7 @@ struct ThemeView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "plus")
-                    .font(.system(size: 16))
+                    .font(.system(size: 24))
                     .foregroundStyle(AppColors.orange)
 
                 Text(String(localized: "theme_add_title"))
@@ -148,6 +148,9 @@ struct ThemeView: View {
             addThemePanel
         } else {
             themePreview
+                .id(vm.selectedIndex)
+                .transition(.opacity)
+                .animation(.linear(duration: 0.4), value: vm.selectedIndex)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     isFullscreen.toggle()
@@ -163,12 +166,12 @@ struct ThemeView: View {
             let cols = 8
             let rows = 8
             let cellSize = min(
-                geometry.size.width / CGFloat(cols + 1),
+                geometry.size.width / CGFloat(cols),
                 geometry.size.height / CGFloat(rows)
             )
             let gridWidth = cellSize * CGFloat(cols)
             let gridHeight = cellSize * CGFloat(rows)
-            let offsetX = (geometry.size.width - gridWidth - cellSize) / 2
+            let offsetX = (geometry.size.width - gridWidth) / 2
             let offsetY = (geometry.size.height - gridHeight) / 2
 
             ZStack {
@@ -179,6 +182,22 @@ struct ThemeView: View {
                         .aspectRatio(contentMode: .fill)
                 } else {
                     Color.black
+                }
+
+                // Custom logo
+                if let customLogo = resources?.customLogo {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(platformImage: customLogo)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 90)
+                                .padding(.top, 16)
+                                .padding(.trailing, 16)
+                        }
+                        Spacer()
+                    }
                 }
 
                 Canvas { context, _ in
@@ -261,6 +280,9 @@ struct ThemeView: View {
                     }
 
                     // Chain column
+                    let isChainLed = resources?.isChainLed ?? true
+                    let resolvedChain = resources?.chain.flatMap { context.resolve(Image(platformImage: $0)) }
+
                     for i in 0..<rows {
                         let rect = CGRect(
                             x: offsetX + CGFloat(cols) * cellSize,
@@ -270,24 +292,25 @@ struct ThemeView: View {
                         )
                         let insetRect = rect.insetBy(dx: 1, dy: 1)
 
-                        if let btnImg = resolvedBtn {
-                            context.draw(btnImg, in: insetRect)
+                        if isChainLed {
+                            if let btnImg = resolvedBtn {
+                                context.draw(btnImg, in: insetRect)
+                            }
+                            if i == 0 {
+                                context.fill(
+                                    Path(roundedRect: insetRect, cornerRadius: 4),
+                                    with: .color(Color(hex: 0x00FF00).opacity(0.53))
+                                )
+                            }
+                            if let chainledImg = resolvedChainled {
+                                context.draw(chainledImg, in: insetRect)
+                            }
                         } else {
-                            context.fill(
-                                Path(roundedRect: insetRect, cornerRadius: 4),
-                                with: .color(Color(hex: 0x2A2A2A).opacity(0.5))
-                            )
-                        }
-
-                        if let chainledImg = resolvedChainled {
-                            context.draw(chainledImg, in: insetRect)
-                        }
-
-                        if i == 0 {
-                            context.fill(
-                                Path(roundedRect: insetRect, cornerRadius: 4),
-                                with: .color(Color(hex: 0x00FF00).opacity(0.53))
-                            )
+                            if let chainImg = resolvedChain {
+                                var ctx = context
+                                ctx.opacity = i == 0 ? 1.0 : 0.5
+                                ctx.draw(chainImg, in: insetRect)
+                            }
                         }
                     }
                 }
@@ -301,7 +324,7 @@ struct ThemeView: View {
     private var addThemePanel: some View {
         VStack {
             Spacer()
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text(String(localized: "theme_add_title"))
                     .font(.system(size: 20))
                     .foregroundStyle(AppColors.textPrimary)
@@ -326,7 +349,7 @@ struct ThemeView: View {
 
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 14))
+                        .font(.system(size: 18))
                         .foregroundStyle(AppColors.textPrimary.opacity(0.4))
 
                     Text(String(localized: "theme_apk_deprecated"))
@@ -426,7 +449,7 @@ private struct ThemeListItemView: View {
 
                 if isApplied {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 16))
+                        .font(.system(size: 22))
                         .foregroundStyle(AppColors.orange)
                 } else if isSelected {
                     Button(action: onApply) {

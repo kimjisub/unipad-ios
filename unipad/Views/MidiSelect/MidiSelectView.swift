@@ -6,17 +6,18 @@ struct MidiSelectView: View {
     @State private var isConnected = false
     @State private var logText = ""
     @State private var remainingSeconds: Int?
+    @State private var midiListener = MidiSelectListener()
 
     private let midiDevices: [MidiDevice] = [
-        MidiDevice(name: String(localized: "midi_lp_s"), icon: "pianokeys"),
-        MidiDevice(name: String(localized: "midi_lp_mk2"), icon: "square.grid.3x3"),
-        MidiDevice(name: String(localized: "midi_lp_pro"), icon: "square.grid.3x3.fill"),
-        MidiDevice(name: String(localized: "midi_lp_x"), icon: "square.grid.3x3.topleft.filled"),
-        MidiDevice(name: String(localized: "midi_lp_mini_mk3"), icon: "square.grid.3x3.middle.filled"),
-        MidiDevice(name: String(localized: "midi_lp_mk3"), icon: "square.grid.3x3.bottomright.filled"),
-        MidiDevice(name: String(localized: "midi_midi_fighter"), icon: "dial.medium"),
-        MidiDevice(name: String(localized: "midi_matrix"), icon: "rectangle.grid.3x2"),
-        MidiDevice(name: String(localized: "midi_master_keyboard"), icon: "pianokeys.inverse"),
+        MidiDevice(name: String(localized: "midi_lp_s"), icon: "pianokeys", makeDriver: { LaunchpadSDriver() }),
+        MidiDevice(name: String(localized: "midi_lp_mk2"), icon: "square.grid.3x3", makeDriver: { LaunchpadMK2Driver() }),
+        MidiDevice(name: String(localized: "midi_lp_pro"), icon: "square.grid.3x3.fill", makeDriver: { LaunchpadProDriver() }),
+        MidiDevice(name: String(localized: "midi_lp_x"), icon: "square.grid.3x3.topleft.filled", makeDriver: { LaunchpadXDriver() }),
+        MidiDevice(name: String(localized: "midi_lp_mini_mk3"), icon: "square.grid.3x3.middle.filled", makeDriver: { LaunchpadMiniMK3Driver() }),
+        MidiDevice(name: String(localized: "midi_lp_mk3"), icon: "square.grid.3x3.bottomright.filled", makeDriver: { LaunchpadProMK3Driver() }),
+        MidiDevice(name: String(localized: "midi_midi_fighter"), icon: "dial.medium", makeDriver: { MidiFighterDriver() }),
+        MidiDevice(name: String(localized: "midi_matrix"), icon: "rectangle.grid.3x2", makeDriver: { MatrixDriver() }),
+        MidiDevice(name: String(localized: "midi_master_keyboard"), icon: "pianokeys.inverse", makeDriver: { MasterKeyboardDriver() }),
     ]
 
     var body: some View {
@@ -33,7 +34,14 @@ struct MidiSelectView: View {
         .platformNavigationBarHidden(true)
         .onAppear {
             selectedIndex = PreferenceManager.shared.launchpadConnectMethod
+            bindMidiListener()
+            isConnected = MidiManager.shared.isConnected
             startAutorunTimer()
+        }
+        .onDisappear {
+            if MidiManager.shared.listener === midiListener {
+                MidiManager.shared.listener = nil
+            }
         }
     }
 
@@ -53,8 +61,9 @@ struct MidiSelectView: View {
             // Selected device preview
             VStack(spacing: 8) {
                 Image(systemName: midiDevices[selectedIndex].icon)
-                    .font(.system(size: 64))
+                    .font(.system(size: 120))
                     .foregroundStyle(AppColors.blue)
+                    .contentTransition(.symbolEffect(.replace))
 
                 Text(midiDevices[selectedIndex].name)
                     .font(.system(size: 16, weight: .semibold))
@@ -62,6 +71,7 @@ struct MidiSelectView: View {
                     .multilineTextAlignment(.center)
             }
             .padding(.vertical, 16)
+            .animation(.easeInOut(duration: 0.3), value: selectedIndex)
 
             Spacer().frame(height: 16)
 
@@ -86,7 +96,7 @@ struct MidiSelectView: View {
                     ScrollView {
                         Text(logText)
                             .font(.system(size: 11))
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(AppColors.textPrimary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(height: 80)
@@ -133,6 +143,7 @@ struct MidiSelectView: View {
                         cancelAutorun()
                         selectedIndex = index
                         PreferenceManager.shared.launchpadConnectMethod = index
+                        MidiManager.shared.overrideDriver(midiDevices[index].makeDriver())
                     }
                 }
             }
@@ -159,6 +170,24 @@ struct MidiSelectView: View {
     private func cancelAutorun() {
         remainingSeconds = nil
     }
+
+    private func bindMidiListener() {
+        midiListener.connectedHandler = {
+            isConnected = true
+        }
+        midiListener.disconnectedHandler = {
+            isConnected = false
+        }
+        midiListener.logHandler = { message in
+            logText += message + "\n"
+        }
+        midiListener.driverChangeHandler = { driver in
+            if let index = midiDevices.firstIndex(where: { type(of: $0.makeDriver()) == type(of: driver) }) {
+                selectedIndex = index
+            }
+        }
+        MidiManager.shared.listener = midiListener
+    }
 }
 
 // MARK: - Data
@@ -166,6 +195,30 @@ struct MidiSelectView: View {
 struct MidiDevice {
     let name: String
     let icon: String
+    let makeDriver: () -> MidiDriver
+}
+
+private final class MidiSelectListener: MidiManagerListener {
+    var connectedHandler: (() -> Void)?
+    var disconnectedHandler: (() -> Void)?
+    var driverChangeHandler: ((MidiDriver) -> Void)?
+    var logHandler: ((String) -> Void)?
+
+    func onConnected() {
+        connectedHandler?()
+    }
+
+    func onDisconnected() {
+        disconnectedHandler?()
+    }
+
+    func onChangeDriver(driver: MidiDriver) {
+        driverChangeHandler?(driver)
+    }
+
+    func onLog(_ message: String) {
+        logHandler?(message)
+    }
 }
 
 // MARK: - Device Card
@@ -179,24 +232,25 @@ private struct DeviceCardView: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: device.icon)
-                    .font(.system(size: 36))
+                    .font(.system(size: 48))
                     .foregroundStyle(isSelected ? AppColors.blue : AppColors.textPrimary.opacity(0.6))
 
                 Text(device.name)
                     .font(.system(size: 11))
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(AppColors.white)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .frame(minHeight: 30)
             }
             .padding(12)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? AppColors.darkSurface.opacity(0.8) : AppColors.darkSurface.opacity(0.4))
+            .background(isSelected ? AppColors.darkSurface : AppColors.darkSurfaceHigh)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(isSelected ? AppColors.blue : .clear, lineWidth: 2)
             )
+            .animation(.easeInOut(duration: 0.3), value: isSelected)
         }
     }
 }

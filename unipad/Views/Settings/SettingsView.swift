@@ -1,16 +1,11 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppRouter.self) private var router
     @State private var vm = SettingsViewModel()
     @State private var showCommunityDialog = false
-    @State private var showBackupShareSheet = false
-    @State private var backupFileURL: URL?
-    @State private var showRestorePicker = false
     @State private var showAlert = false
     @State private var alertMessage = ""
-    @State private var showRestoreGuideAlert = false
 
     var initialCategory: SettingsViewModel.Category = .info
 
@@ -31,36 +26,10 @@ struct SettingsView: View {
         .sheet(isPresented: $showCommunityDialog) {
             communitySheet
         }
-        #if canImport(UIKit)
-        .sheet(isPresented: $showBackupShareSheet) {
-            if let url = backupFileURL {
-                ShareSheet(activityItems: [url])
-            }
-        }
-        .sheet(isPresented: $showRestorePicker) {
-            DocumentPickerView { urls in
-                guard let url = urls.first else { return }
-                startRestore(from: url)
-            }
-        }
-        #endif
-        .alert(String(localized: "backup_section"), isPresented: $showAlert) {
+        .alert(String(localized: "settings_info"), isPresented: $showAlert) {
             Button(String(localized: "accept")) {}
         } message: {
             Text(alertMessage)
-        }
-        .alert(String(localized: "backup_guide_title"), isPresented: $showRestoreGuideAlert) {
-            Button(String(localized: "cancel"), role: .cancel) {}
-            Button(String(localized: "backup_guide_continue")) {
-                showRestorePicker = true
-            }
-        } message: {
-            Text(
-                "\(String(localized: "backup_guide_description"))\n\n" +
-                "\(String(localized: "backup_guide_step1"))\n" +
-                "\(String(localized: "backup_guide_step2"))\n" +
-                "\(String(localized: "backup_guide_step3"))"
-            )
         }
     }
 
@@ -123,7 +92,7 @@ struct SettingsView: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 16))
+                    .font(.system(size: 22))
                     .foregroundStyle(isSelected ? AppColors.blue : AppColors.textSecondary)
                     .frame(width: 22)
                 Text(title)
@@ -132,7 +101,7 @@ struct SettingsView: View {
                 if showChevron {
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
+                        .font(.system(size: 18))
                         .foregroundStyle(AppColors.textSecondary)
                 }
             }
@@ -174,6 +143,8 @@ struct SettingsView: View {
                 settingsCard {
                     VStack(spacing: 0) {
                         settingsRow(title: vm.appVersionInfo, subtitle: String(localized: "copyright"))
+                        cardDivider
+                        settingsRow(title: String(localized: "language"), subtitle: String(localized: "translated_by"))
                         cardDivider
                         settingsRow(title: String(localized: "community")) {
                             showCommunityDialog = true
@@ -217,15 +188,9 @@ struct SettingsView: View {
                 sectionLabel(String(localized: "settings_storage"))
                 settingsCard {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("App Storage")
+                        Text("\(vm.unipackCount) UniPacks")
                             .font(.system(size: 14))
                             .foregroundStyle(AppColors.textPrimary)
-                        Text(vm.workspacePath)
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppColors.textSecondary)
-                        Text("\(vm.unipackCount) UniPacks")
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppColors.textSecondary)
                         if !vm.storageUsed.isEmpty {
                             Text(vm.storageUsed)
                                 .font(.system(size: 12))
@@ -233,19 +198,6 @@ struct SettingsView: View {
                         }
                     }
                     .padding(16)
-                }
-
-                sectionLabel(String(localized: "backup_section"))
-                settingsCard {
-                    VStack(spacing: 0) {
-                        settingsRow(title: String(localized: "backup_title"), subtitle: String(localized: "backup_description")) {
-                            startBackup()
-                        }
-                        cardDivider
-                        settingsRow(title: String(localized: "restore_title"), subtitle: String(localized: "restore_description")) {
-                            showRestoreGuideAlert = true
-                        }
-                    }
                 }
             }
             .padding(24)
@@ -332,7 +284,7 @@ struct SettingsView: View {
                 Spacer()
                 if action != nil {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
+                        .font(.system(size: 20))
                         .foregroundStyle(AppColors.textSecondary)
                 }
             }
@@ -349,120 +301,4 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
     }
 
-    // MARK: - Backup & Restore
-
-    private func startBackup() {
-        Task {
-            let workspace = WorkspaceManager.shared.downloadWorkspace
-            let folders = WorkspaceManager.shared.getUnipackFolders(workspace: workspace)
-            guard !folders.isEmpty else {
-                alertMessage = String(localized: "backup_no_items")
-                showAlert = true
-                return
-            }
-
-            let fm = FileManager.default
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-            let timestamp = dateFormatter.string(from: Date())
-            let backupDir = fm.temporaryDirectory.appendingPathComponent("UniPad_Backup_\(timestamp)")
-
-            do {
-                try fm.createDirectory(at: backupDir, withIntermediateDirectories: true)
-                for folder in folders {
-                    let dest = backupDir.appendingPathComponent(folder.lastPathComponent)
-                    try FileManagerExtensions.copyDirectory(from: folder, to: dest)
-                }
-
-                backupFileURL = backupDir
-                showBackupShareSheet = true
-            } catch {
-                alertMessage = String(localized: "backup_failed")
-                showAlert = true
-            }
-        }
-    }
-
-    private func startRestore(from url: URL) {
-        Task {
-            let workspace = WorkspaceManager.shared.downloadWorkspace
-            let fm = FileManager.default
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessing { url.stopAccessingSecurityScopedResource() }
-            }
-
-            do {
-                var isDir: ObjCBool = false
-                if fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
-                    guard let contents = try? fm.contentsOfDirectory(
-                        at: url,
-                        includingPropertiesForKeys: [.isDirectoryKey]
-                    ) else { return }
-
-                    for item in contents {
-                        let itemIsDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                        if itemIsDir {
-                            let dest = FileManagerExtensions.makeNextPath(
-                                dir: workspace.url,
-                                name: item.lastPathComponent,
-                                extension: ""
-                            )
-                            try FileManagerExtensions.copyDirectory(from: item, to: dest)
-                        }
-                    }
-                } else if url.pathExtension.lowercased() == "zip" {
-                    let importer = UniPackImporter()
-                    await importer.importPack(from: url, to: workspace.url, delegate: nil)
-                }
-
-                alertMessage = String(localized: "restore_success")
-                showAlert = true
-                vm.refreshStorageInfo()
-            } catch {
-                alertMessage = String(localized: "restore_failed")
-                showAlert = true
-            }
-        }
-    }
 }
-
-// MARK: - UIKit Wrappers
-
-#if canImport(UIKit)
-private struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-private struct DocumentPickerView: UIViewControllerRepresentable {
-    let onPick: ([URL]) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onPick: onPick)
-    }
-
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder, .zip])
-        picker.allowsMultipleSelection = false
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-
-    class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onPick: ([URL]) -> Void
-        init(onPick: @escaping ([URL]) -> Void) { self.onPick = onPick }
-
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            onPick(urls)
-        }
-    }
-}
-#endif

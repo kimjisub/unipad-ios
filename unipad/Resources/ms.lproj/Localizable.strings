@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "Terima";
+"cancel" = "Batal";
+"warning" = "Amaran";
+"error" = "Ralat";
+"errOccur" = "Ralat telah berlaku.";
+"wait_a_sec" = "Tunggu sebentar…";
+"importing" = "Mengimport";
+"loading" = "Memuatkan";
+"loading_phase_info" = "Membaca maklumat…";
+"loading_phase_keysound" = "Memuatkan bunyi…";
+"loading_phase_keyled" = "Memuatkan LED…";
+"loading_phase_autoplay" = "Memuatkan main auto…";
+"loading_phase_audio" = "Memuatkan audio…";
+"download" = "Muat Turun";
+"downloadWaiting" = "Menunggu Muat Turun";
+"downloading" = "Memuat Turun";
+"downloaded" = "Dimuat Turun";
+"success" = "Berjaya";
+"failed" = "Gagal";
+"delete" = "Padam";
+"add_bookmark" = "Penanda Buku";
+"remove_bookmark" = "Buang Penanda Buku";
+"edit" = "Edit";
+"update" = "Kemas Kini";
+"ignore" = "Abaikan";
+"apply" = "Guna";
+"restart" = "Mulakan Semula";
+"quit" = "Keluar";
+"menu" = "Menu";
+"website" = "Laman Web";
+"measuring" = "Mengukur…";
+"notice" = "Notis";
+"newUniPack" = "UniPack Baharu";
+"exceptionOccurred" = "Pengecualian Berlaku";
+
+/* Menu */
+"reconnect_launchpad" = "Sambung Semula Launchpad";
+"import_unipack" = "Import UniPack";
+"store" = "Kedai";
+
+/* Setting */
+"setting" = "Tetapan";
+"information" = "Maklumat";
+"select_theme" = "Pilih Tema";
+"storage_location" = "Lokasi Storan";
+"github" = "Github";
+"openSourceLicense" = "Lesen Sumber Terbuka";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "Ketik untuk menyalin";
+"fcm_token_unavailable" = "FCM token tidak tersedia";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "Bahasa Melayu";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "Komuniti";
+"officialHomepage" = "Laman Web Rasmi";
+"officialHomepage_" = "Laman Web Rasmi UniPad";
+"officialFacebook" = "Facebook Rasmi";
+"officialFacebook_" = "Sokongan Teknikal";
+"facebookCommunity" = "Komuniti Facebook";
+"facebookCommunity_" = "Inggeris";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "Korea";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Selain Sokongan Teknikal";
+"email" = "0226unipad@gmail.com";
+"email_" = "Selain Sokongan Teknikal";
+
+/* UniPack Info */
+"title" = "Tajuk";
+"producerName" = "Penghasil";
+"padSize" = "Saiz Pad";
+"numChain" = "Rantai";
+"fileSize" = "Saiz Fail";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "Main Auto";
+"practiceMode" = "Latihan";
+"feedbackLight" = "Lampu maklum balas";
+"traceLog" = "Log Jejak";
+"traceLogClear" = "Log Jejak telah direset.";
+"record" = "Rakam";
+"hideUI" = "Sembunyikan UI";
+"watermark" = "Tera Air";
+"proLightMode" = "Mod Pro Light";
+
+/* Version */
+"update_available" = "Kemas kini tersedia";
+
+/* Permissions */
+"permissionRequire" = "Akses storan diperlukan untuk menyimpan fail projek.";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "Adakah anda mahu memadamkan projek ini?";
+"importComplete" = "Analisis selesai!";
+"importFailed" = "Gagal menganalisis…";
+"copied" = "Disalin ke papan keratan.";
+"outOfMemory" = "Kehabisan memori.\nKosongkan memori dan cuba lagi.";
+"unipackNotFound" = "UniPack tidak dijumpai.";
+
+/* Guide */
+"guide_download_new" = "Muat turun pack baru";
+"guide_import_external" = "Import pack yang dimuat turun";
+"guide_restore_packs" = "Pulihkan pack yang hilang";
+
+/* Launchpad */
+"launchpadConnecting" = "Menyambungkan launchpad…";
+"midiDevicesNotDetected" = "Peranti MIDI Tidak Dikesan";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Tidak boleh keluar semasa memuat turun pack";
+"UnableToAccessServer" = "Tidak dapat mengakses pelayan.";
+"SPP_downloadCount" = "Bilangan muat turun";
+"STP_count" = "UniPack di Kedai";
+"STP_downloadedCount" = "UniPack Dimuat Turun";
+
+/* Theme */
+"theme" = "Tema";
+"theme_import_success" = "Tema berjaya diimport.";
+"theme_import_failed" = "Gagal mengimport tema.";
+"theme_add_title" = "Tambah Tema";
+"theme_add_zip" = "Import fail ZIP";
+"theme_add_zip_desc" = "Import fail tema .zip dari peranti anda.";
+"theme_add_create" = "Cipta tema sendiri";
+"theme_add_create_desc" = "Ketahui cara mencipta tema tersuai.";
+"theme_import_invalid" = "Fail tema tidak sah.";
+"theme_apk_deprecated" = "Tema berasaskan APK tidak lagi disokong. Sila gunakan tema ZIP sebagai ganti.";
+"theme_delete_title" = "Padam Tema";
+"theme_delete_confirm %@" = "Padam \"%@\"?";
+"theme_type_builtin" = "Terbina dalam";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "Tajuk";
+"sort_producer" = "Penghasil";
+"sort_play_count" = "Bilangan Main";
+"sort_last_opened_date" = "Terakhir Dibuka";
+"sort_download_date" = "Tarikh Muat Turun";
+
+/* Main Panels */
+"MTP_count" = "Bilangan UniPack";
+"MTP_size" = "Saiz UniPack";
+"MPT_playCount" = "Bilangan Main";
+"MPT_theme" = "Tema";
+"MPP_padSize" = "Saiz Pad";
+"MPP_chain" = "Rantai";
+"MPP_soundFiles" = "Fail Bunyi";
+"MPP_ledEvents" = "Acara Led";
+"MPP_fileSize" = "Saiz Fail";
+"MPP_openCount" = "Bilangan Main";
+"MPP_downloadedDate" = "Tarikh Muat Turun";
+"MPP_lastPlayed" = "Terakhir Dimainkan";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "Pindahkan UniPacks";
+"transfer_source" = "Sumber";
+"transfer_target" = "Sasaran";
+"transfer_mode_copy" = "Salin";
+"transfer_mode_move" = "Pindah";
+"transfer_select_all" = "Pilih Semua";
+"transfer_deselect_all" = "Nyahpilih Semua";
+"transfer_start" = "Mula";
+"transfer_done" = "Selesai";
+"transfer_no_items" = "Tiada UniPack dipilih";
+"transfer_result_transferred" = "Dipindahkan";
+"transfer_result_skipped" = "Dilangkau";
+"transfer_result_failed" = "Gagal";
+"transfer_selected_count" = "%d dipilih";
+"transfer_copying" = "Menyalin: %@";
+"transfer_moving" = "Memindahkan: %@";
+
+/* Backup */
+"backup_section" = "Sandaran";
+"backup_title" = "Sandaran";
+"backup_description" = "Salin UniPacks ke folder sandaran";
+"restore_title" = "Pulihkan";
+"restore_description" = "Salin UniPacks dari folder sandaran";
+"backup_guide_title" = "Sambung Folder Sandaran";
+"backup_guide_description" = "Sambungkan folder Documents/Unipad untuk membuat sandaran atau memulihkan UniPacks anda.\nFolder ini kekal walaupun aplikasi dinyahpasang.";
+"backup_guide_step1" = "1. Pemilih folder akan dibuka";
+"backup_guide_step2" = "2. Jika Documents/Unipad wujud, pilih ia";
+"backup_guide_step3" = "3. Jika tiada, cipta folder \"Unipad\" dalam Documents dan pilih ia";
+"backup_guide_continue" = "Teruskan";
+"backup_no_items" = "Tiada UniPack untuk disandarkan.";
+"backup_failed" = "Sandaran gagal.";
+"restore_success" = "Pemulihan selesai.";
+"restore_failed" = "Pemulihan gagal.";
+
+/* Settings Categories */
+"settings_device" = "Peranti";
+"settings_info" = "Maklumat";
+"settings_storage" = "Storan";
+"settings_theme" = "Tema";
+"settings_developer" = "Pembangun";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "Storan Aplikasi (Disyorkan)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Laman Web";
+"cd_bookmark" = "Penanda Buku";
+"cd_delete" = "Padam";
+"cd_logo" = "Logo UniPad";
+"cd_autoplay_prev" = "Sebelumnya";
+"cd_autoplay_play" = "Main";
+"cd_autoplay_pause" = "Jeda";
+"cd_autoplay_next" = "Seterusnya";
+
+/* Search */
+"no_search_results" = "Tiada hasil ditemui";
+
+/* Transfer Format */
+"transfer_format_label" = "Format";
+"transfer_format_folder" = "Folder";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Gagal menerapkan skin.\nMulakan semula aplikasi.";
+"skinErr" = "Gagal menerapkan skin.\nTetapkan semula skin.";
+"requireRestart" = "Perlu memulakan semula aplikasi.";
+"doYouWantToRestartApp" = "Adakah anda ingin memulakan semula aplikasi?";
+
+/* Performance */
+"outOfCPU" = "Tidak dapat memulakan pack\nkerana spesifikasi peranti.\nCuba lagi.";
+"remapDone" = "Pemetaan semula AutoPlay telah berjaya diselesaikan.";
+"remapFail" = "AutoPlay tidak wujud.";
+"newVersionFound" = "Versi baharu dikesan.";
+
+/* Additional */
+"MPP_playCount" = "Bilangan Main";
+"mb" = "MB";

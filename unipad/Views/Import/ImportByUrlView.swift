@@ -10,19 +10,19 @@ struct ImportByUrlView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5).ignoresSafeArea()
+            Color.black.opacity(0.2).ignoresSafeArea()
 
             VStack {
                 Spacer()
 
                 ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 12)
+                    Rectangle()
                         .fill(AppColors.background1)
 
                     if !infoText.isEmpty {
                         Text(infoText)
                             .font(.system(size: 12))
-                            .foregroundStyle(AppColors.textSecondary.opacity(0.5))
+                            .foregroundStyle(AppColors.textPrimary.opacity(0.5))
                             .padding(12)
                     }
 
@@ -31,11 +31,11 @@ struct ImportByUrlView: View {
 
                         Text(titleText)
                             .font(.system(size: 25))
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(AppColors.textPrimary)
 
                         Text(messageText)
                             .font(.system(size: 18))
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(AppColors.textPrimary)
                             .multilineTextAlignment(.center)
 
                         Spacer()
@@ -105,15 +105,17 @@ struct ImportByUrlView: View {
                     onImportStart: {
                         Task { @MainActor in
                             titleText = String(localized: "importing")
-                            messageText = ""
+                            messageText = "#\(code) \(unishare.title ?? "") \(unishare.producer ?? "")"
                         }
                     },
                     onComplete: { folder in
                         Task { @MainActor in
                             titleText = String(localized: "success")
-                            messageText = folder.lastPathComponent
+                            let pack = UniPackFolder(rootFolder: folder)
+                            pack.load()
+                            messageText = pack.infoString()
                             log("Installed to: \(folder.path)")
-                            try? await Task.sleep(for: .seconds(2))
+                            try? await Task.sleep(for: .seconds(3))
                             router.pop()
                         }
                     },

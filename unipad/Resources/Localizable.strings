@@ -19,6 +19,8 @@
 "success" = "Success";
 "failed" = "Failed";
 "delete" = "Delete";
+"add_bookmark" = "Bookmark";
+"remove_bookmark" = "Remove Bookmark";
 "edit" = "Edit";
 "update" = "Update";
 "ignore" = "Ignore";
@@ -48,16 +50,25 @@
 "tap_to_copy" = "Tap to copy";
 "fcm_token_unavailable" = "FCM token unavailable";
 "copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "English";
+"translated_by" = "Translated by Kimjisub";
 
 /* Community */
 "community" = "Community";
 "officialHomepage" = "Official Website";
+"officialHomepage_" = "UniPad Official Website";
 "officialFacebook" = "Official Facebook";
+"officialFacebook_" = "Technical Support";
 "facebookCommunity" = "Facebook Community";
+"facebookCommunity_" = "english";
 "naverCafe" = "Naver Cafe";
+"naverCafe_" = "korean";
 "discord" = "Discord";
+"discord_" = "Discord";
 "kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "Other than Technical Support";
 "email" = "0226unipad@gmail.com";
+"email_" = "Other than Technical Support";
 
 /* UniPack Info */
 "title" = "Title";
@@ -100,6 +111,8 @@
 /* Launchpad */
 "launchpadConnecting" = "Connecting launchpad…";
 "midiDevicesNotDetected" = "MIDI Devices Not Detected";
+"midi_open_panel" = "Open";
+"midi_connected_banner %@" = "MIDI connected: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Can't quit while downloading the pack";
@@ -117,28 +130,34 @@
 "theme_add_zip_desc" = "Import a .zip theme file from your device.";
 "theme_add_create" = "Create your own theme";
 "theme_add_create_desc" = "Learn how to create a custom theme.";
+"theme_import_invalid" = "Invalid theme file.";
 "theme_apk_deprecated" = "APK-based themes are deprecated. Use ZIP themes instead.";
 "theme_delete_title" = "Delete Theme";
+"theme_delete_confirm %@" = "Delete \"%@\"?";
 "theme_type_builtin" = "Built-in";
 "theme_type_zip" = "ZIP";
 
 /* Sort */
 "sort_title" = "Title";
 "sort_producer" = "Producer";
+"sort_play_count" = "Play Count";
+"sort_last_opened_date" = "Last Opened Date";
 "sort_download_date" = "Download Date";
 
 /* Main Panels */
 "MTP_count" = "UniPacks Count";
 "MTP_size" = "UniPacks Size";
 "MPT_playCount" = "Play Count";
+"MPT_theme" = "Theme";
 "MPP_padSize" = "Pad Size";
 "MPP_chain" = "Chain";
 "MPP_soundFiles" = "Sound files";
 "MPP_ledEvents" = "Led Events";
 "MPP_fileSize" = "File Size";
 "MPP_openCount" = "Open Count";
-"MPP_downloadDate" = "Downloaded Date";
+"MPP_downloadedDate" = "Downloaded Date";
 "MPP_lastPlayed" = "Last Played";
+"MPP_notPlayedYet" = "-";
 
 /* Transfer */
 "transfer_title" = "Transfer UniPacks";
@@ -155,6 +174,8 @@
 "transfer_result_skipped" = "Skipped";
 "transfer_result_failed" = "Failed";
 "transfer_selected_count" = "%d selected";
+"transfer_copying" = "Copying: %@";
+"transfer_moving" = "Moving: %@";
 
 /* Backup */
 "backup_section" = "Backup";
@@ -190,3 +211,41 @@
 "midi_matrix" = "Matrix";
 "midi_midi_fighter" = "Midi Fighter";
 "midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "App Storage (Recommended)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "Website";
+"cd_bookmark" = "Bookmark";
+"cd_delete" = "Delete";
+"cd_logo" = "UniPad Logo";
+"cd_autoplay_prev" = "Previous";
+"cd_autoplay_play" = "Play";
+"cd_autoplay_pause" = "Pause";
+"cd_autoplay_next" = "Next";
+
+/* Search */
+"no_search_results" = "No results found";
+
+/* Transfer Format */
+"transfer_format_label" = "Format";
+"transfer_format_folder" = "Folder";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Failed to apply skin.\nRestart app.";
+"skinErr" = "Failed to apply skin.\nReset skin.";
+"requireRestart" = "Requires app restart.";
+"doYouWantToRestartApp" = "Do you want to restart the app?";
+
+/* Performance */
+"outOfCPU" = "Couldn't start pack\nbecause of device specifications.\nTry again.";
+"remapDone" = "AutoPlay remapping has been completed successfully.";
+"remapFail" = "AutoPlay does not exist.";
+"newVersionFound" = "New version detected.";
+
+/* Additional */
+"MPP_playCount" = "Play Count";
+"mb" = "MB";

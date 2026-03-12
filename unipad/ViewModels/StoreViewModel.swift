@@ -63,7 +63,7 @@ final class StoreViewModel {
                         isAutoPlay: item.isAutoPlay,
                         downloaded: isDownloaded,
                         playText: isDownloaded ? String(localized: "downloaded") : "",
-                        flagColorOverride: isDownloaded ? Color(hex: 0x66BB6A) : nil
+                        flagColorOverride: isDownloaded ? AppColors.green : nil
                     )
                 }
             } catch {
@@ -74,11 +74,13 @@ final class StoreViewModel {
     }
 
     func toggleSelection(_ item: StoreItem) {
-        for i in storeItems.indices {
-            if storeItems[i].id == item.id {
-                storeItems[i].isToggle.toggle()
-            } else {
-                storeItems[i].isToggle = false
+        withAnimation(.easeInOut(duration: 0.5)) {
+            for i in storeItems.indices {
+                if storeItems[i].id == item.id {
+                    storeItems[i].isToggle.toggle()
+                } else {
+                    storeItems[i].isToggle = false
+                }
             }
         }
     }
@@ -88,7 +90,7 @@ final class StoreViewModel {
         guard !storeItems[index].downloaded, !storeItems[index].downloading else { return }
 
         storeItems[index].downloading = true
-        storeItems[index].flagColorOverride = Color(hex: 0xA6B4C9)
+        storeItems[index].flagColorOverride = AppColors.textPrimary
         storeItems[index].playText = "0%"
 
         let itemId = item.id
@@ -141,18 +143,21 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
         updateItem { $0.playText = String(localized: "downloading") }
     }
 
-    @MainActor func onGetFileSize(fileSize: Int64, contentLength: Int64, preKnownFileSize: Int64) {}
+    @MainActor func onGetFileSize(fileSize: Int64, contentLength: Int64, preKnownFileSize: Int64) {
+        let totalMB = String(format: "%.2f", Double(fileSize) / 1_048_576.0)
+        updateItem { $0.playText = "0%\n0.00 / \(totalMB) MB" }
+    }
 
     @MainActor func onDownloadProgress(percent: Int, downloadedSize: Int64, fileSize: Int64) {
-        let dlMB = String(format: "%.1f", Double(downloadedSize) / 1_048_576.0)
-        let totalMB = String(format: "%.1f", Double(fileSize) / 1_048_576.0)
-        updateItem { $0.playText = "\(percent)% (\(dlMB)/\(totalMB)MB)" }
+        let dlMB = String(format: "%.2f", Double(downloadedSize) / 1_048_576.0)
+        let totalMB = String(format: "%.2f", Double(fileSize) / 1_048_576.0)
+        updateItem { $0.playText = "\(percent)%\n\(dlMB) / \(totalMB) MB" }
     }
 
     @MainActor func onImportStart() {
         updateItem {
             $0.playText = String(localized: "importing")
-            $0.flagColorOverride = Color(hex: 0xFF9800)
+            $0.flagColorOverride = AppColors.orange
         }
     }
 
@@ -161,7 +166,7 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
             $0.downloading = false
             $0.downloaded = true
             $0.playText = String(localized: "downloaded")
-            $0.flagColorOverride = Color(hex: 0x66BB6A)
+            $0.flagColorOverride = AppColors.green
         }
     }
 
@@ -169,7 +174,7 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
         updateItem {
             $0.downloading = false
             $0.playText = String(localized: "failed")
-            $0.flagColorOverride = Color(hex: 0xFF6B4E)
+            $0.flagColorOverride = AppColors.red
         }
     }
 }

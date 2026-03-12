@@ -54,7 +54,7 @@ private struct ChainButtonView: View {
                 // LED color overlay (chainLed mode only)
                 if theme.isChainLed, color != .clear {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(color.opacity(0.7))
+                        .fill(color)
                         .frame(width: size - 2, height: size - 2)
                 }
 

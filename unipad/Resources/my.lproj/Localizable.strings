@@ -1,0 +1,249 @@
+/* Words */
+"accept" = "လက်ခံသည်";
+"cancel" = "ပယ်ဖျက်";
+"warning" = "သတိပေးချက်";
+"error" = "အမှား";
+"errOccur" = "အမှားတစ်ခုဖြစ်ပွားခဲ့သည်။";
+"wait_a_sec" = "ခဏစောင့်ပါ…";
+"importing" = "ထည့်သွင်းနေသည်";
+"loading" = "ဖွင့်နေသည်";
+"loading_phase_info" = "အချက်အလက် ဖတ်နေသည်…";
+"loading_phase_keysound" = "အသံများ ဖွင့်နေသည်…";
+"loading_phase_keyled" = "LED များ ဖွင့်နေသည်…";
+"loading_phase_autoplay" = "အလိုအလျောက်ဖွင့်ခြင်း ဖွင့်နေသည်…";
+"loading_phase_audio" = "အော်ဒီယို ဖွင့်နေသည်…";
+"download" = "ဒေါင်းလုဒ်";
+"downloadWaiting" = "ဒေါင်းလုဒ်စောင့်နေသည်";
+"downloading" = "ဒေါင်းလုဒ်ဆွဲနေသည်";
+"downloaded" = "ဒေါင်းလုဒ်ပြီး";
+"success" = "အောင်မြင်သည်";
+"failed" = "မအောင်မြင်ပါ";
+"delete" = "ဖျက်မည်";
+"add_bookmark" = "စာညှပ်";
+"remove_bookmark" = "စာညှပ် ဖယ်ရှား";
+"edit" = "ပြင်ဆင်";
+"update" = "အပ်ဒိတ်";
+"ignore" = "လျစ်လျူရှု";
+"apply" = "အသုံးပြု";
+"restart" = "ပြန်စတင်";
+"quit" = "ထွက်မည်";
+"menu" = "မီနူး";
+"website" = "ဝက်ဘ်ဆိုက်";
+"measuring" = "တိုင်းတာနေသည်…";
+"notice" = "အသိပေးချက်";
+"newUniPack" = "UniPack အသစ်";
+"exceptionOccurred" = "ခြွင်းချက်ဖြစ်ပွားခဲ့သည်";
+
+/* Menu */
+"reconnect_launchpad" = "Launchpad ပြန်ချိတ်ဆက်";
+"import_unipack" = "UniPack ထည့်သွင်း";
+"store" = "စတိုး";
+
+/* Setting */
+"setting" = "ဆက်တင်";
+"information" = "အချက်အလက်";
+"select_theme" = "အပြင်အဆင်ရွေးချယ်";
+"storage_location" = "သိုလှောင်ခန်းတည်နေရာ";
+"github" = "Github";
+"openSourceLicense" = "Open Source လိုင်စင်";
+"FCMToken" = "FCM Token";
+"tap_to_copy" = "ကူးယူရန် နှိပ်ပါ";
+"fcm_token_unavailable" = "FCM token မရနိုင်ပါ";
+"copyright" = "© 2016–2026. UniPad. All rights reserved.";
+"language" = "မြန်မာ";
+"translated_by" = "Translated by AI";
+
+/* Community */
+"community" = "အသိုင်းအဝိုင်း";
+"officialHomepage" = "တရားဝင်ဝက်ဘ်ဆိုက်";
+"officialHomepage_" = "UniPad တရားဝင်ဝက်ဘ်ဆိုက်";
+"officialFacebook" = "တရားဝင် Facebook";
+"officialFacebook_" = "နည်းပညာပံ့ပိုးမှု";
+"facebookCommunity" = "Facebook အသိုင်းအဝိုင်း";
+"facebookCommunity_" = "အင်္ဂလိပ်";
+"naverCafe" = "Naver Cafe";
+"naverCafe_" = "ကိုရီးယား";
+"discord" = "Discord";
+"discord_" = "Discord";
+"kakaotalk" = "KakaoTalk";
+"kakaotalk_" = "နည်းပညာပံ့ပိုးမှုမှလွဲ၍";
+"email" = "0226unipad@gmail.com";
+"email_" = "နည်းပညာပံ့ပိုးမှုမှလွဲ၍";
+
+/* UniPack Info */
+"title" = "ခေါင်းစဉ်";
+"producerName" = "ထုတ်လုပ်သူ";
+"padSize" = "Pad အရွယ်အစား";
+"numChain" = "Chain များ";
+"fileSize" = "ဖိုင်အရွယ်အစား";
+
+/* UniPack Function */
+"led" = "LED";
+"autoPlay" = "အလိုအလျောက်ဖွင့်";
+"practiceMode" = "လေ့ကျင့်ခန်း";
+"feedbackLight" = "တုံ့ပြန်မှုမီး";
+"traceLog" = "ခြေရာခံမှတ်တမ်း";
+"traceLogClear" = "ခြေရာခံမှတ်တမ်း ပြန်လည်သတ်မှတ်ပြီး။";
+"record" = "အသံဖမ်း";
+"hideUI" = "UI ဖျောက်";
+"watermark" = "ရေစာ";
+"proLightMode" = "Pro Light မုဒ်";
+
+/* Version */
+"update_available" = "အပ်ဒိတ်ရနိုင်ပါသည်";
+
+/* Permissions */
+"permissionRequire" = "ပရောဂျက်ဖိုင်များသိမ်းဆည်းရန် သိုလှောင်ခန်းခွင့်ပြုချက်လိုအပ်သည်။";
+
+/* UniPack Actions */
+"doYouWantToDeleteUniPack" = "ဤပရောဂျက်ကို ဖျက်လိုပါသလား?";
+"importComplete" = "ခွဲခြမ်းစိတ်ဖြာခြင်း ပြီးဆုံးပါပြီ!";
+"importFailed" = "ခွဲခြမ်းစိတ်ဖြာခြင်း မအောင်မြင်ပါ…";
+"copied" = "ကလစ်ဘုတ်သို့ ကူးယူပြီး။";
+"outOfMemory" = "မမ်မိုရီ ကုန်သွားပါပြီ.\nမမ်မိုရီ ရှင်းလင်းပြီး ထပ်ကြိုးစားပါ။";
+"unipackNotFound" = "UniPack မတွေ့ပါ။";
+
+/* Guide */
+"guide_download_new" = "pack အသစ်များ ဒေါင်းလုဒ်လုပ်ရန်";
+"guide_import_external" = "ဒေါင်းလုဒ်လုပ်ထားသော pack များ တင်သွင်းရန်";
+"guide_restore_packs" = "ပျောက်ဆုံးနေသော pack များ ပြန်လည်ရယူရန်";
+
+/* Launchpad */
+"launchpadConnecting" = "Launchpad ချိတ်ဆက်နေသည်…";
+"midiDevicesNotDetected" = "MIDI စက်ပစ္စည်းများ မတွေ့ပါ";
+
+/* Store */
+"canNotQuitWhileDownloading" = "Pack ဒေါင်းလုဒ်ဆွဲနေစဉ် ထွက်၍မရပါ";
+"UnableToAccessServer" = "ဆာဗာသို့ ချိတ်ဆက်၍မရပါ။";
+"SPP_downloadCount" = "ဒေါင်းလုဒ်အရေအတွက်";
+"STP_count" = "စတိုးရှိ UniPack";
+"STP_downloadedCount" = "ဒေါင်းလုဒ်ပြီး UniPack";
+
+/* Theme */
+"theme" = "အပြင်အဆင်";
+"theme_import_success" = "အပြင်အဆင် အောင်မြင်စွာ ထည့်သွင်းပြီး။";
+"theme_import_failed" = "အပြင်အဆင် ထည့်သွင်းခြင်း မအောင်မြင်ပါ။";
+"theme_add_title" = "အပြင်အဆင် ထည့်ရန်";
+"theme_add_zip" = "ZIP ဖိုင် တင်သွင်းရန်";
+"theme_add_zip_desc" = "သင့်စက်မှ .zip အပြင်အဆင် ဖိုင်ကို တင်သွင်းပါ။";
+"theme_add_create" = "ကိုယ်ပိုင် အပြင်အဆင် ဖန်တီးရန်";
+"theme_add_create_desc" = "စိတ်ကြိုက် အပြင်အဆင် ဖန်တီးနည်းကို လေ့လာပါ။";
+"theme_import_invalid" = "မမှန်ကန်သော အပြင်အဆင်ဖိုင်။";
+"theme_apk_deprecated" = "APK အခြေပြု အပြင်အဆင်များကို ထပ်မံပံ့ပိုးမည်မဟုတ်ပါ။ ကျေးဇူးပြု၍ ZIP အပြင်အဆင်ကို အသုံးပြုပါ။";
+"theme_delete_title" = "အပြင်အဆင် ဖျက်မည်";
+"theme_delete_confirm %@" = "\"%@\" ဖျက်မည်လား?";
+"theme_type_builtin" = "တပ်ဆင်ပြီး";
+"theme_type_zip" = "ZIP";
+
+/* Sort */
+"sort_title" = "ခေါင်းစဉ်";
+"sort_producer" = "ထုတ်လုပ်သူ";
+"sort_play_count" = "ဖွင့်သည့်အကြိမ်";
+"sort_last_opened_date" = "နောက်ဆုံးဖွင့်သည့်ရက်";
+"sort_download_date" = "ဒေါင်းလုဒ်ရက်စွဲ";
+
+/* Main Panels */
+"MTP_count" = "UniPack အရေအတွက်";
+"MTP_size" = "UniPack အရွယ်အစား";
+"MPT_playCount" = "ဖွင့်သည့်အကြိမ်";
+"MPT_theme" = "အပြင်အဆင်";
+"MPP_padSize" = "Pad အရွယ်အစား";
+"MPP_chain" = "Chain";
+"MPP_soundFiles" = "အသံဖိုင်များ";
+"MPP_ledEvents" = "Led ဖြစ်ရပ်များ";
+"MPP_fileSize" = "ဖိုင်အရွယ်အစား";
+"MPP_openCount" = "ဖွင့်သည့်အကြိမ်";
+"MPP_downloadedDate" = "ဒေါင်းလုဒ်ရက်စွဲ";
+"MPP_lastPlayed" = "နောက်ဆုံးဖွင့်ခဲ့သည်";
+"MPP_notPlayedYet" = "-";
+
+/* Transfer */
+"transfer_title" = "UniPacks လွှဲပြောင်း";
+"transfer_source" = "ရင်းမြစ်";
+"transfer_target" = "ဦးတည်ရာ";
+"transfer_mode_copy" = "ကူးယူ";
+"transfer_mode_move" = "ရွှေ့";
+"transfer_select_all" = "အားလုံးရွေး";
+"transfer_deselect_all" = "အားလုံးဖြုတ်";
+"transfer_start" = "စတင်";
+"transfer_done" = "ပြီးဆုံး";
+"transfer_no_items" = "UniPack မရွေးရသေးပါ";
+"transfer_result_transferred" = "လွှဲပြောင်းပြီး";
+"transfer_result_skipped" = "ကျော်လိုက်သည်";
+"transfer_result_failed" = "မအောင်မြင်ပါ";
+"transfer_selected_count" = "%d ခု ရွေးထား";
+"transfer_copying" = "ကူးယူနေသည်: %@";
+"transfer_moving" = "ရွှေ့နေသည်: %@";
+
+/* Backup */
+"backup_section" = "အရန်သိမ်း";
+"backup_title" = "အရန်သိမ်းခြင်း";
+"backup_description" = "UniPacks ကို အရန်ဖိုင်တွဲသို့ ကူးယူ";
+"restore_title" = "ပြန်လည်ရယူခြင်း";
+"restore_description" = "အရန်ဖိုင်တွဲမှ UniPacks ကူးယူ";
+"backup_guide_title" = "အရန်ဖိုင်တွဲ ချိတ်ဆက်ရန်";
+"backup_guide_description" = "သင့် UniPacks များကို အရန်သိမ်းရန် သို့မဟုတ် ပြန်လည်ရယူရန် Documents/Unipad ဖိုင်တွဲကို ချိတ်ဆက်ပါ။\nဤဖိုင်တွဲသည် အက်ပ်ကို ဖယ်ရှားလျှင်ပင် ကျန်ရှိနေမည်ဖြစ်သည်။";
+"backup_guide_step1" = "1. ဖိုင်တွဲ ရွေးချယ်သူ ပွင့်လာမည်";
+"backup_guide_step2" = "2. Documents/Unipad ရှိပါက ၎င်းကို ရွေးပါ";
+"backup_guide_step3" = "3. မရှိပါက Documents တွင် \"Unipad\" ဖိုင်တွဲ ဖန်တီးပြီး ရွေးပါ";
+"backup_guide_continue" = "ဆက်လုပ်ရန်";
+"backup_no_items" = "အရန်သိမ်းရန် UniPack မရှိပါ။";
+"backup_failed" = "အရန်သိမ်းခြင်း မအောင်မြင်ပါ။";
+"restore_success" = "ပြန်လည်ရယူခြင်း ပြီးဆုံးပါပြီ။";
+"restore_failed" = "ပြန်လည်ရယူခြင်း မအောင်မြင်ပါ။";
+
+/* Settings Categories */
+"settings_device" = "စက်ပစ္စည်း";
+"settings_info" = "အချက်အလက်";
+"settings_storage" = "သိုလှောင်ခန်း";
+"settings_theme" = "အပြင်အဆင်";
+"settings_developer" = "ဆော့ဖ်ဝဲရေးသားသူ";
+
+/* MIDI Devices */
+"midi_lp_s" = "Launchpad S";
+"midi_lp_mk2" = "Launchpad MK2";
+"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_x" = "Launchpad X";
+"midi_lp_mini_mk3" = "Launchpad Mini MK3";
+"midi_lp_mk3" = "Launchpad Pro MK3";
+"midi_matrix" = "Matrix";
+"midi_midi_fighter" = "Midi Fighter";
+"midi_master_keyboard" = "Master Keyboard";
+
+/* Workspace */
+"workspace_app_storage" = "အက်ပ်သိုလှောင်ခန်း (အကြံပြု)";
+
+/* Accessibility */
+"cd_youtube" = "YouTube";
+"cd_website" = "ဝက်ဘ်ဆိုက်";
+"cd_bookmark" = "စာညှပ်";
+"cd_delete" = "ဖျက်မည်";
+"cd_logo" = "UniPad လိုဂို";
+"cd_autoplay_prev" = "ရှေ့တစ်ခု";
+"cd_autoplay_play" = "ဖွင့်";
+"cd_autoplay_pause" = "ခဏရပ်";
+"cd_autoplay_next" = "နောက်တစ်ခု";
+
+/* Search */
+"no_search_results" = "ရလဒ်မတွေ့ပါ";
+
+/* Transfer Format */
+"transfer_format_label" = "ပုံစံ";
+"transfer_format_folder" = "ဖိုင်တွဲ";
+"transfer_format_zip" = "ZIP";
+
+/* Theme Errors */
+"skinMemoryErr" = "Skin အသုံးပြုမှု မအောင်မြင်ပါ။\nApp ကို ပြန်ဖွင့်ပါ။";
+"skinErr" = "Skin အသုံးပြုမှု မအောင်မြင်ပါ။\nSkin ကို ပြန်လည်သတ်မှတ်ပါ။";
+"requireRestart" = "App ပြန်ဖွင့်ရန် လိုအပ်ပါသည်။";
+"doYouWantToRestartApp" = "App ကို ပြန်ဖွင့်လိုပါသလား？";
+
+/* Performance */
+"outOfCPU" = "စက်ပစ္စည်း စွမ်းဆောင်ရည်ကြောင့်\npack ကို စတင်၍မရပါ။\nထပ်စမ်းကြည့်ပါ။";
+"remapDone" = "AutoPlay remapping အောင်မြင်စွာ ပြီးဆုံးပါပြီ။";
+"remapFail" = "AutoPlay မရှိပါ။";
+"newVersionFound" = "ဗားရှင်းအသစ် တွေ့ရှိပါသည်။";
+
+/* Additional */
+"MPP_playCount" = "ဖွင့်သည့်အကြိမ်";
+"mb" = "MB";

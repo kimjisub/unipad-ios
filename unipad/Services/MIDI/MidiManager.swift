@@ -28,6 +28,8 @@ final class MidiManager: ObservableObject {
     private var connectedSource: MIDIEndpointRef = 0
     private var connectedDestination: MIDIEndpointRef = 0
     private var connectedDeviceEntity: MIDIEntityRef = 0
+    private var connectedSourcePortIndex: Int = 0
+    private var connectedDestinationPortIndex: Int = 0
 
     @Published private(set) var isConnected = false
     @Published private(set) var connectedDeviceName: String?
@@ -56,6 +58,7 @@ final class MidiManager: ObservableObject {
     private struct DriverEntry {
         let name: String
         let factory: () -> MidiDriver
+        let preferredPort: Int
     }
 
     private struct DriverRange {
@@ -66,19 +69,19 @@ final class MidiManager: ObservableObject {
 
     private let driverRegistryRanges: [DriverRange] = [
         DriverRange(pidStart: 0x0020, pidEnd: 0x002F,
-                    entry: DriverEntry(name: "Launchpad S") { LaunchpadSDriver() }),
+                    entry: DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
         DriverRange(pidStart: 0x0036, pidEnd: 0x0036,
-                    entry: DriverEntry(name: "Launchpad Mini") { LaunchpadSDriver() }),
+                    entry: DriverEntry(name: "Launchpad Mini", factory: { LaunchpadSDriver() }, preferredPort: 0)),
         DriverRange(pidStart: 0x0051, pidEnd: 0x0060,
-                    entry: DriverEntry(name: "Launchpad Pro") { LaunchpadProDriver() }),
+                    entry: DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         DriverRange(pidStart: 0x0069, pidEnd: 0x0078,
-                    entry: DriverEntry(name: "Launchpad MK2") { LaunchpadMK2Driver() }),
+                    entry: DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
         DriverRange(pidStart: 0x0103, pidEnd: 0x0112,
-                    entry: DriverEntry(name: "Launchpad X") { LaunchpadXDriver() }),
+                    entry: DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
         DriverRange(pidStart: 0x0113, pidEnd: 0x0122,
-                    entry: DriverEntry(name: "Launchpad Mini MK3") { LaunchpadMiniMK3Driver() }),
+                    entry: DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
         DriverRange(pidStart: 0x0123, pidEnd: 0x0132,
-                    entry: DriverEntry(name: "Launchpad Pro MK3") { LaunchpadProMK3Driver() }),
+                    entry: DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
     ]
 
     // MARK: - Initialization
@@ -86,6 +89,7 @@ final class MidiManager: ObservableObject {
     private init() {}
 
     func start() {
+        setupDriverListeners()
         setupCoreMIDI()
         scanForDevices()
     }
@@ -101,6 +105,8 @@ final class MidiManager: ObservableObject {
     // MARK: - CoreMIDI Setup
 
     private func setupCoreMIDI() {
+        guard midiClient == 0 else { return }
+
         let clientName = "UniPad" as CFString
 
         let status = MIDIClientCreateWithBlock(clientName, &midiClient) { [weak self] notification in
@@ -171,6 +177,7 @@ final class MidiManager: ObservableObject {
         let destCount = MIDIGetNumberOfDestinations()
 
         logger.info("MIDI scan: \(sourceCount) sources, \(destCount) destinations")
+        listener?.onLog("MIDI scan: \(sourceCount) sources, \(destCount) destinations")
 
         if connectedSource != 0 { return }
 
@@ -178,6 +185,7 @@ final class MidiManager: ObservableObject {
             let source = MIDIGetSource(i)
             let name = getMIDIObjectName(source)
             logger.info("MIDI Source[\(i)]: \(name)")
+            listener?.onLog("Source[\(i)]: \(name)")
 
             if let matchedDriver = findDriverForDevice(name: name) {
                 connectToDevice(sourceIndex: i, driverEntry: matchedDriver)
@@ -187,7 +195,7 @@ final class MidiManager: ObservableObject {
 
         // Fallback: connect to first available source with generic driver
         if sourceCount > 0 {
-            let entry = DriverEntry(name: "Generic") { GenericDriver() }
+            let entry = DriverEntry(name: "Generic", factory: { GenericDriver() }, preferredPort: 0)
             connectToDevice(sourceIndex: 0, driverEntry: entry)
         }
     }
@@ -196,34 +204,34 @@ final class MidiManager: ObservableObject {
         let lowered = name.lowercased()
 
         if lowered.contains("launchpad mini mk3") {
-            return DriverEntry(name: "Launchpad Mini MK3") { LaunchpadMiniMK3Driver() }
+            return DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)
         }
         if lowered.contains("launchpad x") {
-            return DriverEntry(name: "Launchpad X") { LaunchpadXDriver() }
+            return DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)
         }
         if lowered.contains("launchpad pro mk3") || lowered.contains("launchpad pro 3") {
-            return DriverEntry(name: "Launchpad Pro MK3") { LaunchpadProMK3Driver() }
+            return DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)
         }
         if lowered.contains("launchpad pro") {
-            return DriverEntry(name: "Launchpad Pro") { LaunchpadProDriver() }
+            return DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)
         }
         if lowered.contains("launchpad mk2") || lowered.contains("launchpad mk 2") {
-            return DriverEntry(name: "Launchpad MK2") { LaunchpadMK2Driver() }
+            return DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)
         }
         if lowered.contains("launchpad s") {
-            return DriverEntry(name: "Launchpad S") { LaunchpadSDriver() }
+            return DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)
         }
         if lowered.contains("launchpad") {
-            return DriverEntry(name: "Launchpad (Generic)") { LaunchpadMK2Driver() }
+            return DriverEntry(name: "Launchpad (Generic)", factory: { LaunchpadMK2Driver() }, preferredPort: 0)
         }
         if lowered.contains("midi fighter") {
-            return DriverEntry(name: "Midi Fighter") { MidiFighterDriver() }
+            return DriverEntry(name: "Midi Fighter", factory: { MidiFighterDriver() }, preferredPort: 0)
         }
         if lowered.contains("matrix") {
-            return DriverEntry(name: "Matrix") { MatrixDriver() }
+            return DriverEntry(name: "Matrix", factory: { MatrixDriver() }, preferredPort: 0)
         }
         if lowered.contains("keyboard") || lowered.contains("piano") {
-            return DriverEntry(name: "Master Keyboard") { MasterKeyboardDriver() }
+            return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
         }
 
         return nil
@@ -232,7 +240,24 @@ final class MidiManager: ObservableObject {
     // MARK: - Connection
 
     private func connectToDevice(sourceIndex: Int, driverEntry: DriverEntry) {
-        let source = MIDIGetSource(sourceIndex)
+        let discoveredSource = MIDIGetSource(sourceIndex)
+        var source = discoveredSource
+
+        var entity: MIDIEntityRef = 0
+        MIDIEndpointGetEntity(discoveredSource, &entity)
+        connectedDeviceEntity = entity
+
+        if entity != 0 {
+            let sourceCount = MIDIEntityGetNumberOfSources(entity)
+            if driverEntry.preferredPort < sourceCount {
+                source = MIDIEntityGetSource(entity, driverEntry.preferredPort)
+                connectedSourcePortIndex = driverEntry.preferredPort
+            } else {
+                connectedSourcePortIndex = findSourcePortIndex(entity: entity, source: discoveredSource) ?? 0
+            }
+        } else {
+            connectedSourcePortIndex = 0
+        }
 
         let status = MIDIPortConnectSource(inputPort, source, nil)
         guard status == noErr else {
@@ -243,15 +268,12 @@ final class MidiManager: ObservableObject {
         connectedSource = source
         connectedDeviceName = driverEntry.name
 
-        // Find matching destination from the same entity as the source
-        var entity: MIDIEntityRef = 0
-        MIDIEndpointGetEntity(source, &entity)
-        connectedDeviceEntity = entity
-
         if entity != 0 {
             let destCount = MIDIEntityGetNumberOfDestinations(entity)
             if destCount > 0 {
-                connectedDestination = MIDIEntityGetDestination(entity, 0)
+                let preferredPort = min(driverEntry.preferredPort, max(0, destCount - 1))
+                connectedDestination = MIDIEntityGetDestination(entity, preferredPort)
+                connectedDestinationPortIndex = preferredPort
                 logger.info("Found \(destCount) destination(s) on same entity")
             }
         }
@@ -261,6 +283,7 @@ final class MidiManager: ObservableObject {
             let globalDestCount = MIDIGetNumberOfDestinations()
             if globalDestCount > 0 {
                 connectedDestination = MIDIGetDestination(0)
+                connectedDestinationPortIndex = 0
             }
         }
 
@@ -268,6 +291,7 @@ final class MidiManager: ObservableObject {
         isConnected = true
 
         logger.info("Connected to MIDI device: \(driverEntry.name)")
+        listener?.onLog("Connected: \(driverEntry.name) (sourcePort=\(connectedSourcePortIndex), destPort=\(connectedDestinationPortIndex))")
         listener?.onConnected()
     }
 
@@ -282,11 +306,17 @@ final class MidiManager: ObservableObject {
         connectedSource = 0
         connectedDestination = 0
         connectedDeviceEntity = 0
+        connectedSourcePortIndex = 0
+        connectedDestinationPortIndex = 0
         connectedDeviceName = nil
         isConnected = false
         driver = NotingDriver()
 
         listener?.onDisconnected()
+    }
+
+    func overrideDriver(_ newDriver: MidiDriver) {
+        driver = newDriver
     }
 
     func removeController(_ target: MidiController) {
@@ -308,20 +338,26 @@ final class MidiManager: ObservableObject {
                     wordsPtr.withMemoryRebound(to: UInt32.self, capacity: wordCount) { words in
                         for w in 0..<wordCount {
                             let word = words[w]
-                            let byte0 = Int((word >> 16) & 0xFF)
-                            let byte1 = Int((word >> 8) & 0xFF)
-                            let byte2 = Int(word & 0xFF)
+                            let status = Int((word >> 16) & 0xFF)
+                            let data1 = Int((word >> 8) & 0xFF)
+                            let data2 = Int(word & 0xFF)
 
-                            // Skip MIDI Clock (0xF8)
-                            if byte0 == 0xF8 { continue }
-
-                            let cmd = Int((word >> 24) & 0xFF)
-                            let sig = Int(Int8(truncatingIfNeeded: byte0))
-                            let note = byte1
-                            let velocity = byte2
-
+                            if status == 0xF8 { continue }
                             Task { @MainActor [weak self] in
-                                self?.driver.getSignal(cmd: cmd, sig: sig, note: note, velocity: velocity)
+                                guard let self,
+                                      let translated = self.translateUMPWordToDriverEvent(
+                                        status: status,
+                                        data1: data1,
+                                        data2: data2
+                                      ) else {
+                                    return
+                                }
+                                self.driver.getSignal(
+                                    cmd: translated.cmd,
+                                    sig: translated.sig,
+                                    note: translated.note,
+                                    velocity: translated.velocity
+                                )
                             }
                         }
                     }
@@ -369,14 +405,22 @@ final class MidiManager: ObservableObject {
             }
 
             for (index, message) in messages.enumerated() {
+                let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
+                buffer.initialize(from: message, count: message.count)
+                let refCon = Unmanaged.passRetained(SysExBufferBox(buffer: buffer)).toOpaque()
                 var request = MIDISysexSendRequest(
                     destination: destination,
-                    data: UnsafePointer(message),
+                    data: UnsafePointer(buffer),
                     bytesToSend: UInt32(message.count),
                     complete: false,
                     reserved: (0, 0, 0),
-                    completionProc: { _ in },
-                    completionRefCon: nil
+                    completionProc: { requestPtr in
+                        guard let refCon = requestPtr.pointee.completionRefCon else { return }
+                        let box = Unmanaged<SysExBufferBox>.fromOpaque(refCon).takeRetainedValue()
+                        box.buffer.deinitialize(count: Int(requestPtr.pointee.bytesToSend))
+                        box.buffer.deallocate()
+                    },
+                    completionRefCon: refCon
                 )
                 MIDISendSysex(&request)
 
@@ -418,6 +462,35 @@ final class MidiManager: ObservableObject {
             return cfName as String
         }
         return "Unknown"
+    }
+
+    private func findSourcePortIndex(entity: MIDIEntityRef, source: MIDIEndpointRef) -> Int? {
+        let sourceCount = MIDIEntityGetNumberOfSources(entity)
+        for idx in 0..<sourceCount where MIDIEntityGetSource(entity, idx) == source {
+            return idx
+        }
+        return nil
+    }
+
+    private func translateUMPWordToDriverEvent(status: Int, data1: Int, data2: Int) -> (cmd: Int, sig: Int, note: Int, velocity: Int)? {
+        let statusType = status & 0xF0
+        let cableCompatibleCmd = (connectedSourcePortIndex << 4) | (statusType >> 4)
+        let sig = Int(Int8(truncatingIfNeeded: status))
+
+        switch statusType {
+        case 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0:
+            return (cmd: cableCompatibleCmd, sig: sig, note: data1, velocity: data2)
+        default:
+            return nil
+        }
+    }
+}
+
+private final class SysExBufferBox {
+    let buffer: UnsafeMutablePointer<UInt8>
+
+    init(buffer: UnsafeMutablePointer<UInt8>) {
+        self.buffer = buffer
     }
 }
 
@@ -500,4 +573,3 @@ private final class MidiManagerSendAdapter: MidiDriverSendSignalListener {
         }
     }
 }
-

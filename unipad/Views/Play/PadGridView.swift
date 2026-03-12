@@ -15,20 +15,29 @@ struct PadGridView: View {
     var renderVersion: Int = 0
     var padGuideTargets: [[Int64]] = []
     var traceLogTexts: ((Int, Int) -> String?)? = nil
+    var traceLogColor: Color = .white
     var onPadTouch: (Int, Int, Bool) -> Void
+
+    private var hasActiveGuide: Bool {
+        padGuideTargets.contains { row in row.contains { $0 > 0 } }
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            let cellSize = min(
+            let squareSize = min(
                 geometry.size.width / CGFloat(columns),
                 geometry.size.height / CGFloat(rows)
             )
-            let gridWidth = cellSize * CGFloat(columns)
-            let gridHeight = cellSize * CGFloat(rows)
+            let cellWidth = isSquareButton ? squareSize : geometry.size.width / CGFloat(columns)
+            let cellHeight = isSquareButton ? squareSize : geometry.size.height / CGFloat(rows)
+            let gridWidth = cellWidth * CGFloat(columns)
+            let gridHeight = cellHeight * CGFloat(rows)
             let offsetX = (geometry.size.width - gridWidth) / 2
             let offsetY = (geometry.size.height - gridHeight) / 2
 
             ZStack {
+                TimelineView(.animation(minimumInterval: hasActiveGuide ? nil : 1.0)) { timeline in
+                let _ = timeline.date // force redraw on timeline tick
                 Canvas { context, size in
                     let nowMs = Int64(CACurrentMediaTime() * 1000)
 
@@ -57,10 +66,10 @@ struct PadGridView: View {
                     for x in 0..<rows {
                         for y in 0..<columns {
                             let rect = CGRect(
-                                x: offsetX + CGFloat(y) * cellSize + 1,
-                                y: offsetY + CGFloat(x) * cellSize + 1,
-                                width: cellSize - 2,
-                                height: cellSize - 2
+                                x: offsetX + CGFloat(y) * cellWidth + 1,
+                                y: offsetY + CGFloat(x) * cellHeight + 1,
+                                width: cellWidth - 2,
+                                height: cellHeight - 2
                             )
 
                             let ledColor = (x < padLedColors.count && y < padLedColors[x].count)
@@ -93,7 +102,7 @@ struct PadGridView: View {
                             if ledColor != .clear {
                                 context.fill(
                                     Path(roundedRect: rect, cornerRadius: 4),
-                                    with: .color(ledColor.opacity(0.7))
+                                    with: .color(ledColor)
                                 )
                             }
 
@@ -116,8 +125,8 @@ struct PadGridView: View {
                                 )
                                 if maskRect.width > 0 && maskRect.height > 0 {
                                     context.fill(
-                                        Path(roundedRect: maskRect, cornerRadius: 2),
-                                        with: .color(Color.black.opacity(0.85))
+                                        Path(roundedRect: maskRect, cornerRadius: 4),
+                                        with: .color(Color.black.opacity(0.867))
                                     )
                                 }
                             }
@@ -156,20 +165,21 @@ struct PadGridView: View {
                     }
                 }
                 .allowsHitTesting(false)
+                } // TimelineView
 
                 if let traceLogTexts {
                     ForEach(0..<rows, id: \.self) { x in
                         ForEach(0..<columns, id: \.self) { y in
                             if let text = traceLogTexts(x, y) {
                                 Text(text)
-                                    .font(.system(size: max(cellSize * 0.18, 6)))
-                                    .foregroundStyle(.white)
+                                    .font(.system(size: max(min(cellWidth, cellHeight) * 0.18, 6)))
+                                    .foregroundStyle(traceLogColor)
                                     .lineLimit(3)
                                     .minimumScaleFactor(0.5)
-                                    .frame(width: cellSize - 4, height: cellSize - 4)
+                                    .frame(width: cellWidth - 4, height: cellHeight - 4)
                                     .position(
-                                        x: offsetX + CGFloat(y) * cellSize + cellSize / 2,
-                                        y: offsetY + CGFloat(x) * cellSize + cellSize / 2
+                                        x: offsetX + CGFloat(y) * cellWidth + cellWidth / 2,
+                                        y: offsetY + CGFloat(x) * cellHeight + cellHeight / 2
                                     )
                             }
                         }
@@ -179,7 +189,8 @@ struct PadGridView: View {
 
                 MultiTouchView(
                     gridOrigin: CGPoint(x: offsetX, y: offsetY),
-                    cellSize: cellSize,
+                    cellWidth: cellWidth,
+                    cellHeight: cellHeight,
                     rows: rows,
                     columns: columns,
                     onPadTouch: onPadTouch
@@ -194,7 +205,8 @@ struct PadGridView: View {
 
 private struct MultiTouchModifier: ViewModifier {
     let gridOrigin: CGPoint
-    let cellSize: CGFloat
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
     let rows: Int
     let columns: Int
     let onPadTouch: (Int, Int, Bool) -> Void
@@ -204,7 +216,8 @@ private struct MultiTouchModifier: ViewModifier {
             .overlay {
                 MultiTouchView(
                     gridOrigin: gridOrigin,
-                    cellSize: cellSize,
+                    cellWidth: cellWidth,
+                    cellHeight: cellHeight,
                     rows: rows,
                     columns: columns,
                     onPadTouch: onPadTouch
@@ -216,14 +229,16 @@ private struct MultiTouchModifier: ViewModifier {
 extension View {
     func multiTouchHandler(
         gridOrigin: CGPoint,
-        cellSize: CGFloat,
+        cellWidth: CGFloat,
+        cellHeight: CGFloat,
         rows: Int,
         columns: Int,
         onPadTouch: @escaping (Int, Int, Bool) -> Void
     ) -> some View {
         modifier(MultiTouchModifier(
             gridOrigin: gridOrigin,
-            cellSize: cellSize,
+            cellWidth: cellWidth,
+            cellHeight: cellHeight,
             rows: rows,
             columns: columns,
             onPadTouch: onPadTouch
@@ -236,7 +251,8 @@ import UIKit
 
 struct MultiTouchView: UIViewRepresentable {
     let gridOrigin: CGPoint
-    let cellSize: CGFloat
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
     let rows: Int
     let columns: Int
     let onPadTouch: (Int, Int, Bool) -> Void
@@ -245,7 +261,8 @@ struct MultiTouchView: UIViewRepresentable {
         let view = MultiTouchUIView()
         view.isMultipleTouchEnabled = true
         view.gridOrigin = gridOrigin
-        view.cellSize = cellSize
+        view.cellWidth = cellWidth
+        view.cellHeight = cellHeight
         view.rows = rows
         view.columns = columns
         view.onPadTouch = onPadTouch
@@ -255,7 +272,8 @@ struct MultiTouchView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MultiTouchUIView, context: Context) {
         uiView.gridOrigin = gridOrigin
-        uiView.cellSize = cellSize
+        uiView.cellWidth = cellWidth
+        uiView.cellHeight = cellHeight
         uiView.rows = rows
         uiView.columns = columns
         uiView.onPadTouch = onPadTouch
@@ -264,7 +282,8 @@ struct MultiTouchView: UIViewRepresentable {
 
 class MultiTouchUIView: UIView {
     var gridOrigin: CGPoint = .zero
-    var cellSize: CGFloat = 0
+    var cellWidth: CGFloat = 0
+    var cellHeight: CGFloat = 0
     var rows: Int = 0
     var columns: Int = 0
     var onPadTouch: ((Int, Int, Bool) -> Void)?
@@ -272,8 +291,8 @@ class MultiTouchUIView: UIView {
     private var activeTouches: [UITouch: (Int, Int)] = [:]
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
-        let col = Int((point.x - gridOrigin.x) / cellSize)
-        let row = Int((point.y - gridOrigin.y) / cellSize)
+        let col = Int((point.x - gridOrigin.x) / cellWidth)
+        let row = Int((point.y - gridOrigin.y) / cellHeight)
         guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
         return (row, col)
     }
@@ -329,7 +348,8 @@ import AppKit
 
 struct MultiTouchView: NSViewRepresentable {
     let gridOrigin: CGPoint
-    let cellSize: CGFloat
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
     let rows: Int
     let columns: Int
     let onPadTouch: (Int, Int, Bool) -> Void
@@ -337,7 +357,8 @@ struct MultiTouchView: NSViewRepresentable {
     func makeNSView(context: Context) -> MultiTouchNSView {
         let view = MultiTouchNSView()
         view.gridOrigin = gridOrigin
-        view.cellSize = cellSize
+        view.cellWidth = cellWidth
+        view.cellHeight = cellHeight
         view.rows = rows
         view.columns = columns
         view.onPadTouch = onPadTouch
@@ -346,7 +367,8 @@ struct MultiTouchView: NSViewRepresentable {
 
     func updateNSView(_ nsView: MultiTouchNSView, context: Context) {
         nsView.gridOrigin = gridOrigin
-        nsView.cellSize = cellSize
+        nsView.cellWidth = cellWidth
+        nsView.cellHeight = cellHeight
         nsView.rows = rows
         nsView.columns = columns
         nsView.onPadTouch = onPadTouch
@@ -355,7 +377,8 @@ struct MultiTouchView: NSViewRepresentable {
 
 class MultiTouchNSView: NSView {
     var gridOrigin: CGPoint = .zero
-    var cellSize: CGFloat = 0
+    var cellWidth: CGFloat = 0
+    var cellHeight: CGFloat = 0
     var rows: Int = 0
     var columns: Int = 0
     var onPadTouch: ((Int, Int, Bool) -> Void)?
@@ -364,8 +387,8 @@ class MultiTouchNSView: NSView {
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let flippedY = bounds.height - point.y
-        let col = Int((point.x - gridOrigin.x) / cellSize)
-        let row = Int((flippedY - gridOrigin.y) / cellSize)
+        let col = Int((point.x - gridOrigin.x) / cellWidth)
+        let row = Int((flippedY - gridOrigin.y) / cellHeight)
         guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
         return (row, col)
     }

@@ -94,7 +94,7 @@ struct TransferView: View {
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(AppColors.textSecondary)
-                            .font(.system(size: 14))
+                            .font(.system(size: 20))
 
                         TextField("Search", text: $searchQuery)
                             .font(.system(size: 13))
@@ -166,7 +166,7 @@ struct TransferView: View {
                                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                                         } else {
                                             Image(systemName: "folder")
-                                                .font(.system(size: 14))
+                                                .font(.system(size: 18))
                                                 .foregroundStyle(AppColors.textSecondary)
                                         }
 
@@ -175,7 +175,7 @@ struct TransferView: View {
                                             .foregroundStyle(item.selected ? AppColors.textPrimary : AppColors.textSecondary)
                                             .lineLimit(1)
                                     }
-                                    .padding(.vertical, 4)
+                                    .padding(.vertical, 2)
                                 }
                             }
                         }
@@ -244,6 +244,28 @@ struct TransferView: View {
                             setMode(.move)
                         }
                     }
+
+                    if data.showFormatSelector {
+                        Spacer().frame(height: 16)
+
+                        sectionLabel(String(localized: "transfer_format_label"))
+
+                        HStack(spacing: 8) {
+                            modeButton(
+                                text: String(localized: "transfer_format_folder"),
+                                selected: data.format == .folder
+                            ) {
+                                setFormat(.folder)
+                            }
+
+                            modeButton(
+                                text: String(localized: "transfer_format_zip"),
+                                selected: data.format == .zip
+                            ) {
+                                setFormat(.zip)
+                            }
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
@@ -270,7 +292,7 @@ struct TransferView: View {
                 .foregroundStyle(AppColors.textPrimary)
 
             if !progress.currentName.isEmpty {
-                Text(progress.currentName)
+                Text(String(format: String(localized: progress.isMove ? "transfer_moving" : "transfer_copying"), progress.currentName))
                     .font(.system(size: 14))
                     .foregroundStyle(AppColors.textSecondary)
                     .padding(.top, 8)
@@ -285,19 +307,19 @@ struct TransferView: View {
     private func completeContent(_ result: TransferResult) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                sectionLabel("Result")
+                sectionLabel(String(localized: "success"))
 
                 VStack(spacing: 0) {
-                    resultRow(label: "Transferred", count: result.transferred, color: AppColors.green)
+                    resultRow(label: String(localized: "transfer_result_transferred"), count: result.transferred, color: AppColors.green)
 
                     if result.skipped > 0 {
                         cardDivider
-                        resultRow(label: "Skipped", count: result.skipped, color: AppColors.orange)
+                        resultRow(label: String(localized: "transfer_result_skipped"), count: result.skipped, color: AppColors.orange)
                     }
 
                     if result.failed > 0 {
                         cardDivider
-                        resultRow(label: "Failed", count: result.failed, color: AppColors.red)
+                        resultRow(label: String(localized: "transfer_result_failed"), count: result.failed, color: AppColors.red)
                     }
                 }
                 .padding(16)
@@ -430,12 +452,15 @@ struct TransferView: View {
         let filteredTargets = targets.filter { $0.description != sourceWorkspace.url.path }
         let finalTargets = filteredTargets.isEmpty ? targets : filteredTargets
 
+        let isBackup = config.isBackup ?? false
         state = .configuration(ConfigurationData(
             sourceName: sourceWorkspace.name,
             items: items,
             targets: finalTargets,
             selectedTargetId: finalTargets.first?.id,
-            mode: config.mode == "move" ? .move : .copy
+            mode: config.mode == "move" ? .move : .copy,
+            format: isBackup ? .zip : .folder,
+            showFormatSelector: isBackup
         ))
     }
 
@@ -474,11 +499,18 @@ struct TransferView: View {
         state = .configuration(data)
     }
 
+    private func setFormat(_ format: TransferFormat) {
+        guard case .configuration(var data) = state else { return }
+        data.format = format
+        state = .configuration(data)
+    }
+
     private func startTransfer() {
         guard case .configuration(let data) = state else { return }
         let selectedItems = data.items.filter(\.selected)
         guard !selectedItems.isEmpty, let targetId = data.selectedTargetId else { return }
         let mode = data.mode
+        let format = data.format
 
         let targetPath: String
         if let target = data.targets.first(where: { $0.id == targetId }) {
@@ -487,7 +519,7 @@ struct TransferView: View {
             return
         }
 
-        state = .executing(ProgressData(current: 0, total: selectedItems.count, currentName: ""))
+        state = .executing(ProgressData(current: 0, total: selectedItems.count, currentName: "", isMove: mode == .move))
 
         Task {
             let fm = FileManager.default
@@ -503,15 +535,11 @@ struct TransferView: View {
                 state = .executing(ProgressData(
                     current: i,
                     total: selectedItems.count,
-                    currentName: item.name
+                    currentName: item.name,
+                    isMove: mode == .move
                 ))
 
                 let sourceURL = URL(fileURLWithPath: item.sourcePath)
-                let destinationURL = FileManagerExtensions.makeNextPath(
-                    dir: targetURL,
-                    name: item.name,
-                    extension: item.isZip ? ".zip" : ""
-                )
 
                 do {
                     if item.isZip {
@@ -520,7 +548,26 @@ struct TransferView: View {
                         if mode == .move {
                             try fm.removeItem(at: sourceURL)
                         }
+                    } else if format == .zip {
+                        let zipName = "\(item.name).zip"
+                        let zipDestination = targetURL.appendingPathComponent(zipName)
+                        if fm.fileExists(atPath: zipDestination.path) {
+                            skipped += 1
+                            if mode == .move {
+                                try fm.removeItem(at: sourceURL)
+                            }
+                            continue
+                        }
+                        try ZipHelper.zipDirectory(source: sourceURL, destination: zipDestination)
+                        if mode == .move {
+                            try fm.removeItem(at: sourceURL)
+                        }
                     } else {
+                        let destinationURL = FileManagerExtensions.makeNextPath(
+                            dir: targetURL,
+                            name: item.name,
+                            extension: ""
+                        )
                         switch mode {
                         case .copy:
                             try FileManagerExtensions.copyDirectory(from: sourceURL, to: destinationURL)
@@ -561,6 +608,8 @@ struct ConfigurationData {
     var targets: [TransferTarget]
     var selectedTargetId: String?
     var mode: TransferMode = .copy
+    var format: TransferFormat = .folder
+    var showFormatSelector: Bool = false
 }
 
 struct TransferItem {
@@ -580,10 +629,15 @@ enum TransferMode {
     case copy, move
 }
 
+enum TransferFormat {
+    case folder, zip
+}
+
 struct ProgressData {
     var current: Int
     var total: Int
     var currentName: String
+    var isMove: Bool = false
 }
 
 struct TransferResult {
