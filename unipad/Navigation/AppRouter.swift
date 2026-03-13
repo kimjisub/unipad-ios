@@ -22,6 +22,11 @@ final class AppRouter {
         path.append(route)
     }
 
+    func navigateToMidiSelectIfNeeded() {
+        guard !isShowingMidiSelect else { return }
+        navigate(to: .midiSelect)
+    }
+
     func pop() {
         guard !path.isEmpty else { return }
         if !routeStack.isEmpty {

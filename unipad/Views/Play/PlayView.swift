@@ -193,10 +193,18 @@ struct PlayView: View {
     private func playContentSidePanel(layout: PlayLayout, centerY: CGFloat, padLeft: CGFloat, viewHeight: CGFloat) -> some View {
         Group {
             if layout.sidePanelWidth > 60 {
-                PlaySidePanel(vm: vm, checkboxColor: theme.checkboxColor)
-                    .frame(width: layout.sidePanelWidth, height: layout.gridHeight)
+                PlaySidePanel(
+                    vm: vm,
+                    checkboxColor: theme.checkboxColor,
+                    compactLayout: layout.prefersCompactSidePanel
+                )
+                    .frame(
+                        width: layout.sidePanelWidth,
+                        height: layout.gridHeight,
+                        alignment: layout.prefersCompactSidePanel ? .top : .center
+                    )
                     .position(
-                        x: layout.sidePanelWidth / 2,
+                        x: layout.sidePanelCenterX,
                         y: centerY
                     )
             }
@@ -379,6 +387,8 @@ private struct PlayLayout {
     let gridHeight: CGFloat
     let chainWidth: CGFloat
     let sidePanelWidth: CGFloat
+    let sidePanelCenterX: CGFloat
+    let prefersCompactSidePanel: Bool
 
     init(viewSize: CGSize, buttonX: Int, buttonY: Int) {
         let chainColumns = 2
@@ -394,6 +404,13 @@ private struct PlayLayout {
         chainWidth = cellSize
 
         let horizontalPadding = (totalWidth - gridWidth - chainWidth * 2) / 2
-        sidePanelWidth = min(164, max(horizontalPadding - 16, 0))
+        prefersCompactSidePanel = totalWidth >= 1200 || totalHeight >= 900
+        sidePanelWidth = min(prefersCompactSidePanel ? 196 : 164, max(horizontalPadding - 16, 0))
+
+        let padLeft = (totalWidth - gridWidth) / 2
+        let leftChainLeading = padLeft - chainWidth
+        let preferredSidePanelCenterX = leftChainLeading - 16 - sidePanelWidth / 2
+        let minimumSidePanelCenterX = sidePanelWidth / 2 + 16
+        sidePanelCenterX = max(minimumSidePanelCenterX, preferredSidePanelCenterX)
     }
 }

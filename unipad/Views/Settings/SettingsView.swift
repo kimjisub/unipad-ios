@@ -10,12 +10,15 @@ struct SettingsView: View {
     var initialCategory: SettingsViewModel.Category = .info
 
     var body: some View {
-        HStack(spacing: 0) {
-            categoryNav
-                .frame(width: 220)
+        GeometryReader { geometry in
+            let navWidth = min(max(geometry.size.width * 0.3, 180), 260)
+            HStack(spacing: 0) {
+                categoryNav
+                    .frame(width: navWidth)
 
-            contentArea
-                .frame(maxWidth: .infinity)
+                contentArea
+                    .frame(maxWidth: .infinity)
+            }
         }
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
@@ -133,9 +136,50 @@ struct SettingsView: View {
                 // Device
                 sectionLabel(String(localized: "settings_device"))
                 settingsCard {
-                    settingsRow(title: String(localized: "reconnect_launchpad")) {
-                        router.navigate(to: .midiSelect)
+                    VStack(spacing: 0) {
+                        settingsRow(title: String(localized: "reconnect_launchpad")) {
+                            router.navigate(to: .midiSelect)
+                        }
+                        cardDivider
+                        settingsRow(
+                            title: "MIDI",
+                            subtitle: MidiManager.shared.isConnected
+                                ? "Connected: \(MidiManager.shared.connectedDeviceName ?? "?")"
+                                : "Not connected"
+                        )
                     }
+                }
+
+                // MIDI Debug Log
+                sectionLabel("MIDI Log")
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if MidiManager.shared.debugLog.isEmpty {
+                            Text("No logs yet")
+                                .font(.system(size: 11))
+                                .foregroundStyle(AppColors.textSecondary)
+                        } else {
+                            ForEach(Array(MidiManager.shared.debugLog.enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+                        HStack(spacing: 12) {
+                            Button("Re-scan") {
+                                MidiManager.shared.scanForDevices()
+                            }
+                            Button("Copy Log") {
+                                #if canImport(UIKit)
+                                UIPasteboard.general.string = MidiManager.shared.debugLog.joined(separator: "\n")
+                                #endif
+                            }
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(AppColors.blue)
+                        .padding(.top, 4)
+                    }
+                    .padding(12)
                 }
 
                 // App Info

@@ -3,12 +3,15 @@ import SwiftUI
 struct PlaySidePanel: View {
     let vm: PlayViewModel
     let checkboxColor: Color
+    var compactLayout: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: compactLayout ? 12 : 0) {
             performanceSection
 
-            Spacer()
+            if !compactLayout {
+                Spacer()
+            }
 
             toolsSection
         }
