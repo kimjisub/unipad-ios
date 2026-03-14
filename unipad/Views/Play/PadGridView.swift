@@ -151,12 +151,14 @@ struct PadGridView: View {
 
                             if let rotation = variantRotation,
                                let variant = resolvedPhantomVariantImage {
-                                let uniformSize = floor(min(cellWidth, cellHeight))
-                                let cx = rect.midX
-                                let cy = rect.midY
+                                let uniformSize = round(min(cellWidth, cellHeight))
+                                let cx = round(rect.midX)
+                                let cy = round(rect.midY)
+                                let ux = round(cx - uniformSize / 2)
+                                let uy = round(cy - uniformSize / 2)
                                 let uniformRect = CGRect(
-                                    x: cx - uniformSize / 2,
-                                    y: cy - uniformSize / 2,
+                                    x: ux,
+                                    y: uy,
                                     width: uniformSize,
                                     height: uniformSize
                                 )

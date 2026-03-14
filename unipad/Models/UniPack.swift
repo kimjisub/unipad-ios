@@ -8,32 +8,32 @@ class UniPack: Equatable, Hashable {
     var errorDetail: String? {
         errors.isEmpty ? nil : errors.joined(separator: "\n")
     }
-    internal(set) var criticalError = false
+    var criticalError = false
 
     var id: String { fatalError("Subclasses must override id") }
 
-    internal(set) var title = ""
-    internal(set) var producerName = ""
-    internal(set) var buttonX = 0
-    internal(set) var buttonY = 0
-    internal(set) var chain = 0
-    internal(set) var squareButton = true
-    internal(set) var website: String?
+    var title = ""
+    var producerName = ""
+    var buttonX = 0
+    var buttonY = 0
+    var chain = 0
+    var squareButton = true
+    var website: String?
 
-    internal(set) var soundCount = 0
-    internal(set) var ledTableCount = 0
+    var soundCount = 0
+    var ledTableCount = 0
 
     // 3D tables: [chain][x][y], each cell is a circular queue (Deque)
-    internal(set) var soundTable: [[[Deque<Sound>?]]]?
-    internal(set) var ledAnimationTable: [[[Deque<LedAnimation>?]]]?
-    internal(set) var autoPlayTable: AutoPlay?
+    var soundTable: [[[Deque<Sound>?]]]?
+    var ledAnimationTable: [[[Deque<LedAnimation>?]]]?
+    var autoPlayTable: AutoPlay?
 
     var keyLedExist: Bool { false }
     var autoPlayExist: Bool { false }
 
     func lastModified() -> TimeInterval { fatalError("Subclasses must override") }
 
-    internal(set) var detailLoaded = false
+    var detailLoaded = false
     func loadInfo() -> UniPack { fatalError("Subclasses must override") }
     func loadDetail() -> UniPack { fatalError("Subclasses must override") }
 
