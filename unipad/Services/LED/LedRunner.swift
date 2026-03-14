@@ -21,11 +21,15 @@ final class LedRunner {
 
     var active: Bool { loopTask != nil }
 
+    enum LedEvent {
+        case padOn(x: Int, y: Int, color: Int, velocity: Int)
+        case padOff(x: Int, y: Int)
+        case chainOn(c: Int, color: Int, velocity: Int)
+        case chainOff(c: Int)
+    }
+
     protocol Listener: AnyObject {
-        func onPadLedTurnOn(x: Int, y: Int, color: Int, velocity: Int)
-        func onPadLedTurnOff(x: Int, y: Int)
-        func onChainLedTurnOn(c: Int, color: Int, velocity: Int)
-        func onChainLedTurnOff(c: Int)
+        func onLedBatch(_ events: [LedEvent])
     }
 
     private weak var listener: Listener?
@@ -81,8 +85,10 @@ final class LedRunner {
 
     private var loopLogCount = 0
     private func loop() {
-        lock.lock()
-        defer { lock.unlock() }
+        var pendingLedEvents: [LedEvent] = []
+        var pendingChainSets: [Int] = []
+
+        lock.lockWithDeadlockDetection()
 
         let currTime = Self.currentTimeMillis()
 
@@ -103,6 +109,9 @@ final class LedRunner {
                     if state.index >= ledEvents.count {
                         state.loopProgress += 1
                         state.index = 0
+                        if state.delay <= currTime {
+                            break
+                        }
                     }
 
                     if ledAnimation.loop != 0 && ledAnimation.loop <= state.loopProgress {
@@ -124,14 +133,14 @@ final class LedRunner {
                                 logger.debug("LED ON: x=\(x) y=\(y) color=\(color) vel=\(velocity) listener=\(self.listener != nil)")
                                 loopLogCount += 1
                             }
-                            listener?.onPadLedTurnOn(x: x, y: y, color: color, velocity: velocity)
+                            pendingLedEvents.append(.padOn(x: x, y: y, color: color, velocity: velocity))
                             btnLed[x][y] = Led(buttonX: state.buttonX, buttonY: state.buttonY)
                         } else {
                             guard isValidCircularIndex(y) else {
                                 state.index += 1
                                 continue
                             }
-                            listener?.onChainLedTurnOn(c: y, color: color, velocity: velocity)
+                            pendingLedEvents.append(.chainOn(c: y, color: color, velocity: velocity))
                             cirLed[y] = Led(buttonX: state.buttonX, buttonY: state.buttonY)
                         }
 
@@ -142,7 +151,7 @@ final class LedRunner {
                                 continue
                             }
                             if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
-                                listener?.onPadLedTurnOff(x: x, y: y)
+                                pendingLedEvents.append(.padOff(x: x, y: y))
                                 btnLed[x][y] = nil
                             }
                         } else {
@@ -151,7 +160,7 @@ final class LedRunner {
                                 continue
                             }
                             if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
-                                listener?.onChainLedTurnOff(c: y)
+                                pendingLedEvents.append(.chainOff(c: y))
                                 cirLed[y] = nil
                             }
                         }
@@ -160,7 +169,7 @@ final class LedRunner {
                         state.delay += Int64(delay)
 
                     case .chain(let chainValue):
-                        chain.setValue(chainValue)
+                        pendingChainSets.append(chainValue)
                     }
 
                     state.index += 1
@@ -170,14 +179,14 @@ final class LedRunner {
                 for x in 0..<unipack.buttonX {
                     for y in 0..<unipack.buttonY {
                         if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
-                            listener?.onPadLedTurnOff(x: x, y: y)
+                            pendingLedEvents.append(.padOff(x: x, y: y))
                             btnLed[x][y] = nil
                         }
                     }
                 }
                 for y in 0..<cirLed.count {
                     if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
-                        listener?.onChainLedTurnOff(c: y)
+                        pendingLedEvents.append(.chainOff(c: y))
                         cirLed[y] = nil
                     }
                 }
@@ -190,12 +199,22 @@ final class LedRunner {
         ledAnimationStates.append(contentsOf: ledAnimationStatesAdd)
         ledAnimationStatesAdd.removeAll()
         ledAnimationStates.removeAll { $0.remove }
+
+        lock.unlock()
+
+        for c in pendingChainSets {
+            chain.setValue(c)
+        }
+
+        if !pendingLedEvents.isEmpty {
+            listener?.onLedBatch(pendingLedEvents)
+        }
     }
 
     // MARK: - Event Control
 
     func isEventExist(x: Int, y: Int) -> Bool {
-        lock.lock()
+        lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
         return ledAnimationStates.contains { $0.isEqual(bx: x, by: y) }
     }
@@ -205,7 +224,7 @@ final class LedRunner {
             logger.debug("eventOn(\(x),\(y)): not active")
             return
         }
-        lock.lock()
+        lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
         if let existing = ledAnimationStates.first(where: { $0.isEqual(bx: x, by: y) }) {
@@ -228,7 +247,7 @@ final class LedRunner {
 
     func eventOff(x: Int, y: Int) {
         guard active else { return }
-        lock.lock()
+        lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
         if let state = ledAnimationStates.first(where: { $0.isEqual(bx: x, by: y) }),

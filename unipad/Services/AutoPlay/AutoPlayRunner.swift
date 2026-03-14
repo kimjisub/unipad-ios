@@ -5,6 +5,7 @@ final class AutoPlayRunner {
     static let guideLookaheadMs: Int64 = 800
     private static let guideLedUpdateIntervalMs: Int64 = 50
     private static let guideVelocities: [Int] = [1, 2, 3, 21]
+    private static let stepGroupThresholdMs: Int64 = 50
 
     private let unipack: UniPack
     private let chain: ChainObserver
@@ -13,6 +14,7 @@ final class AutoPlayRunner {
     @Volatile var playmode: Bool = true
     @Volatile var beforeStartPlaying: Bool = true
     @Volatile var practiceGuide: Bool = false
+    @Volatile var stepMode: Bool = false
 
     @Volatile private(set) var progress: Int = 0 {
         didSet { listener?.onProgressUpdate(progress: progress) }
@@ -53,6 +55,17 @@ final class AutoPlayRunner {
     // key = x*256+y, value = targetWallTimeMs
     private var activeGuides: [Int: Int64] = [:]
     private var lastGuideUpdateMs: Int64 = 0
+
+    // Step mode state
+    private let stepLock = NSLock()
+    private var _stepPendingPads: Set<Int> = []
+    private var _stepScanned = false
+    private var _stepStartProgress: Int = 0
+    private var _stepChainValue: Int = -1
+
+    // Lock-free queue for pad presses from MainActor → runner thread
+    private let pressedKeysLock = NSLock()
+    private var _pressedKeysQueue: [Int] = []
 
     init(
         unipack: UniPack,
@@ -233,6 +246,53 @@ final class AutoPlayRunner {
                     }
                 } else {
                     self.beforeStartPlaying = true
+
+                    if self.stepMode && self.practiceGuide {
+                        self.drainPressedKeys()
+
+                        let currentChain = self.chain.value
+
+                        // 체인이 바뀌면 현재 스텝을 되돌리고 재스캔
+                        if currentChain != self._stepChainValue && self._stepChainValue >= 0 {
+                            self.stepLock.lockWithDeadlockDetection()
+                            if self._stepScanned {
+                                self.progress = self._stepStartProgress
+                                self._stepPendingPads.removeAll()
+                                self._stepScanned = false
+                            }
+                            self.stepLock.unlock()
+                            self.waitingForChain = -1
+                        }
+                        self._stepChainValue = currentChain
+
+                        var needsScan = false
+
+                        if self.waitingForChain >= 0 {
+                            if currentChain == self.waitingForChain {
+                                self.waitingForChain = -1
+                                needsScan = true
+                            }
+                        } else {
+                            self.stepLock.lockWithDeadlockDetection()
+                            let scanned = self._stepScanned
+                            let isEmpty = self._stepPendingPads.isEmpty
+                            self.stepLock.unlock()
+
+                            if !scanned || isEmpty {
+                                needsScan = true
+                            }
+                        }
+
+                        if needsScan {
+                            self.listener?.onRemoveGuide()
+                            self._stepStartProgress = self.progress
+                            self.stepScanNext(autoPlay: autoPlay)
+                            self.stepLock.lockWithDeadlockDetection()
+                            self._stepScanned = !self._stepPendingPads.isEmpty || self.waitingForChain >= 0
+                            self.stepLock.unlock()
+                        }
+                    }
+
                     if delayAccum <= currTime - startTime {
                         delayAccum = currTime - startTime
                     }
@@ -249,6 +309,7 @@ final class AutoPlayRunner {
         task?.cancel()
         task = nil
         activeGuides.removeAll()
+        resetStepState()
     }
 
     private func handleBeforeStartPlaying() {
@@ -261,6 +322,92 @@ final class AutoPlayRunner {
     func progressOffset(_ offset: Int) {
         let target = progress + offset
         progress = max(0, min(target, Int.max))
+        if stepMode {
+            resetStepState()
+            listener?.onRemoveGuide()
+        }
+    }
+
+    func resetStepState() {
+        pressedKeysLock.lockWithDeadlockDetection()
+        _pressedKeysQueue.removeAll()
+        pressedKeysLock.unlock()
+
+        stepLock.lockWithDeadlockDetection()
+        _stepPendingPads.removeAll()
+        _stepScanned = false
+        _stepStartProgress = 0
+        _stepChainValue = -1
+        stepLock.unlock()
+    }
+
+    func stepPadPressed(x: Int, y: Int) {
+        let key = guideKey(x: x, y: y)
+        pressedKeysLock.lockWithDeadlockDetection()
+        _pressedKeysQueue.append(key)
+        pressedKeysLock.unlock()
+    }
+
+    private func drainPressedKeys() {
+        pressedKeysLock.lockWithDeadlockDetection()
+        let keys = _pressedKeysQueue
+        _pressedKeysQueue.removeAll()
+        pressedKeysLock.unlock()
+
+        stepLock.lockWithDeadlockDetection()
+        var removedKeys: [Int] = []
+        for key in keys {
+            if _stepPendingPads.remove(key) != nil {
+                removedKeys.append(key)
+            }
+        }
+        stepLock.unlock()
+
+        for key in removedKeys {
+            listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
+            listener?.onGuidePadOff(x: key / 256, y: key % 256)
+        }
+    }
+
+    private func stepScanNext(autoPlay: AutoPlay) {
+        var newPending: Set<Int> = []
+        var totalDelayMs: Int64 = 0
+
+        scanLoop: while progress < autoPlay.elements.count {
+            let element = autoPlay.elements[progress]
+            switch element {
+            case .on(let x, let y, let currChain, _):
+                if chain.value != currChain {
+                    if newPending.isEmpty {
+                        waitingForChain = currChain
+                        listener?.onGuideChainOn(c: currChain)
+                    }
+                    break scanLoop
+                }
+                let key = guideKey(x: x, y: y)
+                newPending.insert(key)
+                listener?.onGuidePadOn(x: x, y: y, targetWallTimeMs: 0)
+                listener?.onGuideLedUpdate(x: x, y: y, velocity: Self.guideVelocities.last!)
+                progress += 1
+
+            case .off:
+                progress += 1
+
+            case .delay(let delay):
+                totalDelayMs += Int64(delay)
+                if !newPending.isEmpty && totalDelayMs >= Self.stepGroupThresholdMs {
+                    break scanLoop
+                }
+                progress += 1
+
+            case .chain:
+                progress += 1
+            }
+        }
+
+        stepLock.lockWithDeadlockDetection()
+        _stepPendingPads = newPending
+        stepLock.unlock()
     }
 
     private static func currentTimeMillis() -> Int64 {
@@ -280,12 +427,12 @@ struct Volatile<Value: Sendable> {
 
     var wrappedValue: Value {
         get {
-            lock.lock()
+            lock.lockWithDeadlockDetection()
             defer { lock.unlock() }
             return _value
         }
         set {
-            lock.lock()
+            lock.lockWithDeadlockDetection()
             defer { lock.unlock() }
             _value = newValue
         }

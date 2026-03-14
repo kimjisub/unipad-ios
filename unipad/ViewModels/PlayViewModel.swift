@@ -498,6 +498,10 @@ final class PlayViewModel {
         if isDown {
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
+            if autoPlayRunner?.stepMode == true {
+                autoPlayRunner?.stepPadPressed(x: x, y: y)
+            }
+
             soundEngine?.soundOn(x: x, y: y)
 
             if scbRecord.checked {
@@ -584,13 +588,13 @@ final class PlayViewModel {
             MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: 0)
         }
 
-        // LED overlay color: resolve LED/guide channel independently from pressed state
-        if let ledItem = cm.get(x: x, y: y, channel: .led) {
-            let ledColor = Self.colorFromARGB(ledItem.color)
-            padLedColors[x][y] = ledColor
-        } else if let guideItem = cm.get(x: x, y: y, channel: .guide) {
+        // LED overlay color: guide takes priority over LED
+        if let guideItem = cm.get(x: x, y: y, channel: .guide) {
             let guideColor = Self.colorFromARGB(guideItem.color)
             padLedColors[x][y] = guideColor
+        } else if let ledItem = cm.get(x: x, y: y, channel: .led) {
+            let ledColor = Self.colorFromARGB(ledItem.color)
+            padLedColors[x][y] = ledColor
         } else {
             padLedColors[x][y] = .clear
         }
@@ -721,6 +725,9 @@ final class PlayViewModel {
     // MARK: - AutoPlay Controls
 
     func autoPlayPlay() {
+        autoPlayRunner?.stepMode = false
+        autoPlayRunner?.resetStepState()
+        removeAllGuide()
         padInit()
         ledInit()
         autoPlayRunner?.playmode = true
@@ -739,17 +746,22 @@ final class PlayViewModel {
         padInit()
         ledInit()
         isAutoPlayPlaying = false
+        if isPracticeMode {
+            autoPlayRunner?.stepMode = true
+        }
     }
 
     func autoPlayPrev() {
         padInit()
         ledInit()
+        removeAllGuide()
         autoPlayRunner?.progressOffset(-40)
     }
 
     func autoPlayNext() {
         padInit()
         ledInit()
+        removeAllGuide()
         autoPlayRunner?.progressOffset(40)
     }
 
@@ -759,12 +771,17 @@ final class PlayViewModel {
         runner.practiceGuide = newMode
         isPracticeMode = newMode
         if !newMode {
+            runner.stepMode = false
+            runner.resetStepState()
+            removeAllGuide()
             if let unipack, unipack.keyLedExist {
                 scbLed.setChecked(true)
                 scbFeedbackLight.setChecked(false)
             } else {
                 scbFeedbackLight.setChecked(true)
             }
+        } else if !isAutoPlayPlaying {
+            runner.stepMode = true
         }
     }
 
@@ -1001,37 +1018,27 @@ private final class LedListenerAdapter: LedRunner.Listener {
         self.viewModel = viewModel
     }
 
-    func onPadLedTurnOn(x: Int, y: Int, color: Int, velocity: Int) {
+    func onLedBatch(_ events: [LedRunner.LedEvent]) {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            cm.add(x: x, y: y, channel: .led, color: color, code: velocity)
-            vm.refreshPadFromChannel(x: x, y: y)
-        }
-    }
-
-    func onPadLedTurnOff(x: Int, y: Int) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            cm.remove(x: x, y: y, channel: .led)
-            vm.refreshPadFromChannel(x: x, y: y)
-        }
-    }
-
-    func onChainLedTurnOn(c: Int, color: Int, velocity: Int) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            guard c >= 0, c < vm.chainColors.count else { return }
-            cm.add(x: -1, y: c, channel: .led, color: color, code: velocity)
-            vm.refreshChainFromChannel(index: c)
-        }
-    }
-
-    func onChainLedTurnOff(c: Int) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            guard c >= 0, c < vm.chainColors.count else { return }
-            cm.remove(x: -1, y: c, channel: .led)
-            vm.refreshChainFromChannel(index: c)
+            for event in events {
+                switch event {
+                case .padOn(let x, let y, let color, let velocity):
+                    cm.add(x: x, y: y, channel: .led, color: color, code: velocity)
+                    vm.refreshPadFromChannel(x: x, y: y)
+                case .padOff(let x, let y):
+                    cm.remove(x: x, y: y, channel: .led)
+                    vm.refreshPadFromChannel(x: x, y: y)
+                case .chainOn(let c, let color, let velocity):
+                    guard c >= 0, c < vm.chainColors.count else { continue }
+                    cm.add(x: -1, y: c, channel: .led, color: color, code: velocity)
+                    vm.refreshChainFromChannel(index: c)
+                case .chainOff(let c):
+                    guard c >= 0, c < vm.chainColors.count else { continue }
+                    cm.remove(x: -1, y: c, channel: .led)
+                    vm.refreshChainFromChannel(index: c)
+                }
+            }
         }
     }
 }
