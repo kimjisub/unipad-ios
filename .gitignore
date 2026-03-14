@@ -65,3 +65,6 @@ playground.xcworkspace
 # Provisioning Profiles
 *.mobileprovision
 *.provisionprofile
+
+# Submission notes
+submission-note.md
