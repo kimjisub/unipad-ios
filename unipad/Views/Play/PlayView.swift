@@ -129,12 +129,13 @@ struct PlayView: View {
             GeometryReader { geometry in
                 let w = geometry.size.width
                 let h = geometry.size.height
-                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY)
+                let showAllSides = vm.scbProLightMode.checked
+                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showAllSides)
                 let centerX = w / 2
                 let centerY = h / 2
                 let padLeft = centerX - layout.gridWidth / 2
 
-                playContentGrid(unipack: unipack, layout: layout, centerX: centerX, centerY: centerY, padLeft: padLeft)
+                playContentGrid(unipack: unipack, layout: layout, centerX: centerX, centerY: centerY, padLeft: padLeft, showAllSides: showAllSides)
                 playContentSidePanel(layout: layout, centerY: centerY, padLeft: padLeft, viewHeight: h)
                 playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: w, viewHeight: h)
             }
@@ -142,11 +143,33 @@ struct PlayView: View {
     }
 
     @ViewBuilder
-    private func playContentGrid(unipack: UniPack, layout: PlayLayout, centerX: CGFloat, centerY: CGFloat, padLeft: CGFloat) -> some View {
+    private func playContentGrid(unipack: UniPack, layout: PlayLayout, centerX: CGFloat, centerY: CGFloat, padLeft: CGFloat, showAllSides: Bool) -> some View {
         let visibleChains = visibleChainIndices(chainCount: unipack.chain, proLightModeEnabled: vm.scbProLightMode.checked)
+        let padTop = centerY - layout.gridHeight / 2
 
-        ChainColumnView(
-            chainIndices: leftChainIndices,
+        let top = topIndices
+        let right = rightIndices
+        let bottom = bottomIndices
+        let left = leftIndices
+
+        if showAllSides {
+            ChainBarView(
+                axis: .horizontal,
+                chainIndices: top,
+                chainColors: vm.chainColors,
+                chainItems: vm.chainItems,
+                visibleChainIndices: visibleChains,
+                cellSize: layout.cellSize,
+                theme: theme,
+                onChainTap: { vm.selectChain($0) }
+            )
+            .frame(width: layout.gridWidth, height: layout.chainHeight)
+            .position(x: centerX, y: padTop - layout.chainHeight / 2)
+        }
+
+        ChainBarView(
+            axis: .vertical,
+            chainIndices: left,
             chainColors: vm.chainColors,
             chainItems: vm.chainItems,
             visibleChainIndices: visibleChains,
@@ -176,8 +199,9 @@ struct PlayView: View {
         .frame(width: layout.gridWidth, height: layout.gridHeight)
         .position(x: centerX, y: centerY)
 
-        ChainColumnView(
-            chainIndices: rightChainIndices,
+        ChainBarView(
+            axis: .vertical,
+            chainIndices: right,
             chainColors: vm.chainColors,
             chainItems: vm.chainItems,
             visibleChainIndices: visibleChains,
@@ -187,12 +211,27 @@ struct PlayView: View {
         )
         .frame(width: layout.chainWidth, height: layout.gridHeight)
         .position(x: padLeft + layout.gridWidth + layout.chainWidth / 2, y: centerY)
+
+        if showAllSides {
+            ChainBarView(
+                axis: .horizontal,
+                chainIndices: bottom,
+                chainColors: vm.chainColors,
+                chainItems: vm.chainItems,
+                visibleChainIndices: visibleChains,
+                cellSize: layout.cellSize,
+                theme: theme,
+                onChainTap: { vm.selectChain($0) }
+            )
+            .frame(width: layout.gridWidth, height: layout.chainHeight)
+            .position(x: centerX, y: padTop + layout.gridHeight + layout.chainHeight / 2)
+        }
     }
 
     @ViewBuilder
     private func playContentSidePanel(layout: PlayLayout, centerY: CGFloat, padLeft: CGFloat, viewHeight: CGFloat) -> some View {
         Group {
-            if layout.sidePanelWidth > 60 {
+            if layout.sidePanelWidth > 60 && vm.optionViewVisible {
                 PlaySidePanel(
                     vm: vm,
                     checkboxColor: theme.checkboxColor,
@@ -222,7 +261,7 @@ struct PlayView: View {
                 .position(x: viewWidth - maxLogoWidth / 2 - 8, y: 28)
         }
 
-        if vm.optionViewVisible && !vm.isOptionWindowVisible {
+        if !vm.isOptionWindowVisible {
             menuButton
                 .position(x: viewWidth - 30, y: viewHeight - 28)
         }
@@ -326,23 +365,20 @@ struct PlayView: View {
         vm.toggleOptionWindow(!vm.isOptionWindowVisible)
     }
 
-    // MARK: - Chain Indices
+    // MARK: - Chain Indices (상→우→하→좌, 0-31)
 
-    private var rightChainIndices: [Int] {
-        Array(PlayViewModel.chainIndexOffset..<(PlayViewModel.chainIndexOffset + PlayViewModel.topBarCount))
-    }
-
-    private var leftChainIndices: [Int] {
-        Array((24...31).reversed())
-    }
+    private var topIndices: [Int] { Array(0..<8) }
+    private var rightIndices: [Int] { Array(8..<16) }
+    private var bottomIndices: [Int] { Array((16...23).reversed()) }
+    private var leftIndices: [Int] { Array((24...31).reversed()) }
 
     private func visibleChainIndices(chainCount: Int, proLightModeEnabled: Bool) -> Set<Int> {
         if proLightModeEnabled {
-            return Set(leftChainIndices + rightChainIndices)
+            return Set(0..<PlayViewModel.circleArraySize)
         }
         guard chainCount > 1 else { return [] }
         let available = Set((0..<chainCount).map { $0 + PlayViewModel.chainIndexOffset })
-        return Set(leftChainIndices.filter { available.contains($0) } + rightChainIndices.filter { available.contains($0) })
+        return Set(rightIndices.filter { available.contains($0) } + leftIndices.filter { available.contains($0) })
     }
 
     // MARK: - Loading Helpers
@@ -386,22 +422,25 @@ private struct PlayLayout {
     let gridWidth: CGFloat
     let gridHeight: CGFloat
     let chainWidth: CGFloat
+    let chainHeight: CGFloat
     let sidePanelWidth: CGFloat
     let sidePanelCenterX: CGFloat
     let prefersCompactSidePanel: Bool
 
-    init(viewSize: CGSize, buttonX: Int, buttonY: Int) {
+    init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false) {
         let chainColumns = 2
+        let chainRows = showAllSides ? 2 : 0
         let totalWidth = max(viewSize.width, 0)
         let totalHeight = max(viewSize.height, 0)
 
         cellSize = min(
-            totalHeight / CGFloat(max(buttonX, 1)),
+            totalHeight / CGFloat(max(buttonX + chainRows, 1)),
             totalWidth / CGFloat(max(buttonY + chainColumns, 1))
         )
         gridWidth = cellSize * CGFloat(buttonY)
         gridHeight = cellSize * CGFloat(buttonX)
         chainWidth = cellSize
+        chainHeight = cellSize
 
         let horizontalPadding = (totalWidth - gridWidth - chainWidth * 2) / 2
         prefersCompactSidePanel = totalWidth >= 1200 || totalHeight >= 900

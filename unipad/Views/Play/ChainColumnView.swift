@@ -1,6 +1,7 @@
 import SwiftUI
 
-struct ChainColumnView: View {
+struct ChainBarView: View {
+    let axis: Axis
     let chainIndices: [Int]
     let chainColors: [Color]
     let chainItems: [ChannelManager.Item?]
@@ -10,26 +11,44 @@ struct ChainColumnView: View {
     let onChainTap: (Int) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            VStack(spacing: 0) {
-                ForEach(chainIndices, id: \.self) { index in
-                    if visibleChainIndices.contains(index) {
-                        ChainButtonView(
-                            color: index < chainColors.count ? chainColors[index] : .clear,
-                            chainItem: index < chainItems.count ? chainItems[index] : nil,
-                            theme: theme,
-                            onTap: { onChainTap(index - PlayViewModel.chainIndexOffset) }
-                        )
-                        .frame(width: cellSize, height: cellSize)
-                    } else {
-                        Color.clear
-                            .frame(width: cellSize, height: cellSize)
-                    }
-                }
+        let buttons = ForEach(chainIndices, id: \.self) { index in
+            if visibleChainIndices.contains(index) {
+                ChainButtonView(
+                    color: index < chainColors.count ? chainColors[index] : .clear,
+                    chainItem: index < chainItems.count ? chainItems[index] : nil,
+                    theme: theme,
+                    onTap: { onChainTap(index - PlayViewModel.chainIndexOffset) }
+                )
+                .frame(width: cellSize, height: cellSize)
+            } else {
+                Color.clear
+                    .frame(width: cellSize, height: cellSize)
             }
-            .frame(width: cellSize, height: cellSize * CGFloat(chainIndices.count), alignment: .center)
-            Spacer(minLength: 0)
+        }
+
+        switch axis {
+        case .vertical:
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                VStack(spacing: 0) { buttons }
+                    .frame(
+                        width: cellSize,
+                        height: cellSize * CGFloat(chainIndices.count),
+                        alignment: .center
+                    )
+                Spacer(minLength: 0)
+            }
+        case .horizontal:
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                HStack(spacing: 0) { buttons }
+                    .frame(
+                        width: cellSize * CGFloat(chainIndices.count),
+                        height: cellSize,
+                        alignment: .center
+                    )
+                Spacer(minLength: 0)
+            }
         }
     }
 }

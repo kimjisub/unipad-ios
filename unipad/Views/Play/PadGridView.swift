@@ -65,10 +65,10 @@ struct PadGridView: View {
 
                     for x in 0..<rows {
                         for y in 0..<columns {
-                            let x0 = offsetX + floor(CGFloat(y) * cellWidth)
-                            let y0 = offsetY + floor(CGFloat(x) * cellHeight)
-                            let x1 = offsetX + floor(CGFloat(y + 1) * cellWidth)
-                            let y1 = offsetY + floor(CGFloat(x + 1) * cellHeight)
+                            let x0 = offsetX + CGFloat(y) * cellWidth
+                            let y0 = offsetY + CGFloat(x) * cellHeight
+                            let x1 = offsetX + CGFloat(y + 1) * cellWidth
+                            let y1 = offsetY + CGFloat(x + 1) * cellHeight
                             let rect = CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
 
                             let ledColor = (x < padLedColors.count && y < padLedColors[x].count)
@@ -151,22 +151,13 @@ struct PadGridView: View {
 
                             if let rotation = variantRotation,
                                let variant = resolvedPhantomVariantImage {
-                                let uniformSize = round(min(cellWidth, cellHeight))
-                                let cx = round(rect.midX)
-                                let cy = round(rect.midY)
-                                let ux = round(cx - uniformSize / 2)
-                                let uy = round(cy - uniformSize / 2)
-                                let uniformRect = CGRect(
-                                    x: ux,
-                                    y: uy,
-                                    width: uniformSize,
-                                    height: uniformSize
-                                )
+                                let cx = rect.midX
+                                let cy = rect.midY
                                 var rotatedContext = context
                                 rotatedContext.translateBy(x: cx, y: cy)
                                 rotatedContext.rotate(by: rotation)
                                 rotatedContext.translateBy(x: -cx, y: -cy)
-                                rotatedContext.draw(variant, in: uniformRect)
+                                rotatedContext.draw(variant, in: rect)
                             } else if let phantom = resolvedPhantomImage {
                                 context.draw(phantom, in: rect)
                             }
