@@ -23,14 +23,13 @@ struct PlaySidePanel: View {
         VStack(alignment: .leading, spacing: 2) {
             PlayCheckBox(state: vm.scbFeedbackLight, label: String(localized: "feedbackLight"), checkboxColor: checkboxColor)
             PlayCheckBox(state: vm.scbLed, label: String(localized: "led"), checkboxColor: checkboxColor)
-            PlayCheckBox(state: vm.scbAutoPlay, label: String(localized: "autoPlay"), checkboxColor: checkboxColor)
 
-            if vm.autoPlayControlVisible {
-                autoPlayControls
+            if vm.scbAutoPlay.visible && !vm.scbAutoPlay.locked {
+                playModeSelector
             }
 
-            if vm.scbAutoPlay.visible && !vm.scbAutoPlay.locked && !vm.autoPlayControlVisible {
-                practiceModeButton
+            if vm.autoPlayControlVisible {
+                transportControls
             }
         }
         .padding(.horizontal, 6)
@@ -52,7 +51,34 @@ struct PlaySidePanel: View {
 
     // MARK: - AutoPlay Controls
 
-    private var autoPlayControls: some View {
+    private var playModeSelector: some View {
+        VStack(spacing: 2) {
+            playModeButton(label: String(localized: "autoPlay"), mode: .autoPlay, accentColor: checkboxColor)
+            playModeButton(label: String(localized: "guidePlay"), mode: .guidePlay, accentColor: Color(red: 0.31, green: 0.76, blue: 0.97))
+            playModeButton(label: String(localized: "stepPractice"), mode: .stepPractice, accentColor: Color(red: 0.4, green: 0.73, blue: 0.42))
+        }
+        .padding(.top, 4)
+    }
+
+    private func playModeButton(label: String, mode: PlayMode, accentColor: Color) -> some View {
+        let isActive = vm.playMode == mode
+        return Button { vm.switchPlayMode(mode) } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 12))
+                Text(label)
+                    .font(.system(size: 11, weight: isActive ? .bold : .regular))
+            }
+            .foregroundStyle(isActive ? accentColor : .white.opacity(0.5))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(accentColor.opacity(isActive ? 0.2 : 0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var transportControls: some View {
         VStack(spacing: 2) {
             ProgressView(
                 value: vm.autoPlayProgressMax > 0
@@ -72,8 +98,8 @@ struct PlaySidePanel: View {
                 .frame(width: 32, height: 32)
 
                 Button {
-                    if vm.isAutoPlayPlaying { vm.autoPlayStop() }
-                    else { vm.autoPlayPlay() }
+                    if vm.isAutoPlayPlaying { vm.autoPlayPause() }
+                    else { vm.autoPlayResume() }
                 } label: {
                     Image(systemName: vm.isAutoPlayPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 22))
@@ -88,40 +114,8 @@ struct PlaySidePanel: View {
                 }
                 .frame(width: 32, height: 32)
             }
-
-            Button { vm.togglePracticeMode() } label: {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(vm.isPracticeMode ? AppColors.green : .white.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                    Text(vm.isPracticeMode ? String(localized: "practiceMode") : String(localized: "autoPlay"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(vm.isPracticeMode ? AppColors.green : .white.opacity(0.6))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(.white.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
         }
         .padding(.top, 4)
-    }
-
-    private var practiceModeButton: some View {
-        Button { vm.practiceStart() } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 14))
-                Text(String(localized: "practiceMode"))
-                    .font(.system(size: 13))
-            }
-            .foregroundStyle(checkboxColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .scaleEffect(0.75, anchor: .topLeading)
     }
 }
 

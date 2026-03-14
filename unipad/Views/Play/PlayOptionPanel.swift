@@ -89,26 +89,32 @@ struct PlayOptionPanel: View {
             sectionTitle("PERFORMANCE")
             OptionSwitch(state: vm.scbFeedbackLight, label: String(localized: "feedbackLight"), tintColor: Color(hex: 0xE8A44A))
             OptionSwitch(state: vm.scbLed, label: String(localized: "led"), tintColor: Color(hex: 0xE8A44A))
-            OptionSwitch(state: vm.scbAutoPlay, label: String(localized: "autoPlay"), tintColor: Color(hex: 0xE8A44A))
 
             if vm.scbAutoPlay.visible && !vm.scbAutoPlay.locked {
-                Button {
-                    vm.practiceStart()
-                    vm.toggleOptionWindow(false)
-                } label: {
-                    HStack {
-                        Text(String(localized: "practiceMode"))
-                            .font(.system(size: 14))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(Color(hex: 0xE8A44A))
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                }
+                optionModeButton(label: String(localized: "autoPlay"), mode: .autoPlay, accentColor: Color(hex: 0xE8A44A))
+                optionModeButton(label: String(localized: "guidePlay"), mode: .guidePlay, accentColor: Color(red: 0.31, green: 0.76, blue: 0.97))
+                optionModeButton(label: String(localized: "stepPractice"), mode: .stepPractice, accentColor: Color(red: 0.4, green: 0.73, blue: 0.42))
             }
+        }
+    }
+
+    private func optionModeButton(label: String, mode: PlayMode, accentColor: Color) -> some View {
+        let isActive = vm.playMode == mode
+        return Button {
+            vm.switchPlayMode(mode)
+            vm.toggleOptionWindow(false)
+        } label: {
+            HStack {
+                Text(label)
+                    .font(.system(size: 14, weight: isActive ? .bold : .regular))
+                    .foregroundStyle(isActive ? accentColor : .white)
+                Spacer()
+                Image(systemName: isActive ? "pause.fill" : "play.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(isActive ? accentColor : .white.opacity(0.5))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
         }
     }
 

@@ -7,6 +7,13 @@ import MediaPlayer
 
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "PlayViewModel")
 
+enum PlayMode {
+    case none
+    case autoPlay
+    case guidePlay
+    case stepPractice
+}
+
 @Observable
 final class PlayViewModel {
     // MARK: - Constants
@@ -48,6 +55,10 @@ final class PlayViewModel {
             guard !locked else { return }
             forceSetChecked(!checked)
         }
+
+        func setCheckedSilently(_ value: Bool) {
+            checked = value
+        }
     }
 
     // MARK: - State
@@ -73,6 +84,14 @@ final class PlayViewModel {
     var autoPlayProgressMax = 0
     var isAutoPlayPlaying = false
     var isPracticeMode = false
+
+    var playMode: PlayMode {
+        if !scbAutoPlay.checked { return .none }
+        if !isPracticeMode { return .autoPlay }
+        if isAutoPlayPlaying { return .guidePlay }
+        return .stepPractice
+    }
+
     var optionViewVisible = true
     var isOptionWindowVisible = false
     var startReady = false
@@ -273,18 +292,8 @@ final class PlayViewModel {
 
         scbAutoPlay.onCheckedChange = { [weak self] checked in
             guard let self else { return }
-            if checked {
-                self.autoPlayRunner?.launch()
-                logger.info("AutoPlayRunner launched via checkbox")
-            } else {
-                self.autoPlayRunner?.practiceGuide = false
-                self.isPracticeMode = false
-                self.autoPlayRunner?.stop()
-                self.padInit()
-                self.ledInit()
-                self.removeAllGuide()
-                self.autoPlayControlVisible = false
-                self.isAutoPlayPlaying = false
+            if !checked && self.playMode != .none {
+                self.switchPlayMode(.none)
             }
             self.refreshWatermark()
         }
@@ -724,13 +733,99 @@ final class PlayViewModel {
 
     // MARK: - AutoPlay Controls
 
-    func autoPlayPlay() {
-        autoPlayRunner?.stepMode = false
-        autoPlayRunner?.resetStepState()
+    func switchPlayMode(_ mode: PlayMode) {
+        guard let runner = autoPlayRunner else { return }
+        let currentMode = playMode
+
+        if mode == currentMode {
+            switchPlayMode(.none)
+            return
+        }
+
+        if mode == .none {
+            runner.practiceGuide = false
+            runner.stepMode = false
+            runner.resetStepState()
+            runner.playmode = false
+            removeAllGuide()
+            if runner.active { runner.stop() }
+            padInit()
+            ledInit()
+            isPracticeMode = false
+            isAutoPlayPlaying = false
+            scbAutoPlay.setCheckedSilently(false)
+            autoPlayControlVisible = false
+            if let unipack, unipack.keyLedExist {
+                scbLed.setChecked(true)
+                scbFeedbackLight.setChecked(false)
+            } else {
+                scbFeedbackLight.setChecked(true)
+            }
+            refreshWatermark()
+            return
+        }
+
+        if currentMode == .none {
+            applyModeFlags(runner, mode)
+            scbAutoPlay.setCheckedSilently(true)
+            if let unipack {
+                autoPlayControlVisible = unipack.squareButton
+            }
+            runner.launch()
+        } else {
+            applyModeFlags(runner, mode)
+        }
+        refreshWatermark()
+    }
+
+    private func applyModeFlags(_ runner: AutoPlayRunner, _ mode: PlayMode) {
+        switch mode {
+        case .autoPlay:
+            runner.practiceGuide = false
+            runner.stepMode = false
+            runner.resetStepState()
+            removeAllGuide()
+            runner.playmode = true
+            isPracticeMode = false
+            isAutoPlayPlaying = true
+            runner.beforeStartPlaying = true
+        case .guidePlay:
+            runner.practiceGuide = true
+            runner.stepMode = false
+            runner.resetStepState()
+            removeAllGuide()
+            runner.playmode = true
+            isPracticeMode = true
+            isAutoPlayPlaying = true
+            runner.beforeStartPlaying = true
+        case .stepPractice:
+            runner.practiceGuide = true
+            runner.playmode = false
+            isPracticeMode = true
+            isAutoPlayPlaying = false
+            runner.stepMode = true
+        case .none:
+            break
+        }
+    }
+
+    func cyclePlayMode() {
+        switch playMode {
+        case .none: switchPlayMode(.autoPlay)
+        case .autoPlay: switchPlayMode(.guidePlay)
+        case .guidePlay: switchPlayMode(.stepPractice)
+        case .stepPractice: switchPlayMode(.none)
+        }
+    }
+
+    func autoPlayResume() {
+        guard let runner = autoPlayRunner else { return }
+        runner.stepMode = false
+        runner.resetStepState()
         removeAllGuide()
         padInit()
         ledInit()
-        autoPlayRunner?.playmode = true
+        runner.playmode = true
         isAutoPlayPlaying = true
         if let unipack, unipack.keyLedExist {
             scbLed.setChecked(true)
@@ -738,16 +833,17 @@ final class PlayViewModel {
         } else {
             scbFeedbackLight.setChecked(true)
         }
-        autoPlayRunner?.beforeStartPlaying = true
+        runner.beforeStartPlaying = true
     }
 
-    func autoPlayStop() {
-        autoPlayRunner?.playmode = false
+    func autoPlayPause() {
+        guard let runner = autoPlayRunner else { return }
+        runner.playmode = false
         padInit()
         ledInit()
         isAutoPlayPlaying = false
-        if isPracticeMode {
-            autoPlayRunner?.stepMode = true
+        if playMode == .stepPractice {
+            runner.stepMode = true
         }
     }
 
@@ -763,39 +859,6 @@ final class PlayViewModel {
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(40)
-    }
-
-    func togglePracticeMode() {
-        guard let runner = autoPlayRunner else { return }
-        let newMode = !runner.practiceGuide
-        runner.practiceGuide = newMode
-        isPracticeMode = newMode
-        if !newMode {
-            runner.stepMode = false
-            runner.resetStepState()
-            removeAllGuide()
-            if let unipack, unipack.keyLedExist {
-                scbLed.setChecked(true)
-                scbFeedbackLight.setChecked(false)
-            } else {
-                scbFeedbackLight.setChecked(true)
-            }
-        } else if !isAutoPlayPlaying {
-            runner.stepMode = true
-        }
-    }
-
-    func practiceStart() {
-        guard let runner = autoPlayRunner else { return }
-        if scbAutoPlay.checked {
-            runner.practiceGuide = false
-            isPracticeMode = false
-            scbAutoPlay.setChecked(false)
-        } else {
-            runner.practiceGuide = true
-            isPracticeMode = true
-            scbAutoPlay.setChecked(true)
-        }
     }
 
     // MARK: - MIDI Controller
@@ -837,7 +900,7 @@ final class PlayViewModel {
             switch f {
             case 0: scbFeedbackLight.toggleChecked()
             case 1: scbLed.toggleChecked()
-            case 2: scbAutoPlay.toggleChecked()
+            case 2: cyclePlayMode()
             case 3: toggleOptionWindow()
             case 4, 5, 6, 7: scbWatermark.toggleChecked()
             default: break
@@ -847,7 +910,7 @@ final class PlayViewModel {
                 switch f {
                 case 0: scbFeedbackLight.toggleChecked()
                 case 1: scbLed.toggleChecked()
-                case 2: scbAutoPlay.toggleChecked()
+                case 2: cyclePlayMode()
                 case 3: toggleOptionWindow()
                 case 4: scbHideUI.toggleChecked()
                 case 5: scbWatermark.toggleChecked()
@@ -1059,7 +1122,6 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
             if let unipack = vm.unipack, unipack.squareButton {
                 vm.autoPlayControlVisible = true
             }
-            vm.autoPlayPlay()
         }
     }
 
@@ -1147,17 +1209,19 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     func onEnd() {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel else { return }
+            vm.isAutoPlayPlaying = false
             vm.autoPlayRunner?.practiceGuide = false
+            vm.autoPlayRunner?.stepMode = false
             vm.isPracticeMode = false
-            vm.scbAutoPlay.setChecked(false)
+            vm.scbAutoPlay.setCheckedSilently(false)
+            vm.autoPlayControlVisible = false
             if let unipack = vm.unipack, unipack.keyLedExist {
                 vm.scbLed.setChecked(true)
                 vm.scbFeedbackLight.setChecked(false)
             } else {
                 vm.scbFeedbackLight.setChecked(true)
             }
-            vm.autoPlayControlVisible = false
-            vm.isAutoPlayPlaying = false
+            vm.refreshWatermark()
         }
     }
 }

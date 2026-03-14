@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "Autoplay";
 "practiceMode" = "Practice";
+"guidePlay" = "Guide";
+"stepPractice" = "Step";
 "feedbackLight" = "Feedback light";
 "traceLog" = "Trace Log";
 "traceLogClear" = "Trace Log has been reset.";

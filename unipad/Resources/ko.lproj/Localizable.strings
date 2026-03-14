@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "자동재생";
 "practiceMode" = "연습모드";
+"guidePlay" = "가이드";
+"stepPractice" = "스텝";
 "feedbackLight" = "피드백 표시";
 "traceLog" = "순서 기록";
 "traceLogClear" = "순서 기록이 초기화되었습니다.";
