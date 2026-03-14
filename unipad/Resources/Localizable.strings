@@ -113,6 +113,7 @@
 "midiDevicesNotDetected" = "MIDI Devices Not Detected";
 "midi_open_panel" = "Open";
 "midi_connected_banner %@" = "MIDI connected: %@";
+"midi_disconnected_banner %@" = "MIDI disconnected: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Can't quit while downloading the pack";

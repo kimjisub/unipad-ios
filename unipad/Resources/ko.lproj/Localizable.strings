@@ -113,6 +113,7 @@
 "midiDevicesNotDetected" = "MIDI 장치가 감지되지 않았습니다.";
 "midi_open_panel" = "열기";
 "midi_connected_banner %@" = "MIDI 연결됨: %@";
+"midi_disconnected_banner %@" = "MIDI 연결 해제: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "다운로드중에 종료할 수 없습니다";

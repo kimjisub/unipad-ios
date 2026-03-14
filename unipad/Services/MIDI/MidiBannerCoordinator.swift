@@ -27,9 +27,12 @@ final class MidiBannerCoordinator {
             return
         }
 
+        // 이전에 연결된 장비가 있었으면 연결 해제 배너 표시
+        if let deviceName = lastAnnouncedDeviceName, scenePhase == .active {
+            presentDisconnected(deviceName: deviceName)
+        }
         announceOnNextActive = false
         lastAnnouncedDeviceName = nil
-        dismiss()
     }
 
     func handleScenePhaseChanged(_ scenePhase: ScenePhase, router: AppRouter) {
@@ -59,6 +62,23 @@ final class MidiBannerCoordinator {
         dismissTask = nil
         withAnimation(.easeInOut(duration: 0.2)) {
             isVisible = false
+        }
+    }
+
+    private func presentDisconnected(deviceName: String) {
+        message = String(
+            format: String(localized: "midi_disconnected_banner %@"),
+            deviceName
+        )
+
+        dismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isVisible = true
+        }
+
+        dismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            self?.dismiss()
         }
     }
 

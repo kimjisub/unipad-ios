@@ -41,6 +41,9 @@ fastlane/test_output
 # Code Injection
 iOSInjectionProject/
 
+# Screenshots
+screenshots/
+
 # macOS
 .DS_Store
 .AppleDouble
