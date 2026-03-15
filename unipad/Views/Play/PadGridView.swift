@@ -14,7 +14,7 @@ struct PadGridView: View {
     var phantomVariantImage: PlatformImage? = nil
     var renderVersion: Int = 0
     var padGuideTargets: [[Int64]] = []
-    var traceLogTexts: ((Int, Int) -> String?)? = nil
+    var traceLogSequence: [(x: Int, y: Int)]? = nil
     var traceLogColor: Color = .white
     var onPadTouch: (Int, Int, Bool) -> Void
 
@@ -167,21 +167,65 @@ struct PadGridView: View {
                 .allowsHitTesting(false)
                 } // TimelineView
 
-                if let traceLogTexts {
-                    ForEach(0..<rows, id: \.self) { x in
-                        ForEach(0..<columns, id: \.self) { y in
-                            if let text = traceLogTexts(x, y) {
-                                Text(text)
-                                    .font(.system(size: max(min(cellWidth, cellHeight) * 0.18, 6)))
-                                    .foregroundStyle(traceLogColor)
-                                    .lineLimit(3)
-                                    .minimumScaleFactor(0.5)
-                                    .frame(width: cellWidth - 4, height: cellHeight - 4)
-                                    .position(
-                                        x: offsetX + CGFloat(y) * cellWidth + cellWidth / 2,
-                                        y: offsetY + CGFloat(x) * cellHeight + cellHeight / 2
-                                    )
+                if let sequence = traceLogSequence, !sequence.isEmpty {
+                    Canvas { context, size in
+                        let cellMin = min(cellWidth, cellHeight)
+                        let maxOffset = cellMin * 0.3
+                        let strokeWidth = max(1.5, cellMin * 0.04)
+                        let dotRadius = max(2.5, cellMin * 0.06)
+
+                        var visitTotal: [Int: Int] = [:]
+                        for point in sequence {
+                            let key = point.x * columns + point.y
+                            visitTotal[key, default: 0] += 1
+                        }
+
+                        var visitIndex: [Int: Int] = [:]
+                        var points: [CGPoint] = []
+
+                        for point in sequence {
+                            let key = point.x * columns + point.y
+                            let total = visitTotal[key, default: 1]
+                            let idx = visitIndex[key, default: 0]
+                            visitIndex[key] = idx + 1
+
+                            var ox: CGFloat = 0
+                            var oy: CGFloat = 0
+                            if total > 1 {
+                                let t = CGFloat(idx) / CGFloat(total - 1) - 0.5
+                                ox = t * maxOffset
+                                oy = t * maxOffset
                             }
+
+                            let cx = offsetX + CGFloat(point.y) * cellWidth + cellWidth / 2 + ox
+                            let cy = offsetY + CGFloat(point.x) * cellHeight + cellHeight / 2 + oy
+                            points.append(CGPoint(x: cx, y: cy))
+                        }
+
+                        if points.count >= 2 {
+                            var linePath = Path()
+                            linePath.move(to: points[0])
+                            for i in 1..<points.count {
+                                linePath.addLine(to: points[i])
+                            }
+                            context.stroke(
+                                linePath,
+                                with: .color(traceLogColor.opacity(0.85)),
+                                style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round)
+                            )
+                        }
+
+                        for point in points {
+                            let dotRect = CGRect(
+                                x: point.x - dotRadius,
+                                y: point.y - dotRadius,
+                                width: dotRadius * 2,
+                                height: dotRadius * 2
+                            )
+                            context.fill(
+                                Path(ellipseIn: dotRect),
+                                with: .color(traceLogColor.opacity(0.95))
+                            )
                         }
                     }
                     .allowsHitTesting(false)

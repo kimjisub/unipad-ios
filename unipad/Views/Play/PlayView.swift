@@ -192,8 +192,8 @@ struct PlayView: View {
             phantomImage: theme.phantom,
             phantomVariantImage: theme.phantomVariant,
             padGuideTargets: vm.padGuideTargets,
-            traceLogTexts: vm.scbTraceLog.checked ? { x, y in vm.traceLogText(x: x, y: y) } : nil,
-            traceLogColor: theme.traceLogColor,
+            traceLogSequence: vm.scbTraceLog.checked && vm.chain.value >= 0 && vm.chain.value < vm.traceLogSequence.count ? vm.traceLogSequence[vm.chain.value] : nil,
+            traceLogColor: .white,
             onPadTouch: { (x: Int, y: Int, isDown: Bool) in vm.padTouch(x: x, y: y, isDown: isDown) }
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)

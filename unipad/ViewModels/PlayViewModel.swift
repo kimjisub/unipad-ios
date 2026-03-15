@@ -349,43 +349,17 @@ final class PlayViewModel {
 
     // MARK: - Trace Log
 
-    // 3D: [chain][x][y] -> [Int] entries
-    var traceLogTable: [[[[Int]]]] = []
-    private var traceLogNextNum: [Int] = []
+    var traceLogSequence: [[(x: Int, y: Int)]] = []
 
     func traceLogInit() {
         guard let unipack else { return }
-        traceLogTable = Array(
-            repeating: Array(
-                repeating: Array(
-                    repeating: [Int](),
-                    count: unipack.buttonY
-                ),
-                count: unipack.buttonX
-            ),
-            count: unipack.chain
-        )
-        traceLogNextNum = Array(repeating: 1, count: unipack.chain)
+        traceLogSequence = Array(repeating: [], count: unipack.chain)
     }
 
     private func traceLogLog(x: Int, y: Int) {
         let c = chain.value
-        guard c >= 0, c < traceLogTable.count,
-              x >= 0, x < traceLogTable[c].count,
-              y >= 0, y < traceLogTable[c][x].count,
-              c < traceLogNextNum.count else { return }
-        traceLogTable[c][x][y].append(traceLogNextNum[c])
-        traceLogNextNum[c] += 1
-    }
-
-    func traceLogText(x: Int, y: Int) -> String? {
-        let c = chain.value
-        guard scbTraceLog.checked,
-              c >= 0, c < traceLogTable.count,
-              x >= 0, x < traceLogTable[c].count,
-              y >= 0, y < traceLogTable[c][x].count,
-              !traceLogTable[c][x][y].isEmpty else { return nil }
-        return traceLogTable[c][x][y].map { String($0) }.joined(separator: " ")
+        guard c >= 0, c < traceLogSequence.count else { return }
+        traceLogSequence[c].append((x: x, y: y))
     }
 
     /// Set initial checkbox states after loading (mirrors Android initSetting)
