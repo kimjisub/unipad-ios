@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "自動再生";
 "practiceMode" = "練習";
+"guidePlay" = "ガイド";
+"stepPractice" = "ステップ";
 "feedbackLight" = "フィードバックライト";
 "traceLog" = "トレースログ";
 "traceLogClear" = "トレースログがリセットされました。";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Launchpadに接続中…";
 "midiDevicesNotDetected" = "MIDIデバイスが検出されません";
+"midi_open_panel" = "開く";
+"midi_connected_banner %@" = "MIDI接続: %@";
+"midi_disconnected_banner %@" = "MIDI切断: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "パックのダウンロード中は終了できません";

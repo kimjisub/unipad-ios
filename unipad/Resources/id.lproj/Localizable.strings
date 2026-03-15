@@ -21,7 +21,7 @@
 "delete" = "Hapus";
 "add_bookmark" = "Bookmark";
 "remove_bookmark" = "Hapus Bookmark";
-"edit" = "Edit";
+"edit" = "Sunting";
 "update" = "Perbarui";
 "ignore" = "Abaikan";
 "apply" = "Terapkan";
@@ -81,12 +81,14 @@
 "led" = "LED";
 "autoPlay" = "Putar Otomatis";
 "practiceMode" = "Latihan";
+"guidePlay" = "Panduan";
+"stepPractice" = "Langkah";
 "feedbackLight" = "Lampu umpan balik";
 "traceLog" = "Log Jejak";
 "traceLogClear" = "Log Jejak telah direset.";
 "record" = "Rekam";
 "hideUI" = "Sembunyikan UI";
-"watermark" = "Watermark";
+"watermark" = "Tanda air";
 "proLightMode" = "Mode Pro Light";
 
 /* Version */
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Menghubungkan launchpad…";
 "midiDevicesNotDetected" = "Perangkat MIDI Tidak Terdeteksi";
+"midi_open_panel" = "Buka";
+"midi_connected_banner %@" = "MIDI terhubung: %@";
+"midi_disconnected_banner %@" = "MIDI terputus: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Tidak bisa keluar saat mengunduh pack";
@@ -148,7 +153,7 @@
 "MPT_playCount" = "Jumlah Main";
 "MPT_theme" = "Tema";
 "MPP_padSize" = "Ukuran Pad";
-"MPP_chain" = "Chain";
+"MPP_chain" = "Rantai";
 "MPP_soundFiles" = "File Suara";
 "MPP_ledEvents" = "Event Led";
 "MPP_fileSize" = "Ukuran File";
@@ -158,7 +163,7 @@
 "MPP_notPlayedYet" = "-";
 
 /* Transfer */
-"transfer_title" = "Transfer UniPacks";
+"transfer_title" = "Transfer UniPack";
 "transfer_source" = "Sumber";
 "transfer_target" = "Tujuan";
 "transfer_mode_copy" = "Salin";
@@ -216,7 +221,7 @@
 /* Accessibility */
 "cd_youtube" = "YouTube";
 "cd_website" = "Situs Web";
-"cd_bookmark" = "Bookmark";
+"cd_bookmark" = "Penanda";
 "cd_delete" = "Hapus";
 "cd_logo" = "Logo UniPad";
 "cd_autoplay_prev" = "Sebelumnya";

@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "အလိုအလျောက်ဖွင့်";
 "practiceMode" = "လေ့ကျင့်ခန်း";
+"guidePlay" = "လမ်းညွှန်";
+"stepPractice" = "အဆင့်";
 "feedbackLight" = "တုံ့ပြန်မှုမီး";
 "traceLog" = "ခြေရာခံမှတ်တမ်း";
 "traceLogClear" = "ခြေရာခံမှတ်တမ်း ပြန်လည်သတ်မှတ်ပြီး။";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Launchpad ချိတ်ဆက်နေသည်…";
 "midiDevicesNotDetected" = "MIDI စက်ပစ္စည်းများ မတွေ့ပါ";
+"midi_open_panel" = "ဖွင့်";
+"midi_connected_banner %@" = "MIDI ချိတ်ဆက်ပြီး: %@";
+"midi_disconnected_banner %@" = "MIDI ချိတ်ဆက်မှုပြတ်: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Pack ဒေါင်းလုဒ်ဆွဲနေစဉ် ထွက်၍မရပါ";
@@ -148,7 +153,7 @@
 "MPT_playCount" = "ဖွင့်သည့်အကြိမ်";
 "MPT_theme" = "အပြင်အဆင်";
 "MPP_padSize" = "Pad အရွယ်အစား";
-"MPP_chain" = "Chain";
+"MPP_chain" = "ချိန်း";
 "MPP_soundFiles" = "အသံဖိုင်များ";
 "MPP_ledEvents" = "Led ဖြစ်ရပ်များ";
 "MPP_fileSize" = "ဖိုင်အရွယ်အစား";

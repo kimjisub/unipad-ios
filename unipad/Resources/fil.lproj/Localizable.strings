@@ -72,7 +72,7 @@
 
 /* UniPack Info */
 "title" = "Pamagat";
-"producerName" = "Producer";
+"producerName" = "Prodyuser";
 "padSize" = "Laki ng Pad";
 "numChain" = "Mga Chain";
 "fileSize" = "Laki ng File";
@@ -81,7 +81,9 @@
 "led" = "LED";
 "autoPlay" = "Autoplay";
 "practiceMode" = "Pagsasanay";
-"feedbackLight" = "Feedback light";
+"guidePlay" = "Gabay";
+"stepPractice" = "Hakbang";
+"feedbackLight" = "Feedback na ilaw";
 "traceLog" = "Trace Log";
 "traceLogClear" = "Na-reset na ang Trace Log.";
 "record" = "I-record";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Kumokonekta sa launchpad…";
 "midiDevicesNotDetected" = "Hindi Nakita ang mga MIDI Device";
+"midi_open_panel" = "Buksan";
+"midi_connected_banner %@" = "MIDI nakakonekta: %@";
+"midi_disconnected_banner %@" = "MIDI nadiskonekta: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Hindi makakalabas habang nagda-download ng pack";
@@ -137,7 +142,7 @@
 
 /* Sort */
 "sort_title" = "Pamagat";
-"sort_producer" = "Producer";
+"sort_producer" = "Prodyuser";
 "sort_play_count" = "Bilang ng Paglalaro";
 "sort_last_opened_date" = "Huling Binuksan";
 "sort_download_date" = "Petsa ng Download";
@@ -195,7 +200,7 @@
 /* Settings Categories */
 "settings_device" = "Device";
 "settings_info" = "Impormasyon";
-"settings_storage" = "Storage";
+"settings_storage" = "Imbakan";
 "settings_theme" = "Tema";
 "settings_developer" = "Developer";
 

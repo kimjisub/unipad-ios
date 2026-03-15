@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "เล่นอัตโนมัติ";
 "practiceMode" = "ฝึกซ้อม";
+"guidePlay" = "แนะนำ";
+"stepPractice" = "ทีละขั้น";
 "feedbackLight" = "ไฟตอบสนอง";
 "traceLog" = "บันทึกการติดตาม";
 "traceLogClear" = "บันทึกการติดตามถูกรีเซ็ตแล้ว";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "กำลังเชื่อมต่อ launchpad…";
 "midiDevicesNotDetected" = "ไม่พบอุปกรณ์ MIDI";
+"midi_open_panel" = "เปิด";
+"midi_connected_banner %@" = "เชื่อมต่อ MIDI แล้ว: %@";
+"midi_disconnected_banner %@" = "ตัดการเชื่อมต่อ MIDI: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "ไม่สามารถออกขณะกำลังดาวน์โหลด pack";
@@ -148,7 +153,7 @@
 "MPT_playCount" = "จำนวนครั้งที่เล่น";
 "MPT_theme" = "ธีม";
 "MPP_padSize" = "ขนาด Pad";
-"MPP_chain" = "Chain";
+"MPP_chain" = "เชน";
 "MPP_soundFiles" = "ไฟล์เสียง";
 "MPP_ledEvents" = "เหตุการณ์ Led";
 "MPP_fileSize" = "ขนาดไฟล์";

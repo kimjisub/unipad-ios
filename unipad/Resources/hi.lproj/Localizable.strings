@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "ऑटोप्ले";
 "practiceMode" = "अभ्यास";
+"guidePlay" = "गाइड";
+"stepPractice" = "चरण";
 "feedbackLight" = "फीडबैक लाइट";
 "traceLog" = "ट्रेस लॉग";
 "traceLogClear" = "ट्रेस लॉग रीसेट हो गया है।";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Launchpad कनेक्ट हो रहा है…";
 "midiDevicesNotDetected" = "MIDI डिवाइस नहीं मिले";
+"midi_open_panel" = "खोलें";
+"midi_connected_banner %@" = "MIDI कनेक्ट हुआ: %@";
+"midi_disconnected_banner %@" = "MIDI डिस्कनेक्ट हुआ: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "पैक डाउनलोड के दौरान बाहर नहीं निकल सकते";

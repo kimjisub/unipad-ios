@@ -21,7 +21,7 @@
 "delete" = "Padam";
 "add_bookmark" = "Penanda Buku";
 "remove_bookmark" = "Buang Penanda Buku";
-"edit" = "Edit";
+"edit" = "Sunting";
 "update" = "Kemas Kini";
 "ignore" = "Abaikan";
 "apply" = "Guna";
@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "Main Auto";
 "practiceMode" = "Latihan";
+"guidePlay" = "Panduan";
+"stepPractice" = "Langkah";
 "feedbackLight" = "Lampu maklum balas";
 "traceLog" = "Log Jejak";
 "traceLogClear" = "Log Jejak telah direset.";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Menyambungkan launchpad…";
 "midiDevicesNotDetected" = "Peranti MIDI Tidak Dikesan";
+"midi_open_panel" = "Buka";
+"midi_connected_banner %@" = "MIDI disambungkan: %@";
+"midi_disconnected_banner %@" = "MIDI diputuskan: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Tidak boleh keluar semasa memuat turun pack";

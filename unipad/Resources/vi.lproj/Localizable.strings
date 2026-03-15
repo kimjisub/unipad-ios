@@ -81,12 +81,14 @@
 "led" = "LED";
 "autoPlay" = "Tự động phát";
 "practiceMode" = "Luyện tập";
+"guidePlay" = "Hướng dẫn";
+"stepPractice" = "Từng bước";
 "feedbackLight" = "Đèn phản hồi";
 "traceLog" = "Nhật ký Truy vết";
 "traceLogClear" = "Nhật ký truy vết đã được đặt lại.";
 "record" = "Ghi âm";
 "hideUI" = "Ẩn UI";
-"watermark" = "Watermark";
+"watermark" = "Hình mờ";
 "proLightMode" = "Chế độ Pro Light";
 
 /* Version */
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Đang kết nối launchpad…";
 "midiDevicesNotDetected" = "Không Phát Hiện Thiết Bị MIDI";
+"midi_open_panel" = "Mở";
+"midi_connected_banner %@" = "MIDI đã kết nối: %@";
+"midi_disconnected_banner %@" = "MIDI đã ngắt kết nối: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Không thể thoát khi đang tải pack";

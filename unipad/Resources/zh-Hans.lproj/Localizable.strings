@@ -81,6 +81,8 @@
 "led" = "灯光";
 "autoPlay" = "自动播放";
 "practiceMode" = "练习";
+"guidePlay" = "引导";
+"stepPractice" = "分步";
 "feedbackLight" = "反馈灯光";
 "traceLog" = "记录按键";
 "traceLogClear" = "按键记录已重置。";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "正在连接 launchpad…";
 "midiDevicesNotDetected" = "未检测到 MIDI 设备";
+"midi_open_panel" = "打开";
+"midi_connected_banner %@" = "MIDI已连接: %@";
+"midi_disconnected_banner %@" = "MIDI已断开: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "下载包时不能退出";

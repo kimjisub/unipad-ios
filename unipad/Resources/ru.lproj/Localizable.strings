@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "Автовоспроизведение";
 "practiceMode" = "Практика";
+"guidePlay" = "Гид";
+"stepPractice" = "Шаг";
 "feedbackLight" = "Подсветка отклика";
 "traceLog" = "Журнал действий";
 "traceLogClear" = "Журнал действий сброшен.";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Подключение launchpad…";
 "midiDevicesNotDetected" = "MIDI устройства не обнаружены";
+"midi_open_panel" = "Открыть";
+"midi_connected_banner %@" = "MIDI подключено: %@";
+"midi_disconnected_banner %@" = "MIDI отключено: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Нельзя выйти во время загрузки пака";

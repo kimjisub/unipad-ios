@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "Otomatik Oynatma";
 "practiceMode" = "Alıştırma";
+"guidePlay" = "Rehber";
+"stepPractice" = "Adım";
 "feedbackLight" = "Geri bildirim ışığı";
 "traceLog" = "İzleme Günlüğü";
 "traceLogClear" = "İzleme günlüğü sıfırlandı.";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Launchpad bağlanıyor…";
 "midiDevicesNotDetected" = "MIDI Cihazları Algılanmadı";
+"midi_open_panel" = "Aç";
+"midi_connected_banner %@" = "MIDI bağlandı: %@";
+"midi_disconnected_banner %@" = "MIDI bağlantısı kesildi: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "Pak indirilirken çıkılamaz";

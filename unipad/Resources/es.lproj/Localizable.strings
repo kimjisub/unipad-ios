@@ -81,6 +81,8 @@
 "led" = "LED";
 "autoPlay" = "Reproducción Automática";
 "practiceMode" = "Práctica";
+"guidePlay" = "Guía";
+"stepPractice" = "Paso";
 "feedbackLight" = "Luz de retroalimentación";
 "traceLog" = "Registro de Secuencia";
 "traceLogClear" = "El registro de secuencia se ha restablecido.";
@@ -111,6 +113,9 @@
 /* Launchpad */
 "launchpadConnecting" = "Conectando launchpad…";
 "midiDevicesNotDetected" = "No se detectaron dispositivos MIDI";
+"midi_open_panel" = "Abrir";
+"midi_connected_banner %@" = "MIDI conectado: %@";
+"midi_disconnected_banner %@" = "MIDI desconectado: %@";
 
 /* Store */
 "canNotQuitWhileDownloading" = "No se puede salir mientras se descarga el pack";
