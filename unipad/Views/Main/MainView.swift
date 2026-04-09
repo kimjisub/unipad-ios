@@ -54,12 +54,31 @@ struct MainView: View {
             vm.versionCheck()
         }
         #endif
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadFileOpenRequest"))) { notification in
+            guard let url = notification.userInfo?["url"] as? URL else { return }
+            let workspace = WorkspaceManager.shared.downloadWorkspace.url
+
+            vm.isImportingInProgress = true
+            let existingIds = Set(vm.unipackItems.map { $0.id })
+            Task {
+                let importer = UniPackImporter()
+                let delegate = MainViewImportDelegate(viewModel: vm)
+                await importer.importPack(from: url, to: workspace, delegate: delegate)
+                await MainActor.run {
+                    vm.isImportingInProgress = false
+                    vm.refreshList()
+                    vm.updateStats()
+                    vm.showImportResultForNew(existingIds: existingIds)
+                    showImportResult = true
+                }
+            }
+        }
         .fileImporter(
             isPresented: Binding(
                 get: { vm.isImporting },
                 set: { vm.isImporting = $0 }
             ),
-            allowedContentTypes: [.zip, .folder],
+            allowedContentTypes: [.zip],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -70,32 +89,19 @@ struct MainView: View {
                 guard url.startAccessingSecurityScopedResource() else { return }
                 defer { url.stopAccessingSecurityScopedResource() }
 
-                if url.pathExtension.lowercased() == "zip" {
-                    vm.isImportingInProgress = true
-                    let existingIds = Set(vm.unipackItems.map { $0.id })
-                    Task {
-                        let importer = UniPackImporter()
-                        await importer.importPack(from: url, to: workspace, delegate: nil)
-                        await MainActor.run {
-                            vm.isImportingInProgress = false
-                            vm.refreshList()
-                            vm.updateStats()
-                            vm.showImportResultForNew(existingIds: existingIds)
-                            showImportResult = true
-                        }
-                    }
-                } else {
-                    let destName = url.lastPathComponent
-                    let destDir = workspace.appendingPathComponent(destName)
-                    do {
-                        try FileManagerExtensions.copyDirectory(from: url, to: destDir)
+                vm.isImportingInProgress = true
+                let existingIds = Set(vm.unipackItems.map { $0.id })
+                Task {
+                    let importer = UniPackImporter()
+                    let delegate = MainViewImportDelegate(viewModel: vm)
+                    await importer.importPack(from: url, to: workspace, delegate: delegate)
+                    await MainActor.run {
+                        vm.isImportingInProgress = false
                         vm.refreshList()
                         vm.updateStats()
-                        vm.showImportSuccessForFolder(destDir)
-                    } catch {
-                        vm.importResult = .error(error.localizedDescription)
+                        vm.showImportResultForNew(existingIds: existingIds)
+                        showImportResult = true
                     }
-                    showImportResult = true
                 }
             case .failure(let error):
                 vm.importResult = .error(error.localizedDescription)
@@ -470,6 +476,26 @@ private struct GuidingChip: View {
             .background(AppColors.darkSurfaceHigh.opacity(0.5))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+    }
+}
+
+// MARK: - MainViewImportDelegate
+
+private final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked Sendable {
+    weak var viewModel: MainViewModel?
+
+    init(viewModel: MainViewModel) {
+        self.viewModel = viewModel
+    }
+
+    @MainActor func onImportStart() {}
+
+    @MainActor func onImportComplete(folder: URL) {
+        viewModel?.showImportSuccessForFolder(folder)
+    }
+
+    @MainActor func onImportError(_ error: Error) {
+        viewModel?.importResult = .error(error.localizedDescription)
     }
 }
 

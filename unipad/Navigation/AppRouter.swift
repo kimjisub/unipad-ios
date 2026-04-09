@@ -47,6 +47,30 @@ final class AppRouter {
     }
 
     func handleDeepLink(_ url: URL) {
+        if url.scheme == "file" {
+            handleFileOpen(url)
+        } else if url.scheme == "unipad" {
+            handleUnipadScheme(url)
+        }
+    }
+
+    private func handleFileOpen(_ url: URL) {
+        let fileName = url.lastPathComponent
+        guard fileName.lowercased().hasSuffix(".zip") else { return }
+
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("UniPadFileOpenRequest"),
+                object: nil,
+                userInfo: ["url": url, "fileName": fileName]
+            )
+        }
+    }
+
+    private func handleUnipadScheme(_ url: URL) {
         guard url.scheme == "unipad" else { return }
 
         switch url.host {

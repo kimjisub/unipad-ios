@@ -10,6 +10,7 @@ struct PlayView: View {
     var body: some View {
         ZStack {
             playContent
+            floatingTransportBar
             optionWindowOverlay
             loadingOverlay
             errorOverlay
@@ -136,7 +137,6 @@ struct PlayView: View {
                 let padLeft = centerX - layout.gridWidth / 2
 
                 playContentGrid(unipack: unipack, layout: layout, centerX: centerX, centerY: centerY, padLeft: padLeft, showAllSides: showAllSides)
-                playContentSidePanel(layout: layout, centerY: centerY, padLeft: padLeft, viewHeight: h)
                 playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: w, viewHeight: h)
             }
         }
@@ -229,28 +229,6 @@ struct PlayView: View {
     }
 
     @ViewBuilder
-    private func playContentSidePanel(layout: PlayLayout, centerY: CGFloat, padLeft: CGFloat, viewHeight: CGFloat) -> some View {
-        Group {
-            if layout.sidePanelWidth > 60 && vm.optionViewVisible {
-                PlaySidePanel(
-                    vm: vm,
-                    checkboxColor: theme.checkboxColor,
-                    compactLayout: layout.prefersCompactSidePanel
-                )
-                    .frame(
-                        width: layout.sidePanelWidth,
-                        height: layout.gridHeight,
-                        alignment: layout.prefersCompactSidePanel ? .top : .center
-                    )
-                    .position(
-                        x: layout.sidePanelCenterX,
-                        y: centerY
-                    )
-            }
-        }
-    }
-
-    @ViewBuilder
     private func playContentRightColumn(layout: PlayLayout, padLeft: CGFloat, viewWidth: CGFloat, viewHeight: CGFloat) -> some View {
         if let customLogo = theme.customLogo {
             let maxLogoWidth: CGFloat = min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - 16)
@@ -264,6 +242,58 @@ struct PlayView: View {
         if !vm.isOptionWindowVisible {
             menuButton
                 .position(x: viewWidth - 30, y: viewHeight - 28)
+        }
+    }
+
+    // MARK: - Floating Transport Bar
+
+    @ViewBuilder
+    private var floatingTransportBar: some View {
+        if vm.autoPlayControlVisible && !vm.isOptionWindowVisible {
+            VStack(spacing: 4) {
+                ProgressView(
+                    value: vm.autoPlayProgressMax > 0
+                        ? Double(vm.autoPlayProgress) / Double(vm.autoPlayProgressMax)
+                        : 0
+                )
+                .tint(.white)
+                .background(Color.white.opacity(0.15))
+                .frame(width: 140)
+
+                HStack(spacing: 16) {
+                    Button { vm.autoPlayPrev() } label: {
+                        Image(systemName: "backward.end.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 32, height: 32)
+
+                    Button {
+                        if vm.isAutoPlayPlaying { vm.autoPlayPause() }
+                        else { vm.autoPlayResume() }
+                    } label: {
+                        Image(systemName: vm.isAutoPlayPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 36, height: 36)
+
+                    Button { vm.autoPlayNext() } label: {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 32, height: 32)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 12)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .animation(.easeInOut(duration: 0.2), value: vm.autoPlayControlVisible)
         }
     }
 
@@ -423,9 +453,6 @@ private struct PlayLayout {
     let gridHeight: CGFloat
     let chainWidth: CGFloat
     let chainHeight: CGFloat
-    let sidePanelWidth: CGFloat
-    let sidePanelCenterX: CGFloat
-    let prefersCompactSidePanel: Bool
 
     init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false) {
         let chainColumns = 2
@@ -441,15 +468,5 @@ private struct PlayLayout {
         gridHeight = cellSize * CGFloat(buttonX)
         chainWidth = cellSize
         chainHeight = cellSize
-
-        let horizontalPadding = (totalWidth - gridWidth - chainWidth * 2) / 2
-        prefersCompactSidePanel = totalWidth >= 1200 || totalHeight >= 900
-        sidePanelWidth = min(prefersCompactSidePanel ? 196 : 164, max(horizontalPadding - 16, 0))
-
-        let padLeft = (totalWidth - gridWidth) / 2
-        let leftChainLeading = padLeft - chainWidth
-        let preferredSidePanelCenterX = leftChainLeading - 16 - sidePanelWidth / 2
-        let minimumSidePanelCenterX = sidePanelWidth / 2 + 16
-        sidePanelCenterX = max(minimumSidePanelCenterX, preferredSidePanelCenterX)
     }
 }
