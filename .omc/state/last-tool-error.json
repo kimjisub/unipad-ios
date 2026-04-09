@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/kimjisub/GitHub/unipad && rtk git status --short\"}",
+  "error": "Exit code 128\nfatal: (현재 폴더 또는 상위 폴더 중 일부가) 깃 저장소가 아닙니다: .git\n[rerun: b10]",
+  "timestamp": "2026-04-09T16:49:09.349Z",
+  "retry_count": 1
+}

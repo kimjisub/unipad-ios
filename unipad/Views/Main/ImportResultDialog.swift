@@ -12,14 +12,16 @@ struct ImportResultDialog: View {
             case .warning(let message):
                 Text(message)
                     .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: 0x333333))
+                    .foregroundStyle(AppColors.orange)
             case .error(let message):
                 Text(message)
                     .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: 0xE91E63))
+                    .foregroundStyle(AppColors.red)
             }
         }
         .padding(16)
+        .background(AppColors.darkSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder
@@ -29,7 +31,7 @@ struct ImportResultDialog: View {
             MarqueeText(
                 text: unipack.title,
                 font: .system(size: 18, weight: .bold),
-                color: Color(hex: 0x1A1A1A),
+                color: AppColors.textPrimary,
                 fontSize: 18
             )
 
@@ -37,7 +39,7 @@ struct ImportResultDialog: View {
                 MarqueeText(
                     text: unipack.producerName,
                     font: .system(size: 13),
-                    color: Color(hex: 0x888888)
+                    color: AppColors.textSecondary
                 )
             }
         }
@@ -76,10 +78,10 @@ struct ImportResultDialog: View {
             HStack(spacing: 4) {
                 Image(systemName: "internaldrive")
                     .font(.system(size: 12))
-                    .foregroundStyle(Color(hex: 0x888888))
+                    .foregroundStyle(AppColors.textSecondary)
                 Text(String(format: "%.2f MB", Double(bytes) / 1_048_576.0))
                     .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: 0x888888))
+                    .foregroundStyle(AppColors.textSecondary)
                 Spacer()
             }
         }
@@ -95,22 +97,22 @@ private struct ImportPropertyBlock: View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 18))
-                .foregroundStyle(Color(hex: 0x888888))
+                .foregroundStyle(AppColors.textSecondary)
                 .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(.system(size: 10))
-                    .foregroundStyle(Color(hex: 0x888888))
+                    .foregroundStyle(AppColors.textSecondary)
                 Text(value)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x1A1A1A))
+                    .foregroundStyle(AppColors.textPrimary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(hex: 0xF2F2F2))
+        .background(AppColors.darkSurfaceHigh)
         .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }

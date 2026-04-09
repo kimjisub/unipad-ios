@@ -58,14 +58,48 @@ final class AppRouter {
         let fileName = url.lastPathComponent
         guard fileName.lowercased().hasSuffix(".zip") else { return }
 
-        guard url.startAccessingSecurityScopedResource() else { return }
+        guard url.startAccessingSecurityScopedResource() else {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("UniPadExternalFileImportFailed"),
+                object: nil,
+                userInfo: ["error": "파일 접근 권한을 얻을 수 없습니다"]
+            )
+            return
+        }
         defer { url.stopAccessingSecurityScopedResource() }
 
-        DispatchQueue.main.async {
+        do {
+            let zipData = try Data(contentsOf: url)
+
+            Task { @MainActor in
+                await importFileData(zipData, fileName: fileName)
+            }
+        } catch {
             NotificationCenter.default.post(
-                name: NSNotification.Name("UniPadFileOpenRequest"),
+                name: NSNotification.Name("UniPadExternalFileImportFailed"),
                 object: nil,
-                userInfo: ["url": url, "fileName": fileName]
+                userInfo: ["error": error.localizedDescription]
+            )
+        }
+    }
+
+    @MainActor
+    private func importFileData(_ data: Data, fileName: String) async {
+        let workspace = WorkspaceManager.shared.downloadWorkspace.url
+        let importer = UniPackImporter()
+
+        do {
+            await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
+
+            NotificationCenter.default.post(
+                name: NSNotification.Name("UniPadExternalFileImported"),
+                object: nil
+            )
+        } catch {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("UniPadExternalFileImportFailed"),
+                object: nil,
+                userInfo: ["error": error.localizedDescription]
             )
         }
     }

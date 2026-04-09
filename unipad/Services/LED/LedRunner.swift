@@ -134,14 +134,14 @@ final class LedRunner {
                                 loopLogCount += 1
                             }
                             pendingLedEvents.append(.padOn(x: x, y: y, color: color, velocity: velocity))
-                            btnLed[x][y] = Led(buttonX: state.buttonX, buttonY: state.buttonY)
+                            btnLed[x][y] = Led(buttonX: state.buttonX, buttonY: state.buttonY, chain: state.chainAtCreation)
                         } else {
                             guard isValidCircularIndex(y) else {
                                 state.index += 1
                                 continue
                             }
                             pendingLedEvents.append(.chainOn(c: y, color: color, velocity: velocity))
-                            cirLed[y] = Led(buttonX: state.buttonX, buttonY: state.buttonY)
+                            cirLed[y] = Led(buttonX: state.buttonX, buttonY: state.buttonY, chain: state.chainAtCreation)
                         }
 
                     case .off(let x, let y):
@@ -150,7 +150,7 @@ final class LedRunner {
                                 state.index += 1
                                 continue
                             }
-                            if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
+                            if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
                                 pendingLedEvents.append(.padOff(x: x, y: y))
                                 btnLed[x][y] = nil
                             }
@@ -159,7 +159,7 @@ final class LedRunner {
                                 state.index += 1
                                 continue
                             }
-                            if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
+                            if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
                                 pendingLedEvents.append(.chainOff(c: y))
                                 cirLed[y] = nil
                             }
@@ -178,14 +178,14 @@ final class LedRunner {
             } else if state.isShutdown {
                 for x in 0..<unipack.buttonX {
                     for y in 0..<unipack.buttonY {
-                        if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
+                        if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
                             pendingLedEvents.append(.padOff(x: x, y: y))
                             btnLed[x][y] = nil
                         }
                     }
                 }
                 for y in 0..<cirLed.count {
-                    if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY) == true {
+                    if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
                         pendingLedEvents.append(.chainOff(c: y))
                         cirLed[y] = nil
                     }
@@ -213,10 +213,10 @@ final class LedRunner {
 
     // MARK: - Event Control
 
-    func isEventExist(x: Int, y: Int) -> Bool {
+    func isEventExist(x: Int, y: Int, chain: Int) -> Bool {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
-        return ledAnimationStates.contains { $0.isEqual(bx: x, by: y) }
+        return ledAnimationStates.contains { $0.isEqual(bx: x, by: y, chain: chain) }
     }
 
     func eventOn(x: Int, y: Int) {
@@ -227,7 +227,7 @@ final class LedRunner {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
-        if let existing = ledAnimationStates.first(where: { $0.isEqual(bx: x, by: y) }) {
+        for existing in ledAnimationStates where existing.isEqual(bx: x, by: y, chain: chain.value) {
             existing.isShutdown = true
         }
 
@@ -250,9 +250,10 @@ final class LedRunner {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
-        if let state = ledAnimationStates.first(where: { $0.isEqual(bx: x, by: y) }),
-           state.ledAnimation?.loop == 0 {
-            state.isShutdown = true
+        for state in ledAnimationStates where state.isEqual(bx: x, by: y, chain: chain.value) {
+            if state.ledAnimation?.loop == 0 {
+                state.isShutdown = true
+            }
         }
     }
 
@@ -261,15 +262,17 @@ final class LedRunner {
     private struct Led {
         let buttonX: Int
         let buttonY: Int
+        let chain: Int
 
-        func isEqual(bx: Int, by: Int) -> Bool {
-            buttonX == bx && buttonY == by
+        func isEqual(bx: Int, by: Int, chain: Int) -> Bool {
+            buttonX == bx && buttonY == by && self.chain == chain
         }
     }
 
     private class LedAnimationState {
         let buttonX: Int
         let buttonY: Int
+        let chainAtCreation: Int
         var index: Int = 0
         var delay: Int64 = 0
         var isPlaying: Bool = true
@@ -280,13 +283,14 @@ final class LedRunner {
 
         var noError: Bool { ledAnimation != nil }
 
-        func isEqual(bx: Int, by: Int) -> Bool {
-            buttonX == bx && buttonY == by
+        func isEqual(bx: Int, by: Int, chain: Int) -> Bool {
+            buttonX == bx && buttonY == by && chainAtCreation == chain
         }
 
         init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: ChainObserver) {
             self.buttonX = buttonX
             self.buttonY = buttonY
+            self.chainAtCreation = chain.value
             self.ledAnimation = unipack.ledGet(c: chain.value, x: buttonX, y: buttonY)
             unipack.ledPush(c: chain.value, x: buttonX, y: buttonY)
         }

@@ -54,24 +54,17 @@ struct MainView: View {
             vm.versionCheck()
         }
         #endif
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadFileOpenRequest"))) { notification in
-            guard let url = notification.userInfo?["url"] as? URL else { return }
-            let workspace = WorkspaceManager.shared.downloadWorkspace.url
-
-            vm.isImportingInProgress = true
-            let existingIds = Set(vm.unipackItems.map { $0.id })
-            Task {
-                let importer = UniPackImporter()
-                let delegate = MainViewImportDelegate(viewModel: vm)
-                await importer.importPack(from: url, to: workspace, delegate: delegate)
-                await MainActor.run {
-                    vm.isImportingInProgress = false
-                    vm.refreshList()
-                    vm.updateStats()
-                    vm.showImportResultForNew(existingIds: existingIds)
-                    showImportResult = true
-                }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImported"))) { _ in
+            vm.isImportingInProgress = false
+            vm.refreshList()
+            vm.updateStats()
+            showImportResult = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImportFailed"))) { notification in
+            if let errorMsg = notification.userInfo?["error"] as? String {
+                vm.importResult = .error(errorMsg)
             }
+            showImportResult = true
         }
         .fileImporter(
             isPresented: Binding(
@@ -84,24 +77,38 @@ struct MainView: View {
             switch result {
             case .success(let urls):
                 guard let url = urls.first else { return }
-                let workspace = WorkspaceManager.shared.downloadWorkspace.url
 
-                guard url.startAccessingSecurityScopedResource() else { return }
+                guard url.startAccessingSecurityScopedResource() else {
+                    vm.importResult = .error("파일 접근 권한을 얻을 수 없습니다")
+                    showImportResult = true
+                    return
+                }
                 defer { url.stopAccessingSecurityScopedResource() }
 
-                vm.isImportingInProgress = true
-                let existingIds = Set(vm.unipackItems.map { $0.id })
-                Task {
-                    let importer = UniPackImporter()
-                    let delegate = MainViewImportDelegate(viewModel: vm)
-                    await importer.importPack(from: url, to: workspace, delegate: delegate)
-                    await MainActor.run {
-                        vm.isImportingInProgress = false
-                        vm.refreshList()
-                        vm.updateStats()
-                        vm.showImportResultForNew(existingIds: existingIds)
-                        showImportResult = true
+                do {
+                    let zipData = try Data(contentsOf: url)
+                    let fileName = url.lastPathComponent
+
+                    vm.isImportingInProgress = true
+                    let existingIds = Set(vm.unipackItems.map { $0.id })
+
+                    Task {
+                        let workspace = WorkspaceManager.shared.downloadWorkspace.url
+                        let importer = UniPackImporter()
+                        let delegate = MainViewImportDelegate(viewModel: vm)
+                        await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
+
+                        await MainActor.run {
+                            vm.isImportingInProgress = false
+                            vm.refreshList()
+                            vm.updateStats()
+                            vm.showImportResultForNew(existingIds: existingIds)
+                            showImportResult = true
+                        }
                     }
+                } catch {
+                    vm.importResult = .error(error.localizedDescription)
+                    showImportResult = true
                 }
             case .failure(let error):
                 vm.importResult = .error(error.localizedDescription)
@@ -139,7 +146,7 @@ struct MainView: View {
                             }
                         }())
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color(hex: 0x1A1A1A))
+                        .foregroundStyle(AppColors.textPrimary)
                         .padding(.top, 16)
                         .padding(.bottom, 8)
 
@@ -147,6 +154,7 @@ struct MainView: View {
 
                         // OK button
                         Divider()
+                            .background(AppColors.divider)
                         Button {
                             showImportResult = false
                             vm.importResult = nil
@@ -158,7 +166,7 @@ struct MainView: View {
                                 .padding(.vertical, 12)
                         }
                     }
-                    .background(Color.white)
+                    .background(AppColors.darkSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .padding(.horizontal, 40)
                     .frame(maxWidth: 360)
