@@ -120,6 +120,11 @@ final class PlayViewModel {
     // Channel-based LED management
     var channelManager: ChannelManager?
 
+    // Auto Mapping state
+    var autoMappingActive = false
+    var autoMappingProgress = 0
+    var autoMappingMax = 0
+
     // Toast
     var toastMessage: String?
 
@@ -203,15 +208,7 @@ final class PlayViewModel {
         }
 
         if pack.autoPlayExist {
-            let apAdapter = AutoPlayListenerAdapter(viewModel: self)
-            autoPlayListenerAdapter = apAdapter
-            autoPlayRunner = AutoPlayRunner(
-                unipack: pack,
-                listener: apAdapter,
-                chain: chain
-            )
-            autoPlayProgressMax = pack.autoPlayTable?.elements.count ?? 0
-            logger.info("loadUnipack: AutoPlayRunner created, elements=\(self.autoPlayProgressMax)")
+            initAutoPlayRunner(pack: pack)
         }
 
         setupChainObserver()
@@ -347,6 +344,51 @@ final class PlayViewModel {
         logBuilder.append("\n\(msg)")
     }
 
+    // MARK: - Auto Play Runner
+
+    private func initAutoPlayRunner(pack: UniPack) {
+        let apAdapter = AutoPlayListenerAdapter(viewModel: self)
+        autoPlayListenerAdapter = apAdapter
+        autoPlayRunner = AutoPlayRunner(
+            unipack: pack,
+            listener: apAdapter,
+            chain: chain
+        )
+        autoPlayProgressMax = pack.autoPlayTable?.elements.count ?? 0
+        logger.info("initAutoPlayRunner: AutoPlayRunner created, elements=\(self.autoPlayProgressMax)")
+    }
+
+    // MARK: - Auto Mapping
+
+    private var autoMapper: UniPackAutoMapper?
+
+    func autoMapping() {
+        guard let pack = unipack as? UniPackFolder else { return }
+        guard !autoMappingActive else { return }
+
+        autoMappingActive = true
+        autoMappingProgress = 0
+        autoMappingMax = 0
+
+        let mapper = UniPackAutoMapper(unipack: pack, listener: AutoMappingListenerAdapter(viewModel: self))
+        autoMapper = mapper
+        mapper.start()
+    }
+
+    fileprivate func onAutoMappingDone() {
+        autoMappingActive = false
+        autoMapper = nil
+
+        guard let pack = unipack as? UniPackFolder else { return }
+        autoPlayRunner?.stop()
+        autoPlayRunner = nil
+        autoPlayListenerAdapter = nil
+
+        if pack.autoPlayExist {
+            initAutoPlayRunner(pack: pack)
+        }
+    }
+
     // MARK: - Trace Log
 
     var traceLogSequence: [[(x: Int, y: Int)]] = []
@@ -451,7 +493,7 @@ final class PlayViewModel {
         guard let unipack, let cm = channelManager else { return }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
-                if let ledRunner, ledRunner.isEventExist(x: i, y: j) {
+                if let ledRunner, ledRunner.isEventExist(x: i, y: j, chain: chain.value) {
                     ledRunner.eventOff(x: i, y: j)
                 }
                 cm.remove(x: i, y: j, channel: .led)
@@ -459,7 +501,7 @@ final class PlayViewModel {
             }
         }
         for i in 0..<Self.functionKeyCount {
-            if let ledRunner, ledRunner.isEventExist(x: -1, y: i) {
+            if let ledRunner, ledRunner.isEventExist(x: -1, y: i, chain: chain.value) {
                 ledRunner.eventOff(x: -1, y: i)
             }
             cm.remove(x: -1, y: i, channel: .led)
@@ -1253,6 +1295,45 @@ private final class PlayMidiControllerAdapter: MidiController {
                 vm.chain.refresh()
                 vm.refreshWatermark()
             }
+        }
+    }
+}
+
+private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
+    private weak var viewModel: PlayViewModel?
+
+    init(viewModel: PlayViewModel) {
+        self.viewModel = viewModel
+    }
+
+    func onStart() {
+        Task { @MainActor [weak self] in
+            self?.viewModel?.autoMappingActive = true
+        }
+    }
+
+    func onGetWorkSize(_ size: Int) {
+        Task { @MainActor [weak self] in
+            self?.viewModel?.autoMappingMax = size
+        }
+    }
+
+    func onProgress(_ progress: Int) {
+        Task { @MainActor [weak self] in
+            self?.viewModel?.autoMappingProgress = progress
+        }
+    }
+
+    func onDone() {
+        Task { @MainActor [weak self] in
+            self?.viewModel?.onAutoMappingDone()
+        }
+    }
+
+    func onException(_ error: Error) {
+        Task { @MainActor [weak self] in
+            self?.viewModel?.autoMappingActive = false
+            self?.viewModel?.toastMessage = error.localizedDescription
         }
     }
 }

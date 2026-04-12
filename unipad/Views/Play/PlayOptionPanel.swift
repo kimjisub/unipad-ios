@@ -175,6 +175,49 @@ struct PlayOptionPanel: View {
                 vm.traceLogInit()
             }
             OptionSwitch(state: vm.scbRecord, label: String(localized: "record"), tintColor: Color(hex: 0xE8A44A))
+            autoMappingButton
+        }
+    }
+
+    @ViewBuilder
+    private var autoMappingButton: some View {
+        if vm.autoMappingActive {
+            VStack(spacing: 6) {
+                HStack {
+                    Text(String(localized: "autoMapping"))
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("\(vm.autoMappingProgress) / \(vm.autoMappingMax)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                ProgressView(
+                    value: vm.autoMappingMax > 0
+                        ? Double(vm.autoMappingProgress) / Double(vm.autoMappingMax)
+                        : 0
+                )
+                .tint(Color(hex: 0xE8A44A))
+                .background(Color.white.opacity(0.15))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
+        } else {
+            Button {
+                vm.autoMapping()
+            } label: {
+                HStack {
+                    Text(String(localized: "autoMapping"))
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+            }
         }
     }
 

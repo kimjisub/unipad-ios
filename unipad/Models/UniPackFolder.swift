@@ -12,7 +12,7 @@ class UniPackFolder: UniPack {
     private var soundsDir: URL?
     private var keySoundFile: URL?
     private var keyLedDir: URL?
-    private var autoPlayFile: URL?
+    private(set) var autoPlayFile: URL?
 
     override var id: String { rootFolder.lastPathComponent }
     override var keyLedExist: Bool { keyLedDir != nil }
@@ -410,6 +410,11 @@ class UniPackFolder: UniPack {
         }
 
         ledAnimationTable = table
+    }
+
+    func reloadAutoPlay() {
+        autoPlayTable = nil
+        parseAutoPlay()
     }
 
     // MARK: - AutoPlay Parsing
