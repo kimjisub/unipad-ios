@@ -7,10 +7,11 @@ struct PlayView: View {
 
     private var theme: ThemeResourcesProtocol { ThemeManager.shared.activeResources }
 
+    private let chromeStripWidth: CGFloat = 56
+
     var body: some View {
         ZStack {
             playContent
-            floatingTransportBar
             optionWindowOverlay
             loadingOverlay
             errorOverlay
@@ -131,13 +132,14 @@ struct PlayView: View {
                 let w = geometry.size.width
                 let h = geometry.size.height
                 let showAllSides = vm.scbProLightMode.checked
-                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showAllSides)
-                let centerX = w / 2
+                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showAllSides, reservedWidth: chromeStripWidth)
+                // Pads centered within the area excluding the right chrome strip
+                let centerX = (w - chromeStripWidth) / 2
                 let centerY = h / 2
                 let padLeft = centerX - layout.gridWidth / 2
 
                 playContentGrid(unipack: unipack, layout: layout, centerX: centerX, centerY: centerY, padLeft: padLeft, showAllSides: showAllSides)
-                playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: w, viewHeight: h)
+                playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: w, viewHeight: h, centerY: centerY)
             }
         }
     }
@@ -229,72 +231,91 @@ struct PlayView: View {
     }
 
     @ViewBuilder
-    private func playContentRightColumn(layout: PlayLayout, padLeft: CGFloat, viewWidth: CGFloat, viewHeight: CGFloat) -> some View {
+    private func playContentRightColumn(layout: PlayLayout, padLeft: CGFloat, viewWidth: CGFloat, viewHeight: CGFloat, centerY: CGFloat) -> some View {
         if let customLogo = theme.customLogo {
-            let maxLogoWidth: CGFloat = min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - 16)
+            let maxLogoWidth: CGFloat = min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - chromeStripWidth - 16)
             Image(platformImage: customLogo)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: maxLogoWidth, height: 40)
-                .position(x: viewWidth - maxLogoWidth / 2 - 8, y: 28)
+                .position(x: viewWidth - chromeStripWidth - maxLogoWidth / 2 - 8, y: 28)
         }
 
         if !vm.isOptionWindowVisible {
-            menuButton
-                .position(x: viewWidth - 30, y: viewHeight - 28)
+            chromeColumn
+                .position(x: viewWidth - chromeStripWidth / 2, y: centerY)
         }
     }
 
-    // MARK: - Floating Transport Bar
+    // MARK: - Chrome Column (Right-side unified chrome: Menu + Transport + Progress)
 
-    @ViewBuilder
-    private var floatingTransportBar: some View {
-        if vm.autoPlayControlVisible && !vm.isOptionWindowVisible {
-            VStack(spacing: 4) {
-                ProgressView(
-                    value: vm.autoPlayProgressMax > 0
-                        ? Double(vm.autoPlayProgress) / Double(vm.autoPlayProgressMax)
-                        : 0
-                )
-                .tint(.white)
-                .background(Color.white.opacity(0.15))
-                .frame(width: 140)
+    private var chromeColumn: some View {
+        let showTransport = vm.autoPlayControlVisible
+        let progress: Double = vm.autoPlayProgressMax > 0
+            ? Double(vm.autoPlayProgress) / Double(vm.autoPlayProgressMax)
+            : 0
 
-                HStack(spacing: 16) {
-                    Button { vm.autoPlayPrev() } label: {
-                        Image(systemName: "backward.end.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.white)
-                    }
-                    .frame(width: 32, height: 32)
-
-                    Button {
-                        if vm.isAutoPlayPlaying { vm.autoPlayPause() }
-                        else { vm.autoPlayResume() }
-                    } label: {
-                        Image(systemName: vm.isAutoPlayPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(.white)
-                    }
+        return VStack(spacing: 6) {
+            Button {
+                vm.toggleOptionWindow(true)
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white.opacity(0.85))
                     .frame(width: 36, height: 36)
-
-                    Button { vm.autoPlayNext() } label: {
-                        Image(systemName: "forward.end.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.white)
-                    }
-                    .frame(width: 32, height: 32)
-                }
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.6))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .padding(.bottom, 12)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-            .animation(.easeInOut(duration: 0.2), value: vm.autoPlayControlVisible)
+
+            if showTransport {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 24, height: 2)
+                    .padding(.vertical, 6)
+
+                Button { vm.autoPlayPrev() } label: {
+                    Image(systemName: "backward.end.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+
+                Button {
+                    if vm.isAutoPlayPlaying { vm.autoPlayPause() }
+                    else { vm.autoPlayResume() }
+                } label: {
+                    Image(systemName: vm.isAutoPlayPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+
+                Button { vm.autoPlayNext() } label: {
+                    Image(systemName: "forward.end.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+
+                // Vertical progress (fills top -> bottom)
+                ZStack(alignment: .top) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 3, height: 72)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(theme.checkboxColor)
+                        .frame(width: 3, height: 72 * max(0, min(1, progress)))
+                }
+                .padding(.top, 4)
+            }
         }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .background(Color.black.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .animation(.easeInOut(duration: 0.2), value: showTransport)
     }
 
     // MARK: - Menu & Option Overlays
@@ -303,20 +324,6 @@ struct PlayView: View {
     private var optionWindowOverlay: some View {
         if vm.isOptionWindowVisible {
             optionOverlay
-        }
-    }
-
-    // MARK: - UI Elements
-
-    private var menuButton: some View {
-        Button {
-            vm.toggleOptionWindow(true)
-        } label: {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 32))
-                .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
         }
     }
 
@@ -454,10 +461,10 @@ private struct PlayLayout {
     let chainWidth: CGFloat
     let chainHeight: CGFloat
 
-    init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false) {
+    init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false, reservedWidth: CGFloat = 0) {
         let chainColumns = 2
         let chainRows = showAllSides ? 2 : 0
-        let totalWidth = max(viewSize.width, 0)
+        let totalWidth = max(viewSize.width - reservedWidth, 0)
         let totalHeight = max(viewSize.height, 0)
 
         cellSize = min(

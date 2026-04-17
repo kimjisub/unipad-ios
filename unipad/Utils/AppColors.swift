@@ -80,4 +80,19 @@ enum AppColors {
 
     /// Card divider - matches Android surfaceVariant (Background2)
     static let divider = Color(hex: 0x414F66)
+
+    // MARK: - Play Screen Chrome Tokens
+    // UI chrome tokens for the Play screen option panel + chrome column. Kept here so the
+    // Play view layer does not ship with inline hex literals (CLAUDE.md guidance).
+
+    /// Play screen accent (progress, active states).
+    static let playAccent = Color(hex: 0xE8A44A)
+
+    /// Destructive action tint (Quit icon).
+    static let playDanger = Color(hex: 0xFF6B6B)
+
+    /// Play mode identity colors for the segmented control.
+    static let playModeAutoPlay = Color(hex: 0xE8A44A)
+    static let playModeGuidePlay = Color(hex: 0x4FC3F7)
+    static let playModeStepPractice = Color(hex: 0x66BB6A)
 }
