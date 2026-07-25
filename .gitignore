@@ -71,3 +71,8 @@ submission-note.md
 
 # OMC (oh-my-claudecode) local state
 .omc/
+
+# fastlane (store-deploy skill)
+fastlane/.secrets/
+fastlane/report.xml
+fastlane/README.md
