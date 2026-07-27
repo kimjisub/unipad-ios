@@ -8,16 +8,29 @@ XCODEPROJ = "unipad.xcodeproj"
 SCHEME = "unipad"
 
 # Builds the App Store Connect API key token from the env vars op-bootstrap exports.
+# The key travels as base64 content rather than a file, so no .p8 is ever written to disk.
 def asc_api_key
   app_store_connect_api_key(
     key_id: ENV.fetch("ASC_KEY_ID"),
     issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-    key_filepath: ENV.fetch("ASC_KEY_PATH"),
+    key_content: ENV.fetch("ASC_KEY_B64"),
+    is_key_content_base64: true,
     in_house: false,
   )
 end
 
 platform :ios do
+  desc "Check the App Store Connect API key actually authenticates and can see the app."
+  lane :verify_auth do
+    key = asc_api_key
+    build = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: "kim.jisub.unipad",
+      initial_build_number: 0,
+    )
+    UI.success("ASC auth OK — latest TestFlight build number: #{build}")
+  end
+
   desc "Compile the Release configuration without signing/exporting (compile verification)."
   lane :build_only do
     xcodebuild(
@@ -34,10 +47,30 @@ platform :ios do
     target = options[:target] || "testflight"
     key = asc_api_key
 
-    increment_build_number(xcodeproj: XCODEPROJ) unless options[:no_bump]
+    # Derive the next build number from what App Store Connect already has, not from the
+    # local value — the xcodeproj is not kept in sync with uploads, so a naive local
+    # increment collides with an existing build and the upload is rejected.
+    unless options[:no_bump]
+      latest = latest_testflight_build_number(
+        api_key: key,
+        app_identifier: "kim.jisub.unipad",
+        initial_build_number: 0,
+      )
+      increment_build_number(xcodeproj: XCODEPROJ, build_number: latest + 1)
+      UI.success("build number -> #{latest + 1} (ASC had #{latest})")
+    end
+    # Xcode's IPA export runs `rsync -8aPhhE`, where -E (--extended-attributes) only
+    # exists in Apple's rsync. If a Homebrew rsync shadows /usr/bin in PATH, the child
+    # process rejects the flag and the export dies with a bare "Copy failed". Put the
+    # system binaries first for this lane only — the user's PATH is left alone.
+    ENV["PATH"] = "/usr/bin:/bin:#{ENV['PATH']}"
+
     build_app(
       scheme: SCHEME,
       export_method: "app-store",
+      # The target declares SUPPORTED_PLATFORMS "iphoneos ... macosx xros xrsimulator",
+      # and gym otherwise picks visionOS and fails the archive. Pin it to iOS.
+      destination: "generic/platform=iOS",
       # Automatic signing; the ASC API key lets Xcode manage the distribution profile in the cloud.
       xcargs: "-allowProvisioningUpdates",
     )
