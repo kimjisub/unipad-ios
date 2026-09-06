@@ -75,6 +75,20 @@ platform :ios do
       xcargs: "-allowProvisioningUpdates",
     )
 
+    # Crashlytics can only symbolicate iOS crashes if the dSYM was uploaded; the project has
+    # no Xcode run-script phase for it, so do it here. upload-symbols ships inside the
+    # Firebase SPM checkout of whichever DerivedData gym used.
+    begin
+      upload_symbols_to_crashlytics(
+        dsym_path: lane_context[SharedValues::DSYM_OUTPUT_PATH],
+        gsp_path: "unipad/GoogleService-Info.plist",
+        binary_path: Dir.glob(File.expand_path("~/Library/Developer/Xcode/DerivedData/unipad-*/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols")).first ||
+          "build/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols",
+      )
+    rescue StandardError => e
+      UI.important("Crashlytics dSYM upload skipped: #{e.message} — run upload-symbols by hand for this build")
+    end
+
     if target == "appstore"
       upload_to_app_store(
         api_key: key,
