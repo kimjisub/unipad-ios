@@ -1,0 +1,3 @@
+- Launchpad Pro MK2 running the "Launchpad Open" custom firmware is now supported (Settings > Reconnect Launchpad > Launchpad Pro MK2 (CFW), or plug it in).
+- Settings > Play > Classic trace log: shows the tap order as numbers on each pad again, as before 4.1.
+- Fixed a possible crash when leaving practice mode while guide pads were lit.

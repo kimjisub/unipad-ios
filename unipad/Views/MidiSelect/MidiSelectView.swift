@@ -18,6 +18,9 @@ struct MidiSelectView: View {
         MidiDevice(name: String(localized: "midi_midi_fighter"), icon: "dial.medium", makeDriver: { MidiFighterDriver() }),
         MidiDevice(name: String(localized: "midi_matrix"), icon: "rectangle.grid.3x2", makeDriver: { MatrixDriver() }),
         MidiDevice(name: String(localized: "midi_master_keyboard"), icon: "pianokeys.inverse", makeDriver: { MasterKeyboardDriver() }),
+        // Appended last: launchpadConnectMethod persists the position in this array, so
+        // inserting in the middle would shift every existing user's saved selection.
+        MidiDevice(name: String(localized: "midi_lp_pro_cfw"), icon: "circle.grid.3x3.fill", makeDriver: { LaunchpadProCFWDriver() }),
     ]
 
     var body: some View {

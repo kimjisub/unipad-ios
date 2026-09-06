@@ -16,6 +16,8 @@ struct PadGridView: View {
     var padGuideTargets: [[Int64]] = []
     var traceLogSequence: [(x: Int, y: Int)]? = nil
     var traceLogColor: Color = .white
+    /// Classic trace log: the tap order printed on each pad instead of the line-and-dot path.
+    var traceLogClassic: Bool = false
     var onPadTouch: (Int, Int, Bool) -> Void
 
     private var hasActiveGuide: Bool {
@@ -167,7 +169,35 @@ struct PadGridView: View {
                 .allowsHitTesting(false)
                 } // TimelineView
 
-                if let sequence = traceLogSequence, !sequence.isEmpty {
+                if let sequence = traceLogSequence, !sequence.isEmpty, traceLogClassic {
+                    Canvas { context, _ in
+                        let cellMin = min(cellWidth, cellHeight)
+                        let font = Font.system(size: max(9, cellMin * 0.14), weight: .medium)
+                        for (key, label) in TraceLogText.perPad(sequence, columns: columns, rows: rows) {
+                            let row = key / columns
+                            let col = key % columns
+                            let cell = CGRect(
+                                x: offsetX + CGFloat(col) * cellWidth + 2,
+                                y: offsetY + CGFloat(row) * cellHeight + 2,
+                                width: cellWidth - 4,
+                                height: cellHeight - 4
+                            )
+                            let resolved = context.resolve(Text(label).font(font).foregroundStyle(traceLogColor))
+                            let measured = resolved.measure(in: cell.size)
+                            // A pad tapped many times wraps to several lines; keep it inside its own cell.
+                            let drawSize = CGSize(width: min(measured.width, cell.width), height: min(measured.height, cell.height))
+                            var cellContext = context
+                            cellContext.clip(to: Path(cell))
+                            cellContext.draw(resolved, in: CGRect(
+                                x: cell.midX - drawSize.width / 2,
+                                y: cell.midY - drawSize.height / 2,
+                                width: drawSize.width,
+                                height: drawSize.height
+                            ))
+                        }
+                    }
+                    .allowsHitTesting(false)
+                } else if let sequence = traceLogSequence, !sequence.isEmpty {
                     Canvas { context, size in
                         let cellMin = min(cellWidth, cellHeight)
                         let maxOffset = cellMin * 0.3

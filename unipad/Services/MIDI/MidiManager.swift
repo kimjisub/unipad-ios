@@ -326,6 +326,8 @@ final class MidiManager: ObservableObject {
         ("launchpad mini mk3", DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
         ("launchpad x",        DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
         ("launchpad pro mk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
+        // Pro MK2 on the "Launchpad Open" custom firmware announces itself as "Launchpad Open ..."
+        ("launchpad open",     DriverEntry(name: "Launchpad Pro MK2 (CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
         ("launchpad pro",      DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         ("launchpad mk2",      DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
         ("launchpad s",        DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),

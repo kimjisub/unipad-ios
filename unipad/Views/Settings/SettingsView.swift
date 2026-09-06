@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var showCommunityDialog = false
     @State private var showAlert = false
     @State private var alertMessage = ""
+    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = false
 
     var initialCategory: SettingsViewModel.Category = .info
 
@@ -148,6 +149,27 @@ struct SettingsView: View {
                                 : "Not connected"
                         )
                     }
+                }
+
+                // Play
+                sectionLabel(String(localized: "settings_play"))
+                settingsCard {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(String(localized: "trace_log_classic"))
+                                .font(.system(size: 14))
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text(String(localized: "trace_log_classic_desc"))
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $traceLogClassic)
+                            .labelsHidden()
+                            .tint(AppColors.blue)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                 }
 
                 // MIDI Debug Log
