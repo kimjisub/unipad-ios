@@ -199,6 +199,9 @@
 
 /* Settings Categories */
 "settings_device" = "Device";
+"settings_play" = "Play";
+"trace_log_classic" = "Classic trace log";
+"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
 "settings_info" = "Information";
 "settings_storage" = "Storage";
 "settings_theme" = "Theme";
@@ -208,6 +211,7 @@
 "midi_lp_s" = "Launchpad S";
 "midi_lp_mk2" = "Launchpad MK2";
 "midi_lp_pro" = "Launchpad PRO";
+"midi_lp_pro_cfw" = "Launchpad Pro MK2 (CFW)";
 "midi_lp_x" = "Launchpad X";
 "midi_lp_mini_mk3" = "Launchpad Mini MK3";
 "midi_lp_mk3" = "Launchpad Pro MK3";

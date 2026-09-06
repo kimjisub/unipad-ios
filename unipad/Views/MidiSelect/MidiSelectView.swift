@@ -12,6 +12,7 @@ struct MidiSelectView: View {
         MidiDevice(name: String(localized: "midi_lp_s"), icon: "pianokeys", makeDriver: { LaunchpadSDriver() }),
         MidiDevice(name: String(localized: "midi_lp_mk2"), icon: "square.grid.3x3", makeDriver: { LaunchpadMK2Driver() }),
         MidiDevice(name: String(localized: "midi_lp_pro"), icon: "square.grid.3x3.fill", makeDriver: { LaunchpadProDriver() }),
+        MidiDevice(name: String(localized: "midi_lp_pro_cfw"), icon: "square.grid.3x3.fill", makeDriver: { LaunchpadProCFWDriver() }),
         MidiDevice(name: String(localized: "midi_lp_x"), icon: "square.grid.3x3.topleft.filled", makeDriver: { LaunchpadXDriver() }),
         MidiDevice(name: String(localized: "midi_lp_mini_mk3"), icon: "square.grid.3x3.middle.filled", makeDriver: { LaunchpadMiniMK3Driver() }),
         MidiDevice(name: String(localized: "midi_lp_mk3"), icon: "square.grid.3x3.bottomright.filled", makeDriver: { LaunchpadProMK3Driver() }),

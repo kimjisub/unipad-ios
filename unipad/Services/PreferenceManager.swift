@@ -15,6 +15,7 @@ final class PreferenceManager: ObservableObject {
         static let sortMethod = "SortMethod"
         static let sortOrder = "SortOrder"
         static let downloadStoragePath = "download_storage_path"
+        static let traceLogClassic = "TraceLogClassic"
     }
 
     private init() {}
@@ -38,6 +39,10 @@ final class PreferenceManager: ObservableObject {
 
     @AppStorage(Keys.sortOrder)
     var sortOrder: Bool = true
+
+    /// Classic trace log: tap order as numbers on each pad (the pre-4.1 look) instead of the line-and-dot overlay.
+    @AppStorage(Keys.traceLogClassic)
+    var traceLogClassic: Bool = false
 
     var downloadStoragePath: String? {
         get { defaults.string(forKey: Keys.downloadStoragePath) }

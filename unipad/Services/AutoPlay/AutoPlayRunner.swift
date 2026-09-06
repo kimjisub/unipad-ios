@@ -53,7 +53,27 @@ final class AutoPlayRunner {
     private var waitStartTime: Int64 = 0
 
     // key = x*256+y, value = targetWallTimeMs
+    /// Guide pads currently lit, keyed by guideKey. Written by the runner task and cleared by
+    /// stop() on the main thread, so every access goes through withGuides (unipad-android #32
+    /// was the same race on Android).
     private var activeGuides: [Int: Int64] = [:]
+    private let guidesLock = NSLock()
+
+    @discardableResult
+    private func withGuides<T>(_ body: (inout [Int: Int64]) -> T) -> T {
+        guidesLock.lockWithDeadlockDetection()
+        defer { guidesLock.unlock() }
+        return body(&activeGuides)
+    }
+
+    /// Empties activeGuides and returns the keys that were lit, for LED cleanup outside the lock.
+    private func drainGuides() -> [Int] {
+        withGuides { guides in
+            let keys = Array(guides.keys)
+            guides.removeAll()
+            return keys
+        }
+    }
     private var lastGuideUpdateMs: Int64 = 0
 
     // Step mode state
@@ -114,7 +134,7 @@ final class AutoPlayRunner {
                 self.guideTimeline = self.buildGuideTimeline(autoPlay: autoPlay)
                 self.guideIndex = 0
                 self.waitingForChain = -1
-                self.activeGuides.removeAll()
+                self.withGuides { $0.removeAll() }
             }
 
             var delayAccum: Int64 = 0
@@ -132,12 +152,11 @@ final class AutoPlayRunner {
                         let idx = self.guideTimeline.firstIndex { $0.timeMs > elapsed - Self.guideLookaheadMs }
                         self.guideIndex = idx ?? self.guideTimeline.count
                         self.waitingForChain = -1
-                        self.activeGuides.removeAll()
+                        self.withGuides { $0.removeAll() }
                     } else {
-                        for (key, _) in self.activeGuides {
+                        for key in self.drainGuides() {
                             self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
                         }
-                        self.activeGuides.removeAll()
                         self.guideTimeline = []
                         self.waitingForChain = -1
                         self.listener?.onRemoveGuide()
@@ -170,26 +189,28 @@ final class AutoPlayRunner {
                                 if event.chain != self.chain.value {
                                     self.waitingForChain = event.chain
                                     self.waitStartTime = currTime
-                                    for (key, _) in self.activeGuides {
+                                    for key in self.drainGuides() {
                                         self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
                                     }
-                                    self.activeGuides.removeAll()
                                     self.listener?.onRemoveGuide()
                                     self.listener?.onGuideChainOn(c: event.chain)
                                     break
                                 }
 
                                 let targetWallTimeMs = startTime + event.timeMs
-                                self.activeGuides[self.guideKey(x: event.x, y: event.y)] = targetWallTimeMs
+                                let key = self.guideKey(x: event.x, y: event.y)
+                                self.withGuides { $0[key] = targetWallTimeMs }
                                 self.listener?.onGuidePadOn(x: event.x, y: event.y, targetWallTimeMs: targetWallTimeMs)
                                 self.guideIndex += 1
                             }
 
-                            // Guide expiration + LED brightness update
-                            if !self.activeGuides.isEmpty {
+                            // Guide expiration + LED brightness update (iterate a snapshot; the
+                            // listener calls must not run under the lock)
+                            let guidesSnapshot = self.withGuides { $0 }
+                            if !guidesSnapshot.isEmpty {
                                 let throttle = currTime - self.lastGuideUpdateMs >= Self.guideLedUpdateIntervalMs
                                 var keysToRemove: [Int] = []
-                                for (key, targetMs) in self.activeGuides {
+                                for (key, targetMs) in guidesSnapshot {
                                     let gx = key / 256
                                     let gy = key % 256
                                     if currTime >= targetMs {
@@ -203,8 +224,10 @@ final class AutoPlayRunner {
                                         self.listener?.onGuideLedUpdate(x: gx, y: gy, velocity: Self.guideVelocities[idx])
                                     }
                                 }
-                                for key in keysToRemove {
-                                    self.activeGuides.removeValue(forKey: key)
+                                if !keysToRemove.isEmpty {
+                                    self.withGuides { guides in
+                                        for key in keysToRemove { guides.removeValue(forKey: key) }
+                                    }
                                 }
                                 if throttle { self.lastGuideUpdateMs = currTime }
                             }
@@ -308,7 +331,7 @@ final class AutoPlayRunner {
     func stop() {
         task?.cancel()
         task = nil
-        activeGuides.removeAll()
+        withGuides { $0.removeAll() }
         resetStepState()
     }
 

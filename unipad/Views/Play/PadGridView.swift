@@ -16,6 +16,8 @@ struct PadGridView: View {
     var padGuideTargets: [[Int64]] = []
     var traceLogSequence: [(x: Int, y: Int)]? = nil
     var traceLogColor: Color = .white
+    /// Classic trace log: the tap order printed on each pad instead of the line-and-dot path.
+    var traceLogClassic: Bool = false
     var onPadTouch: (Int, Int, Bool) -> Void
 
     private var hasActiveGuide: Bool {
@@ -167,7 +169,31 @@ struct PadGridView: View {
                 .allowsHitTesting(false)
                 } // TimelineView
 
-                if let sequence = traceLogSequence, !sequence.isEmpty {
+                if let sequence = traceLogSequence, !sequence.isEmpty, traceLogClassic {
+                    Canvas { context, _ in
+                        let cellMin = min(cellWidth, cellHeight)
+                        let font = Font.system(size: max(9, cellMin * 0.14), weight: .medium)
+                        for (key, label) in TraceLogText.perPad(sequence, columns: columns) {
+                            let row = key / columns
+                            let col = key % columns
+                            let cell = CGRect(
+                                x: offsetX + CGFloat(col) * cellWidth + 2,
+                                y: offsetY + CGFloat(row) * cellHeight + 2,
+                                width: cellWidth - 4,
+                                height: cellHeight - 4
+                            )
+                            let resolved = context.resolve(Text(label).font(font).foregroundColor(traceLogColor))
+                            let measured = resolved.measure(in: cell.size)
+                            context.draw(resolved, in: CGRect(
+                                x: cell.midX - measured.width / 2,
+                                y: cell.midY - measured.height / 2,
+                                width: measured.width,
+                                height: measured.height
+                            ))
+                        }
+                    }
+                    .allowsHitTesting(false)
+                } else if let sequence = traceLogSequence, !sequence.isEmpty {
                     Canvas { context, size in
                         let cellMin = min(cellWidth, cellHeight)
                         let maxOffset = cellMin * 0.3

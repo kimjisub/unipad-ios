@@ -196,6 +196,7 @@ struct PlayView: View {
             padGuideTargets: vm.padGuideTargets,
             traceLogSequence: vm.scbTraceLog.checked && vm.chain.value >= 0 && vm.chain.value < vm.traceLogSequence.count ? vm.traceLogSequence[vm.chain.value] : nil,
             traceLogColor: .white,
+            traceLogClassic: PreferenceManager.shared.traceLogClassic,
             onPadTouch: { (x: Int, y: Int, isDown: Bool) in vm.padTouch(x: x, y: y, isDown: isDown) }
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)

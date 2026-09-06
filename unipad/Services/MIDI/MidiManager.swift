@@ -317,6 +317,8 @@ final class MidiManager: ObservableObject {
         ("lpx",       DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
         // Launchpad Pro MK3 — sources: "LPProMK3 DAW Out", "LPProMK3 MIDI Out"
         ("lppromk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
+        // Launchpad Pro MK2 on the "Launchpad Open" custom firmware — sources: "Launchpad Open ..."
+        ("launchpad open", DriverEntry(name: "Launchpad Pro MK2 (CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
         // Launchpad Pro — sources: "Launchpad Pro ..." (full name)
         ("lppro",     DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         // Launchpad MK2 — sources: "Launchpad MK2 ..."
