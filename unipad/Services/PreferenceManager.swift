@@ -8,7 +8,7 @@ final class PreferenceManager: ObservableObject {
 
     private let defaults = UserDefaults.standard
 
-    private enum Keys {
+    enum Keys {
         static let launchpadConnectMethod = "LaunchpadConnectMethod"
         static let selectedTheme = "SelectedTheme"
         static let prevStoreCount = "PrevStoreCount"

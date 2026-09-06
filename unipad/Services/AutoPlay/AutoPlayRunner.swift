@@ -59,16 +59,19 @@ final class AutoPlayRunner {
     private var activeGuides: [Int: Int64] = [:]
     private let guidesLock = NSLock()
 
+    /// The run that stop() cancelled last; launch() waits for it so two runs never overlap.
+    private var previousRun: Task<Void, Never>?
+
     @discardableResult
-    private func withGuides<T>(_ body: (inout [Int: Int64]) -> T) -> T {
-        guidesLock.lockWithDeadlockDetection()
+    private func withGuides<T>(file: String = #fileID, line: Int = #line, _ body: (inout [Int: Int64]) -> T) -> T {
+        guidesLock.lockWithDeadlockDetection(file: file, line: line)
         defer { guidesLock.unlock() }
         return body(&activeGuides)
     }
 
     /// Empties activeGuides and returns the keys that were lit, for LED cleanup outside the lock.
-    private func drainGuides() -> [Int] {
-        withGuides { guides in
+    private func drainGuides(file: String = #fileID, line: Int = #line) -> [Int] {
+        withGuides(file: file, line: line) { guides in
             let keys = Array(guides.keys)
             guides.removeAll()
             return keys
@@ -122,7 +125,12 @@ final class AutoPlayRunner {
     func launch() {
         guard task == nil || task!.isCancelled else { return }
 
+        let previousRun = self.previousRun
+        self.previousRun = nil
         task = Task.detached(priority: .userInitiated) { [weak self] in
+            // A run that stop() cancelled may still be inside its last iteration; let it finish
+            // so two runs never touch guideTimeline / guideIndex at the same time.
+            _ = await previousRun?.value
             guard let self else { return }
 
             self.progress = 0
@@ -204,32 +212,32 @@ final class AutoPlayRunner {
                                 self.guideIndex += 1
                             }
 
-                            // Guide expiration + LED brightness update (iterate a snapshot; the
-                            // listener calls must not run under the lock)
-                            let guidesSnapshot = self.withGuides { $0 }
-                            if !guidesSnapshot.isEmpty {
-                                let throttle = currTime - self.lastGuideUpdateMs >= Self.guideLedUpdateIntervalMs
-                                var keysToRemove: [Int] = []
-                                for (key, targetMs) in guidesSnapshot {
-                                    let gx = key / 256
-                                    let gy = key % 256
+                            // Guide expiration + LED brightness update: decide under the lock in one
+                            // pass, emit the listener calls after it is released
+                            let throttle = currTime - self.lastGuideUpdateMs >= Self.guideLedUpdateIntervalMs
+                            var expired: [Int] = []
+                            var ledUpdates: [(key: Int, velocity: Int)] = []
+                            self.withGuides { guides in
+                                guard !guides.isEmpty else { return }
+                                for (key, targetMs) in guides {
                                     if currTime >= targetMs {
-                                        keysToRemove.append(key)
-                                        self.listener?.onGuideLedUpdate(x: gx, y: gy, velocity: 0)
-                                        self.listener?.onGuidePadOff(x: gx, y: gy)
+                                        expired.append(key)
                                     } else if throttle {
                                         let remaining = targetMs - currTime
                                         let p = min(max(1.0 - Float(remaining) / Float(Self.guideLookaheadMs), 0), 1)
                                         let idx = min(Int(p * Float(Self.guideVelocities.count)), Self.guideVelocities.count - 1)
-                                        self.listener?.onGuideLedUpdate(x: gx, y: gy, velocity: Self.guideVelocities[idx])
+                                        ledUpdates.append((key: key, velocity: Self.guideVelocities[idx]))
                                     }
                                 }
-                                if !keysToRemove.isEmpty {
-                                    self.withGuides { guides in
-                                        for key in keysToRemove { guides.removeValue(forKey: key) }
-                                    }
-                                }
+                                for key in expired { guides.removeValue(forKey: key) }
                                 if throttle { self.lastGuideUpdateMs = currTime }
+                            }
+                            for key in expired {
+                                self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
+                                self.listener?.onGuidePadOff(x: key / 256, y: key % 256)
+                            }
+                            for update in ledUpdates {
+                                self.listener?.onGuideLedUpdate(x: update.key / 256, y: update.key % 256, velocity: update.velocity)
                             }
                         }
 
@@ -324,11 +332,14 @@ final class AutoPlayRunner {
                 try? await Task.sleep(nanoseconds: UInt64(self.loopDelay * 1_000_000_000))
             }
 
+            // stop() already reset the UI; a cancelled run must not post another onEnd after it.
+            guard !Task.isCancelled else { return }
             self.listener?.onEnd()
         }
     }
 
     func stop() {
+        previousRun = task
         task?.cancel()
         task = nil
         withGuides { $0.removeAll() }

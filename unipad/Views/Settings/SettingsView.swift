@@ -6,7 +6,7 @@ struct SettingsView: View {
     @State private var showCommunityDialog = false
     @State private var showAlert = false
     @State private var alertMessage = ""
-    @AppStorage("TraceLogClassic") private var traceLogClassic = false
+    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = false
 
     var initialCategory: SettingsViewModel.Category = .info
 

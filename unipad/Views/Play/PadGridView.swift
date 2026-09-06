@@ -173,7 +173,7 @@ struct PadGridView: View {
                     Canvas { context, _ in
                         let cellMin = min(cellWidth, cellHeight)
                         let font = Font.system(size: max(9, cellMin * 0.14), weight: .medium)
-                        for (key, label) in TraceLogText.perPad(sequence, columns: columns) {
+                        for (key, label) in TraceLogText.perPad(sequence, columns: columns, rows: rows) {
                             let row = key / columns
                             let col = key % columns
                             let cell = CGRect(
@@ -182,13 +182,17 @@ struct PadGridView: View {
                                 width: cellWidth - 4,
                                 height: cellHeight - 4
                             )
-                            let resolved = context.resolve(Text(label).font(font).foregroundColor(traceLogColor))
+                            let resolved = context.resolve(Text(label).font(font).foregroundStyle(traceLogColor))
                             let measured = resolved.measure(in: cell.size)
-                            context.draw(resolved, in: CGRect(
-                                x: cell.midX - measured.width / 2,
-                                y: cell.midY - measured.height / 2,
-                                width: measured.width,
-                                height: measured.height
+                            // A pad tapped many times wraps to several lines; keep it inside its own cell.
+                            let drawSize = CGSize(width: min(measured.width, cell.width), height: min(measured.height, cell.height))
+                            var cellContext = context
+                            cellContext.clip(to: Path(cell))
+                            cellContext.draw(resolved, in: CGRect(
+                                x: cell.midX - drawSize.width / 2,
+                                y: cell.midY - drawSize.height / 2,
+                                width: drawSize.width,
+                                height: drawSize.height
                             ))
                         }
                     }

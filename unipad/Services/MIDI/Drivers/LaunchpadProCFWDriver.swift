@@ -18,9 +18,7 @@ final class LaunchpadProCFWDriver: BaseMidiDriver {
 
     override func initialize() {
         guard let initData = getInitSysEx() else { return }
-        for cable in 0...1 {
-            sendRawSignals(messages: initData.messages, cableNumber: cable)
-        }
+        sendRawSignals(messages: initData.messages, cableNumber: initData.cableNumber)
     }
 
     override func getSignal(cmd: Int, sig: Int, note: Int, velocity: Int) {
@@ -62,7 +60,8 @@ final class LaunchpadProCFWDriver: BaseMidiDriver {
     }
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
-        // UniPad passes x as row, y as column
+        // UniPad passes x as row, y as column; the CFW grid is 8x8
+        guard (0...7).contains(x), (0...7).contains(y) else { return }
         let rowInverted = 7 - x
         let note = y < 4 ? 36 + rowInverted * 4 + y : 68 + rowInverted * 4 + (y - 4)
         sendSignal(cmd: Self.cinNoteOn, sig: Self.statusNoteOn, note: note, velocity: velocity)
