@@ -89,4 +89,31 @@ platform :ios do
     end
     UI.success("Uploaded build to #{target}.")
   end
+
+  desc "Submit an already-processed TestFlight build for App Store review as a phased release. Pass build_number:N (and version:X.Y.Z if the xcodeproj is behind)."
+  lane :submit do |options|
+    key = asc_api_key
+    build = options[:build_number] || latest_testflight_build_number(
+      api_key: key, app_identifier: "kim.jisub.unipad", initial_build_number: 0,
+    )
+    version = options[:version] || get_version_number(xcodeproj: XCODEPROJ, target: SCHEME)
+    upload_to_app_store(
+      api_key: key,
+      app_version: version.to_s,
+      build_number: build.to_s,
+      skip_binary_upload: true,          # reuse the TestFlight build
+      skip_screenshots: true,
+      skip_metadata: false,              # only fastlane/metadata/<locale>/release_notes.txt exists
+      submit_for_review: true,
+      automatic_release: true,           # release on approval...
+      phased_release: true,              # ...over Apple's 7-day phased rollout
+      precheck_include_in_app_purchases: false,
+      force: true,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false, # Info.plist ITSAppUsesNonExemptEncryption = false
+      },
+    )
+    UI.success("Submitted #{version} (#{build}) for review, phased release on approval.")
+  end
 end
