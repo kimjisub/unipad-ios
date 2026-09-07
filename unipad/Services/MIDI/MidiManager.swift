@@ -522,43 +522,57 @@ final class MidiManager: ObservableObject {
         let destination = connectedDawDestination != 0 ? connectedDawDestination : connectedDestination
         guard destination != 0 else { return }
 
-        sendQueue.async {
-            for (index, message) in messages.enumerated() {
-                let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
-                buffer.initialize(from: message, count: message.count)
+        // One message per hop, the next one 50 ms later via asyncAfter: a Thread.sleep on the
+        // shared serial sendQueue froze every pad-LED message for the whole burst (~150 ms at
+        // connect on a Pro), and a failed MIDISendSysex never ran the completion, leaking the
+        // request and its buffer.
+        func sendMessage(at index: Int) {
+            guard index < messages.count else { return }
+            let message = messages[index]
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
+            buffer.initialize(from: message, count: message.count)
 
-                // MIDISysexSendRequest must remain valid until completion callback fires.
-                // CoreMIDI advances `data` and decrements `bytesToSend` during send,
-                // so store the original buffer pointer in completionRefCon for deallocation.
-                let context = Unmanaged.passRetained(
-                    SysExContext(buffer: buffer, count: message.count)
-                ).toOpaque()
+            // MIDISysexSendRequest must remain valid until completion callback fires.
+            // CoreMIDI advances `data` and decrements `bytesToSend` during send,
+            // so store the original buffer pointer in completionRefCon for deallocation.
+            let context = Unmanaged.passRetained(
+                SysExContext(buffer: buffer, count: message.count)
+            ).toOpaque()
 
-                let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
-                requestPtr.initialize(to: MIDISysexSendRequest(
-                    destination: destination,
-                    data: UnsafePointer(buffer),
-                    bytesToSend: UInt32(message.count),
-                    complete: false,
-                    reserved: (0, 0, 0),
-                    completionProc: { completedPtr in
-                        if let refCon = completedPtr.pointee.completionRefCon {
-                            let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
-                            ctx.buffer.deinitialize(count: ctx.count)
-                            ctx.buffer.deallocate()
-                        }
-                        completedPtr.deinitialize(count: 1)
-                        completedPtr.deallocate()
-                    },
-                    completionRefCon: context
-                ))
-                MIDISendSysex(requestPtr)
-
-                if index < messages.count - 1 {
-                    Thread.sleep(forTimeInterval: 0.05)
-                }
+            let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
+            requestPtr.initialize(to: MIDISysexSendRequest(
+                destination: destination,
+                data: UnsafePointer(buffer),
+                bytesToSend: UInt32(message.count),
+                complete: false,
+                reserved: (0, 0, 0),
+                completionProc: { completedPtr in
+                    if let refCon = completedPtr.pointee.completionRefCon {
+                        let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
+                        ctx.buffer.deinitialize(count: ctx.count)
+                        ctx.buffer.deallocate()
+                    }
+                    completedPtr.deinitialize(count: 1)
+                    completedPtr.deallocate()
+                },
+                completionRefCon: context
+            ))
+            let status = MIDISendSysex(requestPtr)
+            if status != noErr {
+                // The completion will not run; release what it would have released.
+                let ctx = Unmanaged<SysExContext>.fromOpaque(context).takeRetainedValue()
+                ctx.buffer.deinitialize(count: ctx.count)
+                ctx.buffer.deallocate()
+                requestPtr.deinitialize(count: 1)
+                requestPtr.deallocate()
+                Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
+                return
+            }
+            if index + 1 < messages.count {
+                sendQueue.asyncAfter(deadline: .now() + 0.05) { sendMessage(at: index + 1) }
             }
         }
+        sendQueue.async { sendMessage(at: 0) }
     }
 
     // MARK: - Driver Listener Setup

@@ -92,7 +92,9 @@ final class UniPackAutoMapper {
 
         let newContent = result.joined(separator: "\n") + "\n"
         try backupAndWrite(newContent: newContent)
-        unipack.reloadAutoPlay()
+        // autoPlayTable is read by the view model on the main actor; swapping it from the
+        // detached task raced those reads.
+        await MainActor.run { unipack.reloadAutoPlay() }
 
         await MainActor.run { listener?.onDone() }
     }

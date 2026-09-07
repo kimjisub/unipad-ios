@@ -16,7 +16,6 @@ final class LedRunner {
     private var ledAnimationStates: [LedAnimationState] = []
     private var ledAnimationStatesAdd: [LedAnimationState] = []
 
-    private let queue = DispatchQueue(label: "com.unipad.ledrunner", qos: .userInteractive)
     private let lock = NSLock()
 
     var active: Bool { loopTask != nil }
@@ -65,7 +64,9 @@ final class LedRunner {
 
             while !Task.isCancelled {
                 let start = ContinuousClock.now
-                self.queue.sync { self.loop() }
+                // loop() takes `lock`; the extra queue.sync only parked a cooperative-pool thread
+                // for the whole locked body every 4 ms.
+                self.loop()
                 let elapsed = ContinuousClock.now - start
                 // components.seconds counted too: a loop over 1 s used to wrap to its sub-second part
                 let elapsedNs = UInt64(clamping: elapsed.components.seconds) * 1_000_000_000
