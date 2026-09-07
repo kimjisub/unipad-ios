@@ -68,7 +68,12 @@ final class UniPadAPI: Sendable {
     // MARK: - Unishare
 
     func getUnishare(code: String) async throws -> UnishareVO {
-        let url = URL(string: "\(baseURL)/unishare/\(code)")!
+        // `code` comes straight from the unipad:// deep link; a space or a stray character made
+        // the force-unwrapped URL trap on launch-from-link.
+        guard let encoded = code.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(baseURL)/unishare/\(encoded)") else {
+            throw APIError.invalidURL
+        }
         let (data, response) = try await session.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse else {

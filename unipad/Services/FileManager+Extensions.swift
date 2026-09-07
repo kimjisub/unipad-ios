@@ -40,20 +40,44 @@ enum FileManagerExtensions {
         return filenameFilterRegex.stringByReplacingMatches(in: original, range: range, withTemplate: "")
     }
 
+    /// Moves the contents of `source` into `target` and removes `source`. Directories that exist
+    /// on both sides are merged (as Android's FileManager.moveDirectory does); an item whose
+    /// destination is `source` itself (zip layout Pack/Pack/info) is parked beside the tree and
+    /// moved in after `source` is gone. The old version deleted the destination first, which for
+    /// that layout deleted the source subtree and destroyed the pack being imported.
     static func moveDirectory(from source: URL, to target: URL) {
         let fm = FileManager.default
+        let sourcePath = source.standardizedFileURL.path
+        guard sourcePath != target.standardizedFileURL.path else { return }
         do {
-            guard let sourceContents = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) else { return }
+            guard let sourceContents = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
 
+            var deferred: [(parked: URL, dest: URL)] = []
             for item in sourceContents {
                 let dest = target.appendingPathComponent(item.lastPathComponent)
-                if fm.fileExists(atPath: dest.path) {
+                if dest.standardizedFileURL.path == sourcePath {
+                    let parked = target.appendingPathComponent(".unipad-move-" + UUID().uuidString)
+                    try fm.moveItem(at: item, to: parked)
+                    deferred.append((parked: parked, dest: dest))
+                    continue
+                }
+                var destIsDir: ObjCBool = false
+                let destExists = fm.fileExists(atPath: dest.path, isDirectory: &destIsDir)
+                let itemIsDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                if destExists && destIsDir.boolValue && itemIsDir {
+                    moveDirectory(from: item, to: dest)
+                    continue
+                }
+                if destExists {
                     try fm.removeItem(at: dest)
                 }
                 try fm.moveItem(at: item, to: dest)
             }
 
             try fm.removeItem(at: source)
+            for entry in deferred {
+                try fm.moveItem(at: entry.parked, to: entry.dest)
+            }
         } catch {
             logger.error("moveDirectory failed: \(error.localizedDescription)")
         }

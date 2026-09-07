@@ -89,7 +89,7 @@ final class AppRouter {
         let importer = UniPackImporter()
 
         do {
-            await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
+            try await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
 
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImported"),

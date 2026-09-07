@@ -113,8 +113,15 @@ class UniPackFolder: UniPack {
     // MARK: - Info Parsing
 
     private func parseInfo() {
+        // Every branch falls through to the validation below: an unreadable info used to return
+        // early with chain == 0 and criticalError == false, and PlayViewModel then formed the
+        // range 0...(-1) and trapped.
         if let infoFile {
-            guard let data = Self.readTextFile(infoFile) else { return }
+            guard let data = Self.readTextFile(infoFile) else {
+                addErr("info : file could not be decoded")
+                criticalError = true
+                return
+            }
 
             for rawLine in data.components(separatedBy: .newlines) {
                 let s = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -143,7 +150,11 @@ class UniPackFolder: UniPack {
             guard
                 let data = try? Data(contentsOf: infoJsonFile),
                 let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return }
+            else {
+                addErr("info.json : file could not be decoded")
+                criticalError = true
+                return
+            }
 
             if let value = json["title"] as? String { title = value }
             if let value = json["producerName"] as? String { producerName = value }
@@ -170,7 +181,15 @@ class UniPackFolder: UniPack {
             addErr("info : chain out of range")
             criticalError = true
         }
+        // The grid sizes feed Array(repeating:count:) in loadDetail and PlayViewModel; a negative
+        // value trapped and a huge one allocated chain * x * y cells. 0 stays a soft error as before.
+        if !(0...Self.maxGridSize).contains(buttonX) || !(0...Self.maxGridSize).contains(buttonY) {
+            addErr("info : buttonX/buttonY out of range")
+            criticalError = true
+        }
     }
+
+    private static let maxGridSize = 64
 
     // MARK: - KeySound Parsing
 
@@ -539,9 +558,15 @@ class UniPackFolder: UniPack {
         guard let data = try? Data(contentsOf: url) else { return nil }
 
         if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
-        if let utf16 = String(data: data, encoding: .utf16) { return utf16 }
-        if let utf16le = String(data: data, encoding: .utf16LittleEndian) { return utf16le }
-        if let utf16be = String(data: data, encoding: .utf16BigEndian) { return utf16be }
+        // BOM-less UTF-16 decodes almost any even-length byte sequence, so it must not run before
+        // the Korean encodings: a legacy EUC-KR keySound used to come out as UTF-16 garbage with
+        // zero sounds, where Android at least keeps the ASCII skeleton.
+        if data.count >= 2 {
+            let b0 = data[data.startIndex], b1 = data[data.startIndex + 1]
+            if (b0 == 0xFE && b1 == 0xFF) || (b0 == 0xFF && b1 == 0xFE) {
+                if let utf16 = String(data: data, encoding: .utf16) { return utf16 }
+            }
+        }
 
         let eucKR = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.EUC_KR.rawValue)))
         if let eucKrText = String(data: data, encoding: eucKR) { return eucKrText }

@@ -21,7 +21,7 @@ final class AutoPlayRunner {
     }
 
     private var task: Task<Void, Never>?
-    var active: Bool { task != nil && !task!.isCancelled }
+    var active: Bool { task.map { !$0.isCancelled } ?? false }
 
     protocol Listener: AnyObject {
         func onStart()
@@ -123,7 +123,7 @@ final class AutoPlayRunner {
     // MARK: - Lifecycle
 
     func launch() {
-        guard task == nil || task!.isCancelled else { return }
+        guard task == nil || task?.isCancelled == true else { return }
 
         let previousRun = self.previousRun
         self.previousRun = nil
@@ -136,7 +136,11 @@ final class AutoPlayRunner {
             self.progress = 0
             self.listener?.onStart()
 
-            guard let autoPlay = self.unipack.autoPlayTable else { return }
+            guard let autoPlay = self.unipack.autoPlayTable else {
+                // onStart already put the UI in the playing state; without this it never leaves it.
+                self.listener?.onEnd()
+                return
+            }
 
             if self.practiceGuide {
                 self.guideTimeline = self.buildGuideTimeline(autoPlay: autoPlay)
@@ -283,18 +287,20 @@ final class AutoPlayRunner {
 
                         let currentChain = self.chain.value
 
-                        // 체인이 바뀌면 현재 스텝을 되돌리고 재스캔
-                        if currentChain != self._stepChainValue && self._stepChainValue >= 0 {
-                            self.stepLock.lockWithDeadlockDetection()
-                            if self._stepScanned {
-                                self.progress = self._stepStartProgress
-                                self._stepPendingPads.removeAll()
-                                self._stepScanned = false
-                            }
-                            self.stepLock.unlock()
-                            self.waitingForChain = -1
+                        // 체인이 바뀌면 현재 스텝을 되돌리고 재스캔. resetStepState() writes the same
+                        // fields from the main thread, so they are only touched under stepLock.
+                        self.stepLock.lockWithDeadlockDetection()
+                        let chainChanged = currentChain != self._stepChainValue && self._stepChainValue >= 0
+                        var rewindTo: Int? = nil
+                        if chainChanged && self._stepScanned {
+                            rewindTo = self._stepStartProgress
+                            self._stepPendingPads.removeAll()
+                            self._stepScanned = false
                         }
                         self._stepChainValue = currentChain
+                        self.stepLock.unlock()
+                        if let rewindTo { self.progress = rewindTo }
+                        if chainChanged { self.waitingForChain = -1 }
 
                         var needsScan = false
 
@@ -316,7 +322,9 @@ final class AutoPlayRunner {
 
                         if needsScan {
                             self.listener?.onRemoveGuide()
+                            self.stepLock.lockWithDeadlockDetection()
                             self._stepStartProgress = self.progress
+                            self.stepLock.unlock()
                             self.stepScanNext(autoPlay: autoPlay)
                             self.stepLock.lockWithDeadlockDetection()
                             self._stepScanned = !self._stepPendingPads.isEmpty || self.waitingForChain >= 0
@@ -339,7 +347,9 @@ final class AutoPlayRunner {
     }
 
     func stop() {
-        previousRun = task
+        // A second stop() used to overwrite previousRun with nil and lose the handle the next
+        // launch() waits on, letting two runs overlap.
+        if let task { previousRun = task }
         task?.cancel()
         task = nil
         withGuides { $0.removeAll() }
@@ -355,7 +365,8 @@ final class AutoPlayRunner {
 
     func progressOffset(_ offset: Int) {
         let target = progress + offset
-        progress = max(0, min(target, Int.max))
+        let count = unipack.autoPlayTable?.elements.count ?? 0
+        progress = max(0, min(target, count))
         if stepMode {
             resetStepState()
             listener?.onRemoveGuide()
@@ -449,9 +460,13 @@ final class AutoPlayRunner {
     }
 }
 
-// Property wrapper for thread-safe volatile-like access
+// Property wrapper for thread-safe volatile-like access.
+// A class, not a struct: a struct wrapper's setter is `mutating`, so a write held a *modify*
+// access on the enclosing stored property for the whole locked call while the runner thread
+// read it, and Swift's runtime exclusivity check trapped ("Simultaneous accesses") when play
+// mode was switched or the seek control dragged during playback. The NSLock never covered that.
 @propertyWrapper
-struct Volatile<Value: Sendable> {
+final class Volatile<Value: Sendable>: @unchecked Sendable {
     private var _value: Value
     private let lock = NSLock()
 

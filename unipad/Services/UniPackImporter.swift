@@ -32,8 +32,10 @@ actor UniPackImporter {
 
     private let logger = Logger(subsystem: "com.kimjisub.unipad", category: "Importer")
 
-    /// Import a UniPack from a local file URL (ZIP).
-    func importPack(from sourceURL: URL, to workspace: URL, delegate: Delegate?) async {
+    /// Import a UniPack from a local file URL (ZIP). Errors reach the delegate and are rethrown, so
+    /// a caller that has no delegate (TransferView) can still tell a failure from a success.
+    @discardableResult
+    func importPack(from sourceURL: URL, to workspace: URL, delegate: Delegate?) async throws -> URL {
         let fileName = sourceURL.deletingPathExtension().lastPathComponent
         let targetFolder = FileManagerExtensions.makeNextPath(dir: workspace, name: fileName, extension: "")
 
@@ -53,8 +55,10 @@ actor UniPackImporter {
 
             FileManagerExtensions.removeDoubleFolder(at: targetFolder)
 
-            // Validate the extracted unipack
+            // Validate the extracted unipack. load() runs checkFile + parseInfo; without it
+            // loadDetail parsed nothing and criticalError was never set, so any ZIP passed.
             let unipack = UniPackFolder(rootFolder: targetFolder)
+            unipack.load()
             unipack.loadDetail()
             if unipack.criticalError {
                 FileManagerExtensions.deleteDirectory(at: targetFolder)
@@ -63,28 +67,31 @@ actor UniPackImporter {
 
             await delegate?.onImportComplete(folder: targetFolder)
             logger.info("Import completed: \(targetFolder.lastPathComponent)")
+            return targetFolder
 
         } catch {
             logger.error("Import failed: \(error.localizedDescription)")
             FileManagerExtensions.deleteDirectory(at: targetFolder)
             await delegate?.onImportError(error)
+            throw error
         }
     }
 
     /// Import from Data (e.g., from share sheet or document picker)
-    func importPack(data: Data, fileName: String, to workspace: URL, delegate: Delegate?) async {
+    @discardableResult
+    func importPack(data: Data, fileName: String, to workspace: URL, delegate: Delegate?) async throws -> URL {
         let fm = FileManager.default
         let tempZip = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
+        defer { try? fm.removeItem(at: tempZip) }
 
         do {
             try data.write(to: tempZip)
-            await importPack(from: tempZip, to: workspace, delegate: delegate)
         } catch {
             logger.error("Failed to write temp ZIP: \(error.localizedDescription)")
             await delegate?.onImportError(error)
+            throw error
         }
-
-        try? fm.removeItem(at: tempZip)
+        return try await importPack(from: tempZip, to: workspace, delegate: delegate)
     }
 
     /// Extract a ZIP file without import validation (used by UniPackDownloader)
@@ -107,7 +114,9 @@ extension FileManager {
     /// ZIP extraction using zlib (available on all Apple platforms).
     /// Parses central directory entries first (like zip tools) to support data-descriptor ZIPs.
     func unzipItem(at sourceURL: URL, to destinationURL: URL) throws {
-        let data = try Data(contentsOf: sourceURL)
+        // Mapped: a 300 MB store pack read into memory and re-copied per entry peaked well past
+        // twice its size and got the app killed on low-memory devices.
+        let data = try Data(contentsOf: sourceURL, options: .mappedIfSafe)
 
         func readUInt16LE(at offset: Int) -> UInt16? {
             guard offset >= 0, offset + 2 <= data.count else { return nil }
@@ -259,9 +268,21 @@ extension FileManager {
 
     /// Decompress deflate data using Apple's Compression framework with dynamic buffer growth
     private func decompressDeflate(_ compressedData: Data, expectedSize: Int) throws -> Data {
+        // A zero-byte entry stored with method 8 (an empty autoPlay is common) decodes to 0 bytes,
+        // which the loop below would report as a failure and abort the whole import.
+        if expectedSize == 0 || compressedData.isEmpty { return Data() }
+        // The central directory's size is untrusted; a corrupt 0xFFFFFFF0 meant an immediate
+        // multi-gigabyte allocation.
+        let maxBufferSize = 512 * 1024 * 1024
+        guard expectedSize <= maxBufferSize else {
+            throw UniPackImporter.ImportError.extractionFailed("Entry too large (\(expectedSize) bytes)")
+        }
         var bufferSize = max(expectedSize, 65536)
 
         while true {
+            guard bufferSize <= maxBufferSize else {
+                throw UniPackImporter.ImportError.extractionFailed("Decompressed entry exceeds \(maxBufferSize) bytes")
+            }
             let destBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
             let decompressedSize = compressedData.withUnsafeBytes { srcPtr -> Int in
                 guard let srcBase = srcPtr.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return 0 }

@@ -541,10 +541,18 @@ struct TransferView: View {
 
                 let sourceURL = URL(fileURLWithPath: item.sourcePath)
 
+                // With a single workspace the only target is the source directory itself; a move
+                // into it renamed or deleted the pack. Nothing is written or removed in that case.
+                if sourceURL.deletingLastPathComponent().standardizedFileURL.path == targetURL.standardizedFileURL.path {
+                    skipped += 1
+                    continue
+                }
+
                 do {
                     if item.isZip {
                         let importer = UniPackImporter()
-                        await importer.importPack(from: sourceURL, to: targetURL, delegate: nil)
+                        // Throws on failure, so the source is only removed after a successful import.
+                        try await importer.importPack(from: sourceURL, to: targetURL, delegate: nil)
                         if mode == .move {
                             try fm.removeItem(at: sourceURL)
                         }
@@ -552,10 +560,8 @@ struct TransferView: View {
                         let zipName = "\(item.name).zip"
                         let zipDestination = targetURL.appendingPathComponent(zipName)
                         if fm.fileExists(atPath: zipDestination.path) {
+                            // Nothing was written, so nothing is deleted even in move mode.
                             skipped += 1
-                            if mode == .move {
-                                try fm.removeItem(at: sourceURL)
-                            }
                             continue
                         }
                         try ZipHelper.zipDirectory(source: sourceURL, destination: zipDestination)

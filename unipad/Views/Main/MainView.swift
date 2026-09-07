@@ -96,7 +96,8 @@ struct MainView: View {
                         let workspace = WorkspaceManager.shared.downloadWorkspace.url
                         let importer = UniPackImporter()
                         let delegate = MainViewImportDelegate(viewModel: vm)
-                        await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
+                        // The delegate already shows the error; the thrown value is not needed here.
+                        _ = try? await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
 
                         await MainActor.run {
                             vm.isImportingInProgress = false
