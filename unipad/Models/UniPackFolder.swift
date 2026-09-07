@@ -198,22 +198,33 @@ class UniPackFolder: UniPack {
             logger.warning("parseKeySound: keySoundFile is nil")
             return
         }
-        guard let data = Self.readTextFile(keySoundFile) else {
-            logger.error("parseKeySound: failed to read keySoundFile at \(keySoundFile.path)")
-            return
-        }
-        logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
-
         var table = Array(repeating: Array(repeating: [Deque<Sound>?](repeating: nil, count: buttonY), count: buttonX), count: chain)
         soundTable = table
         soundCount = 0
+
+        guard let data = Self.readTextFile(keySoundFile) else {
+            // Android (UniPackFolder.kt) treats an unreadable keySound as critical; returning
+            // silently opened a pack with zero sounds and no message.
+            logger.error("parseKeySound: failed to read keySoundFile at \(keySoundFile.path)")
+            addErr("keySound : file could not be read")
+            criticalError = true
+            return
+        }
+        logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
             if s.isEmpty { continue }
 
             let split = s.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-            guard split.count > 3 else { continue }
+            // Same tolerance as Android: one or two tokens are skipped silently, three tokens are
+            // reported, and a non-numeric loop/wormhole drops the whole line (it used to be kept
+            // with loop 0, so a line Android rejects played here).
+            if split.count <= 2 { continue }
+            guard split.count > 3 else {
+                addErr("keySound : [\(s)] format is incorrect")
+                continue
+            }
 
             guard let c = Int(split[0]).map({ $0 - 1 }),
                   let x = Int(split[1]).map({ $0 - 1 }),
@@ -226,12 +237,19 @@ class UniPackFolder: UniPack {
             var loop = 0
             var wormhole = Sound.noWormhole
 
-            if split.count >= 5 { loop = (Int(split[4]) ?? 1) - 1 }
-            if split.count >= 6 {
-                loop = (Int(split[4]) ?? 1) - 1
-                if let wormholeVal = Int(split[5]) {
-                    wormhole = wormholeVal - 1
+            if split.count >= 5 {
+                guard let loopRaw = Int(split[4]) else {
+                    addErr("keySound : [\(s)] format is incorrect")
+                    continue
                 }
+                loop = loopRaw - 1
+            }
+            if split.count >= 6 {
+                guard let wormholeRaw = Int(split[5]) else {
+                    addErr("keySound : [\(s)] format is incorrect")
+                    continue
+                }
+                wormhole = wormholeRaw - 1
             }
 
             guard (0..<chain).contains(c) else {
@@ -293,7 +311,12 @@ class UniPackFolder: UniPack {
             }
 
             var loop = 1
-            if split1.count >= 4 { loop = Int(split1[3]) ?? 1 }
+            if split1.count >= 4 {
+                guard let loopRaw = Int(split1[3]) else {
+                    addErr("keyLed : [\(fileName)] format is incorrect"); continue
+                }
+                loop = loopRaw
+            }
 
             guard (0..<chain).contains(c) else {
                 addErr("keyLed : [\(fileName)] chain is incorrect"); continue
@@ -316,7 +339,10 @@ class UniPackFolder: UniPack {
                 if s.isEmpty { continue }
 
                 let split2 = s.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-                guard split2.count >= 2, let option = split2.first else { continue }
+                guard let option = split2.first else { continue }
+                guard split2.count >= 2 else {
+                    addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
+                }
 
                 switch option {
                 case "on", "o":
@@ -346,20 +372,24 @@ class UniPackFolder: UniPack {
                     var ledColor = -1
                     var ledVelocity = 4
 
+                    // Android parses the colour with a 32-bit toInt(16): more than six hex digits
+                    // overflow and drop the event, and a palette code outside 0...127 throws and
+                    // drops the event. The same lines are dropped here so the pack renders alike.
                     if split2.count == 4 {
-                        guard let hexVal = Int(split2[3], radix: 16) else {
+                        guard split2[3].count <= 6, let hexVal = Int(split2[3], radix: 16) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledColor = hexVal | 0xFF000000
                     } else if split2.count == 5 {
                         if split2[3] == "auto" || split2[3] == "a" {
-                            guard let vel = Int(split2[4]) else {
+                            guard let vel = Int(split2[4]), (0..<LaunchpadColor.argb.count).contains(vel) else {
                                 addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                             }
                             ledVelocity = vel
                             ledColor = Int(LaunchpadColor.colorFromCode(ledVelocity))
                         } else {
                             guard let vel = Int(split2[4]),
+                                  split2[3].count <= 6,
                                   let hexVal = Int(split2[3], radix: 16) else {
                                 addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                             }
@@ -555,6 +585,14 @@ class UniPackFolder: UniPack {
     }
 
     private static func readTextFile(_ url: URL) -> String? {
+        guard let text = decodeTextFile(url) else { return nil }
+        // A UTF-8 BOM (Windows Notepad) is not whitespace for trimmingCharacters, so the first
+        // key used to come out as "\u{FEFF}title" and the first line of every table was lost.
+        if text.hasPrefix("\u{FEFF}") { return String(text.dropFirst()) }
+        return text
+    }
+
+    private static func decodeTextFile(_ url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
 
         if let utf8 = String(data: data, encoding: .utf8) { return utf8 }

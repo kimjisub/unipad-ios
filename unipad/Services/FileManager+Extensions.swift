@@ -13,7 +13,9 @@ enum FileManagerExtensions {
         var current = path
         while true {
             guard let contents = try? fm.contentsOfDirectory(at: current, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
-            let nonHidden = contents.filter { !$0.lastPathComponent.hasPrefix(".") }
+            // Finder's `__MACOSX` sibling (and dot files) do not count as content: every pack zipped
+            // on a Mac used to fail to import because the root had two children.
+            let nonHidden = contents.filter { !$0.lastPathComponent.hasPrefix(".") && $0.lastPathComponent != "__MACOSX" }
             guard nonHidden.count == 1,
                   let single = nonHidden.first,
                   (try? single.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { break }

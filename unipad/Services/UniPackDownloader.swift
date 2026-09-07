@@ -80,14 +80,8 @@ actor UniPackDownloader {
             try await importer.extractOnly(at: zipFile, to: folder)
             FileManagerExtensions.removeDoubleFolder(at: folder)
 
-            // Validate extracted pack
-            let infoFile = folder.appendingPathComponent("info")
-            let infoJson = folder.appendingPathComponent("info.json")
-            if !fm.fileExists(atPath: infoFile.path) && !fm.fileExists(atPath: infoJson.path) {
-                FileManagerExtensions.deleteDirectory(at: folder)
-                throw DownloadError.criticalError("No info file found in extracted pack")
-            }
-
+            // Validate extracted pack. load() runs the case-insensitive checkFile; the exact-case
+            // `info` pre-check that used to sit here rejected a pack named `Info` that imports fine.
             let unipack = UniPackFolder(rootFolder: folder)
             unipack.load()
             unipack.loadDetail()
