@@ -370,6 +370,12 @@ final class PlayViewModel {
         autoMappingProgress = 0
         autoMappingMax = 0
 
+        // The mapper replaces autoPlayTable when it finishes; a runner still iterating the old
+        // elements on its own thread would race that swap, so it is stopped before the mapper starts.
+        autoPlayRunner?.stop()
+        autoPlayRunner = nil
+        autoPlayListenerAdapter = nil
+
         let mapper = UniPackAutoMapper(unipack: pack, listener: AutoMappingListenerAdapter(viewModel: self))
         autoMapper = mapper
         mapper.start()
@@ -380,10 +386,6 @@ final class PlayViewModel {
         autoMapper = nil
 
         guard let pack = unipack as? UniPackFolder else { return }
-        autoPlayRunner?.stop()
-        autoPlayRunner = nil
-        autoPlayListenerAdapter = nil
-
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
