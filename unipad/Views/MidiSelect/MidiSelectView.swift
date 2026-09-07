@@ -36,7 +36,9 @@ struct MidiSelectView: View {
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
         .onAppear {
-            selectedIndex = PreferenceManager.shared.launchpadConnectMethod
+            // The preference is a positional index into midiDevices; a value from a build with a
+            // different list (or a corrupted default) must not index out of range.
+            selectedIndex = min(max(PreferenceManager.shared.launchpadConnectMethod, 0), midiDevices.count - 1)
             bindMidiListener()
             isConnected = MidiManager.shared.isConnected
             startAutorunTimer()

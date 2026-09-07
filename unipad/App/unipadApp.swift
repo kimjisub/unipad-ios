@@ -75,7 +75,16 @@ struct unipadApp: App {
                 configurations: [modelConfiguration]
             )
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // A corrupted store or a failed migration used to crash on every launch, and the only
+            // way out (reinstall) also deleted every UniPack in Documents. The entity only holds
+            // bookmarks and play counts, so an in-memory store keeps the app usable.
+            NSLog("Could not create ModelContainer, falling back to in-memory: \(error)")
+            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            do {
+                return try ModelContainer(for: schema, configurations: [fallback])
+            } catch {
+                fatalError("Could not create in-memory ModelContainer: \(error)")
+            }
         }
     }()
 

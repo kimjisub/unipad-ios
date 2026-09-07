@@ -67,7 +67,9 @@ final class LedRunner {
                 let start = ContinuousClock.now
                 self.queue.sync { self.loop() }
                 let elapsed = ContinuousClock.now - start
-                let elapsedNs = UInt64(elapsed.components.attoseconds / 1_000_000_000)
+                // components.seconds counted too: a loop over 1 s used to wrap to its sub-second part
+                let elapsedNs = UInt64(clamping: elapsed.components.seconds) * 1_000_000_000
+                    + UInt64(elapsed.components.attoseconds / 1_000_000_000)
                 let remaining = elapsedNs < intervalNs ? intervalNs - elapsedNs : 0
                 if remaining > 0 {
                     try? await Task.sleep(nanoseconds: remaining)
@@ -202,8 +204,15 @@ final class LedRunner {
 
         lock.unlock()
 
-        for c in pendingChainSets {
-            chain.setValue(c)
+        // The chain observers mutate @Observable UI state and rotate the pack tables; they must
+        // run on the main thread, not on the LED queue (same hop the AutoPlay adapter does).
+        if !pendingChainSets.isEmpty {
+            let chain = self.chain
+            Task { @MainActor in
+                for c in pendingChainSets {
+                    chain.setValue(c)
+                }
+            }
         }
 
         if !pendingLedEvents.isEmpty {

@@ -8,7 +8,14 @@ final class SoundEngine {
     static let maxStreams = 30
 
     private let engine = AVAudioEngine()
+    // Written by the loader on a utility queue while soundOn reads and destroy() clears it on the
+    // main thread; the unguarded dictionary rehashed under the reader.
+    private let buffersLock = NSLock()
     private var buffers: [Int: AVAudioPCMBuffer] = [:]
+    private var destroyed = false
+    /// false when the audio session could not be configured: the tables below are empty then.
+    private let isUsable: Bool
+    private var observerTokens: [NSObjectProtocol] = []
     private let playbackFormat: AVAudioFormat
     private var playerNodes: [AVAudioPlayerNode] = []
     private var nextPlayerIndex = 0
@@ -55,11 +62,13 @@ final class SoundEngine {
             self.playerCount = 1
             self.stopID = []
             self.nodePlayID = []
+            self.isUsable = false
             loadingListener.onException(error)
             return
         }
         #endif
 
+        self.isUsable = true
         self.playbackFormat = engine.mainMixerNode.outputFormat(forBus: 0)
         logger.info("Playback format: sampleRate=\(self.playbackFormat.sampleRate), channels=\(self.playbackFormat.channelCount)")
 
@@ -105,50 +114,86 @@ final class SoundEngine {
         }
 
         #if canImport(UIKit)
-        NotificationCenter.default.addObserver(
+        // Block observers are not removed automatically; one leaked per opened pack before.
+        observerTokens.append(NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
             queue: .main
         ) { [weak self] notification in
             self?.handleInterruption(notification)
-        }
+        })
         #endif
+        // A route change (headphones at 44.1 kHz, unplug) stops the engine; scheduling on a node of
+        // a stopped engine raised an uncatchable Objective-C exception on the next pad.
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            self?.ensureEngineRunning()
+        })
 
         loadingListener.onStart(soundCount: soundCount)
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            do {
-                guard let table else {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.loadingListener?.onEnd()
-                    }
-                    return
+            guard let table else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.loadingListener?.onEnd()
                 }
-                for i in 0..<unipack.chain {
-                    for j in 0..<unipack.buttonX {
-                        for k in 0..<unipack.buttonY {
-                            guard let sounds = table[i][j][k] else { continue }
-                            for sound in sounds {
+                return
+            }
+            // One failing file (an .ogg AVAudioFile cannot open, a 0-byte wav) used to abort the
+            // whole load and kick the user out of the pack; Android's SoundPool skips it.
+            var loaded = 0
+            var firstError: Error?
+            outer: for i in 0..<unipack.chain {
+                for j in 0..<unipack.buttonX {
+                    for k in 0..<unipack.buttonY {
+                        guard let sounds = table[i][j][k] else { continue }
+                        for sound in sounds {
+                            if self.isDestroyed() { break outer }
+                            do {
                                 let rawBuffer = try Self.loadAudioBuffer(from: sound.file)
                                 let playBuffer = try Self.convertIfNeeded(rawBuffer, to: self.playbackFormat)
-                                self.buffers[sound.id] = playBuffer
-                                DispatchQueue.main.async { [weak self] in
-                                    self?.loadingListener?.onProgressTick()
-                                }
+                                self.buffersLock.lock()
+                                if !self.destroyed { self.buffers[sound.id] = playBuffer }
+                                self.buffersLock.unlock()
+                                loaded += 1
+                            } catch {
+                                logger.error("sound load failed: \(sound.file.lastPathComponent): \(error.localizedDescription)")
+                                if firstError == nil { firstError = error }
+                            }
+                            DispatchQueue.main.async { [weak self] in
+                                self?.loadingListener?.onProgressTick()
                             }
                         }
                     }
                 }
+            }
+            if self.isDestroyed() { return }
+            if loaded == 0, let firstError {
+                DispatchQueue.main.async { [weak self] in
+                    self?.loadingListener?.onException(firstError)
+                }
+            } else {
                 DispatchQueue.main.async { [weak self] in
                     self?.loadingListener?.onEnd()
                 }
-            } catch {
-                DispatchQueue.main.async { [weak self] in
-                    self?.loadingListener?.onException(error)
-                }
             }
         }
+    }
+
+    private func isDestroyed() -> Bool {
+        buffersLock.lock()
+        defer { buffersLock.unlock() }
+        return destroyed
+    }
+
+    private func buffer(for id: Int) -> AVAudioPCMBuffer? {
+        buffersLock.lock()
+        defer { buffersLock.unlock() }
+        return buffers[id]
     }
 
     private static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
@@ -246,7 +291,9 @@ final class SoundEngine {
     #endif
 
     func soundOn(x: Int, y: Int) {
+        guard isUsable else { return }
         let c = chain.value
+        guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
         ensureEngineRunning()
 
         // Stop previous sound on this pad (using unique play ID, like Android's stream ID)
@@ -256,7 +303,7 @@ final class SoundEngine {
             logger.debug("soundOn(\(x),\(y)): no sound for chain=\(c)")
             return
         }
-        guard let buffer = buffers[sound.id] else {
+        guard let buffer = buffer(for: sound.id) else {
             logger.warning("soundOn(\(x),\(y)): buffer not loaded for sound id=\(sound.id)")
             return
         }
@@ -304,7 +351,9 @@ final class SoundEngine {
     }
 
     func soundOff(x: Int, y: Int) {
+        guard isUsable else { return }
         let c = chain.value
+        guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
         guard let sound = unipack.soundGet(c: c, x: x, y: y) else { return }
         if sound.loop == -1 {
             stopByPlayID(stopID[c][x][y])
@@ -312,13 +361,20 @@ final class SoundEngine {
     }
 
     func destroy() {
+        for token in observerTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        observerTokens.removeAll()
         engine.stop()
         for node in playerNodes {
             node.stop()
             engine.detach(node)
         }
         playerNodes.removeAll()
+        buffersLock.lock()
+        destroyed = true
         buffers.removeAll()
+        buffersLock.unlock()
     }
 
     enum SoundEngineError: Error {

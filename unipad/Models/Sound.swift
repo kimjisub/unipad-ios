@@ -2,7 +2,18 @@ import Foundation
 
 struct Sound {
     static let noWormhole = -1
-    private static var nextId = 0
+    // Packs are parsed on the main thread and inside the importer/downloader actors at the same
+    // time; an unsynchronized counter could hand two sounds the same id (the SoundEngine buffer key).
+    private static let idLock = NSLock()
+    nonisolated(unsafe) private static var nextId = 0
+
+    private static func allocateId() -> Int {
+        idLock.lock()
+        defer { idLock.unlock() }
+        let id = nextId
+        nextId += 1
+        return id
+    }
 
     let file: URL
     let loop: Int
@@ -15,7 +26,6 @@ struct Sound {
         self.loop = loop
         self.wormhole = wormhole
         self.num = num
-        self.id = Sound.nextId
-        Sound.nextId += 1
+        self.id = Sound.allocateId()
     }
 }

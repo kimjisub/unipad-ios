@@ -23,7 +23,11 @@ class UniPack: Equatable, Hashable {
     var soundCount = 0
     var ledTableCount = 0
 
-    // 3D tables: [chain][x][y], each cell is a circular queue (Deque)
+    // 3D tables: [chain][x][y], each cell is a circular queue (Deque).
+    // Rotated (soundPush/ledPush) from the AutoPlay runner thread and read from the main thread
+    // and the LED queue at the same time; the copy-on-write arrays are not safe for that, so every
+    // access below goes through tableLock. Parsing (which assigns them) runs before play starts.
+    let tableLock = NSLock()
     var soundTable: [[[Deque<Sound>?]]]?
     var ledAnimationTable: [[[Deque<LedAnimation>?]]]?
     var autoPlayTable: AutoPlay?
@@ -60,17 +64,23 @@ class UniPack: Equatable, Hashable {
     // MARK: - Circular Queue Operations
 
     func soundGet(c: Int, x: Int, y: Int) -> Sound? {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard let sounds = soundTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return nil }
         return sounds.first
     }
 
     func soundGet(c: Int, x: Int, y: Int, num: Int) -> Sound? {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard let sounds = soundTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return nil }
         guard !sounds.isEmpty else { return nil }
         return sounds[num % sounds.count]
     }
 
     func soundPush(c: Int, x: Int, y: Int) {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard var sounds = soundTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return }
         guard !sounds.isEmpty else { return }
         let item = sounds.removeFirst()
@@ -79,11 +89,15 @@ class UniPack: Equatable, Hashable {
     }
 
     func soundPush(c: Int, x: Int, y: Int, num: Int) {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard var sounds = soundTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return }
         guard !sounds.isEmpty else { return }
         let targetNum = num % sounds.count
         guard sounds.first?.num != targetNum else { return }
-        while true {
+        // Bounded by the queue length: an element with targetNum is expected, but a queue that
+        // lacks it must not spin the runner thread forever.
+        for _ in 0..<sounds.count {
             let item = sounds.removeFirst()
             sounds.append(item)
             if sounds.first?.num == targetNum { break }
@@ -92,11 +106,15 @@ class UniPack: Equatable, Hashable {
     }
 
     func ledGet(c: Int, x: Int, y: Int) -> LedAnimation? {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard let leds = ledAnimationTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return nil }
         return leds.first
     }
 
     func ledPush(c: Int, x: Int, y: Int) {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard var leds = ledAnimationTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return }
         guard !leds.isEmpty else { return }
         let item = leds.removeFirst()
@@ -105,11 +123,13 @@ class UniPack: Equatable, Hashable {
     }
 
     func ledPush(c: Int, x: Int, y: Int, num: Int) {
+        tableLock.lock()
+        defer { tableLock.unlock() }
         guard var leds = ledAnimationTable?[safe: c]?[safe: x]?[safe: y] ?? nil else { return }
         guard !leds.isEmpty else { return }
         let targetNum = num % leds.count
         guard leds.first?.num != targetNum else { return }
-        while true {
+        for _ in 0..<leds.count {
             let item = leds.removeFirst()
             leds.append(item)
             if leds.first?.num == targetNum { break }

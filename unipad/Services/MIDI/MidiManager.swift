@@ -114,9 +114,14 @@ final class MidiManager: ObservableObject {
             MIDIClientDispose(midiClient)
             midiClient = 0
         }
+        // Disposing the client invalidates its ports; a send between stop() and the next start()
+        // passed the stale refs to MIDISend.
+        inputPort = 0
+        outputPort = 0
         midiInputCallback = nil
-        _portIndexPtr?.deinitialize(count: 1)
-        _portIndexPtr?.deallocate()
+        // The CoreMIDI read block captured this pointer and may still be running on the MIDI
+        // thread when the client is disposed; one leaked Int per stop() is cheaper than a
+        // use-after-free there.
         _portIndexPtr = nil
     }
 
@@ -449,8 +454,11 @@ final class MidiManager: ObservableObject {
         }
 
         log("MIDI:setting driver...")
-        driver = driverEntry.factory()
+        // isConnected first: the driver's didSet only fires cycleListener.onConnected (which draws
+        // the current LEDs onto the new device) when it is already true, so a hot-plugged
+        // Launchpad stayed dark until an unrelated redraw.
         isConnected = true
+        driver = driverEntry.factory()
         midiInputLogCount = 0
 
         log("Connected: \(driverEntry.name), srcPort=\(connectedSourcePortIndex), dstPort=\(connectedDestinationPortIndex)")
