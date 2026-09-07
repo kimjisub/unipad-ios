@@ -257,3 +257,13 @@
 "MPP_playCount" = "플레이 횟수";
 "mb" = "MB";
 "autoMapping" = "자동 매핑";
+
+/* MIDI 문제 신고 */
+"settings_midi_report" = "문제 신고";
+"settings_midi_report_title" = "MIDI 연결 기록";
+"settings_midi_report_desc" = "런치패드가 인식되지 않을 때 열어서, 기록을 복사해 신고에 붙여 주세요.";
+"settings_midi_rescan" = "다시 검색";
+"settings_midi_copy_log" = "기록 복사";
+
+/* 가져오기 오류 */
+"import_no_file_access" = "파일 접근 권한을 얻을 수 없습니다.";

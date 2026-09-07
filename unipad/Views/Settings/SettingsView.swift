@@ -6,6 +6,12 @@ struct SettingsView: View {
     @State private var showCommunityDialog = false
     @State private var showAlert = false
     @State private var alertMessage = ""
+    /// The MIDI log is a support tool, not a setting. It stays reachable because
+    /// the two issues that have run longest in this repo were both someone's
+    /// Launchpad not being recognised, and a log from the person holding the
+    /// device is the only thing that resolves those. It starts closed because a
+    /// wall of `MidiManager.start()` in the middle of Settings is not a setting.
+    @State private var showMidiLog = false
     @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = false
 
     var initialCategory: SettingsViewModel.Category = .info
@@ -172,10 +178,32 @@ struct SettingsView: View {
                     .padding(.vertical, 14)
                 }
 
-                // MIDI Debug Log
-                sectionLabel("MIDI Log")
+                // MIDI support log, collapsed.
+                sectionLabel(String(localized: "settings_midi_report"))
                 settingsCard {
                     VStack(alignment: .leading, spacing: 4) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showMidiLog.toggle() }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(String(localized: "settings_midi_report_title"))
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(AppColors.textPrimary)
+                                    Text(String(localized: "settings_midi_report_desc"))
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(AppColors.textSecondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer()
+                                Image(systemName: showMidiLog ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showMidiLog {
                         if MidiManager.shared.debugLog.isEmpty {
                             Text("No logs yet")
                                 .font(.system(size: 11))
@@ -188,10 +216,10 @@ struct SettingsView: View {
                             }
                         }
                         HStack(spacing: 12) {
-                            Button("Re-scan") {
+                            Button(String(localized: "settings_midi_rescan")) {
                                 MidiManager.shared.scanForDevices()
                             }
-                            Button("Copy Log") {
+                            Button(String(localized: "settings_midi_copy_log")) {
                                 #if canImport(UIKit)
                                 UIPasteboard.general.string = MidiManager.shared.debugLog.joined(separator: "\n")
                                 #endif
@@ -200,6 +228,7 @@ struct SettingsView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(AppColors.blue)
                         .padding(.top, 4)
+                        }
                     }
                     .padding(12)
                 }

@@ -62,7 +62,7 @@ final class AppRouter {
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImportFailed"),
                 object: nil,
-                userInfo: ["error": "파일 접근 권한을 얻을 수 없습니다"]
+                userInfo: ["error": String(localized: "import_no_file_access")]
             )
             return
         }

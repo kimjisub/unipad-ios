@@ -79,7 +79,7 @@ struct MainView: View {
                 guard let url = urls.first else { return }
 
                 guard url.startAccessingSecurityScopedResource() else {
-                    vm.importResult = .error("파일 접근 권한을 얻을 수 없습니다")
+                    vm.importResult = .error(String(localized: "import_no_file_access"))
                     showImportResult = true
                     return
                 }
