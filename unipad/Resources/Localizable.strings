@@ -257,3 +257,13 @@
 "MPP_playCount" = "Play Count";
 "mb" = "MB";
 "autoMapping" = "Auto Mapping";
+
+/* MIDI support log */
+"settings_midi_report" = "Support";
+"settings_midi_report_title" = "MIDI connection log";
+"settings_midi_report_desc" = "Open this if a Launchpad is not recognised, then copy the log into your report.";
+"settings_midi_rescan" = "Scan again";
+"settings_midi_copy_log" = "Copy log";
+
+/* Import errors */
+"import_no_file_access" = "Could not get permission to read that file.";
