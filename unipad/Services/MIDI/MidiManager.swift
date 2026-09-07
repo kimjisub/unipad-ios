@@ -50,6 +50,10 @@ final class MidiManager: ObservableObject {
             driver.initialize()
             if isConnected {
                 driver.cycleListener?.onConnected()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                    guard let self, self.isConnected else { return }
+                    self.controller?.onAttach()
+                }
             }
             listener?.onChangeDriver(driver: driver)
         }
@@ -331,8 +335,24 @@ final class MidiManager: ObservableObject {
         ("launchpad mini mk3", DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
         ("launchpad x",        DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
         ("launchpad pro mk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
+        // CoreFW mappings (Pro, MK2, S, Mini, X, Mini MK3, Pro MK3)
+        ("pro (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("pro (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mk2 (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mk2 (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lps (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lps (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini (midi)",        DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini (daw)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lpx (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lpx (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini mk3 (midi)",    DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini mk3 (daw)",     DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("pro mk3 (midi)",     DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("pro mk3 (daw)",      DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+
         // Pro MK2 on the "Launchpad Open" custom firmware announces itself as "Launchpad Open ..."
-        ("launchpad open",     DriverEntry(name: "Launchpad Pro MK2 (CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
+        ("launchpad open",     DriverEntry(name: "Launchpad Pro (mat1jaczyyy CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
         ("launchpad pro",      DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         ("launchpad mk2",      DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
         ("launchpad s",        DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
@@ -346,6 +366,16 @@ final class MidiManager: ObservableObject {
 
     private func findDriverForDevice(name: String) -> DriverEntry? {
         let lowered = name.lowercased()
+
+        if lowered.contains("pro (midi)") || lowered.contains("pro (daw)") ||
+            lowered.contains("mk2 (midi)") || lowered.contains("mk2 (daw)") ||
+            lowered.contains("lps (midi)") || lowered.contains("lps (daw)") ||
+            lowered.contains("mini (midi)") || lowered.contains("mini (daw)") ||
+            lowered.contains("lpx (midi)") || lowered.contains("lpx (daw)") ||
+            lowered.contains("mini mk3 (midi)") || lowered.contains("mini mk3 (daw)") ||
+            lowered.contains("pro mk3 (midi)") || lowered.contains("pro mk3 (daw)") {
+            return DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)
+        }
 
         for mapping in Self.sourceNameDriverMap {
             if lowered.hasPrefix(mapping.prefix) {

@@ -80,6 +80,9 @@ final class MainViewModel {
         let adapter = MainMidiControllerAdapter(viewModel: self)
         midiControllerAdapter = adapter
         MidiManager.shared.controller = adapter
+        if MidiManager.shared.isConnected {
+            adapter.onAttach()
+        }
     }
 
     func removeMidiController() {

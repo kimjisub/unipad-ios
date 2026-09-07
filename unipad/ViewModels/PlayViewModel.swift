@@ -889,6 +889,9 @@ final class PlayViewModel {
         let adapter = PlayMidiControllerAdapter(viewModel: self)
         midiControllerAdapter = adapter
         MidiManager.shared.controller = adapter
+        if MidiManager.shared.isConnected {
+            adapter.onAttach()
+        }
     }
 
     func redrawAllLaunchpadLeds() {
@@ -1000,8 +1003,10 @@ final class PlayViewModel {
     // MARK: - Lifecycle
 
     func onPause() {
+        if let adapter = midiControllerAdapter {
+            MidiManager.shared.removeController(adapter)
+        }
         MidiManager.shared.driver.sendClearLed()
-        MidiManager.shared.controller = nil
         stopVolumeObserver()
     }
 
@@ -1017,9 +1022,10 @@ final class PlayViewModel {
     func cleanup() {
         enable = false
         stopVolumeObserver()
-        MidiManager.shared.driver.sendClearLed()
-        MidiManager.shared.controller = nil
-        midiControllerAdapter = nil
+        if let adapter = midiControllerAdapter {
+            MidiManager.shared.removeController(adapter)
+            midiControllerAdapter = nil
+        }
         autoPlayRunner?.stop()
         ledRunner?.stop()
         soundEngine?.destroy()

@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum DeviceIcon {
+    case asset(String)
+    case system(String)
+}
+
 struct MidiSelectView: View {
     @Environment(AppRouter.self) private var router
     @State private var selectedIndex = 0
@@ -9,29 +14,30 @@ struct MidiSelectView: View {
     @State private var midiListener = MidiSelectListener()
 
     private let midiDevices: [MidiDevice] = [
-        MidiDevice(name: String(localized: "midi_lp_s"), icon: "pianokeys", makeDriver: { LaunchpadSDriver() }),
-        MidiDevice(name: String(localized: "midi_lp_mk2"), icon: "square.grid.3x3", makeDriver: { LaunchpadMK2Driver() }),
-        MidiDevice(name: String(localized: "midi_lp_pro"), icon: "square.grid.3x3.fill", makeDriver: { LaunchpadProDriver() }),
-        MidiDevice(name: String(localized: "midi_lp_x"), icon: "square.grid.3x3.topleft.filled", makeDriver: { LaunchpadXDriver() }),
-        MidiDevice(name: String(localized: "midi_lp_mini_mk3"), icon: "square.grid.3x3.middle.filled", makeDriver: { LaunchpadMiniMK3Driver() }),
-        MidiDevice(name: String(localized: "midi_lp_mk3"), icon: "square.grid.3x3.bottomright.filled", makeDriver: { LaunchpadProMK3Driver() }),
-        MidiDevice(name: String(localized: "midi_midi_fighter"), icon: "dial.medium", makeDriver: { MidiFighterDriver() }),
-        MidiDevice(name: String(localized: "midi_matrix"), icon: "rectangle.grid.3x2", makeDriver: { MatrixDriver() }),
-        MidiDevice(name: String(localized: "midi_master_keyboard"), icon: "pianokeys.inverse", makeDriver: { MasterKeyboardDriver() }),
+        MidiDevice(id: 0, name: String(localized: "midi_lp_s"), icon: .asset("midi_lp_s"), makeDriver: { LaunchpadSDriver() }),
+        MidiDevice(id: 1, name: String(localized: "midi_lp_mk2"), icon: .asset("midi_lp_mk2"), makeDriver: { LaunchpadMK2Driver() }),
+        MidiDevice(id: 2, name: String(localized: "midi_lp_pro"), icon: .asset("midi_lp_pro"), makeDriver: { LaunchpadProDriver() }),
+        MidiDevice(id: 3, name: String(localized: "midi_lp_x"), icon: .asset("midi_lp_x"), makeDriver: { LaunchpadXDriver() }),
+        MidiDevice(id: 4, name: String(localized: "midi_lp_mini_mk3"), icon: .asset("midi_lp_mini_mk3"), makeDriver: { LaunchpadMiniMK3Driver() }),
+        MidiDevice(id: 5, name: String(localized: "midi_lp_mk3"), icon: .asset("midi_lp_mk3"), makeDriver: { LaunchpadProMK3Driver() }),
+        MidiDevice(id: 6, name: String(localized: "midi_midi_fighter"), icon: .asset("midi_midifighter"), makeDriver: { MidiFighterDriver() }),
+        MidiDevice(id: 7, name: String(localized: "midi_matrix"), icon: .asset("midi_matrix"), makeDriver: { MatrixDriver() }),
+        MidiDevice(id: 8, name: String(localized: "midi_master_keyboard"), icon: .system("pianokeys"), makeDriver: { MasterKeyboardDriver() }),
         // Appended last: launchpadConnectMethod persists the position in this array, so
         // inserting in the middle would shift every existing user's saved selection.
-        MidiDevice(name: String(localized: "midi_lp_pro_cfw"), icon: "circle.grid.3x3.fill", makeDriver: { LaunchpadProCFWDriver() }),
+        MidiDevice(id: 9, name: String(localized: "midi_lp_pro_cfw"), icon: .asset("midi_lp_pro"), makeDriver: { LaunchpadProCFWDriver() }),
+        MidiDevice(id: 10, name: String(localized: "midi_lp_core_cfw"), icon: .asset("midi_lp_pro"), makeDriver: { LaunchpadCoreCFWDriver() }),
     ]
 
     var body: some View {
-        HStack(spacing: 0) {
-            leftPanel
-                .frame(maxWidth: .infinity)
-                .layoutPriority(1.5)
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                leftPanel
+                    .frame(width: geometry.size.width * 0.35)
 
-            deviceGrid
-                .frame(maxWidth: .infinity)
-                .layoutPriority(3)
+                deviceGrid
+                    .frame(width: geometry.size.width * 0.65)
+            }
         }
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
@@ -65,15 +71,30 @@ struct MidiSelectView: View {
 
             // Selected device preview
             VStack(spacing: 8) {
-                Image(systemName: midiDevices[selectedIndex].icon)
-                    .font(.system(size: 120))
-                    .foregroundStyle(AppColors.blue)
-                    .contentTransition(.symbolEffect(.replace))
+                if let selectedDevice = midiDevices.first(where: { $0.id == selectedIndex }) {
+                    Group {
+                        switch selectedDevice.icon {
+                        case .asset(let name):
+                            Image(name)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        case .system(let systemName):
+                            Image(systemName: systemName)
+                                .font(.system(size: 80))
+                                .foregroundStyle(AppColors.blue)
+                                .frame(height: 120)
+                        }
+                    }
 
-                Text(midiDevices[selectedIndex].name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .multilineTextAlignment(.center)
+                    Text(selectedDevice.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                }
             }
             .padding(.vertical, 16)
             .animation(.easeInOut(duration: 0.3), value: selectedIndex)
@@ -137,18 +158,18 @@ struct MidiSelectView: View {
     private var deviceGrid: some View {
         ScrollView {
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+                columns: [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 12)],
                 spacing: 12
             ) {
-                ForEach(Array(midiDevices.enumerated()), id: \.element.name) { index, device in
+                ForEach(midiDevices) { device in
                     DeviceCardView(
                         device: device,
-                        isSelected: index == selectedIndex
+                        isSelected: device.id == selectedIndex
                     ) {
                         cancelAutorun()
-                        selectedIndex = index
-                        PreferenceManager.shared.launchpadConnectMethod = index
-                        MidiManager.shared.overrideDriver(midiDevices[index].makeDriver())
+                        selectedIndex = device.id
+                        PreferenceManager.shared.launchpadConnectMethod = device.id
+                        MidiManager.shared.overrideDriver(device.makeDriver())
                     }
                 }
             }
@@ -187,8 +208,8 @@ struct MidiSelectView: View {
             logText += message + "\n"
         }
         midiListener.driverChangeHandler = { driver in
-            if let index = midiDevices.firstIndex(where: { type(of: $0.makeDriver()) == type(of: driver) }) {
-                selectedIndex = index
+            if let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) }) {
+                selectedIndex = device.id
             }
         }
         MidiManager.shared.listener = midiListener
@@ -197,9 +218,10 @@ struct MidiSelectView: View {
 
 // MARK: - Data
 
-struct MidiDevice {
+struct MidiDevice: Identifiable {
+    let id: Int
     let name: String
-    let icon: String
+    let icon: DeviceIcon
     let makeDriver: () -> MidiDriver
 }
 
@@ -236,15 +258,26 @@ private struct DeviceCardView: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: device.icon)
-                    .font(.system(size: 48))
-                    .foregroundStyle(isSelected ? AppColors.blue : AppColors.textPrimary.opacity(0.6))
+                switch device.icon {
+                case .asset(let name):
+                    Image(name)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 48)
+                        .opacity(isSelected ? 1.0 : 0.6)
+                case .system(let systemName):
+                    Image(systemName: systemName)
+                        .font(.system(size: 34))
+                        .foregroundStyle(isSelected ? AppColors.blue : AppColors.textPrimary.opacity(0.6))
+                        .frame(height: 48)
+                }
 
                 Text(device.name)
                     .font(.system(size: 11))
                     .foregroundStyle(AppColors.white)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.7)
                     .frame(minHeight: 30)
             }
             .padding(12)
@@ -258,4 +291,10 @@ private struct DeviceCardView: View {
             .animation(.easeInOut(duration: 0.3), value: isSelected)
         }
     }
+}
+
+#Preview {
+    MidiSelectView()
+        .environment(AppRouter())
+        .preferredColorScheme(.dark)
 }
