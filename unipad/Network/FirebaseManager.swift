@@ -296,7 +296,7 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
     }
 
     func getString(_ key: String) -> String {
-        RemoteConfig.remoteConfig().configValue(forKey: key).stringValue ?? ""
+        RemoteConfig.remoteConfig().configValue(forKey: key).stringValue  // non-optional since Firebase 12
     }
 }
 #endif
