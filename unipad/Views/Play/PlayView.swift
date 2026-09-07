@@ -133,7 +133,10 @@ struct PlayView: View {
                 let w = geometry.size.width
                 let h = geometry.size.height
                 let showAllSides = vm.scbProLightMode.checked
-                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showAllSides, reservedWidth: chromeStripWidth)
+                // Android shows the bottom row whenever the pack has more than 8 chains; here
+                // chains 9-16 were unreachable on screen without Pro Light Mode.
+                let showBottomRow = showAllSides || unipack.chain > PlayViewModel.chainIndexOffset
+                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showBottomRow, reservedWidth: chromeStripWidth)
                 // Pads centered within the area excluding the right chrome strip
                 let centerX = (w - chromeStripWidth) / 2
                 let centerY = h / 2
@@ -196,7 +199,7 @@ struct PlayView: View {
             phantomVariantImage: theme.phantomVariant,
             padGuideTargets: vm.padGuideTargets,
             traceLogSequence: vm.scbTraceLog.checked && vm.chain.value >= 0 && vm.chain.value < vm.traceLogSequence.count ? vm.traceLogSequence[vm.chain.value] : nil,
-            traceLogColor: .white,
+            traceLogColor: theme.traceLogColor,
             traceLogClassic: traceLogClassic,
             onPadTouch: { (x: Int, y: Int, isDown: Bool) in vm.padTouch(x: x, y: y, isDown: isDown) }
         )
@@ -216,7 +219,7 @@ struct PlayView: View {
         .frame(width: layout.chainWidth, height: layout.gridHeight)
         .position(x: padLeft + layout.gridWidth + layout.chainWidth / 2, y: centerY)
 
-        if showAllSides {
+        if showAllSides || unipack.chain > PlayViewModel.chainIndexOffset {
             ChainBarView(
                 axis: .horizontal,
                 chainIndices: bottom,
@@ -234,7 +237,9 @@ struct PlayView: View {
 
     @ViewBuilder
     private func playContentRightColumn(layout: PlayLayout, padLeft: CGFloat, viewWidth: CGFloat, viewHeight: CGFloat, centerY: CGFloat) -> some View {
-        if let customLogo = theme.customLogo {
+        // "Hide UI" (optionViewVisible) was written by the view model and read nowhere; it hides
+        // the logo and the chrome column, as Android and web do.
+        if vm.optionViewVisible, let customLogo = theme.customLogo {
             let maxLogoWidth: CGFloat = min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - chromeStripWidth - 16)
             Image(platformImage: customLogo)
                 .resizable()
@@ -243,7 +248,7 @@ struct PlayView: View {
                 .position(x: viewWidth - chromeStripWidth - maxLogoWidth / 2 - 8, y: 28)
         }
 
-        if !vm.isOptionWindowVisible {
+        if !vm.isOptionWindowVisible && vm.optionViewVisible {
             chromeColumn
                 .position(x: viewWidth - chromeStripWidth / 2, y: centerY)
         }
@@ -417,7 +422,7 @@ struct PlayView: View {
         }
         guard chainCount > 1 else { return [] }
         let available = Set((0..<chainCount).map { $0 + PlayViewModel.chainIndexOffset })
-        return Set(rightIndices.filter { available.contains($0) } + leftIndices.filter { available.contains($0) })
+        return Set((rightIndices + bottomIndices + leftIndices).filter { available.contains($0) })
     }
 
     // MARK: - Loading Helpers

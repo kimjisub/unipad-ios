@@ -57,6 +57,11 @@ final class LedRunner {
 
     func launch() {
         guard loopTask == nil else { return }
+        // States that survived stop() (LED toggled off and on) re-anchor to the new start;
+        // resuming from their old `delay` replayed the whole backlog in one burst.
+        lock.lockWithDeadlockDetection()
+        for state in ledAnimationStates { state.delay = 0 }
+        lock.unlock()
 
         loopTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
@@ -106,18 +111,31 @@ final class LedRunner {
             if state.isPlaying && !state.isShutdown {
                 if state.delay == 0 { state.delay = currTime }
 
+                // Android LedRunner.kt: an animation with no events (empty keyLed file) stops at
+                // once instead of re-spinning every tick, and a delay-less animation gets the same
+                // per-tick budget (events x loops + 1) rather than one pass per tick, so a
+                // `loop 5` file finishes in the same 4 ms on all three platforms.
+                guard let ledAnimation = state.ledAnimation, !ledAnimation.ledEvents.isEmpty else {
+                    state.isPlaying = false
+                    continue
+                }
+                let ledEvents = ledAnimation.ledEvents
+                let budget = ledEvents.count * max(1, ledAnimation.loop) + 1
+                var processed = 0
+
                 while true {
-                    guard let ledAnimation = state.ledAnimation else { break }
-                    let ledEvents = ledAnimation.ledEvents
                     if state.index >= ledEvents.count {
                         state.loopProgress += 1
                         state.index = 0
-                        if state.delay <= currTime {
-                            break
-                        }
                     }
 
                     if ledAnimation.loop != 0 && ledAnimation.loop <= state.loopProgress {
+                        state.isPlaying = false
+                        break
+                    }
+
+                    processed += 1
+                    if processed > budget {
                         state.isPlaying = false
                         break
                     }
@@ -229,6 +247,13 @@ final class LedRunner {
         return ledAnimationStates.contains { $0.isEqual(bx: x, by: y, chain: chain) }
     }
 
+    /// Any chain: ledInit must find animations started on a previous chain too.
+    func isEventExist(x: Int, y: Int) -> Bool {
+        lock.lockWithDeadlockDetection()
+        defer { lock.unlock() }
+        return ledAnimationStates.contains { $0.buttonX == x && $0.buttonY == y }
+    }
+
     func eventOn(x: Int, y: Int) {
         guard active else {
             logger.debug("eventOn(\(x),\(y)): not active")
@@ -261,6 +286,20 @@ final class LedRunner {
         defer { lock.unlock() }
 
         for state in ledAnimationStates where state.isEqual(bx: x, by: y, chain: chain.value) {
+            if state.ledAnimation?.loop == 0 {
+                state.isShutdown = true
+            }
+        }
+    }
+
+    /// Shuts down every infinite animation on the pad, on any chain, and without the `active`
+    /// guard: ledInit calls this after stop(), where eventOff returned early and the stale
+    /// animations resumed in a burst when LED was re-enabled (Android LedRunner.eventOffAll).
+    func eventOffAll(x: Int, y: Int) {
+        lock.lockWithDeadlockDetection()
+        defer { lock.unlock() }
+
+        for state in ledAnimationStates where state.buttonX == x && state.buttonY == y {
             if state.ledAnimation?.loop == 0 {
                 state.isShutdown = true
             }

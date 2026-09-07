@@ -5,7 +5,9 @@ import os
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "SoundEngine")
 
 final class SoundEngine {
-    static let maxStreams = 30
+    // Android's native mixer has 64 voices regardless of the pack; a pool sized to the sound
+    // count gave a 5-sound pack 5 voices and the 6th overlapping note cut the first.
+    static let maxStreams = 64
 
     private let engine = AVAudioEngine()
     // Written by the loader on a utility queue while soundOn reads and destroy() clears it on the
@@ -20,6 +22,10 @@ final class SoundEngine {
     private var playerNodes: [AVAudioPlayerNode] = []
     private var nextPlayerIndex = 0
     private let playerCount: Int
+    // Per node: whether it holds an infinite loop, and when it was started (for stealing order).
+    private var nodeIsLoop: [Bool] = []
+    private var nodeStartOrder: [Int] = []
+    private var startCounter = 0
 
     // stopID[chain][x][y] tracks a unique play ID (like Android's stream ID) for stopping
     private var stopID: [[[Int]]]
@@ -86,7 +92,7 @@ final class SoundEngine {
 
         logger.info("SoundEngine init: soundCount=\(soundCount), chain=\(unipack.chain), buttonX=\(unipack.buttonX), buttonY=\(unipack.buttonY)")
 
-        playerCount = min(max(soundCount, 1), Self.maxStreams)
+        playerCount = Self.maxStreams
         stopID = Array(
             repeating: Array(
                 repeating: Array(repeating: 0, count: unipack.buttonY),
@@ -95,6 +101,8 @@ final class SoundEngine {
             count: unipack.chain
         )
         nodePlayID = Array(repeating: 0, count: playerCount)
+        nodeIsLoop = Array(repeating: false, count: playerCount)
+        nodeStartOrder = Array(repeating: 0, count: playerCount)
 
         for _ in 0..<playerCount {
             let node = AVAudioPlayerNode()
@@ -147,6 +155,10 @@ final class SoundEngine {
             // whole load and kick the user out of the pack; Android's SoundPool skips it.
             var loaded = 0
             var firstError: Error?
+            // One decoded buffer per file, shared by every pad that maps it (Android and web decode
+            // per file); decoding per keySound line multiplied load time and memory on packs that
+            // reuse a sample.
+            var byFile: [URL: AVAudioPCMBuffer] = [:]
             outer: for i in 0..<unipack.chain {
                 for j in 0..<unipack.buttonX {
                     for k in 0..<unipack.buttonY {
@@ -154,8 +166,14 @@ final class SoundEngine {
                         for sound in sounds {
                             if self.isDestroyed() { break outer }
                             do {
-                                let rawBuffer = try Self.loadAudioBuffer(from: sound.file)
-                                let playBuffer = try Self.convertIfNeeded(rawBuffer, to: self.playbackFormat)
+                                let playBuffer: AVAudioPCMBuffer
+                                if let cached = byFile[sound.file] {
+                                    playBuffer = cached
+                                } else {
+                                    let rawBuffer = try Self.loadAudioBuffer(from: sound.file)
+                                    playBuffer = try Self.convertIfNeeded(rawBuffer, to: self.playbackFormat)
+                                    byFile[sound.file] = playBuffer
+                                }
                                 self.buffersLock.lock()
                                 if !self.destroyed { self.buffers[sound.id] = playBuffer }
                                 self.buffersLock.unlock()
@@ -248,11 +266,26 @@ final class SoundEngine {
         return output
     }
 
+    /// An idle node first; otherwise the oldest one-shot, never an infinite loop while a one-shot
+    /// exists (Android AudioEngine's stealing policy). Plain round-robin killed the backing track
+    /// after `playerCount` further pad hits.
     private func acquirePlayerNode() -> (AVAudioPlayerNode, Int) {
-        let index = nextPlayerIndex % playerCount
-        nextPlayerIndex += 1
+        var index: Int
+        if let idle = nodePlayID.firstIndex(of: 0) {
+            index = idle
+        } else {
+            var victim: Int? = nil
+            for i in 0..<playerCount where !nodeIsLoop[i] {
+                if victim == nil || nodeStartOrder[i] < nodeStartOrder[victim!] { victim = i }
+            }
+            if victim == nil {
+                victim = (0..<playerCount).min { nodeStartOrder[$0] < nodeStartOrder[$1] }
+            }
+            index = victim ?? 0
+        }
         let node = playerNodes[index]
         node.stop()
+        nodePlayID[index] = 0
         return (node, index)
     }
 
@@ -313,6 +346,17 @@ final class SoundEngine {
         nextPlayID += 1
         stopID[c][x][y] = playID
         nodePlayID[nodeIndex] = playID
+        nodeIsLoop[nodeIndex] = sound.loop == -1
+        startCounter += 1
+        nodeStartOrder[nodeIndex] = startCounter
+        // Frees the node for reuse when a one-shot finishes, so stealing only happens when every
+        // node is really busy.
+        let release: () -> Void = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
+                self.nodePlayID[nodeIndex] = 0
+            }
+        }
 
         if node.engine == nil {
             engine.attach(node)
@@ -324,7 +368,7 @@ final class SoundEngine {
             node.scheduleBuffer(buffer, at: nil, options: .loops)
         } else if sound.loop > 0 {
             func scheduleRemaining(_ remaining: Int) {
-                guard remaining > 0 else { return }
+                guard remaining > 0 else { release(); return }
                 node.scheduleBuffer(buffer, at: nil, options: []) { [weak node] in
                     guard let node, node.isPlaying else { return }
                     scheduleRemaining(remaining - 1)
@@ -335,7 +379,7 @@ final class SoundEngine {
                 scheduleRemaining(sound.loop)
             }
         } else {
-            node.scheduleBuffer(buffer, at: nil, options: [])
+            node.scheduleBuffer(buffer, at: nil, options: []) { release() }
         }
         node.play()
 

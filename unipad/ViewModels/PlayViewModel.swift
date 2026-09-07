@@ -219,7 +219,7 @@ final class PlayViewModel {
 
     func initState() {
         guard let unipack else { return }
-        chain.range = 0...(unipack.chain - 1)
+        chain.range = 0...max(0, unipack.chain - 1)
         padColors = Array(
             repeating: Array(repeating: .clear, count: unipack.buttonY),
             count: unipack.buttonX
@@ -468,7 +468,7 @@ final class PlayViewModel {
         for c in 0..<Self.maxChainButtons {
             let y = Self.chainIndexOffset + c
             if c == chain.value {
-                cm.add(x: -1, y: y, channel: .chain, color: -1, code: Self.LED_RED)
+                cm.add(x: -1, y: y, channel: .chain, color: ChannelManager.noColor, code: Self.LED_RED)
             } else {
                 cm.remove(x: -1, y: y, channel: .chain)
             }
@@ -495,16 +495,18 @@ final class PlayViewModel {
         guard let unipack, let cm = channelManager else { return }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
-                if let ledRunner, ledRunner.isEventExist(x: i, y: j, chain: chain.value) {
-                    ledRunner.eventOff(x: i, y: j)
+                // Any chain and without the `active` guard (the runner is stopped here): the
+                // infinite animations really end instead of replaying when LED is re-enabled.
+                if let ledRunner, ledRunner.isEventExist(x: i, y: j) {
+                    ledRunner.eventOffAll(x: i, y: j)
                 }
                 cm.remove(x: i, y: j, channel: .led)
                 refreshPadFromChannel(x: i, y: j)
             }
         }
         for i in 0..<Self.functionKeyCount {
-            if let ledRunner, ledRunner.isEventExist(x: -1, y: i, chain: chain.value) {
-                ledRunner.eventOff(x: -1, y: i)
+            if let ledRunner, ledRunner.isEventExist(x: -1, y: i) {
+                ledRunner.eventOffAll(x: -1, y: i)
             }
             cm.remove(x: -1, y: i, channel: .led)
             if i < Self.circleArraySize {
@@ -543,7 +545,7 @@ final class PlayViewModel {
             }
             if scbFeedbackLight.checked {
                 if let cm = channelManager {
-                    cm.add(x: x, y: y, channel: .pressed, color: -1, code: Self.pressedVelocity)
+                    cm.add(x: x, y: y, channel: .pressed, color: ChannelManager.noColor, code: Self.pressedVelocity)
                     refreshPadFromChannel(x: x, y: y)
                 } else {
                     setPadColor(x: x, y: y, color: .red)
@@ -722,7 +724,7 @@ final class PlayViewModel {
             topBar[7] = Self.LED_BLUE
             for i in 0..<Self.topBarCount {
                 if topBar[i] != 0 {
-                    cm.add(x: -1, y: i, channel: .uiUnipad, color: -1, code: topBar[i])
+                    cm.add(x: -1, y: i, channel: .uiUnipad, color: ChannelManager.noColor, code: topBar[i])
                 } else {
                     cm.remove(x: -1, y: i, channel: .uiUnipad)
                 }
@@ -739,7 +741,7 @@ final class PlayViewModel {
             topBar[7] = Self.LED_RED_BRIGHT
             for i in 0..<Self.topBarCount {
                 if topBar[i] != 0 {
-                    cm.add(x: -1, y: i, channel: .ui, color: -1, code: topBar[i])
+                    cm.add(x: -1, y: i, channel: .ui, color: ChannelManager.noColor, code: topBar[i])
                 } else {
                     cm.remove(x: -1, y: i, channel: .ui)
                 }
@@ -965,7 +967,7 @@ final class PlayViewModel {
             let y = Self.chainIndexOffset + c
             let threshold = Self.topBarCount - level
             if c >= threshold {
-                cm.add(x: -1, y: y, channel: .ui, color: -1, code: Self.LED_BLUE)
+                cm.add(x: -1, y: y, channel: .ui, color: ChannelManager.noColor, code: Self.LED_BLUE)
             } else {
                 cm.remove(x: -1, y: y, channel: .ui)
             }
@@ -1044,6 +1046,9 @@ final class PlayViewModel {
     /// Called when sound loading completes to apply initial settings
     func onSoundLoadingComplete() {
         startReady = true
+        // onResume() is gated on this and nothing set it: after backgrounding, MIDI input, the
+        // launchpad LEDs and the volume observer stayed dead until the screen was re-entered.
+        uiLoaded = true
         initSetting()
         setupMidiController()
         startVolumeObserver()
@@ -1166,7 +1171,7 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            cm.add(x: x, y: y, channel: .guide, color: -1, code: Self.guideVelocity)
+            cm.add(x: x, y: y, channel: .guide, color: ChannelManager.noColor, code: Self.guideVelocity)
             vm.refreshPadFromChannel(x: x, y: y)
             if x >= 0, x < vm.padGuideTargets.count, y >= 0, y < vm.padGuideTargets[x].count {
                 vm.padGuideTargets[x][y] = targetWallTimeMs
@@ -1186,14 +1191,10 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     }
 
     func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            if velocity > 0 {
-                cm.add(x: x, y: y, channel: .guide, color: -1, code: velocity)
-            } else {
-                cm.remove(x: x, y: y, channel: .guide)
-            }
-            vm.refreshPadFromChannel(x: x, y: y)
+        // The countdown ramp (1, 2, 3, 21) goes to the launchpad only, as on Android; writing it
+        // into the GUIDE channel faded the on-screen guide pad from orange to white and green.
+        Task { @MainActor in
+            MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: velocity)
         }
     }
 
@@ -1201,7 +1202,7 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
             let index = PlayViewModel.chainIndexOffset + c
-            cm.add(x: -1, y: index, channel: .guide, color: -1, code: Self.guideVelocity)
+            cm.add(x: -1, y: index, channel: .guide, color: ChannelManager.noColor, code: Self.guideVelocity)
             vm.refreshChainFromChannel(index: index)
         }
     }

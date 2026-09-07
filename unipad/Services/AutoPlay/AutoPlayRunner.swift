@@ -384,6 +384,11 @@ final class AutoPlayRunner {
         _stepStartProgress = 0
         _stepChainValue = -1
         stepLock.unlock()
+        // Leaving step mode while the guide waited for a chain left waitingForChain >= 0 with
+        // waitStartTime 0; on resume startTime jumped far into the future and autoplay froze
+        // (same fix as Android AutoPlayRunner.resetStepState, 2026-09-07).
+        waitingForChain = -1
+        waitStartTime = Self.currentTimeMillis()
     }
 
     func stepPadPressed(x: Int, y: Int) {

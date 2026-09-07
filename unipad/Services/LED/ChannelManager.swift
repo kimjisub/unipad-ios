@@ -75,9 +75,13 @@ final class ChannelManager {
         return nil
     }
 
+    /// "Use the palette colour for `code`". Not -1: as a 32-bit ARGB value -1 is opaque white,
+    /// and Android's ChannelManager.NO_COLOR moved off -1 for exactly that collision.
+    static let noColor = Int.min
+
     func add(x: Int, y: Int, channel: Channel, color: Int, code: Int) {
         let resolvedColor: UInt32
-        if color == -1 {
+        if color == Self.noColor {
             resolvedColor = LaunchpadColor.colorFromCode(code)
         } else {
             resolvedColor = UInt32(truncatingIfNeeded: color)
