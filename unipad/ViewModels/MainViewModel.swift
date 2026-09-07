@@ -313,7 +313,12 @@ final class MainViewModel {
     func showImportResultForNew(existingIds: Set<String>) {
         if let newItem = unipackItems.first(where: { !existingIds.contains($0.id) }) {
             newItem.unipack.loadDetail()
-            importResult = .success(newItem.unipack)
+            // Android shows the parser's soft errors as a warning; they were never surfaced here.
+            if let detail = newItem.unipack.errorDetail {
+                importResult = .warning(detail)
+            } else {
+                importResult = .success(newItem.unipack)
+            }
         }
     }
 

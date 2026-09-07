@@ -180,6 +180,7 @@ extension FileManager {
             guard cursor + 46 <= data.count, readUInt32LE(at: cursor) == 0x0201_4B50 else { break }
 
             guard
+                let generalPurposeFlags = readUInt16LE(at: cursor + 8),
                 let compressionMethod = readUInt16LE(at: cursor + 10),
                 let compressedSizeU32 = readUInt32LE(at: cursor + 20),
                 let uncompressedSizeU32 = readUInt32LE(at: cursor + 24),
@@ -202,9 +203,7 @@ extension FileManager {
             }
 
             let rawName = data[fileNameStart..<fileNameEnd]
-            let fileName = String(data: rawName, encoding: .utf8)
-                ?? String(data: rawName, encoding: .isoLatin1)
-                ?? ""
+            let fileName = Self.decodeEntryName(rawName, utf8Flag: generalPurposeFlags & 0x0800 != 0)
             if !fileName.isEmpty {
                 entries.append(Entry(
                     fileName: fileName,
@@ -264,6 +263,19 @@ extension FileManager {
                 )
             }
         }
+    }
+
+    /// Entry names without the UTF-8 flag are in the archiver's code page. Korean packs were
+    /// zipped on CP949 Windows; decoding them as Latin-1 while `keySound` is decoded as EUC-KR
+    /// produced two different strings for the same file, so every sound was "not found" and a
+    /// legacy pack that plays on Android and web was silent here.
+    private static func decodeEntryName(_ raw: Data, utf8Flag: Bool) -> String {
+        if let utf8 = String(data: raw, encoding: .utf8) { return utf8 }
+        if !utf8Flag {
+            let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(0x0422))
+            if let korean = String(data: raw, encoding: cp949) { return korean }
+        }
+        return String(data: raw, encoding: .isoLatin1) ?? ""
     }
 
     /// Decompress deflate data using Apple's Compression framework with dynamic buffer growth
