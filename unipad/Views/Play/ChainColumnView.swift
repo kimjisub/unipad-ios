@@ -17,7 +17,9 @@ struct ChainBarView: View {
                     color: index < chainColors.count ? chainColors[index] : .clear,
                     chainItem: index < chainItems.count ? chainItems[index] : nil,
                     theme: theme,
-                    onTap: { onChainTap(index - PlayViewModel.chainIndexOffset) }
+                    // Circles 0-7 are function keys, not chains; tapping one in Pro Light Mode used
+                    // to select chain 1 (Android attaches no listener to them).
+                    onTap: { if index >= PlayViewModel.chainIndexOffset { onChainTap(index - PlayViewModel.chainIndexOffset) } }
                 )
                 .frame(width: cellSize, height: cellSize)
             } else {
