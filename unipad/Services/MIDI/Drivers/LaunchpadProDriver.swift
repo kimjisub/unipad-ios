@@ -85,7 +85,6 @@ final class LaunchpadProDriver: BaseMidiDriver {
             } else {
                 sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0A, 0x63, UInt8(velocity & 0x7F), 0xF7])
             }
-            print("ModeLight: f = \(f), velocity = \(velocity)")
         }
     }
 
