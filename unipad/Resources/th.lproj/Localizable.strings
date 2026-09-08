@@ -257,3 +257,9 @@
 "MPP_playCount" = "จำนวนครั้งที่เล่น";
 "mb" = "MB";
 "autoMapping" = "แมปอัตโนมัติ";
+"settings_midi_report" = "การสนับสนุน";
+"settings_midi_report_title" = "บันทึกการเชื่อมต่อ MIDI";
+"settings_midi_report_desc" = "เปิดส่วนนี้หากไม่พบ Launchpad แล้วคัดลอกบันทึกไปใส่ในรายงานของคุณ";
+"settings_midi_rescan" = "ค้นหาอีกครั้ง";
+"settings_midi_copy_log" = "คัดลอกบันทึก";
+"import_no_file_access" = "ไม่สามารถขอสิทธิ์อ่านไฟล์นั้นได้";

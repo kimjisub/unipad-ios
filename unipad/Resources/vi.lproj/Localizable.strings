@@ -257,3 +257,9 @@
 "MPP_playCount" = "Số lần Chơi";
 "mb" = "MB";
 "autoMapping" = "Tự Động Ánh Xạ";
+"settings_midi_report" = "Hỗ trợ";
+"settings_midi_report_title" = "Nhật ký kết nối MIDI";
+"settings_midi_report_desc" = "Mở mục này nếu Launchpad không được nhận, rồi sao chép nhật ký vào báo cáo của bạn.";
+"settings_midi_rescan" = "Quét lại";
+"settings_midi_copy_log" = "Sao chép nhật ký";
+"import_no_file_access" = "Không thể lấy quyền đọc tệp đó.";

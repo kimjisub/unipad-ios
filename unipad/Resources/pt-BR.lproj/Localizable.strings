@@ -257,3 +257,9 @@
 "MPP_playCount" = "Vezes Tocado";
 "mb" = "MB";
 "autoMapping" = "Mapeamento Automático";
+"settings_midi_report" = "Suporte";
+"settings_midi_report_title" = "Registro de conexão MIDI";
+"settings_midi_report_desc" = "Abra isto se um Launchpad não for reconhecido e copie o registro para o seu relato.";
+"settings_midi_rescan" = "Buscar novamente";
+"settings_midi_copy_log" = "Copiar registro";
+"import_no_file_access" = "Não foi possível obter permissão para ler esse arquivo.";

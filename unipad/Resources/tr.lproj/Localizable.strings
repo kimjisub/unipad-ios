@@ -257,3 +257,9 @@
 "MPP_playCount" = "Oynatma Sayısı";
 "mb" = "MB";
 "autoMapping" = "Otomatik Eşleme";
+"settings_midi_report" = "Destek";
+"settings_midi_report_title" = "MIDI bağlantı günlüğü";
+"settings_midi_report_desc" = "Bir Launchpad tanınmıyorsa burayı açın ve günlüğü bildiriminize kopyalayın.";
+"settings_midi_rescan" = "Yeniden tara";
+"settings_midi_copy_log" = "Günlüğü kopyala";
+"import_no_file_access" = "Bu dosyayı okuma izni alınamadı.";

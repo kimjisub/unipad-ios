@@ -257,3 +257,9 @@
 "MPP_playCount" = "Bilang ng Paglalaro";
 "mb" = "MB";
 "autoMapping" = "Auto Mapping";
+"settings_midi_report" = "Suporte";
+"settings_midi_report_title" = "Tala ng koneksyong MIDI";
+"settings_midi_report_desc" = "Buksan ito kung hindi nakikilala ang Launchpad, tapos kopyahin ang tala sa iyong ulat.";
+"settings_midi_rescan" = "Maghanap ulit";
+"settings_midi_copy_log" = "Kopyahin ang tala";
+"import_no_file_access" = "Hindi makuha ang pahintulot para basahin ang file na iyon.";

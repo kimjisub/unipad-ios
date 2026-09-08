@@ -257,3 +257,9 @@
 "MPP_playCount" = "再生回数";
 "mb" = "MB";
 "autoMapping" = "自動マッピング";
+"settings_midi_report" = "サポート";
+"settings_midi_report_title" = "MIDI 接続ログ";
+"settings_midi_report_desc" = "Launchpad が認識されないときはここを開き、ログをコピーして報告に貼り付けてください。";
+"settings_midi_rescan" = "再検索";
+"settings_midi_copy_log" = "ログをコピー";
+"import_no_file_access" = "そのファイルを読み取る権限を取得できませんでした。";
