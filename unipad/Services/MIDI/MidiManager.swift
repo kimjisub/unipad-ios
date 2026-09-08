@@ -313,6 +313,7 @@ final class MidiManager: ObservableObject {
         ("launchpad mk2",      DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
         ("launchpad s",        DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
         ("launchpad mini",     DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
+        ("launchpad",          DriverEntry(name: "Launchpad (Generic)", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
 
         // CoreFW mappings (Pro, MK2, S, Mini, X, Mini MK3, Pro MK3)
         ("pro (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),

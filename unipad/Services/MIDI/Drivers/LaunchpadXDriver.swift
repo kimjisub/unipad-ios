@@ -36,6 +36,9 @@ class LaunchpadXDriver: BaseMidiDriver {
             if (91...98).contains(note) {
                 onFunctionKeyTouch(f: note - 91, upDown: velocity != 0)
             }
+            if note == 99 {
+                onFunctionKeyTouch(f: 32, upDown: velocity != 0)
+            }
             if (19...89).contains(note) && note % 10 == 9 {
                 let c = 9 - note / 10 - 1
                 onChainTouch(c: c, upDown: velocity != 0)
@@ -70,6 +73,9 @@ class LaunchpadXDriver: BaseMidiDriver {
                        sig: UInt8(truncatingIfNeeded: Self.circleCode[f][1]),
                        note: UInt8(truncatingIfNeeded: Self.circleCode[f][2]),
                        velocity: UInt8(truncatingIfNeeded: velocity))
+        } else if f == 32 || f == 99 {
+            // Logo / Mode LED on Launchpad X & Mini MK3: CC 99 on Channel 1
+            sendSignal(cmd: 27, sig: -80, note: 99, velocity: velocity)
         }
     }
 
@@ -79,7 +85,7 @@ class LaunchpadXDriver: BaseMidiDriver {
                 sendPadLed(x: i, y: j, velocity: 0)
             }
         }
-        for i in 0...31 {
+        for i in 0...32 {
             sendFunctionKeyLed(f: i, velocity: 0)
         }
     }

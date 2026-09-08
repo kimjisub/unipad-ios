@@ -90,7 +90,7 @@ struct LaunchpadCoreCFWDriverTests {
         let (driver, capture) = make()
         driver.initialize()
         #expect(capture.raw.map(\.cable) == [0])
-        #expect(capture.raw[0].messages.count == 9)
+        #expect(capture.raw[0].messages.count == 10)
         #expect(capture.raw[0].messages[0] == [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x22, 0x03, 0xF7])
         #expect(capture.raw[0].messages[1] == [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0E, 0x00, 0xF7])
     }

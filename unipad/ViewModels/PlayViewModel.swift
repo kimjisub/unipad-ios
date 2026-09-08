@@ -434,6 +434,9 @@ final class PlayViewModel {
         guard let cm = channelManager else { return }
         proLightModeEnabled = enabled
         cm.setCirIgnore(channel: .led, ignore: !enabled)
+        if !enabled {
+            MidiManager.shared.driver.sendFunctionKeyLed(f: 32, velocity: 0)
+        }
         chainBtnsRefresh()
     }
 
@@ -1122,10 +1125,20 @@ private final class LedListenerAdapter: LedRunner.Listener {
                     cm.remove(x: x, y: y, channel: .led)
                     vm.refreshPadFromChannel(x: x, y: y)
                 case .chainOn(let c, let color, let velocity):
+                    if c == 32 {
+                        if vm.proLightModeEnabled {
+                            MidiManager.shared.driver.sendFunctionKeyLed(f: 32, velocity: velocity)
+                        }
+                        continue
+                    }
                     guard c >= 0, c < vm.chainColors.count else { continue }
                     cm.add(x: -1, y: c, channel: .led, color: color, code: velocity)
                     vm.refreshChainFromChannel(index: c)
                 case .chainOff(let c):
+                    if c == 32 {
+                        MidiManager.shared.driver.sendFunctionKeyLed(f: 32, velocity: 0)
+                        continue
+                    }
                     guard c >= 0, c < vm.chainColors.count else { continue }
                     cm.remove(x: -1, y: c, channel: .led)
                     vm.refreshChainFromChannel(index: c)
