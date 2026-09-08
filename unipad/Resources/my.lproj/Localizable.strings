@@ -257,3 +257,9 @@
 "MPP_playCount" = "ဖွင့်သည့်အကြိမ်";
 "mb" = "MB";
 "autoMapping" = "အလိုအလျောက် မြေပုံဆွဲခြင်း";
+"settings_midi_report" = "အကူအညီ";
+"settings_midi_report_title" = "MIDI ချိတ်ဆက်မှု မှတ်တမ်း";
+"settings_midi_report_desc" = "Launchpad ကို မသိရှိပါက ဤနေရာကို ဖွင့်ပြီး မှတ်တမ်းကို ကူးယူ၍ အစီရင်ခံစာတွင် ထည့်ပါ။";
+"settings_midi_rescan" = "ထပ်ရှာရန်";
+"settings_midi_copy_log" = "မှတ်တမ်း ကူးယူရန်";
+"import_no_file_access" = "ထိုဖိုင်ကို ဖတ်ရန် ခွင့်ပြုချက် မရရှိပါ။";

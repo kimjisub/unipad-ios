@@ -257,3 +257,9 @@
 "MPP_playCount" = "演奏次数";
 "mb" = "MB";
 "autoMapping" = "自动映射";
+"settings_midi_report" = "支持";
+"settings_midi_report_title" = "MIDI 连接日志";
+"settings_midi_report_desc" = "如果 Launchpad 未被识别，请打开此处并将日志复制到你的反馈中。";
+"settings_midi_rescan" = "重新扫描";
+"settings_midi_copy_log" = "复制日志";
+"import_no_file_access" = "无法获得读取该文件的权限。";

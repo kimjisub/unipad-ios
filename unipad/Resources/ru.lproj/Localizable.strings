@@ -257,3 +257,9 @@
 "MPP_playCount" = "Количество игр";
 "mb" = "MB";
 "autoMapping" = "Авто-маппинг";
+"settings_midi_report" = "Поддержка";
+"settings_midi_report_title" = "Журнал подключения MIDI";
+"settings_midi_report_desc" = "Откройте, если Launchpad не распознаётся, и скопируйте журнал в своё сообщение.";
+"settings_midi_rescan" = "Искать снова";
+"settings_midi_copy_log" = "Скопировать журнал";
+"import_no_file_access" = "Не удалось получить разрешение на чтение этого файла.";

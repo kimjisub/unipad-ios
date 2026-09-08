@@ -257,3 +257,9 @@
 "MPP_playCount" = "प्ले गिनती";
 "mb" = "MB";
 "autoMapping" = "स्वचालित मैपिंग";
+"settings_midi_report" = "सहायता";
+"settings_midi_report_title" = "MIDI कनेक्शन लॉग";
+"settings_midi_report_desc" = "अगर Launchpad पहचाना नहीं जा रहा तो इसे खोलें और लॉग को अपनी रिपोर्ट में कॉपी करें।";
+"settings_midi_rescan" = "फिर से खोजें";
+"settings_midi_copy_log" = "लॉग कॉपी करें";
+"import_no_file_access" = "उस फ़ाइल को पढ़ने की अनुमति नहीं मिल सकी।";

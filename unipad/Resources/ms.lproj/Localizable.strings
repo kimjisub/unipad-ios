@@ -257,3 +257,9 @@
 "MPP_playCount" = "Bilangan Main";
 "mb" = "MB";
 "autoMapping" = "Pemetaan Automatik";
+"settings_midi_report" = "Sokongan";
+"settings_midi_report_title" = "Log sambungan MIDI";
+"settings_midi_report_desc" = "Buka ini jika Launchpad tidak dikenali, kemudian salin log ke laporan anda.";
+"settings_midi_rescan" = "Imbas semula";
+"settings_midi_copy_log" = "Salin log";
+"import_no_file_access" = "Tidak dapat memperoleh kebenaran untuk membaca fail itu.";

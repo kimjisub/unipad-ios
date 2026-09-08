@@ -257,3 +257,9 @@
 "MPP_playCount" = "Wiedergaben";
 "mb" = "MB";
 "autoMapping" = "Auto-Mapping";
+"settings_midi_report" = "Support";
+"settings_midi_report_title" = "MIDI-Verbindungsprotokoll";
+"settings_midi_report_desc" = "Öffne dies, wenn ein Launchpad nicht erkannt wird, und kopiere das Protokoll in deine Meldung.";
+"settings_midi_rescan" = "Erneut suchen";
+"settings_midi_copy_log" = "Protokoll kopieren";
+"import_no_file_access" = "Für diese Datei konnte keine Leseberechtigung erlangt werden.";
