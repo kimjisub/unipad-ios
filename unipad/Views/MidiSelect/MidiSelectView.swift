@@ -42,9 +42,11 @@ struct MidiSelectView: View {
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
         .onAppear {
-            // The preference is a positional index into midiDevices; a value from a build with a
-            // different list (or a corrupted default) must not index out of range.
-            selectedIndex = min(max(PreferenceManager.shared.launchpadConnectMethod, 0), midiDevices.count - 1)
+            if let activeDevice = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: MidiManager.shared.driver) }) {
+                selectedIndex = activeDevice.id
+            } else {
+                selectedIndex = min(max(PreferenceManager.shared.launchpadConnectMethod, 0), midiDevices.count - 1)
+            }
             bindMidiListener()
             isConnected = MidiManager.shared.isConnected
             startAutorunTimer()
@@ -133,6 +135,7 @@ struct MidiSelectView: View {
 
             Button {
                 cancelAutorun()
+                applySelection()
                 router.pop()
             } label: {
                 HStack {
@@ -168,8 +171,6 @@ struct MidiSelectView: View {
                     ) {
                         cancelAutorun()
                         selectedIndex = device.id
-                        PreferenceManager.shared.launchpadConnectMethod = device.id
-                        MidiManager.shared.overrideDriver(device.makeDriver())
                     }
                 }
             }
@@ -177,7 +178,14 @@ struct MidiSelectView: View {
         }
     }
 
-    // MARK: - Autorun Timer
+    // MARK: - Actions & Autorun Timer
+
+    private func applySelection() {
+        PreferenceManager.shared.launchpadConnectMethod = selectedIndex
+        if let device = midiDevices.first(where: { $0.id == selectedIndex }) {
+            MidiManager.shared.overrideDriver(device.makeDriver())
+        }
+    }
 
     private func startAutorunTimer() {
         remainingSeconds = 5
@@ -188,6 +196,7 @@ struct MidiSelectView: View {
                 remainingSeconds = (remainingSeconds ?? 0) - 1
             }
             if remainingSeconds == 0 {
+                applySelection()
                 router.pop()
             }
         }

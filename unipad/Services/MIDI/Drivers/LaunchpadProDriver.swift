@@ -13,10 +13,11 @@ final class LaunchpadProDriver: BaseMidiDriver {
     ]
 
     override func getInitSysEx() -> (messages: [[UInt8]], cableNumber: Int)? {
-        // Launchpad Pro (original): Live/Ableton mode + Session layout
+        // Launchpad Pro (original): Live/Ableton mode + Session layout + Clear mode light
         return (messages: [
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x21, 0x00, 0xF7],
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x22, 0x00, 0xF7],
+            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0B, 0x63, 0x00, 0x00, 0x00, 0xF7]
         ], cableNumber: 0)
     }
 
