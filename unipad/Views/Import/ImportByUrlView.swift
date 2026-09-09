@@ -8,6 +8,15 @@ struct ImportByUrlView: View {
     @State private var messageText = ""
     @State private var infoText = ""
 
+    /// The pack a `unipad://` link wants to install, held while the user decides.
+    ///
+    /// The link used to run straight from the metadata response into the download,
+    /// so anything able to open a URL on this device could make the app fetch and
+    /// unpack a file with no say from the person holding it. The metadata call has
+    /// already returned by the time this is set, which is why the question can name
+    /// the pack instead of asking about an anonymous download.
+    @State private var pendingInstall: UnishareVO?
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.2).ignoresSafeArea()
@@ -38,6 +47,27 @@ struct ImportByUrlView: View {
                             .foregroundStyle(AppColors.textPrimary)
                             .multilineTextAlignment(.center)
 
+                        if let pending = pendingInstall {
+                            Text(String(localized: "import_pack_confirm"))
+                                .font(.system(size: 14))
+                                .foregroundStyle(AppColors.textPrimary)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 12)
+
+                            HStack(spacing: 8) {
+                                Button(String(localized: "cancel")) {
+                                    pendingInstall = nil
+                                    router.pop()
+                                }
+                                Button(String(localized: "accept")) {
+                                    pendingInstall = nil
+                                    Task { await performInstall(pending) }
+                                }
+                            }
+                            .foregroundStyle(AppColors.blue)
+                            .padding(.top, 8)
+                        }
+
                         Spacer()
                     }
                     .frame(maxWidth: .infinity)
@@ -62,7 +92,6 @@ struct ImportByUrlView: View {
         log("code: \(code)")
 
         let api = UniPadAPI.shared
-        let workspaceManager = WorkspaceManager.shared
 
         do {
             log("Fetching unishare info...")
@@ -73,7 +102,7 @@ struct ImportByUrlView: View {
             messageText = unishare.producer ?? ""
             log("title: \(title), producer: \(unishare.producer ?? "")")
 
-            guard let unishareId = unishare.id else {
+            guard unishare.id != nil else {
                 titleText = String(localized: "errOccur")
                 messageText = "Invalid unishare ID"
                 try? await Task.sleep(for: .seconds(3))
@@ -81,6 +110,35 @@ struct ImportByUrlView: View {
                 return
             }
 
+            // Ask first. performInstall runs from the button, not from here.
+            infoText = String(format: String(localized: "import_pack_confirm_source"), Self.unishareHost)
+            pendingInstall = unishare
+            return
+        } catch let apiError as APIError where apiError.isNotFound {
+            titleText = String(localized: "unipackNotFound")
+            messageText = "#\(code)"
+            log("404 Not Found")
+            try? await Task.sleep(for: .seconds(3))
+            router.pop()
+        } catch {
+            titleText = String(localized: "errOccur")
+            messageText = error.localizedDescription
+            log("Error: \(error.localizedDescription)")
+            try? await Task.sleep(for: .seconds(3))
+            router.pop()
+        }
+    }
+
+    /// Shown with the question so the person can see where the file comes from.
+    private static let unishareHost = "api.unipad.io"
+
+    private func performInstall(_ unishare: UnishareVO) async {
+        guard let unishareId = unishare.id else { return }
+        let workspaceManager = WorkspaceManager.shared
+        let title = unishare.title ?? code
+        infoText = ""
+
+        do {
             let downloadURL = "https://api.unipad.io/unishare/\(unishareId)/download"
             let workspace = workspaceManager.downloadWorkspace.url
 
