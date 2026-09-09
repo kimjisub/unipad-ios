@@ -268,3 +268,7 @@
 
 /* Import errors */
 "import_no_file_access" = "Could not get permission to read that file.";
+
+/* Deep link install confirmation */
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";

@@ -268,3 +268,7 @@
 
 /* 가져오기 오류 */
 "import_no_file_access" = "파일 접근 권한을 얻을 수 없습니다.";
+
+/* Deep link install confirmation */
+"import_pack_confirm" = "이 팩을 설치할까요?";
+"import_pack_confirm_source" = "%@ 에서";
