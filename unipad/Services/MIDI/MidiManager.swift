@@ -74,29 +74,6 @@ final class MidiManager: ObservableObject {
         let preferredPort: Int
     }
 
-    private struct DriverRange {
-        let pidStart: Int
-        let pidEnd: Int
-        let entry: DriverEntry
-    }
-
-    private let driverRegistryRanges: [DriverRange] = [
-        DriverRange(pidStart: 0x0020, pidEnd: 0x002F,
-                    entry: DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
-        DriverRange(pidStart: 0x0036, pidEnd: 0x0036,
-                    entry: DriverEntry(name: "Launchpad Mini", factory: { LaunchpadSDriver() }, preferredPort: 0)),
-        DriverRange(pidStart: 0x0051, pidEnd: 0x0060,
-                    entry: DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
-        DriverRange(pidStart: 0x0069, pidEnd: 0x0078,
-                    entry: DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
-        DriverRange(pidStart: 0x0103, pidEnd: 0x0112,
-                    entry: DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
-        DriverRange(pidStart: 0x0113, pidEnd: 0x0122,
-                    entry: DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
-        DriverRange(pidStart: 0x0123, pidEnd: 0x0132,
-                    entry: DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
-    ]
-
     // MARK: - Initialization
 
     private init() {}
@@ -281,7 +258,7 @@ final class MidiManager: ObservableObject {
             log("Source[\(i)]: \(name)")
             listener?.onLog("Source[\(i)]: \(name)")
 
-            if let matchedDriver = findDriverForDevice(name: name) {
+            if let matchedDriver = findDriverForSource(source) {
                 if connectedSource != 0 { disconnect() }
                 connectToDevice(sourceIndex: i, driverEntry: matchedDriver)
                 return
@@ -327,22 +304,88 @@ final class MidiManager: ObservableObject {
         // Launchpad MK2 — sources: "Launchpad MK2 ..."
         ("lpmk2",     DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
 
-        // Full-name fallbacks for older firmware or different OS versions
+        // Full-name fallbacks for stock firmware (checked before CFW)
         ("launchpad mini mk3", DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
         ("launchpad x",        DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
         ("launchpad pro mk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
-        // Pro MK2 on the "Launchpad Open" custom firmware announces itself as "Launchpad Open ..."
-        ("launchpad open",     DriverEntry(name: "Launchpad Pro MK2 (CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
+        ("launchpad open",     DriverEntry(name: "Launchpad Pro (mat1jaczyyy CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
         ("launchpad pro",      DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         ("launchpad mk2",      DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
         ("launchpad s",        DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
         ("launchpad mini",     DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
         ("launchpad",          DriverEntry(name: "Launchpad (Generic)", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
 
+        // CoreFW mappings (Pro, MK2, S, Mini, X, Mini MK3, Pro MK3)
+        ("pro (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("pro (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mk2 (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mk2 (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lps (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lps (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini (midi)",        DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini (daw)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lpx (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lpx (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini mk3 (midi)",    DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("mini mk3 (daw)",     DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("pro mk3 (midi)",     DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("pro mk3 (daw)",      DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+
         // Non-Novation
         ("midi fighter", DriverEntry(name: "Midi Fighter", factory: { MidiFighterDriver() }, preferredPort: 0)),
         ("matrix",       DriverEntry(name: "Matrix", factory: { MatrixDriver() }, preferredPort: 0)),
     ]
+
+    private func findDriverForSource(_ source: MIDIEndpointRef) -> DriverEntry? {
+        let sourceName = getMIDIObjectName(source)
+        let displayName = getMIDIObjectStringProperty(source, kMIDIPropertyDisplayName) ?? sourceName
+
+        var entity: MIDIEntityRef = 0
+        MIDIEndpointGetEntity(source, &entity)
+
+        var entityName = ""
+        var deviceName = ""
+        var modelName = ""
+
+        if entity != 0 {
+            entityName = getMIDIObjectName(entity)
+            var device: MIDIDeviceRef = 0
+            MIDIEntityGetDevice(entity, &device)
+            if device != 0 {
+                deviceName = getMIDIObjectName(device)
+                modelName = getMIDIObjectStringProperty(device, kMIDIPropertyModel) ?? ""
+            }
+        }
+
+        // 1. Check CoreFW by source/endpoint name first (CoreFW endpoints are always "<target> (PORT)")
+        let loweredSrc = sourceName.lowercased()
+        for mapping in Self.sourceNameDriverMap where mapping.entry.name == "Launchpad (CoreFW)" {
+            if loweredSrc.hasPrefix(mapping.prefix) {
+                return mapping.entry
+            }
+        }
+
+        // 2. Check sourceName, displayName, deviceName, entityName, and modelName against sourceNameDriverMap
+        let candidateNames = [displayName, deviceName, entityName, modelName, sourceName]
+        for candidate in candidateNames where !candidate.isEmpty {
+            let lowered = candidate.lowercased()
+            for mapping in Self.sourceNameDriverMap {
+                if lowered.hasPrefix(mapping.prefix) {
+                    return mapping.entry
+                }
+            }
+        }
+
+        // 3. Keyboard / Piano keywords
+        for candidate in candidateNames where !candidate.isEmpty {
+            let lowered = candidate.lowercased()
+            if lowered.contains("keyboard") || lowered.contains("piano") {
+                return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+            }
+        }
+
+        return nil
+    }
 
     private func findDriverForDevice(name: String) -> DriverEntry? {
         let lowered = name.lowercased()
@@ -599,18 +642,16 @@ final class MidiManager: ObservableObject {
     // MARK: - Helpers
 
     private func getMIDIObjectName(_ obj: MIDIObjectRef) -> String {
+        getMIDIObjectStringProperty(obj, kMIDIPropertyName) ?? "Unknown"
+    }
+
+    private func getMIDIObjectStringProperty(_ obj: MIDIObjectRef, _ property: CFString) -> String? {
         var name: Unmanaged<CFString>?
-        let status = MIDIObjectGetStringProperty(obj, kMIDIPropertyName, &name)
+        let status = MIDIObjectGetStringProperty(obj, property, &name)
         if status == noErr, let cfName = name?.takeRetainedValue() {
             return cfName as String
         }
-        return "Unknown"
-    }
-
-    private func getMIDIObjectIntProperty(_ obj: MIDIObjectRef, _ property: CFString) -> Int32 {
-        var value: Int32 = 0
-        MIDIObjectGetIntegerProperty(obj, property, &value)
-        return value
+        return nil
     }
 
 }

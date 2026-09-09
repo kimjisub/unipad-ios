@@ -13,10 +13,11 @@ final class LaunchpadProDriver: BaseMidiDriver {
     ]
 
     override func getInitSysEx() -> (messages: [[UInt8]], cableNumber: Int)? {
-        // Launchpad Pro (original): Live/Ableton mode + Session layout
+        // Launchpad Pro (original): Live/Ableton mode + Session layout + Clear mode light
         return (messages: [
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x21, 0x00, 0xF7],
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x22, 0x00, 0xF7],
+            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0B, 0x63, 0x00, 0x00, 0x00, 0xF7]
         ], cableNumber: 0)
     }
 
@@ -38,6 +39,9 @@ final class LaunchpadProDriver: BaseMidiDriver {
         if cmd == 11 && sig == -80 {
             if (91...98).contains(note) {
                 onFunctionKeyTouch(f: note - 91, upDown: velocity != 0)
+            }
+            if note == 99 {
+                onFunctionKeyTouch(f: 32, upDown: velocity != 0)
             }
             if (19...89).contains(note) && note % 10 == 9 {
                 let c = 9 - note / 10 - 1
@@ -73,6 +77,14 @@ final class LaunchpadProDriver: BaseMidiDriver {
                        sig: UInt8(truncatingIfNeeded: Self.circleCode[f][1]),
                        note: UInt8(truncatingIfNeeded: Self.circleCode[f][2]),
                        velocity: UInt8(truncatingIfNeeded: velocity))
+        } else if f == 32 || f == 99 {
+            // Mode / Logo light on stock Novation firmware
+            if velocity == 0 {
+                sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0B, 0x63, 0x00, 0x00, 0x00, 0xF7])
+                sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0A, 0x63, 0x00, 0xF7])
+            } else {
+                sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0A, 0x63, UInt8(velocity & 0x7F), 0xF7])
+            }
         }
     }
 
@@ -82,7 +94,7 @@ final class LaunchpadProDriver: BaseMidiDriver {
                 sendPadLed(x: i, y: j, velocity: 0)
             }
         }
-        for i in 0...31 {
+        for i in 0...32 {
             sendFunctionKeyLed(f: i, velocity: 0)
         }
     }

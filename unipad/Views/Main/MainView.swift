@@ -44,6 +44,11 @@ struct MainView: View {
         .onDisappear {
             vm.removeMidiController()
         }
+        .onChange(of: router.currentRoute) { _, currentRoute in
+            if currentRoute == .main {
+                vm.setupMidiController()
+            }
+        }
         #if canImport(UIKit)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
             vm.removeMidiController()

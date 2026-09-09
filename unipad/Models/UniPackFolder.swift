@@ -346,56 +346,59 @@ class UniPackFolder: UniPack {
 
                 switch option {
                 case "on", "o":
-                    guard split2.count >= 3 else {
-                        addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
-                    }
                     let xToken = split2[1]
                     var ledX: Int
                     var ledY: Int
+                    var colorToken: String?
+                    var autoToken: String?
+                    var velToken: String?
 
                     if xToken == "*" || xToken == "mc" {
-                        guard let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let py = Int(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = -1
                         ledY = py - 1
+                        if split2.count == 4 { colorToken = split2[3] }
+                        else if split2.count >= 5 { autoToken = split2[3]; velToken = split2[4]; colorToken = split2[3] }
                     } else if xToken == "l" {
-                        continue
+                        ledX = -1
+                        ledY = 32
+                        if split2.count == 3 {
+                            colorToken = split2[2]
+                        } else if split2.count == 4 {
+                            if split2[2] == "auto" || split2[2] == "a" {
+                                autoToken = split2[2]
+                                velToken = split2[3]
+                            } else {
+                                colorToken = split2[3]
+                            }
+                        } else if split2.count >= 5 {
+                            autoToken = split2[3]
+                            velToken = split2[4]
+                            colorToken = split2[3]
+                        }
                     } else {
-                        guard let px = Int(xToken), let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let px = Int(xToken), let py = Int(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = px - 1
                         ledY = py - 1
+                        if split2.count == 4 { colorToken = split2[3] }
+                        else if split2.count >= 5 { autoToken = split2[3]; velToken = split2[4]; colorToken = split2[3] }
                     }
 
                     var ledColor = -1
                     var ledVelocity = 4
 
-                    // Android parses the colour with a 32-bit toInt(16): more than six hex digits
-                    // overflow and drop the event, and a palette code outside 0...127 throws and
-                    // drops the event. The same lines are dropped here so the pack renders alike.
-                    if split2.count == 4 {
-                        guard split2[3].count <= 6, let hexVal = Int(split2[3], radix: 16) else {
-                            addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
-                        }
+                    if let auto = autoToken, (auto == "auto" || auto == "a"), let vStr = velToken, let vel = Int(vStr), (0..<LaunchpadColor.argb.count).contains(vel) {
+                        ledVelocity = vel
+                        ledColor = Int(LaunchpadColor.colorFromCode(ledVelocity))
+                    } else if let vStr = velToken, let vel = Int(vStr), let cStr = colorToken, cStr.count <= 6, let hexVal = Int(cStr, radix: 16) {
+                        ledVelocity = vel
                         ledColor = hexVal | 0xFF000000
-                    } else if split2.count == 5 {
-                        if split2[3] == "auto" || split2[3] == "a" {
-                            guard let vel = Int(split2[4]), (0..<LaunchpadColor.argb.count).contains(vel) else {
-                                addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
-                            }
-                            ledVelocity = vel
-                            ledColor = Int(LaunchpadColor.colorFromCode(ledVelocity))
-                        } else {
-                            guard let vel = Int(split2[4]),
-                                  split2[3].count <= 6,
-                                  let hexVal = Int(split2[3], radix: 16) else {
-                                addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
-                            }
-                            ledVelocity = vel
-                            ledColor = hexVal | 0xFF000000
-                        }
+                    } else if let cStr = colorToken, cStr.count <= 6, let hexVal = Int(cStr, radix: 16) {
+                        ledColor = hexVal | 0xFF000000
                     } else {
                         addErr("keyLed : [\(fileName)].[\(s)] format is incorrect")
                         continue
@@ -404,23 +407,21 @@ class UniPackFolder: UniPack {
                     ledList.append(.on(x: ledX, y: ledY, color: ledColor, velocity: ledVelocity))
 
                 case "off", "f":
-                    guard split2.count >= 3 else {
-                        addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
-                    }
                     let xToken = split2[1]
                     var ledX: Int
                     var ledY: Int
 
                     if xToken == "*" || xToken == "mc" {
-                        guard let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let py = Int(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = -1
                         ledY = py - 1
                     } else if xToken == "l" {
-                        continue
+                        ledX = -1
+                        ledY = 32
                     } else {
-                        guard let px = Int(xToken), let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let px = Int(xToken), let py = Int(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = px - 1
