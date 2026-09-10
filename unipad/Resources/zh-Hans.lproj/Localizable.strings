@@ -210,13 +210,13 @@
 /* MIDI Devices */
 "midi_lp_s" = "Launchpad S";
 "midi_lp_mk2" = "Launchpad MK2";
-"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_pro" = "Launchpad Pro";
 "midi_lp_pro_cfw" = "Launchpad Pro (mat1jaczyyy CFW)";
 "midi_lp_core_cfw" = "Launchpad (CoreFW)";
 "midi_lp_x" = "Launchpad X";
 "midi_lp_mini_mk3" = "Launchpad Mini MK3";
 "midi_lp_mk3" = "Launchpad Pro MK3";
-"midi_matrix" = "Matrix";
+"midi_matrix" = "Mystrix";
 "midi_midi_fighter" = "Midi Fighter";
 "midi_master_keyboard" = "Master Keyboard";
 
@@ -263,4 +263,5 @@
 "settings_midi_report_desc" = "如果 Launchpad 未被识别，请打开此处并将日志复制到你的反馈中。";
 "settings_midi_rescan" = "重新扫描";
 "settings_midi_copy_log" = "复制日志";
+"settings_midi_clear_log" = "清除";
 "import_no_file_access" = "无法获得读取该文件的权限。";

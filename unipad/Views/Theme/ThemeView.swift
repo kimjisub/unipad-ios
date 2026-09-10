@@ -12,10 +12,11 @@ struct ThemeView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let navWidth = min(max(geometry.size.width * 0.3, 180), 260)
             HStack(spacing: 0) {
                 if !isFullscreen {
                     themeListPanel
-                        .frame(width: geometry.size.width * 0.4)
+                        .frame(width: navWidth)
                         .transition(.move(edge: .leading))
                 }
 
@@ -65,7 +66,7 @@ struct ThemeView: View {
     // MARK: - Theme List Panel
 
     private var themeListPanel: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Button { router.pop() } label: {
                     Image(systemName: "chevron.left")
@@ -74,20 +75,21 @@ struct ThemeView: View {
                 .padding(.trailing, 4)
 
                 Text(String(localized: "theme"))
-                    .font(.system(size: 24))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(AppColors.textPrimary)
 
                 Spacer()
 
                 Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
                     vm.selectedIndex = vm.themes.count
+                    }
                 } label: {
                     Image(systemName: "plus")
                         .foregroundStyle(AppColors.textPrimary)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(.bottom, 24)
 
             ScrollView {
                 LazyVStack(spacing: 3) {
@@ -96,7 +98,11 @@ struct ThemeView: View {
                             theme: theme,
                             isSelected: index == vm.selectedIndex,
                             isApplied: index == vm.appliedIndex,
-                            onTap: { vm.selectedIndex = index },
+                            onTap: {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    vm.selectedIndex = index
+                                }
+                            },
                             onApply: { vm.applyTheme(at: index) },
                             onLongPress: theme.isDeletable ? {
                                 deleteTarget = theme
@@ -107,17 +113,19 @@ struct ThemeView: View {
 
                     addThemeGuideItem
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
             }
         }
-        .background(Color(hex: 0x111825))
+        .padding(.vertical, 24)
+        .padding(.horizontal, 12)
+        .background(AppColors.background1)
     }
 
     private var addThemeGuideItem: some View {
         let isSelected = vm.selectedIndex == vm.themes.count
         return Button {
-            vm.selectedIndex = vm.themes.count
+            withAnimation(.easeInOut(duration: 0.25)) {
+                vm.selectedIndex = vm.themes.count
+            }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "plus")
@@ -144,18 +152,21 @@ struct ThemeView: View {
 
     @ViewBuilder
     private var previewPanel: some View {
-        if vm.selectedIndex == vm.themes.count {
-            addThemePanel
-        } else {
-            themePreview
-                .id(vm.selectedIndex)
-                .transition(.opacity)
-                .animation(.linear(duration: 0.4), value: vm.selectedIndex)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    isFullscreen.toggle()
-                }
+        ZStack {
+            if vm.selectedIndex == vm.themes.count {
+                addThemePanel
+                    .transition(.opacity)
+            } else {
+                themePreview
+                    .id(vm.selectedIndex)
+                    .transition(.opacity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isFullscreen.toggle()
+                    }
+            }
         }
+        .animation(.easeInOut(duration: 0.3), value: vm.selectedIndex)
     }
 
     // MARK: - Theme Preview
@@ -164,12 +175,19 @@ struct ThemeView: View {
         let resources = vm.selectedThemeResources
         return GeometryReader { geometry in
             let cols = 8
+            let totalCols = 9 // 8 pad columns + 1 chain column
             let rows = 8
+
+            // Available space with 16pt margin so preview never clips on any screen
+            let margin: CGFloat = 16
+            let availableWidth = max(geometry.size.width - margin * 2, 0)
+            let availableHeight = max(geometry.size.height - margin * 2, 0)
+
             let cellSize = min(
-                geometry.size.width / CGFloat(cols),
-                geometry.size.height / CGFloat(rows)
+                availableWidth / CGFloat(totalCols),
+                availableHeight / CGFloat(rows)
             )
-            let gridWidth = cellSize * CGFloat(cols)
+            let gridWidth = cellSize * CGFloat(totalCols)
             let gridHeight = cellSize * CGFloat(rows)
             let offsetX = (geometry.size.width - gridWidth) / 2
             let offsetY = (geometry.size.height - gridHeight) / 2
@@ -411,7 +429,7 @@ private struct ThemeListItemView: View {
     var onLongPress: (() -> Void)?
 
     var body: some View {
-        Button(action: onTap) {
+        VStack(spacing: 8) {
             HStack(spacing: 12) {
                 if let icon = theme.icon {
                     Image(platformImage: icon)
@@ -430,47 +448,65 @@ private struct ThemeListItemView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(theme.name)
-                        .font(.system(size: 14))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineLimit(1)
+                    MarqueeText(
+                        text: theme.name,
+                        font: .system(size: 14),
+                        color: AppColors.textPrimary,
+                        speed: 25,
+                        fontSize: 14
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 6) {
                         ThemeTypeBadge(type: theme.type)
 
-                        Text([theme.author, theme.version].compactMap { $0 }.joined(separator: "  "))
-                            .font(.system(size: 11))
-                            .foregroundStyle(AppColors.textSecondary)
-                            .lineLimit(1)
+                        let subtitle = [theme.author, theme.version].compactMap { $0 }.joined(separator: "  ")
+                        if !subtitle.isEmpty {
+                            MarqueeText(
+                                text: subtitle,
+                                font: .system(size: 11),
+                                color: AppColors.textSecondary,
+                                speed: 20,
+                                fontSize: 11
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if isApplied {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 22))
+                        .font(.system(size: 20))
                         .foregroundStyle(AppColors.orange)
-                } else if isSelected {
-                    Button(action: onApply) {
-                        Text(String(localized: "apply"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(AppColors.orange)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
+                        .padding(.trailing, 4)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(isSelected ? Color.white.opacity(0.12) : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? AppColors.orange : .clear, lineWidth: 1.5)
-            )
+
+            if isSelected && !isApplied {
+                Button(action: onApply) {
+                    Text(String(localized: "apply"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background(AppColors.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(isSelected ? Color.white.opacity(0.12) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? AppColors.orange : .clear, lineWidth: 1.5)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap()
         }
         .simultaneousGesture(
             LongPressGesture().onEnded { _ in
@@ -503,11 +539,21 @@ private struct ThemeTypeBadge: View {
         Text(label)
             .font(.system(size: 9, weight: .medium))
             .foregroundStyle(badgeColor)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: true)
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(badgeColor.opacity(0.6), lineWidth: 1)
             )
+            .fixedSize()
+            .layoutPriority(1)
     }
+}
+
+#Preview {
+    ThemeView()
+        .environment(AppRouter())
+        .preferredColorScheme(.dark)
 }

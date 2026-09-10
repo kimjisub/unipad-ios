@@ -210,13 +210,13 @@
 /* MIDI Devices */
 "midi_lp_s" = "Launchpad S";
 "midi_lp_mk2" = "Launchpad MK2";
-"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_pro" = "Launchpad Pro";
 "midi_lp_pro_cfw" = "Launchpad Pro (mat1jaczyyy CFW)";
 "midi_lp_core_cfw" = "Launchpad (CoreFW)";
 "midi_lp_x" = "Launchpad X";
 "midi_lp_mini_mk3" = "Launchpad Mini MK3";
 "midi_lp_mk3" = "Launchpad Pro MK3";
-"midi_matrix" = "Matrix";
+"midi_matrix" = "Mystrix";
 "midi_midi_fighter" = "Midi Fighter";
 "midi_master_keyboard" = "Master Keyboard";
 
@@ -263,4 +263,5 @@
 "settings_midi_report_desc" = "अगर Launchpad पहचाना नहीं जा रहा तो इसे खोलें और लॉग को अपनी रिपोर्ट में कॉपी करें।";
 "settings_midi_rescan" = "फिर से खोजें";
 "settings_midi_copy_log" = "लॉग कॉपी करें";
+"settings_midi_clear_log" = "साफ़ करें";
 "import_no_file_access" = "उस फ़ाइल को पढ़ने की अनुमति नहीं मिल सकी।";

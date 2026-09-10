@@ -40,6 +40,11 @@ final class MidiManager: ObservableObject {
         logger.info("\(message)")
         debugLog.append(message)
         if debugLog.count > 50 { debugLog.removeFirst() }
+        listener?.onLog(message)
+    }
+
+    func clearDebugLog() {
+        debugLog.removeAll()
     }
 
     private(set) var driver: MidiDriver = NotingDriver() {
@@ -243,7 +248,6 @@ final class MidiManager: ObservableObject {
         let destCount = MIDIGetNumberOfDestinations()
 
         log("MIDI scan: \(sourceCount) sources, \(destCount) destinations")
-        listener?.onLog("MIDI scan: \(sourceCount) sources, \(destCount) destinations")
 
         // If already connected to a known (non-generic) driver, skip
         if connectedSource != 0 && !isGenericConnection {
@@ -256,7 +260,6 @@ final class MidiManager: ObservableObject {
             let source = MIDIGetSource(i)
             let name = getMIDIObjectName(source)
             log("Source[\(i)]: \(name)")
-            listener?.onLog("Source[\(i)]: \(name)")
 
             if let matchedDriver = findDriverForSource(source) {
                 if connectedSource != 0 { disconnect() }
@@ -333,7 +336,8 @@ final class MidiManager: ObservableObject {
 
         // Non-Novation
         ("midi fighter", DriverEntry(name: "Midi Fighter", factory: { MidiFighterDriver() }, preferredPort: 0)),
-        ("matrix",       DriverEntry(name: "Matrix", factory: { MatrixDriver() }, preferredPort: 0)),
+        ("mystrix",      DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
+        ("matrix",       DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
     ]
 
     private func findDriverForSource(_ source: MIDIEndpointRef) -> DriverEntry? {
