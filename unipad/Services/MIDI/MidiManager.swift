@@ -336,7 +336,9 @@ final class MidiManager: ObservableObject {
 
         // Non-Novation
         ("midi fighter", DriverEntry(name: "Midi Fighter", factory: { MidiFighterDriver() }, preferredPort: 0)),
+        ("mystrix pro",  DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
         ("mystrix",      DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
+        ("matrix pro",   DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
         ("matrix",       DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
     ]
 
