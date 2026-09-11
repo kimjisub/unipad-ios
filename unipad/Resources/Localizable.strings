@@ -210,13 +210,13 @@
 /* MIDI Devices */
 "midi_lp_s" = "Launchpad S";
 "midi_lp_mk2" = "Launchpad MK2";
-"midi_lp_pro" = "Launchpad PRO";
+"midi_lp_pro" = "Launchpad Pro";
 "midi_lp_pro_cfw" = "Launchpad Pro (mat1jaczyyy CFW)";
 "midi_lp_core_cfw" = "Launchpad (CoreFW)";
 "midi_lp_x" = "Launchpad X";
 "midi_lp_mini_mk3" = "Launchpad Mini MK3";
 "midi_lp_mk3" = "Launchpad Pro MK3";
-"midi_matrix" = "Matrix";
+"midi_matrix" = "Mystrix";
 "midi_midi_fighter" = "Midi Fighter";
 "midi_master_keyboard" = "Master Keyboard";
 
@@ -265,6 +265,7 @@
 "settings_midi_report_desc" = "Open this if a Launchpad is not recognised, then copy the log into your report.";
 "settings_midi_rescan" = "Scan again";
 "settings_midi_copy_log" = "Copy log";
+"settings_midi_clear_log" = "Clear";
 
 /* Import errors */
 "import_no_file_access" = "Could not get permission to read that file.";

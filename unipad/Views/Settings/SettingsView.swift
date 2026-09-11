@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppRouter.self) private var router
+    @ObservedObject private var midiManager = MidiManager.shared
     @State private var vm = SettingsViewModel()
     @State private var showCommunityDialog = false
     @State private var showAlert = false
@@ -204,30 +205,51 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
 
                         if showMidiLog {
-                        if MidiManager.shared.debugLog.isEmpty {
-                            Text("No logs yet")
-                                .font(.system(size: 11))
-                                .foregroundStyle(AppColors.textSecondary)
-                        } else {
-                            ForEach(Array(MidiManager.shared.debugLog.enumerated()), id: \.offset) { _, line in
-                                Text(line)
-                                    .font(.system(size: 11, design: .monospaced))
+                            if midiManager.debugLog.isEmpty {
+                                Text("No logs yet")
+                                    .font(.system(size: 11))
                                     .foregroundStyle(AppColors.textSecondary)
+                                    .padding(.vertical, 4)
+                            } else {
+                                ScrollViewReader { proxy in
+                                    ScrollView {
+                                        LazyVStack(alignment: .leading, spacing: 2) {
+                                            ForEach(Array(midiManager.debugLog.enumerated()), id: \.offset) { index, line in
+                                                Text(line)
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .foregroundStyle(AppColors.textSecondary)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                    .id(index)
+                                            }
+                                        }
+                                        .padding(6)
+                                    }
+                                    .frame(maxHeight: 140)
+                                    .background(AppColors.background1.opacity(0.5))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .onChange(of: midiManager.debugLog.count) { _, newCount in
+                                        if newCount > 0 {
+                                            proxy.scrollTo(newCount - 1, anchor: .bottom)
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        HStack(spacing: 12) {
-                            Button(String(localized: "settings_midi_rescan")) {
-                                MidiManager.shared.scanForDevices()
+                            HStack(spacing: 12) {
+                                Button(String(localized: "settings_midi_rescan")) {
+                                    midiManager.scanForDevices()
+                                }
+                                Button(String(localized: "settings_midi_copy_log")) {
+                                    #if canImport(UIKit)
+                                    UIPasteboard.general.string = midiManager.debugLog.joined(separator: "\n")
+                                    #endif
+                                }
+                                Button(String(localized: "settings_midi_clear_log")) {
+                                    midiManager.clearDebugLog()
+                                }
                             }
-                            Button(String(localized: "settings_midi_copy_log")) {
-                                #if canImport(UIKit)
-                                UIPasteboard.general.string = MidiManager.shared.debugLog.joined(separator: "\n")
-                                #endif
-                            }
-                        }
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(AppColors.blue)
-                        .padding(.top, 4)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppColors.blue)
+                            .padding(.top, 4)
                         }
                     }
                     .padding(12)

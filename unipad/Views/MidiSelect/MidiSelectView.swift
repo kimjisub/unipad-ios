@@ -9,7 +9,6 @@ struct MidiSelectView: View {
     @Environment(AppRouter.self) private var router
     @State private var selectedIndex = 0
     @State private var isConnected = false
-    @State private var logText = ""
     @State private var remainingSeconds: Int?
     @State private var midiListener = MidiSelectListener()
 
@@ -110,29 +109,6 @@ struct MidiSelectView: View {
 
             Spacer()
 
-            if !logText.isEmpty {
-                Rectangle()
-                    .fill(AppColors.divider)
-                    .frame(height: 1)
-                    .padding(.horizontal, 20)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Log")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(AppColors.textPrimary)
-
-                    ScrollView {
-                        Text(logText)
-                            .font(.system(size: 11))
-                            .foregroundStyle(AppColors.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: 80)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-            }
-
             Button {
                 cancelAutorun()
                 applySelection()
@@ -212,9 +188,6 @@ struct MidiSelectView: View {
         }
         midiListener.disconnectedHandler = {
             isConnected = false
-        }
-        midiListener.logHandler = { message in
-            logText += message + "\n"
         }
         midiListener.driverChangeHandler = { driver in
             if let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) }) {
