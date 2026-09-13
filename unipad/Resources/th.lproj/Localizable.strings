@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "คัดลอกบันทึก";
 "settings_midi_clear_log" = "ล้าง";
 "import_no_file_access" = "ไม่สามารถขอสิทธิ์อ่านไฟล์นั้นได้";
+"temporary_store_notice" = "ขณะนี้ไม่สามารถโหลดหรือบันทึกบุ๊กมาร์กและจำนวนครั้งที่เล่นได้ การเปลี่ยนแปลงที่คุณทำจะหายไปเมื่อปิด UniPad";
+"temporary_store_notice_dismiss" = "ปิด";

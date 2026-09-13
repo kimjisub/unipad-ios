@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Скопировать журнал";
 "settings_midi_clear_log" = "Очистить";
 "import_no_file_access" = "Не удалось получить разрешение на чтение этого файла.";
+"temporary_store_notice" = "Сейчас не удаётся загрузить или сохранить закладки и количество игр. Ваши изменения пропадут после закрытия UniPad.";
+"temporary_store_notice_dismiss" = "Закрыть";

@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Copier le journal";
 "settings_midi_clear_log" = "Effacer";
 "import_no_file_access" = "Impossible d'obtenir l'autorisation de lire ce fichier.";
+"temporary_store_notice" = "Impossible de charger ou d'enregistrer les signets et le nombre de lectures pour le moment. Vos modifications seront perdues à la fermeture d'UniPad.";
+"temporary_store_notice_dismiss" = "Fermer";

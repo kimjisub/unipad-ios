@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Copiar registro";
 "settings_midi_clear_log" = "Borrar";
 "import_no_file_access" = "No se pudo obtener permiso para leer ese archivo.";
+"temporary_store_notice" = "Ahora mismo no se pueden cargar ni guardar los marcadores ni las veces jugadas. Los cambios que hagas se perderán al cerrar UniPad.";
+"temporary_store_notice_dismiss" = "Cerrar";

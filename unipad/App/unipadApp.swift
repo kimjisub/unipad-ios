@@ -61,32 +61,14 @@ struct unipadApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     #endif
 
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            UnipackEntity.self,
-        ])
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false
-        )
-        do {
-            return try ModelContainer(
-                for: schema,
-                configurations: [modelConfiguration]
-            )
-        } catch {
-            // A corrupted store or a failed migration used to crash on every launch, and the only
-            // way out (reinstall) also deleted every UniPack in Documents. The entity only holds
-            // bookmarks and play counts, so an in-memory store keeps the app usable.
-            NSLog("Could not create ModelContainer, falling back to in-memory: \(error)")
-            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            do {
-                return try ModelContainer(for: schema, configurations: [fallback])
-            } catch {
-                fatalError("Could not create in-memory ModelContainer: \(error)")
-            }
-        }
-    }()
+    private let sharedModelContainer: ModelContainer
+    @State private var modelStoreStatus: ModelStoreStatus
+
+    init() {
+        let opened = ModelContainerFactory.make()
+        sharedModelContainer = opened.container
+        _modelStoreStatus = State(initialValue: ModelStoreStatus(openError: opened.persistentStoreError))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -123,6 +105,7 @@ struct unipadApp: App {
                 }
             }
             .environment(router)
+            .environment(modelStoreStatus)
             .preferredColorScheme(.dark)
             .overlay(alignment: .top) {
                 if midiBanner.isVisible {
@@ -135,11 +118,25 @@ struct unipadApp: App {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            .overlay(alignment: .bottom) {
+                // Only on the main screen, where bookmarks and play counts are shown; a banner over
+                // the pads in Play would get in the way of playing.
+                if modelStoreStatus.showsNotice && !router.showSplash && router.currentRoute == .main {
+                    TemporaryStoreNoticeView(onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            modelStoreStatus.dismissNotice()
+                        }
+                    })
+                        .padding(.bottom, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
             .onOpenURL { url in
                 router.handleDeepLink(url)
             }
             .onAppear {
                 midiBanner.start()
+                modelStoreStatus.reportIfNeeded(to: FirebaseManager.shared.crashlytics)
             }
             .onReceive(MidiManager.shared.$isConnected.removeDuplicates()) { connected in
                 midiBanner.handleConnectionStateChanged(connected, scenePhase: scenePhase, router: router)

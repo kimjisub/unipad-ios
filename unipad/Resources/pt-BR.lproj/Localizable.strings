@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Copiar registro";
 "settings_midi_clear_log" = "Limpar";
 "import_no_file_access" = "Não foi possível obter permissão para ler esse arquivo.";
+"temporary_store_notice" = "No momento, não é possível carregar nem salvar os favoritos e as vezes tocadas. As alterações que você fizer serão perdidas ao fechar o UniPad.";
+"temporary_store_notice_dismiss" = "Fechar";

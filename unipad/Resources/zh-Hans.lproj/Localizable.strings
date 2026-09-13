@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "复制日志";
 "settings_midi_clear_log" = "清除";
 "import_no_file_access" = "无法获得读取该文件的权限。";
+"temporary_store_notice" = "目前无法加载或保存书签和演奏次数。关闭 UniPad 后，你所做的更改将会丢失。";
+"temporary_store_notice_dismiss" = "关闭";

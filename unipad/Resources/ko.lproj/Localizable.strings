@@ -273,3 +273,7 @@
 /* Deep link install confirmation */
 "import_pack_confirm" = "이 팩을 설치할까요?";
 "import_pack_confirm_source" = "%@ 에서";
+
+/* 임시 저장소 안내 */
+"temporary_store_notice" = "지금은 북마크와 플레이 횟수를 불러오거나 저장할 수 없습니다. 앱을 닫으면 지금 바꾼 내용은 사라집니다.";
+"temporary_store_notice_dismiss" = "닫기";

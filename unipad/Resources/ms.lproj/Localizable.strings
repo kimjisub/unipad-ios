@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Salin log";
 "settings_midi_clear_log" = "Kosongkan";
 "import_no_file_access" = "Tidak dapat memperoleh kebenaran untuk membaca fail itu.";
+"temporary_store_notice" = "Penanda buku dan bilangan main tidak dapat dimuatkan atau disimpan buat masa ini. Perubahan yang anda buat akan hilang apabila UniPad ditutup.";
+"temporary_store_notice_dismiss" = "Tutup";

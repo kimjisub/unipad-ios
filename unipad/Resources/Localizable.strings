@@ -273,3 +273,7 @@
 /* Deep link install confirmation */
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";
+
+/* Temporary store notice */
+"temporary_store_notice" = "Bookmarks and play counts can't be loaded or saved right now. Changes you make will be lost when UniPad closes.";
+"temporary_store_notice_dismiss" = "Dismiss";

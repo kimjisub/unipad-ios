@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Copia registro";
 "settings_midi_clear_log" = "Cancella";
 "import_no_file_access" = "Non è stato possibile ottenere il permesso di leggere quel file.";
+"temporary_store_notice" = "Al momento non è possibile caricare o salvare i segnalibri e il numero di riproduzioni. Le modifiche che fai andranno perse alla chiusura di UniPad.";
+"temporary_store_notice_dismiss" = "Chiudi";

@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Kopyahin ang tala";
 "settings_midi_clear_log" = "Linisin";
 "import_no_file_access" = "Hindi makuha ang pahintulot para basahin ang file na iyon.";
+"temporary_store_notice" = "Hindi ma-load o ma-save ang mga bookmark at bilang ng paglalaro ngayon. Mawawala ang iyong mga pagbabago kapag isinara ang UniPad.";
+"temporary_store_notice_dismiss" = "Isara";

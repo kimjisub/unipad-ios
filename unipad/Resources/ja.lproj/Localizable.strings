@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "ログをコピー";
 "settings_midi_clear_log" = "消去";
 "import_no_file_access" = "そのファイルを読み取る権限を取得できませんでした。";
+"temporary_store_notice" = "現在、ブックマークと再生回数を読み込むことも保存することもできません。UniPad を閉じると、変更した内容は失われます。";
+"temporary_store_notice_dismiss" = "閉じる";

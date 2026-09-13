@@ -265,3 +265,5 @@
 "settings_midi_copy_log" = "Protokoll kopieren";
 "settings_midi_clear_log" = "Löschen";
 "import_no_file_access" = "Für diese Datei konnte keine Leseberechtigung erlangt werden.";
+"temporary_store_notice" = "Lesezeichen und Wiedergaben können gerade nicht geladen oder gespeichert werden. Deine Änderungen gehen verloren, wenn UniPad geschlossen wird.";
+"temporary_store_notice_dismiss" = "Schließen";
