@@ -30,6 +30,8 @@ struct ModelContainerFactoryTests {
     }
 
     /// Core Data's own test for "this store needs no migration to be opened with this model".
+    /// `makeManagedObjectModel(for:)` only exists from iOS 26, so callers gate on it.
+    @available(iOS 26.0, *)
     private func v1IsCompatible(withStoreAt storeURL: URL) throws -> Bool {
         let model = try #require(NSManagedObjectModel.makeManagedObjectModel(for: Schema(versionedSchema: UnipadSchemaV1.self)))
         let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: storeURL)
@@ -50,7 +52,10 @@ struct ModelContainerFactoryTests {
         let hashesWrittenByTheShippedSchema = try versionHashes(at: storeURL)
 
         // Same version hashes as V1, so opening it is not a migration, inferred or otherwise.
-        #expect(try v1IsCompatible(withStoreAt: storeURL))
+        // Before iOS 26 this direct check is unavailable; the unchanged hashes at the end still cover it.
+        if #available(iOS 26.0, *) {
+            #expect(try v1IsCompatible(withStoreAt: storeURL))
+        }
 
         do {
             let opened = ModelContainerFactory.make(storeURL: storeURL)
@@ -123,6 +128,7 @@ struct ModelContainerFactoryTests {
     /// The control for the compatibility check above. Reopening with rows intact is not enough on its
     /// own: SwiftData quietly applies any migration it can infer, so a store with an extra attribute
     /// also "opens" under V1 (and loses that column). The version-hash check is what tells them apart.
+    @available(iOS 26.0, *)
     @Test func theCompatibilityCheckRejectsADifferentEntityShape() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
