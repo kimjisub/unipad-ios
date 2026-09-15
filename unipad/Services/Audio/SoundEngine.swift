@@ -36,6 +36,14 @@ final class SoundEngine {
     private let unipack: UniPack
     private let chain: ChainObserver
     private var loadingListener: LoadingListener?
+    /// Decides whether the engine is really rendering, so a pad never starts a node on an engine that
+    /// is only nominally running. See AudioSessionGate.
+    private let gate: AudioSessionGate
+
+    /// True while an interruption or a failed restart is swallowing pads.
+    var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+    /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
+    private(set) var playsStarted = 0
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -53,14 +61,19 @@ final class SoundEngine {
         self.chain = chain
         self.loadingListener = loadingListener
 
+        // The hooks capture the engine, never self: the gate is owned by this object and must not
+        // keep it alive.
+        let engine = self.engine
+        self.gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
+            isEngineRunning: { engine.isRunning },
+            activateSession: { try Self.configureSession() },
+            startEngine: { try engine.start() }
+        ))
+
         // Configure AVAudioSession BEFORE reading engine format
         #if canImport(UIKit)
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
-            try session.setPreferredSampleRate(48_000)
-            try session.setPreferredIOBufferDuration(0.005)
-            try session.setActive(true)
+            try Self.configureSession()
             logger.info("AVAudioSession configured for playback")
         } catch {
             logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
@@ -130,6 +143,15 @@ final class SoundEngine {
         ) { [weak self] notification in
             self?.handleInterruption(notification)
         })
+        // The audio server can die and take the session configuration with it; every node is stale
+        // afterwards, so playback stays suppressed until the session and the engine come back.
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleMediaServicesReset()
+        })
         #endif
         // A route change (headphones at 44.1 kHz, unplug) stops the engine; scheduling on a node of
         // a stopped engine raised an uncatchable Objective-C exception on the next pad.
@@ -138,7 +160,7 @@ final class SoundEngine {
             object: engine,
             queue: .main
         ) { [weak self] _ in
-            self?.ensureEngineRunning()
+            self?.gate.configurationChanged()
         })
 
         loadingListener.onStart(soundCount: soundCount)
@@ -297,37 +319,68 @@ final class SoundEngine {
         }
     }
 
-    private func ensureEngineRunning() {
-        guard !engine.isRunning else { return }
-        do {
-            try engine.start()
-            logger.info("AVAudioEngine restarted")
-        } catch {
-            logger.error("Failed to restart AVAudioEngine: \(error.localizedDescription)")
-        }
+    #if canImport(UIKit)
+    /// Applies the category and the low-latency preferences and activates the session. Idempotent on
+    /// purpose: recovery runs it again, and after a media services reset the configuration is gone.
+    private static func configureSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default, options: [])
+        try session.setPreferredSampleRate(48_000)
+        try session.setPreferredIOBufferDuration(0.005)
+        try session.setActive(true)
     }
+    #else
+    private static func configureSession() throws {}
+    #endif
 
     #if canImport(UIKit)
-    private func handleInterruption(_ notification: Notification) {
+    /// Internal rather than private so the tests can drive an interruption, which a simulator cannot
+    /// raise on its own.
+    func handleInterruption(_ notification: Notification) {
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
-        if type == .ended {
+        switch type {
+        case .began:
+            gate.interruptionBegan()
+            releaseAllVoices()
+        case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if options.contains(.shouldResume) {
-                ensureEngineRunning()
-            }
+            gate.interruptionEnded(shouldResume: options.contains(.shouldResume))
+        @unknown default:
+            gate.interruptionBegan()
+            releaseAllVoices()
         }
     }
+
+    func handleMediaServicesReset() {
+        releaseAllVoices()
+        gate.mediaServicesWereReset()
+    }
     #endif
+
+    /// Drops every voice. After an interruption or a media services reset the nodes still carry play
+    /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
+    private func releaseAllVoices() {
+        let nodes = playerNodes
+        _ = runCatchingObjCException {
+            for node in nodes { node.stop() }
+        }
+        for i in nodePlayID.indices {
+            nodePlayID[i] = 0
+            nodeIsLoop[i] = false
+        }
+    }
 
     func soundOn(x: Int, y: Int) {
         guard isUsable else { return }
         let c = chain.value
         guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
-        ensureEngineRunning()
+        // An engine that is not rendering makes play() raise "player did not see an IO cycle", which
+        // Swift cannot catch. When the gate cannot get it running, the pad is silent instead.
+        guard gate.ensureEngineRunning() else { return }
 
         // Stop previous sound on this pad (using unique play ID, like Android's stream ID)
         stopByPlayID(stopID[c][x][y])
@@ -358,30 +411,46 @@ final class SoundEngine {
             }
         }
 
-        if node.engine == nil {
-            engine.attach(node)
-            engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
-        }
+        // The gate closes the window it can see, but the session can go away between that check and
+        // these calls, and AVAudioEngine.isRunning keeps reading true when it does. AVFoundation
+        // raises ("player did not see an IO cycle") rather than throwing, and Swift cannot catch it,
+        // so scheduling and play() run inside the Objective-C catcher: what is left of the race costs
+        // one silent pad instead of the process.
+        let failure = runCatchingObjCException {
+            if node.engine == nil {
+                engine.attach(node)
+                engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
+            }
 
-        // Android SoundPool.play(loop=N) plays N+1 times total (1 initial + N repeats)
-        if sound.loop == -1 {
-            node.scheduleBuffer(buffer, at: nil, options: .loops)
-        } else if sound.loop > 0 {
-            func scheduleRemaining(_ remaining: Int) {
-                guard remaining > 0 else { release(); return }
+            // Android SoundPool.play(loop=N) plays N+1 times total (1 initial + N repeats)
+            if sound.loop == -1 {
+                node.scheduleBuffer(buffer, at: nil, options: .loops)
+            } else if sound.loop > 0 {
+                func scheduleRemaining(_ remaining: Int) {
+                    guard remaining > 0 else { release(); return }
+                    node.scheduleBuffer(buffer, at: nil, options: []) { [weak node] in
+                        guard let node, node.isPlaying else { return }
+                        scheduleRemaining(remaining - 1)
+                    }
+                }
                 node.scheduleBuffer(buffer, at: nil, options: []) { [weak node] in
                     guard let node, node.isPlaying else { return }
-                    scheduleRemaining(remaining - 1)
+                    scheduleRemaining(sound.loop)
                 }
+            } else {
+                node.scheduleBuffer(buffer, at: nil, options: []) { release() }
             }
-            node.scheduleBuffer(buffer, at: nil, options: []) { [weak node] in
-                guard let node, node.isPlaying else { return }
-                scheduleRemaining(sound.loop)
-            }
-        } else {
-            node.scheduleBuffer(buffer, at: nil, options: []) { release() }
+            node.play()
         }
-        node.play()
+        if let failure {
+            logger.error("play() raised: \(failure, privacy: .public)")
+            _ = runCatchingObjCException { node.stop() }
+            nodePlayID[nodeIndex] = 0
+            stopID[c][x][y] = 0
+            gate.playbackFailed(reason: failure)
+            return
+        }
+        playsStarted += 1
 
         unipack.soundPush(c: c, x: x, y: y)
 
@@ -405,6 +474,8 @@ final class SoundEngine {
     }
 
     func destroy() {
+        // Terminal: a notification that lands after this must not restart the engine we just stopped.
+        gate.shutDown()
         for token in observerTokens {
             NotificationCenter.default.removeObserver(token)
         }
