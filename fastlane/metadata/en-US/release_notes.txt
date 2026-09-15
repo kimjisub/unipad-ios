@@ -1,3 +1,8 @@
-- Launchpad Pro MK2 running the "Launchpad Open" custom firmware is now supported (Settings > Reconnect Launchpad > Launchpad Pro MK2 (CFW), or plug it in).
-- Settings > Play > Classic trace log: shows the tap order as numbers on each pad again, as before 4.1.
-- Fixed a possible crash when leaving practice mode while guide pads were lit.
+- Fixed a crash that could close the app while playing, when switching autoplay or practice modes.
+- Launchpads running the Launchpad Core Firmware (CoreFW) are now supported, and the Launchpad selection screen was redesigned.
+- Matrix and Mystrix devices are recognised on both old and new firmware.
+- Opening a shared pack link now asks before anything is downloaded.
+- Legacy packs with Korean file names play their sounds again, and packs that load on Android now load the same way here.
+- A pack's backing track is no longer cut off after many pad hits.
+- If your bookmarks and play counts cannot be loaded, the app now tells you instead of silently not saving them.
+- Theme previews no longer get cut off on iPad.
