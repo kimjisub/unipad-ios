@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "थीम";
+"theme_default_name" = "डिफ़ॉल्ट";
 "theme_import_success" = "थीम सफलतापूर्वक आयात हुई।";
 "theme_import_failed" = "थीम आयात विफल।";
 "theme_add_title" = "थीम जोड़ें";

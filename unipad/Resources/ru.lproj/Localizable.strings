@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "Тема";
+"theme_default_name" = "По умолчанию";
 "theme_import_success" = "Тема успешно импортирована.";
 "theme_import_failed" = "Не удалось импортировать тему.";
 "theme_add_title" = "Добавить тему";

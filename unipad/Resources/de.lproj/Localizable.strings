@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "Design";
+"theme_default_name" = "Standard";
 "theme_import_success" = "Design erfolgreich importiert.";
 "theme_import_failed" = "Design-Import fehlgeschlagen.";
 "theme_add_title" = "Design hinzufügen";

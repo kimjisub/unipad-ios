@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "テーマ";
+"theme_default_name" = "デフォルト";
 "theme_import_success" = "テーマのインポートに成功しました。";
 "theme_import_failed" = "テーマのインポートに失敗しました。";
 "theme_add_title" = "テーマを追加";

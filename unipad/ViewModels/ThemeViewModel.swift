@@ -45,8 +45,8 @@ final class ThemeViewModel {
         var items: [ThemeItem] = [
             ThemeItem(
                 id: "default",
-                name: String(localized: "theme"),
-                author: "UniPad dev.",
+                name: DefaultThemeResources.displayName,
+                author: DefaultThemeResources.displayAuthor,
                 type: .builtin,
                 isDeletable: false,
                 icon: nil
