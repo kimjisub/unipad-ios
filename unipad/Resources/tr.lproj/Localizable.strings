@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "Tema";
+"theme_default_name" = "Varsayılan";
 "theme_import_success" = "Tema başarıyla içe aktarıldı.";
 "theme_import_failed" = "Tema içe aktarılamadı.";
 "theme_add_title" = "Tema Ekle";

@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "Giao diện";
+"theme_default_name" = "Mặc định";
 "theme_import_success" = "Nhập giao diện thành công.";
 "theme_import_failed" = "Nhập giao diện thất bại.";
 "theme_add_title" = "Thêm Giao Diện";

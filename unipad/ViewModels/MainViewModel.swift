@@ -61,12 +61,7 @@ final class MainViewModel {
     }
     var updateAvailable = false
     var currentThemeName: String? {
-        let themeId = ThemeManager.shared.activeThemeId
-        if themeId == "default" { return "Default" }
-        if themeId.hasPrefix(ThemeManager.bundledThemePrefix) {
-            return String(themeId.dropFirst(ThemeManager.bundledThemePrefix.count))
-        }
-        return themeId
+        ThemeManager.shared.activeResources.name
     }
 
     // MARK: - MIDI

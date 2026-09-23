@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "Theme";
+"theme_default_name" = "Default";
 "theme_import_success" = "Theme imported successfully.";
 "theme_import_failed" = "Failed to import theme.";
 "theme_add_title" = "Add Theme";

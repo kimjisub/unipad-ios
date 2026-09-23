@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "Tema";
+"theme_default_name" = "Default";
 "theme_import_success" = "Matagumpay na na-import ang tema.";
 "theme_import_failed" = "Nabigong mag-import ng tema.";
 "theme_add_title" = "Magdagdag ng Tema";

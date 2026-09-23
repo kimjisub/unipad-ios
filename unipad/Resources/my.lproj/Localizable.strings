@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "အပြင်အဆင်";
+"theme_default_name" = "မူလ";
 "theme_import_success" = "အပြင်အဆင် အောင်မြင်စွာ ထည့်သွင်းပြီး။";
 "theme_import_failed" = "အပြင်အဆင် ထည့်သွင်းခြင်း မအောင်မြင်ပါ။";
 "theme_add_title" = "အပြင်အဆင် ထည့်ရန်";

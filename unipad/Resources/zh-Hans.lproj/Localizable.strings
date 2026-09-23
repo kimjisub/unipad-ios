@@ -126,6 +126,7 @@
 
 /* Theme */
 "theme" = "主题";
+"theme_default_name" = "默认";
 "theme_import_success" = "主题导入成功。";
 "theme_import_failed" = "主题导入失败。";
 "theme_add_title" = "添加主题";

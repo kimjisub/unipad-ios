@@ -51,9 +51,12 @@ protocol ThemeResourcesProtocol {
 // MARK: - Default Theme
 
 struct DefaultThemeResources: ThemeResourcesProtocol {
+    static var displayName: String { String(localized: "theme_default_name") }
+    static let displayAuthor = "UniPad dev."
+
     let icon: PlatformImage? = PlatformImage(named: "theme_ic")
-    let name: String = String(localized: "theme")
-    let author: String = "UniPad dev."
+    let name: String = DefaultThemeResources.displayName
+    let author: String = DefaultThemeResources.displayAuthor
     let version: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
     let playbg: PlatformImage? = PlatformImage(named: "playbg")
