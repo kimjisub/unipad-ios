@@ -1,8 +1,1 @@
-- Fixed a crash that could close the app while playing, when switching autoplay or practice modes.
-- Launchpads running the Launchpad Core Firmware (CoreFW) are now supported, and the Launchpad selection screen was redesigned.
-- Matrix and Mystrix devices are recognised on both old and new firmware.
-- Opening a shared pack link now asks before anything is downloaded.
-- Legacy packs with Korean file names play their sounds again, and packs that load on Android now load the same way here.
-- A pack's backing track is no longer cut off after many pad hits.
-- If your bookmarks and play counts cannot be loaded, the app now tells you instead of silently not saving them.
-- Theme previews no longer get cut off on iPad.
+Improved audio playback reliability and made theme names easier to read.
