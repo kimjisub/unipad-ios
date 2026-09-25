@@ -162,6 +162,7 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
     }
 
     @MainActor func onInstallComplete(folder: URL) {
+        UsageAnalytics.shared.packImportSucceeded(source: .store)
         updateItem {
             $0.downloading = false
             $0.downloaded = true
@@ -171,6 +172,7 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
     }
 
     @MainActor func onError(_ error: Error) {
+        UsageAnalytics.shared.packImportFailed(source: .store, error: error)
         updateItem {
             $0.downloading = false
             $0.playText = String(localized: "failed")

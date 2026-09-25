@@ -56,6 +56,7 @@ struct ImportByUrlView: View {
 
                             HStack(spacing: 8) {
                                 Button(String(localized: "cancel")) {
+                                    UsageAnalytics.shared.packImportFailed(source: .code, error: CancellationError())
                                     pendingInstall = nil
                                     router.pop()
                                 }
@@ -103,6 +104,7 @@ struct ImportByUrlView: View {
             log("title: \(title), producer: \(unishare.producer ?? "")")
 
             guard unishare.id != nil else {
+                UsageAnalytics.shared.packImportFailed(source: .code, error: APIError.invalidResponse)
                 titleText = String(localized: "errOccur")
                 messageText = "Invalid unishare ID"
                 try? await Task.sleep(for: .seconds(3))
@@ -115,12 +117,14 @@ struct ImportByUrlView: View {
             pendingInstall = unishare
             return
         } catch let apiError as APIError where apiError.isNotFound {
+            UsageAnalytics.shared.packImportFailed(source: .code, error: apiError)
             titleText = String(localized: "unipackNotFound")
             messageText = "#\(code)"
             log("404 Not Found")
             try? await Task.sleep(for: .seconds(3))
             router.pop()
         } catch {
+            UsageAnalytics.shared.packImportFailed(source: .code, error: error)
             titleText = String(localized: "errOccur")
             messageText = error.localizedDescription
             log("Error: \(error.localizedDescription)")
@@ -168,6 +172,7 @@ struct ImportByUrlView: View {
                     },
                     onComplete: { folder in
                         Task { @MainActor in
+                            UsageAnalytics.shared.packImportSucceeded(source: .code)
                             titleText = String(localized: "success")
                             let pack = UniPackFolder(rootFolder: folder)
                             pack.load()
@@ -179,6 +184,7 @@ struct ImportByUrlView: View {
                     },
                     onError: { error in
                         Task { @MainActor in
+                            UsageAnalytics.shared.packImportFailed(source: .code, error: error)
                             titleText = String(localized: "errOccur")
                             messageText = error.localizedDescription
                             log("Error: \(error.localizedDescription)")

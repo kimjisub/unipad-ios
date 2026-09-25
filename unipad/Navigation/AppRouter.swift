@@ -59,6 +59,7 @@ final class AppRouter {
         guard fileName.lowercased().hasSuffix(".zip") else { return }
 
         guard url.startAccessingSecurityScopedResource() else {
+            UsageAnalytics.shared.packImportFailed(source: .openIn, error: CocoaError(.fileReadNoPermission))
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImportFailed"),
                 object: nil,
@@ -75,6 +76,7 @@ final class AppRouter {
                 await importFileData(zipData, fileName: fileName)
             }
         } catch {
+            UsageAnalytics.shared.packImportFailed(source: .openIn, error: error)
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImportFailed"),
                 object: nil,
@@ -90,12 +92,14 @@ final class AppRouter {
 
         do {
             try await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
+            UsageAnalytics.shared.packImportSucceeded(source: .openIn)
 
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImported"),
                 object: nil
             )
         } catch {
+            UsageAnalytics.shared.packImportFailed(source: .openIn, error: error)
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImportFailed"),
                 object: nil,

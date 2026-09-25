@@ -76,7 +76,7 @@ struct PlayView: View {
             do {
                 try await vm.loadUnipack(path: packPath)
             } catch {
-                vm.unipackLoadError = error.localizedDescription
+                vm.onLoadFailed(error)
             }
         }
         .onDisappear {

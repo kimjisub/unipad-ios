@@ -180,13 +180,20 @@ final class FCMServiceStub: FCMServiceProtocol {
     }
 }
 
+/// Writes events to the unified log instead of sending them; used whenever Firebase is not live.
 final class AnalyticsServiceStub: AnalyticsServiceProtocol {
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "AnalyticsLocal")
+
     func logEvent(name: String, parameters: [String: Any]?) {
-        _ = (name, parameters)
+        let rendered = (parameters ?? [:])
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
+        logger.info("event \(name, privacy: .public) \(rendered, privacy: .public)")
     }
 
     func setUserProperty(value: String?, forName name: String) {
-        _ = (value, name)
+        logger.info("user_property \(name, privacy: .public)=\(value ?? "<nil>", privacy: .public)")
     }
 }
 
@@ -301,6 +308,23 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
 }
 #endif
 
+// MARK: - Firebase Runtime
+
+/// Keeps unit test runs, and Debug runs launched with `-UniPadFirebaseLocalOnly YES`, away from the
+/// production Firebase project: Firebase is not configured and every service is a local stub.
+enum FirebaseRuntime {
+    static let localOnlyLaunchArgument = "UniPadFirebaseLocalOnly"
+
+    static let isLocalOnly: Bool = {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return true }
+#if DEBUG
+        return UserDefaults.standard.bool(forKey: localOnlyLaunchArgument)
+#else
+        return false
+#endif
+    }()
+}
+
 // MARK: - Firebase Manager
 
 /// Central access point for Firebase services.
@@ -319,6 +343,13 @@ final class FirebaseManager: ObservableObject {
 
     private init() {
         self.firestore = RealtimeDatabaseService()
+        if FirebaseRuntime.isLocalOnly {
+            self.messaging = FCMServiceStub()
+            self.analytics = AnalyticsServiceStub()
+            self.crashlytics = CrashlyticsServiceStub()
+            self.remoteConfig = RemoteConfigServiceStub()
+            return
+        }
 #if canImport(FirebaseMessaging)
         self.messaging = MessagingServiceLive()
 #else
