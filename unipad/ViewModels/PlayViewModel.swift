@@ -140,10 +140,13 @@ final class PlayViewModel {
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
 
+    @ObservationIgnored private let usageSession = UsageAnalytics.shared.makePlaySession()
+
     // MARK: - Load
 
     func loadUnipack(path: String) async throws {
         logger.info("loadUnipack: path=\(path)")
+        usageSession.loadStarted()
         unipackLoading = true
         loadingPhase = "info"
         loadingPhaseIndex = 0
@@ -159,6 +162,7 @@ final class PlayViewModel {
             logger.error("loadUnipack: critical error - \(pack.errorDetail ?? "unknown")")
             unipackLoadError = pack.errorDetail
             unipackLoading = false
+            usageSession.loadFailed(.invalidPack)
             return
         }
 
@@ -528,6 +532,7 @@ final class PlayViewModel {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
+            usageSession.playTriggered(.pad)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
             if autoPlayRunner?.stepMode == true {
@@ -789,6 +794,7 @@ final class PlayViewModel {
         }
 
         if currentMode == .none {
+            usageSession.playTriggered(.autoplay)
             applyModeFlags(runner, mode)
             scbAutoPlay.setCheckedSilently(true)
             if let unipack {
@@ -1023,6 +1029,7 @@ final class PlayViewModel {
     // MARK: - Cleanup
 
     func cleanup() {
+        usageSession.ended()
         enable = false
         stopVolumeObserver()
         if let adapter = midiControllerAdapter {
@@ -1054,6 +1061,7 @@ final class PlayViewModel {
 
     /// Called when sound loading completes to apply initial settings
     func onSoundLoadingComplete() {
+        usageSession.loadSucceeded()
         startReady = true
         // onResume() is gated on this and nothing set it: after backgrounding, MIDI input, the
         // launchpad LEDs and the volume observer stayed dead until the screen was re-entered.
@@ -1063,6 +1071,15 @@ final class PlayViewModel {
         startVolumeObserver()
         updateVolumeUI()
         logger.info("Sound loading complete, startReady=true")
+    }
+
+    func onSoundLoadingFailed() {
+        usageSession.loadFailed(.soundEngine)
+    }
+
+    func onLoadFailed(_ error: Error) {
+        unipackLoadError = error.localizedDescription
+        usageSession.loadFailed(UsageErrorType.classify(error))
     }
 }
 
@@ -1098,6 +1115,7 @@ private final class SoundLoadingAdapter: SoundEngine.LoadingListener {
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
             self?.viewModel?.soundLoadingActive = false
+            self?.viewModel?.onSoundLoadingFailed()
             self?.viewModel?.toastMessage = String(localized: "outOfCPU")
             self?.viewModel?.quitRequested = true
         }

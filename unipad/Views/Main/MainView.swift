@@ -84,6 +84,7 @@ struct MainView: View {
                 guard let url = urls.first else { return }
 
                 guard url.startAccessingSecurityScopedResource() else {
+                    UsageAnalytics.shared.packImportFailed(source: .file, error: CocoaError(.fileReadNoPermission))
                     vm.importResult = .error(String(localized: "import_no_file_access"))
                     showImportResult = true
                     return
@@ -101,8 +102,13 @@ struct MainView: View {
                         let workspace = WorkspaceManager.shared.downloadWorkspace.url
                         let importer = UniPackImporter()
                         let delegate = MainViewImportDelegate(viewModel: vm)
-                        // The delegate already shows the error; the thrown value is not needed here.
-                        _ = try? await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
+                        // The delegate already shows the error; the thrown value is only reported.
+                        do {
+                            try await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
+                            UsageAnalytics.shared.packImportSucceeded(source: .file)
+                        } catch {
+                            UsageAnalytics.shared.packImportFailed(source: .file, error: error)
+                        }
 
                         await MainActor.run {
                             vm.isImportingInProgress = false
@@ -113,10 +119,12 @@ struct MainView: View {
                         }
                     }
                 } catch {
+                    UsageAnalytics.shared.packImportFailed(source: .file, error: error)
                     vm.importResult = .error(error.localizedDescription)
                     showImportResult = true
                 }
             case .failure(let error):
+                UsageAnalytics.shared.packImportFailed(source: .file, error: error)
                 vm.importResult = .error(error.localizedDescription)
                 showImportResult = true
             }

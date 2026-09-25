@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        guard !FirebaseRuntime.isLocalOnly else {
+            FirebaseManager.shared.configureOnAppLaunch()
+            return true
+        }
         FirebaseApp.configure()
         FirebaseManager.shared.configureOnAppLaunch()
 #if canImport(FirebaseMessaging) && canImport(UserNotifications)
