@@ -1,1 +1,1 @@
-Improved audio playback reliability and made theme names easier to read.
+Improved audio reliability and theme labels, and added usage metrics to help improve pack loading and playback.
