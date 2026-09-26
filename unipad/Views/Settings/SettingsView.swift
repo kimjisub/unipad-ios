@@ -17,6 +17,8 @@ struct SettingsView: View {
 
     var initialCategory: SettingsViewModel.Category = .info
 
+    private static let backHitOutset: CGFloat = 16
+
     var body: some View {
         GeometryReader { geometry in
             let navWidth = min(max(geometry.size.width * 0.3, 180), 260)
@@ -49,10 +51,17 @@ struct SettingsView: View {
     private var categoryNav: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
+                // The navigation bar is hidden, so this chevron is the only way home.
+                // Its tappable area is grown to at least 44pt around the glyph while
+                // the negative padding keeps the layout exactly where the glyph was.
                 Button { router.pop() } label: {
                     Image(systemName: "chevron.left")
                         .foregroundStyle(AppColors.textPrimary)
+                        .padding(Self.backHitOutset)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
+                .padding(-Self.backHitOutset)
                 .padding(.trailing, 4)
 
                 Text(String(localized: "setting"))

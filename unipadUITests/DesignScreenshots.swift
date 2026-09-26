@@ -31,38 +31,17 @@ final class DesignScreenshots: XCTestCase {
 
     override func setUpWithError() throws {
         // Keep going after a failure: a screen that cannot be reached should not
-        // cost every screen after it. The failures are still reported.
+        // cost every screen after it. The failures are still reported. A failed
+        // back is the exception, handled in `back(to:_:)`.
         continueAfterFailure = true
         app = XCUIApplication()
+        app.launchArguments += ["-UniPadFirebaseLocalOnly", "YES"]
         app.launch()
-        dismissSystemAlerts()
-    }
-
-    /// The app asks for notification permission during launch, so the first thing
-    /// on screen is a system alert covering the home screen. Tapping it away keeps
-    /// it out of every later shot. That it appears at all, before the user has
-    /// seen anything, is a finding recorded separately rather than papered over.
-    private func dismissSystemAlerts() {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for _ in 0..<3 {
-            var tapped = false
-            for label in ["허용 안 함", "Don't Allow", "허용", "Allow", "OK", "확인"] {
-                let b = springboard.buttons[label]
-                if b.waitForExistence(timeout: 2) {
-                    b.tap()
-                    tapped = true
-                    break
-                }
-            }
-            if !tapped { break }
-        }
+        UITestSupport.dismissSystemAlerts()
     }
 
     private func shot(_ name: String) {
-        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        a.name = name
-        a.lifetime = .keepAlways
-        add(a)
+        UITestSupport.attachScreenshot(name, to: self)
     }
 
     /// The accessibility tree, so whoever extends this file can see what is
@@ -85,14 +64,26 @@ final class DesignScreenshots: XCTestCase {
         return ok
     }
 
-    private func back() {
-        let chevron = app.buttons["chevron.left"]
-        if chevron.exists && chevron.isHittable {
-            chevron.tap()
-        } else {
-            app.swipeRight()
+    /// Tap the screen's own back chevron and wait for `marker`. Every screen here
+    /// hides the navigation bar, so there is no edge swipe to fall back on; a
+    /// swipe used to stand in for a back that could not be tapped and the walk
+    /// then shot and asserted on whatever screen it was left on. A back that does
+    /// not arrive stops the walk instead.
+    private func back(to marker: XCUIElement, _ screen: String) throws {
+        let chevron = app.buttons["chevron.left"].firstMatch
+        let tapped = chevron.waitForExistence(timeout: 5) && chevron.isHittable
+        if tapped { chevron.tap() }
+        guard tapped, marker.waitForExistence(timeout: 10) else {
+            dumpTree("00-tree-back-failed-\(screen)")
+            throw BackFailed(screen: screen)
         }
-        _ = app.buttons["gearshape"].waitForExistence(timeout: 10)
+    }
+
+    private struct BackFailed: LocalizedError {
+        let screen: String
+        var errorDescription: String? {
+            "back never arrived at \(screen); later screens were not walked"
+        }
     }
 
     @MainActor
@@ -116,10 +107,9 @@ final class DesignScreenshots: XCTestCase {
             if arrive(app.staticTexts["Theme"].firstMatch, "theme") {
                 shot("03-theme")
                 dumpTree("00-tree-theme")
-                back()
-                _ = app.buttons["Information"].waitForExistence(timeout: 10)
+                try back(to: app.buttons["Information"], "settings from theme")
             }
-            back()
+            try back(to: app.buttons["gearshape"], "home from settings")
         }
 
         // Store, reached by the cart in the top bar.
@@ -131,7 +121,7 @@ final class DesignScreenshots: XCTestCase {
             _ = app.staticTexts.element(boundBy: 1).waitForExistence(timeout: 15)
             shot("04-store")
             dumpTree("00-tree-store")
-            back()
+            try back(to: app.buttons["gearshape"], "home from store")
         }
 
         // Play. The pack row is not a cell and not a button; it is an `Other`
