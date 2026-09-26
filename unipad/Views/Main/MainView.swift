@@ -326,24 +326,6 @@ struct MainView: View {
                         .foregroundStyle(showSearch ? AppColors.blue : AppColors.textPrimary)
                 }
                 .frame(width: 36, height: 36)
-
-                Button {
-                    router.navigate(to: .store)
-                } label: {
-                    Image(systemName: "cart")
-                        .font(.system(size: 20))
-                        .foregroundStyle(AppColors.textPrimary)
-                }
-                .frame(width: 36, height: 36)
-
-                Button {
-                    vm.isImporting = true
-                } label: {
-                    Image(systemName: "folder")
-                        .font(.system(size: 20))
-                        .foregroundStyle(AppColors.textPrimary)
-                }
-                .frame(width: 36, height: 36)
             }
 
             if showSearch {
@@ -417,6 +399,7 @@ struct MainView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .accessibilityIdentifier("main.packList")
             .refreshable {
                 vm.refreshList()
             }
@@ -441,6 +424,10 @@ struct MainView: View {
             Text(String(localized: "no_search_results"))
                 .font(.system(size: 14))
                 .foregroundStyle(AppColors.textPrimary)
+            guidingActionsRow
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
             Spacer()
         }
     }
@@ -454,6 +441,7 @@ struct MainView: View {
         }
     }
 
+    /// The only entry points to the store and to file import on the home screen.
     private var guidingActionsRow: some View {
         HStack(spacing: 6) {
             GuidingChip(
@@ -462,6 +450,7 @@ struct MainView: View {
             ) {
                 router.navigate(to: .store)
             }
+            .accessibilityIdentifier("main.guide.download")
 
             GuidingChip(
                 icon: "folder",
@@ -469,6 +458,7 @@ struct MainView: View {
             ) {
                 vm.isImporting = true
             }
+            .accessibilityIdentifier("main.guide.import")
         }
     }
 }

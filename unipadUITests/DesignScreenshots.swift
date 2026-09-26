@@ -112,9 +112,9 @@ final class DesignScreenshots: XCTestCase {
             try back(to: app.buttons["gearshape"], "home from settings")
         }
 
-        // Store, reached by the cart in the top bar.
+        // Store, reached by the download card under the pack list.
         arrive(app.buttons["gearshape"], "home before store")
-        app.buttons["cart"].firstMatch.tap()
+        UITestSupport.revealHomeCard(.download, in: app).tap()
         if arrive(app.buttons["chevron.left"], "store") {
             // The store loads over the network; give the list a moment so the shot
             // is of the store rather than of its spinner.
