@@ -137,8 +137,7 @@ struct PlayView: View {
                 // chains 9-16 were unreachable on screen without Pro Light Mode.
                 let showBottomRow = showAllSides || unipack.chain > PlayViewModel.chainIndexOffset
                 let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showBottomRow, reservedWidth: chromeStripWidth)
-                // Pads centered within the area excluding the right chrome strip
-                let centerX = (w - chromeStripWidth) / 2
+                let centerX = layout.padCenterX
                 let centerY = h / 2
                 let padLeft = centerX - layout.gridWidth / 2
 
@@ -204,6 +203,7 @@ struct PlayView: View {
             onPadTouch: { (x: Int, y: Int, isDown: Bool) in vm.padTouch(x: x, y: y, isDown: isDown) }
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)
+        .accessibilityIdentifier("playPadGrid")
         .position(x: centerX, y: centerY)
 
         ChainBarView(
@@ -240,7 +240,7 @@ struct PlayView: View {
         // "Hide UI" (optionViewVisible) was written by the view model and read nowhere; it hides
         // the logo and the chrome column, as Android and web do.
         if vm.optionViewVisible, let customLogo = theme.customLogo {
-            let maxLogoWidth: CGFloat = min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - chromeStripWidth - 16)
+            let maxLogoWidth: CGFloat = max(0, min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - chromeStripWidth - 16))
             Image(platformImage: customLogo)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -461,12 +461,15 @@ struct PlayView: View {
 
 // MARK: - Layout Calculation
 
-private struct PlayLayout {
+struct PlayLayout {
     let cellSize: CGFloat
     let gridWidth: CGFloat
     let gridHeight: CGFloat
     let chainWidth: CGFloat
     let chainHeight: CGFloat
+    /// The pad grid sits on the screen's centre line, like Android. It moves left only as far as
+    /// needed to keep the right chain column clear of the trailing strip reserved for the menu.
+    let padCenterX: CGFloat
 
     init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false, reservedWidth: CGFloat = 0) {
         let chainColumns = 2
@@ -482,5 +485,6 @@ private struct PlayLayout {
         gridHeight = cellSize * CGFloat(buttonX)
         chainWidth = cellSize
         chainHeight = cellSize
+        padCenterX = min(viewSize.width / 2, viewSize.width - reservedWidth - chainWidth - gridWidth / 2)
     }
 }
