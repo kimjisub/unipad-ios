@@ -141,6 +141,11 @@ struct MainView: View {
         } message: {
             Text(String(localized: "doYouWantToDeleteUniPack"))
         }
+        .alert(String(localized: "error"), isPresented: $vm.deleteFailed) {
+            Button("OK") {}
+        } message: {
+            Text(String(localized: "errOccur"))
+        }
         .overlay {
             if showImportResult, let result = vm.importResult {
                 ZStack {

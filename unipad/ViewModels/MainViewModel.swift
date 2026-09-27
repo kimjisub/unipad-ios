@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "MainViewModel")
 
 @Observable
 final class MainViewModel {
@@ -53,6 +56,7 @@ final class MainViewModel {
     var isImportingInProgress = false
     var importResult: ImportResult?
     var deleteTargetItem: UniPackItem?
+    var deleteFailed = false
 
     // MARK: - Version
 
@@ -331,8 +335,24 @@ final class MainViewModel {
         }
     }
 
+    var makeRecordRemover: (ModelContainer) -> UnipackRecordRemoving = { UnipackRepository(modelContainer: $0) }
+
+    /// Removes the pack's files, then its saved row (bookmark, play count) so a reinstall starts fresh.
+    /// The row stays when the files could not be removed. Without a store nothing is deleted,
+    /// since the row could not be removed afterwards.
     func deleteItem(_ item: UniPackItem) {
-        item.unipack.delete()
+        guard let recordRemover = modelContainer.map(makeRecordRemover) else {
+            logger.error("deleteItem skipped for \(item.unipack.id, privacy: .public): no model container")
+            deleteFailed = true
+            return
+        }
+        do {
+            try item.unipack.delete()
+            try recordRemover.delete(id: item.unipack.id)
+        } catch {
+            logger.error("deleteItem failed for \(item.unipack.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            deleteFailed = true
+        }
         selectedItem = nil
         refreshList()
     }

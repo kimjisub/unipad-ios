@@ -46,7 +46,8 @@ class UniPack: Equatable, Hashable {
     }
 
     func checkFile() { fatalError("Subclasses must override") }
-    func delete() { fatalError("Subclasses must override") }
+    /// Throws when the pack's files could not be removed.
+    func delete() throws { fatalError("Subclasses must override") }
     func getPathString() -> String { fatalError("Subclasses must override") }
     func getByteSize() -> Int64 { fatalError("Subclasses must override") }
 
