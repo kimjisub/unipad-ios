@@ -1,0 +1,136 @@
+# UniPad iOS — App Store / TestFlight deploy lanes.
+# The App Store Connect API key (.p8 + key id + issuer id) is injected by the store-deploy
+# skill's op-bootstrap.sh via ENV; nothing sensitive lives in this file.
+
+default_platform(:ios)
+
+XCODEPROJ = "unipad.xcodeproj"
+SCHEME = "unipad"
+
+# Builds the App Store Connect API key token from the env vars op-bootstrap exports.
+# The key travels as base64 content rather than a file, so no .p8 is ever written to disk.
+def asc_api_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_content: ENV.fetch("ASC_KEY_B64"),
+    is_key_content_base64: true,
+    in_house: false,
+  )
+end
+
+platform :ios do
+  desc "Check the App Store Connect API key actually authenticates and can see the app."
+  lane :verify_auth do
+    key = asc_api_key
+    build = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: "kim.jisub.unipad",
+      initial_build_number: 0,
+    )
+    UI.success("ASC auth OK — latest TestFlight build number: #{build}")
+  end
+
+  desc "Compile the Release configuration without signing/exporting (compile verification)."
+  lane :build_only do
+    xcodebuild(
+      build: true,
+      scheme: SCHEME,
+      configuration: "Release",
+      # Without a destination xcodebuild picks the first match, which is the Mac
+      # (the target also lists macOS), and fails on UIKit-only API there.
+      destination: "generic/platform=iOS",
+      xcargs: "CODE_SIGNING_ALLOWED=NO",
+    )
+    UI.success("Release configuration compiles.")
+  end
+
+  desc "Archive, sign, and upload to TestFlight (or App Store review). Pass target:testflight|appstore."
+  lane :deploy do |options|
+    target = options[:target] || "testflight"
+    key = asc_api_key
+
+    # Derive the next build number from what App Store Connect already has, not from the
+    # local value — the xcodeproj is not kept in sync with uploads, so a naive local
+    # increment collides with an existing build and the upload is rejected.
+    unless options[:no_bump]
+      latest = latest_testflight_build_number(
+        api_key: key,
+        app_identifier: "kim.jisub.unipad",
+        initial_build_number: 0,
+      )
+      increment_build_number(xcodeproj: XCODEPROJ, build_number: latest + 1)
+      UI.success("build number -> #{latest + 1} (ASC had #{latest})")
+    end
+    # Xcode's IPA export runs `rsync -8aPhhE`, where -E (--extended-attributes) only
+    # exists in Apple's rsync. If a Homebrew rsync shadows /usr/bin in PATH, the child
+    # process rejects the flag and the export dies with a bare "Copy failed". Put the
+    # system binaries first for this lane only — the user's PATH is left alone.
+    ENV["PATH"] = "/usr/bin:/bin:#{ENV['PATH']}"
+
+    build_app(
+      scheme: SCHEME,
+      export_method: "app-store",
+      # The target declares SUPPORTED_PLATFORMS "iphoneos ... macosx xros xrsimulator",
+      # and gym otherwise picks visionOS and fails the archive. Pin it to iOS.
+      destination: "generic/platform=iOS",
+      # Automatic signing; the ASC API key lets Xcode manage the distribution profile in the cloud.
+      xcargs: "-allowProvisioningUpdates",
+    )
+
+    # Crashlytics can only symbolicate iOS crashes if the dSYM was uploaded; the project has
+    # no Xcode run-script phase for it, so do it here. upload-symbols ships inside the
+    # Firebase SPM checkout of whichever DerivedData gym used.
+    begin
+      upload_symbols_to_crashlytics(
+        dsym_path: lane_context[SharedValues::DSYM_OUTPUT_PATH],
+        gsp_path: "unipad/GoogleService-Info.plist",
+        binary_path: Dir.glob(File.expand_path("~/Library/Developer/Xcode/DerivedData/unipad-*/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols")).first ||
+          "build/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols",
+      )
+    rescue StandardError => e
+      UI.important("Crashlytics dSYM upload skipped: #{e.message} — run upload-symbols by hand for this build")
+    end
+
+    if target == "appstore"
+      upload_to_app_store(
+        api_key: key,
+        submit_for_review: false,
+        precheck_include_in_app_purchases: false,
+        force: true,
+        skip_metadata: true,
+        skip_screenshots: true,
+      )
+    else
+      upload_to_testflight(api_key: key, skip_waiting_for_build_processing: true)
+    end
+    UI.success("Uploaded build to #{target}.")
+  end
+
+  desc "Submit an already-processed TestFlight build for App Store review as a phased release. Pass build_number:N (and version:X.Y.Z if the xcodeproj is behind)."
+  lane :submit do |options|
+    key = asc_api_key
+    version = options[:version] || get_version_number(xcodeproj: XCODEPROJ, target: SCHEME)
+    build = options[:build_number] || latest_testflight_build_number(
+      api_key: key, app_identifier: "kim.jisub.unipad", version: version.to_s, initial_build_number: 0,
+    )
+    upload_to_app_store(
+      api_key: key,
+      app_version: version.to_s,
+      build_number: build.to_s,
+      skip_binary_upload: true,          # reuse the TestFlight build
+      skip_screenshots: true,
+      skip_metadata: false,              # only fastlane/metadata/en-US/release_notes.txt exists; the listing has en-US only
+      submit_for_review: true,
+      automatic_release: true,           # release on approval...
+      phased_release: true,              # ...over Apple's 7-day phased rollout
+      precheck_include_in_app_purchases: false,
+      force: true,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false, # Info.plist ITSAppUsesNonExemptEncryption = false
+      },
+    )
+    UI.success("Submitted #{version} (#{build}) for review, phased release on approval.")
+  end
+end

@@ -95,7 +95,48 @@ struct PlayOptionPanel: View {
                 optionModeButton(label: String(localized: "guidePlay"), mode: .guidePlay, accentColor: Color(red: 0.31, green: 0.76, blue: 0.97))
                 optionModeButton(label: String(localized: "stepPractice"), mode: .stepPractice, accentColor: Color(red: 0.4, green: 0.73, blue: 0.42))
             }
+
+            if vm.autoPlayControlVisible {
+                optionTransportControls
+            }
         }
+    }
+
+    private var optionTransportControls: some View {
+        VStack(spacing: 8) {
+            ProgressView(
+                value: vm.autoPlayProgressMax > 0
+                    ? Double(vm.autoPlayProgress) / Double(vm.autoPlayProgressMax)
+                    : 0
+            )
+            .tint(Color(hex: 0xE8A44A))
+            .background(Color.white.opacity(0.15))
+
+            HStack(spacing: 16) {
+                Button { vm.autoPlayPrev() } label: {
+                    Image(systemName: "backward.end.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                }
+
+                Button {
+                    if vm.isAutoPlayPlaying { vm.autoPlayPause() }
+                    else { vm.autoPlayResume() }
+                } label: {
+                    Image(systemName: vm.isAutoPlayPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.white)
+                }
+
+                Button { vm.autoPlayNext() } label: {
+                    Image(systemName: "forward.end.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
     }
 
     private func optionModeButton(label: String, mode: PlayMode, accentColor: Color) -> some View {
