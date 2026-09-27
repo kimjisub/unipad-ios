@@ -151,58 +151,11 @@ struct MainView: View {
                             dismissImportResult()
                         }
 
-                    VStack(spacing: 0) {
-                        // Title bar
-                        Text({
-                            switch result {
-                            case .success: String(localized: "importComplete")
-                            case .warning: String(localized: "warning")
-                            case .error: String(localized: "importFailed")
-                            }
-                        }())
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .padding(.top, 16)
-                        .padding(.bottom, 8)
-
-                        ImportResultDialog(result: result, onDismiss: {})
-
-                        Divider()
-                            .background(AppColors.divider)
-                        HStack(spacing: 0) {
-                            Button {
-                                dismissImportResult()
-                            } label: {
-                                Text(String(localized: "accept"))
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(AppColors.blue)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                            }
-
-                            if let unipack = result.playablePack {
-                                Divider()
-                                    .background(AppColors.divider)
-                                Button {
-                                    dismissImportResult()
-                                    vm.recordOpen(unipack)
-                                    router.navigate(to: .play(packPath: unipack.getPathString()))
-                                } label: {
-                                    Label(String(localized: "import_play_now"), systemImage: "play.fill")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(AppColors.orange)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                }
-                                .accessibilityIdentifier("main.importResult.playNow")
-                            }
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .background(AppColors.darkSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 40)
-                    .frame(maxWidth: 360)
+                    ImportResultDialog(
+                        result: result,
+                        onDismiss: dismissImportResult,
+                        onPlayNow: playImportedPack
+                    )
                 }
             }
         }
@@ -229,6 +182,12 @@ struct MainView: View {
     private func dismissImportResult() {
         showImportResult = false
         vm.importResult = nil
+    }
+
+    private func playImportedPack(_ unipack: UniPack) {
+        dismissImportResult()
+        vm.recordOpen(unipack)
+        router.navigate(to: .play(packPath: unipack.getPathString()))
     }
 
     // MARK: - Left Panel

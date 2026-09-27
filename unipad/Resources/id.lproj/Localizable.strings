@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "Apakah Anda ingin menghapus proyek ini?";
-"importComplete" = "Analisis selesai!";
-"importFailed" = "Gagal menganalisis…";
+"importComplete" = "Pack berhasil diimpor!";
+"importFailed" = "Gagal mengimpor";
+"import_play_now" = "Putar sekarang";
+"import_result_ok" = "OK";
 "copied" = "Disalin ke clipboard.";
 "outOfMemory" = "Kehabisan memori.\nKosongkan memori dan coba lagi.";
 "unipackNotFound" = "UniPack tidak ditemukan.";

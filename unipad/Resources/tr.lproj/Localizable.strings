@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "Bu projeyi silmek istiyor musunuz?";
-"importComplete" = "Analiz tamamlandı!";
-"importFailed" = "Analiz başarısız…";
+"importComplete" = "Paket içe aktarıldı!";
+"importFailed" = "İçe aktarma başarısız";
+"import_play_now" = "Şimdi çal";
+"import_result_ok" = "Tamam";
 "copied" = "Panoya kopyalandı.";
 "outOfMemory" = "Yetersiz bellek.\nBelleği boşaltın ve tekrar deneyin.";
 "unipackNotFound" = "UniPack bulunamadı.";

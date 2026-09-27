@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "ဤပရောဂျက်ကို ဖျက်လိုပါသလား?";
-"importComplete" = "ခွဲခြမ်းစိတ်ဖြာခြင်း ပြီးဆုံးပါပြီ!";
-"importFailed" = "ခွဲခြမ်းစိတ်ဖြာခြင်း မအောင်မြင်ပါ…";
+"importComplete" = "pack တင်သွင်းပြီးပါပြီ!";
+"importFailed" = "တင်သွင်းခြင်း မအောင်မြင်ပါ";
+"import_play_now" = "ယခု ဖွင့်ရန်";
+"import_result_ok" = "အိုကေ";
 "copied" = "ကလစ်ဘုတ်သို့ ကူးယူပြီး။";
 "outOfMemory" = "မမ်မိုရီ ကုန်သွားပါပြီ.\nမမ်မိုရီ ရှင်းလင်းပြီး ထပ်ကြိုးစားပါ။";
 "unipackNotFound" = "UniPack မတွေ့ပါ။";

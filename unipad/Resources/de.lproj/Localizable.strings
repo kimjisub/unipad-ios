@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "Möchten Sie dieses Projekt löschen?";
-"importComplete" = "Analyse abgeschlossen!";
-"importFailed" = "Analyse fehlgeschlagen…";
+"importComplete" = "Pack importiert!";
+"importFailed" = "Import fehlgeschlagen";
+"import_play_now" = "Jetzt spielen";
+"import_result_ok" = "OK";
 "copied" = "In die Zwischenablage kopiert.";
 "outOfMemory" = "Nicht genügend Speicher.\nSpeicher freigeben und erneut versuchen.";
 "unipackNotFound" = "UniPack nicht gefunden.";

@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "คุณต้องการลบโปรเจกต์นี้หรือไม่?";
-"importComplete" = "วิเคราะห์เสร็จสิ้น!";
-"importFailed" = "วิเคราะห์ล้มเหลว…";
+"importComplete" = "นำเข้าแพ็คแล้ว!";
+"importFailed" = "นำเข้าล้มเหลว";
+"import_play_now" = "เล่นเลย";
+"import_result_ok" = "ตกลง";
 "copied" = "คัดลอกไปยังคลิปบอร์ดแล้ว";
 "outOfMemory" = "หน่วยความจำไม่เพียงพอ\nกรุณาเคลียร์หน่วยความจำแล้วลองใหม่";
 "unipackNotFound" = "ไม่พบ UniPack";

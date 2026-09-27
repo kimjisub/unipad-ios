@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "Gusto mo bang tanggalin ang project na ito?";
-"importComplete" = "Tapos na ang pagsusuri!";
-"importFailed" = "Nabigong magsuri…";
+"importComplete" = "Na-import ang pack!";
+"importFailed" = "Nabigong mag-import";
+"import_play_now" = "I-play ngayon";
+"import_result_ok" = "OK";
 "copied" = "Kinopya sa clipboard.";
 "outOfMemory" = "Walang sapat na memorya.\nMagpalaya ng memorya at subukan muli.";
 "unipackNotFound" = "Hindi nahanap ang UniPack.";

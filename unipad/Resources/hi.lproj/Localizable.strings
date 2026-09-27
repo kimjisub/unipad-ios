@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "क्या आप इस प्रोजेक्ट को हटाना चाहते हैं?";
-"importComplete" = "विश्लेषण पूर्ण!";
-"importFailed" = "विश्लेषण विफल…";
+"importComplete" = "पैक आयात हो गया!";
+"importFailed" = "आयात विफल";
+"import_play_now" = "अभी चलाएं";
+"import_result_ok" = "ठीक है";
 "copied" = "क्लिपबोर्ड पर कॉपी हुआ।";
 "outOfMemory" = "मेमोरी समाप्त.\nकुछ मेमोरी खाली करें और पुनः प्रयास करें।";
 "unipackNotFound" = "UniPack नहीं मिला।";

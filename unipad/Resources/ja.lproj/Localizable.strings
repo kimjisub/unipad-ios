@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "このプロジェクトを削除しますか？";
-"importComplete" = "分析完了！";
-"importFailed" = "分析に失敗しました…";
+"importComplete" = "パックをインポートしました！";
+"importFailed" = "インポートに失敗しました";
+"import_play_now" = "今すぐ演奏";
+"import_result_ok" = "OK";
 "copied" = "クリップボードにコピーしました。";
 "outOfMemory" = "メモリ不足です。\nメモリを解放してから再試行してください。";
 "unipackNotFound" = "UniPackが見つかりません。";

@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "Вы хотите удалить этот проект?";
-"importComplete" = "Анализ завершён!";
-"importFailed" = "Ошибка анализа…";
+"importComplete" = "Пак импортирован!";
+"importFailed" = "Ошибка импорта";
+"import_play_now" = "Играть сейчас";
+"import_result_ok" = "OK";
 "copied" = "Скопировано в буфер обмена.";
 "outOfMemory" = "Недостаточно памяти.\nОсвободите память и повторите.";
 "unipackNotFound" = "UniPack не найден.";

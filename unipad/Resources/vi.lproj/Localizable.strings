@@ -99,8 +99,10 @@
 
 /* UniPack Actions */
 "doYouWantToDeleteUniPack" = "Bạn có muốn xóa dự án này không?";
-"importComplete" = "Phân tích hoàn tất!";
-"importFailed" = "Phân tích thất bại…";
+"importComplete" = "Đã nhập pack!";
+"importFailed" = "Nhập thất bại";
+"import_play_now" = "Chơi ngay";
+"import_result_ok" = "OK";
 "copied" = "Đã sao chép vào clipboard.";
 "outOfMemory" = "Hết bộ nhớ.\nGiải phóng bộ nhớ và thử lại.";
 "unipackNotFound" = "Không tìm thấy UniPack.";

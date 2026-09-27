@@ -102,6 +102,7 @@
 "importComplete" = "불러오기 성공!";
 "importFailed" = "불러오기 실패…";
 "import_play_now" = "지금 연주";
+"import_result_ok" = "확인";
 "copied" = "클립보드에 복사되었습니다.";
 "outOfMemory" = "메모리 공간이 부족합니다.\n메모리 확보 후 다시 시도해주세요.";
 "unipackNotFound" = "유니팩이 발견되지 않았습니다.";
