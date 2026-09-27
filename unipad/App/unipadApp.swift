@@ -93,8 +93,6 @@ struct unipadApp: App {
                                 ThemeView()
                             case .midiSelect:
                                 MidiSelectView()
-                            case .transfer(let config):
-                                TransferView(config: config)
                             case .importByUrl(let code):
                                 ImportByUrlView(code: code)
                             case .main:

@@ -8,15 +8,5 @@ enum Route: Hashable {
     case settingsStorage
     case theme
     case midiSelect
-    case transfer(config: TransferConfig)
     case importByUrl(code: String)
-
-    struct TransferConfig: Hashable {
-        var sourceType: String?
-        var sourcePath: String?
-        var targetType: String?
-        var mode: String?
-        var title: String?
-        var isBackup: Bool?
-    }
 }
