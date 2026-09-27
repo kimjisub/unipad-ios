@@ -242,11 +242,7 @@ struct MainView: View {
                         themeName: vm.currentThemeName,
                         updateAvailable: vm.updateAvailable,
                         onSettingsClick: { router.navigate(to: .settings) },
-                        onUpdateClick: {
-                            if let url = URL(string: "https://apps.apple.com/app/unipad/id1668033585") {
-                                PlatformHelpers.openURL(url)
-                            }
-                        }
+                        onUpdateClick: { PlatformHelpers.openURL(Self.appStoreURL) }
                     )
                     .transition(.opacity)
                 }
@@ -511,3 +507,6 @@ private final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked
     }
 }
 
+extension MainView {
+    static let appStoreURL = URL(string: "https://apps.apple.com/app/id6760479102")!
+}
