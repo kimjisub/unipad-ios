@@ -27,6 +27,7 @@ protocol FirestoreServiceProtocol: Sendable {
 /// Protocol for Firebase Cloud Messaging token management.
 protocol FCMServiceProtocol: Sendable {
     func getToken() async throws -> String
+    func register() async throws -> PushRegistration
     func subscribeToTopic(_ topic: String) async throws
     func unsubscribeFromTopic(_ topic: String) async throws
 }
@@ -169,6 +170,10 @@ final class FCMServiceStub: FCMServiceProtocol {
         return ""
     }
 
+    func register() async throws -> PushRegistration {
+        throw PushRegistrationError.unavailable
+    }
+
     func subscribeToTopic(_ topic: String) async throws {
         // TODO: Implement with Firebase Messaging SDK
         // try await Messaging.messaging().subscribe(toTopic: topic)
@@ -231,17 +236,14 @@ final class AnalyticsServiceLive: AnalyticsServiceProtocol, @unchecked Sendable 
 #if canImport(FirebaseMessaging)
 final class MessagingServiceLive: NSObject, FCMServiceProtocol, @unchecked Sendable {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "FCM")
+    private let registrationClient = FirebaseMessagingRegistrationClient()
 
     func getToken() async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            Messaging.messaging().token { token, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                continuation.resume(returning: token ?? "")
-            }
-        }
+        try await registrationClient.registrationToken() ?? ""
+    }
+
+    func register() async throws -> PushRegistration {
+        try await PushRegistrar(client: registrationClient).register()
     }
 
     func subscribeToTopic(_ topic: String) async throws {
