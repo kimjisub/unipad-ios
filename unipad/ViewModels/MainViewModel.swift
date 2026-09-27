@@ -296,9 +296,13 @@ final class MainViewModel {
     }
 
     func recordOpen(_ item: UniPackItem) {
+        recordOpen(item.unipack)
+    }
+
+    func recordOpen(_ unipack: UniPack) {
         guard let container = modelContainer else { return }
         let repo = UnipackRepository(modelContainer: container)
-        try? repo.recordOpen(id: item.unipack.id)
+        try? repo.recordOpen(id: unipack.id)
     }
 
     func toggleBookmark(_ item: UniPackItem) {
@@ -308,8 +312,9 @@ final class MainViewModel {
         refreshList()
     }
 
-    func showImportResultForNew(existingIds: Set<String>) {
-        if let newItem = unipackItems.first(where: { !existingIds.contains($0.id) }) {
+    /// Matches on the imported folder so the dialog, and its play action, can never point at another pack.
+    func showImportResult(forImportedFolder folder: URL) {
+        if let newItem = unipackItems.first(where: { $0.id == folder.path }) {
             newItem.unipack.loadDetail()
             // Android shows the parser's soft errors as a warning; they were never surfaced here.
             if let detail = newItem.unipack.errorDetail {
@@ -370,6 +375,11 @@ enum ImportResult {
     case success(UniPack)
     case warning(String)
     case error(String)
+
+    var playablePack: UniPack? {
+        if case .success(let unipack) = self { return unipack }
+        return nil
+    }
 }
 
 // MARK: - Main MIDI Controller Adapter

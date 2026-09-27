@@ -101,6 +101,7 @@
 "doYouWantToDeleteUniPack" = "Do you want to delete this project?";
 "importComplete" = "Analysis complete!";
 "importFailed" = "Failed to analyze…";
+"import_play_now" = "Play now";
 "copied" = "Copied to clipboard.";
 "outOfMemory" = "Out of memory.\nFree some memory and retry.";
 "unipackNotFound" = "UniPack not found.";

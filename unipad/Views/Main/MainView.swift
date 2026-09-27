@@ -96,15 +96,15 @@ struct MainView: View {
                     let fileName = url.lastPathComponent
 
                     vm.isImportingInProgress = true
-                    let existingIds = Set(vm.unipackItems.map { $0.id })
 
                     Task {
                         let workspace = WorkspaceManager.shared.downloadWorkspace.url
                         let importer = UniPackImporter()
                         let delegate = MainViewImportDelegate(viewModel: vm)
                         // The delegate already shows the error; the thrown value is only reported.
+                        var importedFolder: URL?
                         do {
-                            try await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
+                            importedFolder = try await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
                             UsageAnalytics.shared.packImportSucceeded(source: .file)
                         } catch {
                             UsageAnalytics.shared.packImportFailed(source: .file, error: error)
@@ -114,7 +114,9 @@ struct MainView: View {
                             vm.isImportingInProgress = false
                             vm.refreshList()
                             vm.updateStats()
-                            vm.showImportResultForNew(existingIds: existingIds)
+                            if let importedFolder {
+                                vm.showImportResult(forImportedFolder: importedFolder)
+                            }
                             showImportResult = true
                         }
                     }
@@ -146,8 +148,7 @@ struct MainView: View {
                 ZStack {
                     Color.black.opacity(0.5).ignoresSafeArea()
                         .onTapGesture {
-                            showImportResult = false
-                            vm.importResult = nil
+                            dismissImportResult()
                         }
 
                     VStack(spacing: 0) {
@@ -166,19 +167,37 @@ struct MainView: View {
 
                         ImportResultDialog(result: result, onDismiss: {})
 
-                        // OK button
                         Divider()
                             .background(AppColors.divider)
-                        Button {
-                            showImportResult = false
-                            vm.importResult = nil
-                        } label: {
-                            Text(String(localized: "accept"))
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(AppColors.blue)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                        HStack(spacing: 0) {
+                            Button {
+                                dismissImportResult()
+                            } label: {
+                                Text(String(localized: "accept"))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(AppColors.blue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+
+                            if let unipack = result.playablePack {
+                                Divider()
+                                    .background(AppColors.divider)
+                                Button {
+                                    dismissImportResult()
+                                    vm.recordOpen(unipack)
+                                    router.navigate(to: .play(packPath: unipack.getPathString()))
+                                } label: {
+                                    Label(String(localized: "import_play_now"), systemImage: "play.fill")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(AppColors.orange)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                }
+                                .accessibilityIdentifier("main.importResult.playNow")
+                            }
                         }
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                     .background(AppColors.darkSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -205,6 +224,11 @@ struct MainView: View {
                 }
             }
         }
+    }
+
+    private func dismissImportResult() {
+        showImportResult = false
+        vm.importResult = nil
     }
 
     // MARK: - Left Panel
