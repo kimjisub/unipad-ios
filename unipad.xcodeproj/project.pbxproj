@@ -13,6 +13,7 @@
 		A1B2C3D4E5F60718293A4B61 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B65 /* FirebaseCrashlytics */; };
 		A1B2C3D4E5F60718293A4B62 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B66 /* FirebaseMessaging */; };
 		A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */; };
+		A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +81,7 @@
 				A1B2C3D4E5F60718293A4B61 /* FirebaseCrashlytics in Frameworks */,
 				A1B2C3D4E5F60718293A4B62 /* FirebaseMessaging in Frameworks */,
 				A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */,
+				A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +148,7 @@
 				A1B2C3D4E5F60718293A4B65 /* FirebaseCrashlytics */,
 				A1B2C3D4E5F60718293A4B66 /* FirebaseMessaging */,
 				A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */,
+				A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */,
 			);
 			productName = unipad;
 			productReference = 16CE2B902F5E6CE100402705 /* unipad.app */;
@@ -717,6 +720,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseRemoteConfig;
+		};
+		A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseInstallations;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

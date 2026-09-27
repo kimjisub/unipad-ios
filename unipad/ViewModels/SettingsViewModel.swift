@@ -18,6 +18,18 @@ final class SettingsViewModel {
 
     var selectedCategory: Category = .info
 
+    @ObservationIgnored private let messaging: FCMServiceProtocol
+    @ObservationIgnored private let copyToPasteboard: (String) -> Void
+
+    convenience init() {
+        self.init(messaging: FirebaseManager.shared.messaging) { PlatformPasteboard.copyString($0) }
+    }
+
+    init(messaging: FCMServiceProtocol, copyToPasteboard: @escaping (String) -> Void) {
+        self.messaging = messaging
+        self.copyToPasteboard = copyToPasteboard
+    }
+
     var appVersionInfo: String {
         let appName = "UniPad"
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -69,16 +81,29 @@ final class SettingsViewModel {
         openURL("https://github.com/kimjisub/unipad-android")
     }
 
-    func copyFcmToken() async -> String {
+    var pushIdentifierTitle: String {
+        messaging.usesInstallationID
+            ? String(localized: "FCMInstallationID", defaultValue: "FCM Installation ID")
+            : String(localized: "FCMToken")
+    }
+
+    private var pushIdentifierUnavailableMessage: String {
+        messaging.usesInstallationID
+            ? String(localized: "fcm_installation_id_unavailable", defaultValue: "FCM installation ID unavailable")
+            : String(localized: "fcm_token_unavailable")
+    }
+
+    /// Copies the identifier FCM delivers to in the configured model and returns the message to
+    /// show. When there is none, the unavailable notice is copied in its place.
+    func copyPushIdentifier() async -> String {
         do {
-            let token = try await FirebaseManager.shared.messaging.getToken()
-            let resolved = token.isEmpty ? String(localized: "fcm_token_unavailable") : token
-            PlatformPasteboard.copyString(resolved)
-            return resolved
+            let registration = try await messaging.register()
+            copyToPasteboard(registration.identifier)
+            return String(localized: "copied")
         } catch {
-            let fallback = String(localized: "fcm_token_unavailable")
-            PlatformPasteboard.copyString(fallback)
-            return fallback
+            let unavailable = pushIdentifierUnavailableMessage
+            copyToPasteboard(unavailable)
+            return unavailable
         }
     }
 }

@@ -146,4 +146,69 @@ struct PushRegistrationTests {
             try await FCMServiceStub().register()
         }
     }
+
+    @Test func localOnlyStubStaysInTheTokenModelUnlessAskedToFakeInstallationIDs() {
+        #expect(FCMServiceStub().usesInstallationID == false)
+        #expect(FCMServiceStub(usesInstallationID: true).usesInstallationID)
+    }
+
+    @Test func testRunsNeverReachLiveFirebaseMessaging() {
+        #expect(FirebaseRuntime.isLocalOnly)
+        #expect(FirebaseRuntime.fakesInstallationIdModel == false)
+        #expect(FirebaseManager.shared.messaging is FCMServiceStub)
+    }
+
+    @Test func bothModelsExposeTheirIdentifier() {
+        #expect(PushRegistration.registrationToken("token-a").identifier == "token-a")
+        #expect(PushRegistration.installationID("fid-a").identifier == "fid-a")
+    }
+
+    // MARK: - Delegate callbacks
+
+    final class RecordingAnalytics: AnalyticsServiceProtocol, @unchecked Sendable {
+        private(set) var events: [(name: String, parameters: [String: Any]?)] = []
+
+        func logEvent(name: String, parameters: [String: Any]?) {
+            events.append((name, parameters))
+        }
+
+        func setUserProperty(value: String?, forName name: String) {}
+    }
+
+    private func makeRecorder() -> (PushRegistrationCallbackRecorder, RecordingAnalytics, () -> [String]) {
+        let analytics = RecordingAnalytics()
+        var lines: [String] = []
+        let recorder = PushRegistrationCallbackRecorder(analytics: analytics) { lines.append($0) }
+        return (recorder, analytics, { lines })
+    }
+
+    @Test func tokenCallbackKeepsItsAnalyticsEventButNeverLogsTheToken() {
+        let (recorder, analytics, lines) = makeRecorder()
+
+        recorder.registrationTokenRefreshed("token-secret")
+
+        #expect(analytics.events.map(\.name) == ["fcm_token_refreshed"])
+        #expect(analytics.events.first?.parameters?["has_token"] as? Bool == true)
+        #expect(lines().count == 1)
+        #expect(lines().allSatisfy { !$0.contains("token-secret") })
+    }
+
+    @Test func tokenCallbackWithoutATokenIsRecordedAsMissing() {
+        let (recorder, analytics, lines) = makeRecorder()
+
+        recorder.registrationTokenRefreshed(nil)
+
+        #expect(analytics.events.first?.parameters?["has_token"] as? Bool == false)
+        #expect(lines() == ["FCM registration token refreshed (present: false)"])
+    }
+
+    @Test(arguments: ["fid-secret", nil] as [String?])
+    func installationCallbackIsLoggedWithoutTheIDOrAnyAnalytics(_ installationID: String?) {
+        let (recorder, analytics, lines) = makeRecorder()
+
+        recorder.installationRegistered(installationID)
+
+        #expect(analytics.events.isEmpty)
+        #expect(lines() == ["FCM installation registration refreshed (present: \(installationID != nil))"])
+    }
 }

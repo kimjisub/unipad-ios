@@ -290,12 +290,9 @@ struct SettingsView: View {
                             vm.openURL("https://github.com/kimjisub/unipad-android/blob/main/LICENSE")
                         }
                         cardDivider
-                        settingsRow(title: String(localized: "FCMToken"), subtitle: String(localized: "tap_to_copy")) {
+                        settingsRow(title: vm.pushIdentifierTitle, subtitle: String(localized: "tap_to_copy")) {
                             Task {
-                                let token = await vm.copyFcmToken()
-                                alertMessage = token == String(localized: "fcm_token_unavailable")
-                                    ? token
-                                    : String(localized: "copied")
+                                alertMessage = await vm.copyPushIdentifier()
                                 showAlert = true
                             }
                         }

@@ -53,6 +53,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate, MessagingDelegate {
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         FirebaseManager.shared.onMessagingTokenRefreshed(fcmToken)
     }
+
+    /// FCM calls this instead of `didReceiveRegistrationToken` once
+    /// `FirebaseMessagingInstallationIdEnabled` is `YES`.
+    func messaging(_ messaging: Messaging, didReceiveRegistration installationId: String?) {
+        FirebaseManager.shared.onMessagingInstallationRegistered(installationId)
+    }
 }
 #endif
 

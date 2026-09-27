@@ -10,6 +10,13 @@ import FirebaseInstallations
 enum PushRegistration: Equatable, Sendable {
     case registrationToken(String)
     case installationID(String)
+
+    var identifier: String {
+        switch self {
+        case .registrationToken(let value), .installationID(let value):
+            return value
+        }
+    }
 }
 
 enum PushRegistrationError: Error, Equatable {
@@ -43,6 +50,23 @@ struct PushRegistrar: Sendable {
     private static func nonEmpty(_ value: String?) throws -> String {
         guard let value, !value.isEmpty else { throw PushRegistrationError.emptyIdentifier }
         return value
+    }
+}
+
+/// Records FCM registration callbacks for either model. Only whether an identifier arrived is
+/// written, never the identifier itself.
+struct PushRegistrationCallbackRecorder {
+    let analytics: AnalyticsServiceProtocol
+    let log: (String) -> Void
+
+    func registrationTokenRefreshed(_ token: String?) {
+        analytics.logEvent(name: "fcm_token_refreshed", parameters: ["has_token": token != nil])
+        log("FCM registration token refreshed (present: \(token != nil))")
+    }
+
+    /// Logged only: the installation-ID model must not add analytics collection.
+    func installationRegistered(_ installationID: String?) {
+        log("FCM installation registration refreshed (present: \(installationID != nil))")
     }
 }
 
