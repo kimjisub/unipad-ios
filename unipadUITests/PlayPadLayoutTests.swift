@@ -21,7 +21,7 @@ final class PlayPadLayoutTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = true
         app = XCUIApplication()
-        app.launchArguments += ["-UniPadFirebaseLocalOnly", "YES"]
+        app.launchArguments += UITestSupport.englishLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }

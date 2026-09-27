@@ -266,5 +266,7 @@
 "settings_midi_copy_log" = "Günlüğü kopyala";
 "settings_midi_clear_log" = "Temizle";
 "import_no_file_access" = "Bu dosyayı okuma izni alınamadı.";
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Yer imleri ve oynatma sayıları şu anda yüklenemiyor veya kaydedilemiyor. Yaptığınız değişiklikler UniPad kapandığında kaybolacak.";
 "temporary_store_notice_dismiss" = "Kapat";

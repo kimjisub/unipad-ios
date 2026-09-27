@@ -22,7 +22,7 @@ final class SettingsBackNavigationTests: XCTestCase {
         // would be measuring something else.
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += ["-UniPadFirebaseLocalOnly", "YES"]
+        app.launchArguments += UITestSupport.englishLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "home never appeared")

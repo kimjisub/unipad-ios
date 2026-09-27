@@ -266,5 +266,7 @@
 "settings_midi_copy_log" = "Sao chép nhật ký";
 "settings_midi_clear_log" = "Xoá";
 "import_no_file_access" = "Không thể lấy quyền đọc tệp đó.";
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Hiện không thể tải hoặc lưu đánh dấu và số lần chơi. Những thay đổi bạn thực hiện sẽ mất khi đóng UniPad.";
 "temporary_store_notice_dismiss" = "Đóng";

@@ -7,6 +7,22 @@ import XCTest
 
 enum UITestSupport {
 
+    /// Launch arguments for tests that find controls by their English text
+    /// ("Information", "Theme", "Play", option names). The app follows the
+    /// simulator's language, so these pin it to English to make the result the
+    /// same whatever language the simulator was left in.
+    static func englishLaunchArguments() -> [String] {
+        launchArguments(language: "en", locale: "en_US")
+    }
+
+    static func launchArguments(language: String, locale: String) -> [String] {
+        [
+            "-UniPadFirebaseLocalOnly", "YES",
+            "-AppleLanguages", "(\(language))",
+            "-AppleLocale", locale,
+        ]
+    }
+
     /// The app asks for notification permission during launch, so the first thing
     /// on screen is a system alert covering the home screen. That it appears at
     /// all, before the user has seen anything, is a finding recorded separately
