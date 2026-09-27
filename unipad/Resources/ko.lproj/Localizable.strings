@@ -109,6 +109,12 @@
 "guide_download_new" = "새로운 팩 다운로드";
 "guide_import_external" = "다운로드한 팩 불러오기";
 "guide_restore_packs" = "사라진 팩 복구하기";
+"main_empty_title" = "첫 유니팩을 연주해 보세요";
+"main_empty_step_get_pack" = "팩 구하기: 아래 **새로운 팩 다운로드**로 스토어에서 받거나, 갖고 있는 .zip 파일을 **다운로드한 팩 불러오기**로 가져오세요.";
+"main_empty_step_play" = "목록에서 팩을 누른 뒤 **재생**을 누르세요.";
+"main_empty_step_no_launchpad" = "런치패드가 없어도 화면의 패드를 눌러 연주할 수 있어요.";
+"main_empty_guide_link" = "시작 안내 보기";
+"unipack_play" = "재생";
 
 /* Launchpad */
 "launchpadConnecting" = "런치패드 연결중…";

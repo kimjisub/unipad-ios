@@ -109,6 +109,12 @@
 "guide_download_new" = "नए पैक डाउनलोड करें";
 "guide_import_external" = "डाउनलोड किए पैक आयात करें";
 "guide_restore_packs" = "गायब पैक पुनर्प्राप्त करें";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "Launchpad कनेक्ट हो रहा है…";

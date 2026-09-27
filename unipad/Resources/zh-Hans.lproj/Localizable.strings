@@ -109,6 +109,12 @@
 "guide_download_new" = "下载新包";
 "guide_import_external" = "导入已下载的包";
 "guide_restore_packs" = "恢复丢失的包";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "正在连接 launchpad…";

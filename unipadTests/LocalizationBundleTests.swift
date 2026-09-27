@@ -14,7 +14,7 @@ struct LocalizationBundleTests {
 
     /// Read from the language folder itself: `Bundle.url(forResource:localization:)`
     /// returns the top-level file for every language when there is one.
-    private static func strings(for localization: String) -> [String: String]? {
+    static func strings(for localization: String) -> [String: String]? {
         let url = Bundle.main.bundleURL
             .appendingPathComponent("\(localization).lproj")
             .appendingPathComponent("\(table).strings")

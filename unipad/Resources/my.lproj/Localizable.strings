@@ -109,6 +109,12 @@
 "guide_download_new" = "pack အသစ်များ ဒေါင်းလုဒ်လုပ်ရန်";
 "guide_import_external" = "ဒေါင်းလုဒ်လုပ်ထားသော pack များ တင်သွင်းရန်";
 "guide_restore_packs" = "ပျောက်ဆုံးနေသော pack များ ပြန်လည်ရယူရန်";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "Launchpad ချိတ်ဆက်နေသည်…";
