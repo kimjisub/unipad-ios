@@ -119,11 +119,14 @@ struct StoreView: View {
                                     }
                                 }
                             )
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("store.row")
                         }
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 6)
                 }
+                .accessibilityIdentifier("store.list")
             }
         }
     }
