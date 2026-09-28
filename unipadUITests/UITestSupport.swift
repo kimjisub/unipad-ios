@@ -23,10 +23,9 @@ enum UITestSupport {
         ]
     }
 
-    /// The app asks for notification permission during launch, so the first thing
-    /// on screen is a system alert covering the home screen. That it appears at
-    /// all, before the user has seen anything, is a finding recorded separately
-    /// rather than papered over.
+    /// Clears system alerts left over the app when a test starts. The app itself
+    /// asks for notification permission only when a store download starts, never
+    /// at launch, so on a fresh install there is normally nothing to clear here.
     static func dismissSystemAlerts() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         for _ in 0..<3 {

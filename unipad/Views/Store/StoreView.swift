@@ -38,7 +38,7 @@ struct StoreView: View {
                 if let selected = vm.selectedItem {
                     StorePackPanel(
                         item: selected,
-                        onDownload: { vm.startDownload(selected) },
+                        onDownload: { startDownload(selected) },
                         onYouTube: { vm.openYouTubeSearch(for: selected) }
                     )
                     .transition(.opacity)
@@ -113,11 +113,7 @@ struct StoreView: View {
                             StoreListItemView(
                                 item: item,
                                 onTap: { vm.toggleSelection(item) },
-                                onFlagTap: {
-                                    if !item.downloaded && !item.downloading {
-                                        vm.startDownload(item)
-                                    }
-                                }
+                                onFlagTap: { startDownload(item) }
                             )
                             .accessibilityElement(children: .contain)
                             .accessibilityIdentifier("store.row")
@@ -129,6 +125,12 @@ struct StoreView: View {
                 .accessibilityIdentifier("store.list")
             }
         }
+    }
+
+    private func startDownload(_ item: StoreViewModel.StoreItem) {
+        guard !item.downloaded, !item.downloading else { return }
+        vm.startDownload(item)
+        DownloadNotificationPermission.shared.requestIfUndetermined()
     }
 }
 

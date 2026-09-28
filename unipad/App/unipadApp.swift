@@ -34,7 +34,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 #if canImport(FirebaseMessaging) && canImport(UserNotifications)
         UNUserNotificationCenter.current().delegate = self
         Messaging.messaging().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
         application.registerForRemoteNotifications()
 #endif
         return true
