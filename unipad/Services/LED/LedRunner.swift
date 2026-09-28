@@ -10,6 +10,7 @@ final class LedRunner {
     private let unipack: UniPack
     private let chain: ChainObserver
     private let loopDelay: TimeInterval
+    private let clock: () -> Int64
 
     private var btnLed: [[Led?]]
     private var cirLed: [Led?]
@@ -37,12 +38,14 @@ final class LedRunner {
         unipack: UniPack,
         listener: Listener,
         chain: ChainObserver,
-        loopDelay: TimeInterval = 0.004
+        loopDelay: TimeInterval = 0.004,
+        clock: @escaping () -> Int64 = { Int64(CACurrentMediaTime() * 1000) }
     ) {
         self.unipack = unipack
         self.listener = listener
         self.chain = chain
         self.loopDelay = loopDelay
+        self.clock = clock
 
         btnLed = Array(
             repeating: Array(repeating: nil as Led?, count: unipack.buttonY),
@@ -92,13 +95,14 @@ final class LedRunner {
     // MARK: - Main Loop
 
     private var loopLogCount = 0
-    private func loop() {
+    /// One tick. Internal so tests can drive it with a manual `clock`.
+    func loop() {
         var pendingLedEvents: [LedEvent] = []
         var pendingChainSets: [Int] = []
 
         lock.lockWithDeadlockDetection()
 
-        let currTime = Self.currentTimeMillis()
+        let currTime = clock()
 
         if !ledAnimationStates.isEmpty || !ledAnimationStatesAdd.isEmpty {
             loopLogCount += 1
@@ -134,9 +138,13 @@ final class LedRunner {
                         break
                     }
 
+                    // Only endless (loop 0) animations reach the budget. They yield to the next tick
+                    // and keep playing, so eventOff and eventOffAll still find them and turn their
+                    // LEDs off (Android LedRunner.kt). The backlog is dropped: a strobe shorter than a
+                    // tick or the first tick after a suspension would otherwise fall further behind.
                     processed += 1
                     if processed > budget {
-                        state.isPlaying = false
+                        state.delay = currTime
                         break
                     }
 
@@ -343,10 +351,6 @@ final class LedRunner {
             self.ledAnimation = unipack.ledGet(c: chain.value, x: buttonX, y: buttonY)
             unipack.ledPush(c: chain.value, x: buttonX, y: buttonY)
         }
-    }
-
-    private static func currentTimeMillis() -> Int64 {
-        Int64(CACurrentMediaTime() * 1000)
     }
 
     private func isValidPadIndex(x: Int, y: Int) -> Bool {
