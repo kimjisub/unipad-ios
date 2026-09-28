@@ -28,13 +28,39 @@ enum FileManagerExtensions {
         let filtered = filterFilename(name)
         var i = 1
         while true {
-            let fileName = i == 1 ? filtered + ext : "\(filtered) (\(i))\(ext)"
-            let candidate = dir.appendingPathComponent(fileName)
+            let candidate = numberedPath(dir: dir, filteredName: filtered, extension: ext, index: i)
             if !FileManager.default.fileExists(atPath: candidate.path) {
                 return candidate
             }
             i += 1
         }
+    }
+
+    /// Like `makeNextPath`, but creates the empty file or folder in the same step that finds the
+    /// name free, so a concurrent caller asking for the same name gets the next number instead.
+    /// The caller owns the returned path and is the only one that may delete it.
+    static func claimNextPath(dir: URL, name: String, extension ext: String, isDirectory: Bool) throws -> URL {
+        let fm = FileManager.default
+        let filtered = filterFilename(name)
+        var i = 1
+        while true {
+            let candidate = numberedPath(dir: dir, filteredName: filtered, extension: ext, index: i)
+            do {
+                if isDirectory {
+                    try fm.createDirectory(at: candidate, withIntermediateDirectories: false)
+                } else {
+                    try Data().write(to: candidate, options: .withoutOverwriting)
+                }
+                return candidate
+            } catch CocoaError.fileWriteFileExists {
+                i += 1
+            }
+        }
+    }
+
+    private static func numberedPath(dir: URL, filteredName: String, extension ext: String, index: Int) -> URL {
+        let fileName = index == 1 ? filteredName + ext : "\(filteredName) (\(index))\(ext)"
+        return dir.appendingPathComponent(fileName)
     }
 
     static func filterFilename(_ original: String) -> String {

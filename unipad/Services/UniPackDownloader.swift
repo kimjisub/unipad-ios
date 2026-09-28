@@ -50,20 +50,25 @@ actor UniPackDownloader {
         preKnownFileSize: Int64 = 0,
         delegate: Delegate?
     ) async {
-        let zipFile = FileManagerExtensions.makeNextPath(dir: workspace, name: folderName, extension: ".zip")
-        let folder = FileManagerExtensions.makeNextPath(dir: workspace, name: folderName, extension: "")
-
         await delegate?.onInstallStart()
+
+        // Another download of the same name may run at the same time, so only paths claimed here
+        // are written to or deleted.
+        var zipFile: URL?
+        var folder: URL?
 
         do {
             guard let requestURL = URL(string: url) else {
                 throw DownloadError.emptyResponse
             }
 
+            let claimedZip = try FileManagerExtensions.claimNextPath(dir: workspace, name: folderName, extension: ".zip", isDirectory: false)
+            zipFile = claimedZip
+
             // Download with progress reporting
             let (tempURL, response) = try await downloadWithProgress(
                 from: requestURL,
-                to: zipFile,
+                to: claimedZip,
                 preKnownFileSize: preKnownFileSize,
                 delegate: delegate
             )
@@ -76,40 +81,44 @@ actor UniPackDownloader {
 
             // Extract ZIP
             let fm = FileManager.default
-            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            let claimedFolder = try FileManagerExtensions.claimNextPath(dir: workspace, name: folderName, extension: "", isDirectory: true)
+            folder = claimedFolder
 
             // Move downloaded file to expected location if needed
-            if tempURL != zipFile {
-                if fm.fileExists(atPath: zipFile.path) {
-                    try fm.removeItem(at: zipFile)
+            if tempURL != claimedZip {
+                if fm.fileExists(atPath: claimedZip.path) {
+                    try fm.removeItem(at: claimedZip)
                 }
-                try fm.moveItem(at: tempURL, to: zipFile)
+                try fm.moveItem(at: tempURL, to: claimedZip)
             }
 
-            try await importer.extractOnly(at: zipFile, to: folder)
-            FileManagerExtensions.removeDoubleFolder(at: folder)
+            try await importer.extractOnly(at: claimedZip, to: claimedFolder)
+            FileManagerExtensions.removeDoubleFolder(at: claimedFolder)
 
             // Validate extracted pack. load() runs the case-insensitive checkFile; the exact-case
             // `info` pre-check that used to sit here rejected a pack named `Info` that imports fine.
-            let unipack = UniPackFolder(rootFolder: folder)
+            let unipack = UniPackFolder(rootFolder: claimedFolder)
             unipack.load()
             unipack.loadDetail()
             if unipack.criticalError {
-                FileManagerExtensions.deleteDirectory(at: folder)
                 throw DownloadError.criticalError(unipack.errorDetail ?? "Invalid unipack structure")
             }
 
-            await delegate?.onInstallComplete(folder: folder)
-            logger.info("Download + install complete: \(folder.lastPathComponent)")
+            await delegate?.onInstallComplete(folder: claimedFolder)
+            logger.info("Download + install complete: \(claimedFolder.lastPathComponent)")
 
         } catch {
             logger.error("Download failed: \(error.localizedDescription)")
-            FileManagerExtensions.deleteDirectory(at: folder)
+            if let folder {
+                FileManagerExtensions.deleteDirectory(at: folder)
+            }
             await delegate?.onError(error)
         }
 
         // Cleanup ZIP
-        FileManagerExtensions.deleteDirectory(at: zipFile)
+        if let zipFile {
+            FileManagerExtensions.deleteDirectory(at: zipFile)
+        }
     }
 
     // MARK: - Download with Progress
