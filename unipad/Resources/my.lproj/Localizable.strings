@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "စက်ပစ္စည်း";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "ပက်ပေါ်တွင် အစဉ်နံပါတ် ပြပါ";
+"trace_log_classic_desc" = "တီးခတ်စဉ် ခြေရာခံမှတ်တမ်း ဖွင့်ထားလျှင် ထိထားသည့် အစဉ်ကို မျဉ်းနှင့် အစက်များအစား ပက်တစ်ခုစီပေါ်တွင် ဂဏန်းဖြင့် ပြပါ";
 "settings_info" = "အချက်အလက်";
 "settings_storage" = "သိုလှောင်ခန်း";
 "settings_theme" = "အပြင်အဆင်";

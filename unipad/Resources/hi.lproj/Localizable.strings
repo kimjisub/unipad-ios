@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "डिवाइस";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "पैड पर टैप क्रम की संख्या दिखाएँ";
+"trace_log_classic_desc" = "बजाते समय ट्रेस लॉग चालू होने पर, टैप का क्रम रेखाओं और बिंदुओं के बजाय हर पैड पर संख्याओं में दिखाएँ";
 "settings_info" = "जानकारी";
 "settings_storage" = "स्टोरेज";
 "settings_theme" = "थीम";

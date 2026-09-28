@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Cihaz";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Dokunma sırasını padlerde numarala";
+"trace_log_classic_desc" = "Çalarken İzleme Günlüğü açıksa, dokunma sırasını çizgi ve nokta yerine her pad üzerinde sayı olarak gösterir";
 "settings_info" = "Bilgi";
 "settings_storage" = "Depolama";
 "settings_theme" = "Tema";

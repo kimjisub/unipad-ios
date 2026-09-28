@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Perangkat";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Tampilkan nomor urutan di pad";
+"trace_log_classic_desc" = "Saat Log Jejak aktif ketika bermain, tampilkan urutan ketukan sebagai angka di setiap pad, bukan garis dan titik";
 "settings_info" = "Informasi";
 "settings_storage" = "Penyimpanan";
 "settings_theme" = "Tema";

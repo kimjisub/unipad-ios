@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Dispositivo";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Mostrar números de orden en los pads";
+"trace_log_classic_desc" = "Con el Registro de Secuencia activado al tocar, muestra el orden de los toques como números en cada pad en lugar de líneas y puntos";
 "settings_info" = "Información";
 "settings_storage" = "Almacenamiento";
 "settings_theme" = "Tema";

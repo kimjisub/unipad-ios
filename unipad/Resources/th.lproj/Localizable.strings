@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "อุปกรณ์";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "แสดงตัวเลขลำดับบนแพด";
+"trace_log_classic_desc" = "เมื่อเปิดบันทึกการติดตามขณะเล่น จะแสดงลำดับการแตะเป็นตัวเลขบนแต่ละแพด แทนเส้นและจุด";
 "settings_info" = "ข้อมูล";
 "settings_storage" = "พื้นที่จัดเก็บ";
 "settings_theme" = "ธีม";

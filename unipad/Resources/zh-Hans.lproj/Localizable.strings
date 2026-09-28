@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "设备";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "在打击垫上显示顺序数字";
+"trace_log_classic_desc" = "演奏时开启“记录按键”后，在每个打击垫上用数字显示点击顺序，而不是线条和圆点";
 "settings_info" = "信息";
 "settings_storage" = "存储";
 "settings_theme" = "主题";

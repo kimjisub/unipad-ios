@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Gerät";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Tipp-Reihenfolge als Zahlen auf Pads";
+"trace_log_classic_desc" = "Bei eingeschaltetem Ablaufprotokoll im Spiel wird die Reihenfolge der Berührungen als Zahlen auf den Pads statt als Linien und Punkte angezeigt";
 "settings_info" = "Informationen";
 "settings_storage" = "Speicher";
 "settings_theme" = "Design";

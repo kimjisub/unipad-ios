@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Thiết bị";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Hiện số thứ tự trên pad";
+"trace_log_classic_desc" = "Khi bật Nhật ký Truy vết lúc chơi, hiển thị thứ tự chạm bằng số trên từng pad thay vì đường kẻ và chấm";
 "settings_info" = "Thông tin";
 "settings_storage" = "Bộ nhớ";
 "settings_theme" = "Giao diện";

@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Device";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Numero ng pagkakasunod sa mga pad";
+"trace_log_classic_desc" = "Kapag naka-on ang Trace Log habang tumutugtog, ipakita ang pagkakasunod ng pag-tap bilang mga numero sa bawat pad sa halip na mga linya at tuldok";
 "settings_info" = "Impormasyon";
 "settings_storage" = "Imbakan";
 "settings_theme" = "Tema";

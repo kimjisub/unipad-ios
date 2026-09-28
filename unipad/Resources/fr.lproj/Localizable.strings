@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "Appareil";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "Numéros d'ordre sur les pads";
+"trace_log_classic_desc" = "Quand le Journal de suivi est activé pendant le jeu, affiche l'ordre des appuis sous forme de chiffres sur chaque pad au lieu de lignes et de points";
 "settings_info" = "Informations";
 "settings_storage" = "Stockage";
 "settings_theme" = "Thème";

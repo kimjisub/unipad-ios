@@ -201,8 +201,8 @@
 /* Settings Categories */
 "settings_device" = "デバイス";
 "settings_play" = "Play";
-"trace_log_classic" = "Classic trace log";
-"trace_log_classic_desc" = "Show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic" = "パッドに順番の数字を表示";
+"trace_log_classic_desc" = "演奏中にトレースログをオンにすると、線と点の代わりに各パッドにタップした順番を数字で表示します";
 "settings_info" = "情報";
 "settings_storage" = "ストレージ";
 "settings_theme" = "テーマ";
