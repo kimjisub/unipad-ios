@@ -267,6 +267,11 @@
 "settings_midi_rescan" = "다시 검색";
 "settings_midi_copy_log" = "기록 복사";
 "settings_midi_clear_log" = "기록 지우기";
+"settings_midi_connected %@" = "연결됨: %@";
+"settings_midi_not_connected" = "연결 안 됨";
+"settings_midi_no_logs" = "아직 기록이 없습니다";
+"settings_unipack_count %lld" = "%lld개의 유니팩";
+"settings_ok" = "확인";
 
 /* 가져오기 오류 */
 "import_no_file_access" = "파일 접근 권한을 얻을 수 없습니다.";

@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "फिर से खोजें";
 "settings_midi_copy_log" = "लॉग कॉपी करें";
 "settings_midi_clear_log" = "साफ़ करें";
+"settings_midi_connected %@" = "कनेक्टेड: %@";
+"settings_midi_not_connected" = "कनेक्ट नहीं है";
+"settings_midi_no_logs" = "अभी कोई लॉग नहीं";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "ठीक है";
 "import_no_file_access" = "उस फ़ाइल को पढ़ने की अनुमति नहीं मिल सकी।";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

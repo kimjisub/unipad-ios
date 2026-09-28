@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Maghanap ulit";
 "settings_midi_copy_log" = "Kopyahin ang tala";
 "settings_midi_clear_log" = "Linisin";
+"settings_midi_connected %@" = "Nakakonekta: %@";
+"settings_midi_not_connected" = "Hindi nakakonekta";
+"settings_midi_no_logs" = "Wala pang log";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 "import_no_file_access" = "Hindi makuha ang pahintulot para basahin ang file na iyon.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

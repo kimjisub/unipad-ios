@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Erneut suchen";
 "settings_midi_copy_log" = "Protokoll kopieren";
 "settings_midi_clear_log" = "Löschen";
+"settings_midi_connected %@" = "Verbunden: %@";
+"settings_midi_not_connected" = "Nicht verbunden";
+"settings_midi_no_logs" = "Noch keine Protokolle";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 "import_no_file_access" = "Für diese Datei konnte keine Leseberechtigung erlangt werden.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

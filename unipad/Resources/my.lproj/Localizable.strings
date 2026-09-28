@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "ထပ်ရှာရန်";
 "settings_midi_copy_log" = "မှတ်တမ်း ကူးယူရန်";
 "settings_midi_clear_log" = "ရှင်းလင်းရန်";
+"settings_midi_connected %@" = "ချိတ်ဆက်ထားသည်: %@";
+"settings_midi_not_connected" = "မချိတ်ဆက်ရသေးပါ";
+"settings_midi_no_logs" = "မှတ်တမ်း မရှိသေးပါ";
+"settings_unipack_count %lld" = "UniPack %lld ခု";
+"settings_ok" = "OK";
 "import_no_file_access" = "ထိုဖိုင်ကို ဖတ်ရန် ခွင့်ပြုချက် မရရှိပါ။";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

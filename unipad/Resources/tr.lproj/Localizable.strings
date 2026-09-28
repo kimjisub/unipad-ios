@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Yeniden tara";
 "settings_midi_copy_log" = "Günlüğü kopyala";
 "settings_midi_clear_log" = "Temizle";
+"settings_midi_connected %@" = "Bağlı: %@";
+"settings_midi_not_connected" = "Bağlı değil";
+"settings_midi_no_logs" = "Henüz kayıt yok";
+"settings_unipack_count %lld" = "%lld UniPack";
+"settings_ok" = "Tamam";
 "import_no_file_access" = "Bu dosyayı okuma izni alınamadı.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

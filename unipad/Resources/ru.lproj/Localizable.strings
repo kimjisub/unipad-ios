@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Искать снова";
 "settings_midi_copy_log" = "Скопировать журнал";
 "settings_midi_clear_log" = "Очистить";
+"settings_midi_connected %@" = "Подключено: %@";
+"settings_midi_not_connected" = "Не подключено";
+"settings_midi_no_logs" = "Журнал пока пуст";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 "import_no_file_access" = "Не удалось получить разрешение на чтение этого файла.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

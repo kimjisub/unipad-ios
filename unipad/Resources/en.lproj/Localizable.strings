@@ -267,6 +267,11 @@
 "settings_midi_rescan" = "Scan again";
 "settings_midi_copy_log" = "Copy log";
 "settings_midi_clear_log" = "Clear";
+"settings_midi_connected %@" = "Connected: %@";
+"settings_midi_not_connected" = "Not connected";
+"settings_midi_no_logs" = "No logs yet";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 
 /* Import errors */
 "import_no_file_access" = "Could not get permission to read that file.";

@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Buscar novamente";
 "settings_midi_copy_log" = "Copiar registro";
 "settings_midi_clear_log" = "Limpar";
+"settings_midi_connected %@" = "Conectado: %@";
+"settings_midi_not_connected" = "Não conectado";
+"settings_midi_no_logs" = "Nenhum registro ainda";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 "import_no_file_access" = "Não foi possível obter permissão para ler esse arquivo.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

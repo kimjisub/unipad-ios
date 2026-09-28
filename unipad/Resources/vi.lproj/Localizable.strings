@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Quét lại";
 "settings_midi_copy_log" = "Sao chép nhật ký";
 "settings_midi_clear_log" = "Xoá";
+"settings_midi_connected %@" = "Đã kết nối: %@";
+"settings_midi_not_connected" = "Chưa kết nối";
+"settings_midi_no_logs" = "Chưa có nhật ký";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 "import_no_file_access" = "Không thể lấy quyền đọc tệp đó.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

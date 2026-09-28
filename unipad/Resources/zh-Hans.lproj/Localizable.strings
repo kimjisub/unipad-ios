@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "重新扫描";
 "settings_midi_copy_log" = "复制日志";
 "settings_midi_clear_log" = "清除";
+"settings_midi_connected %@" = "已连接：%@";
+"settings_midi_not_connected" = "未连接";
+"settings_midi_no_logs" = "暂无日志";
+"settings_unipack_count %lld" = "%lld 个 UniPack";
+"settings_ok" = "好";
 "import_no_file_access" = "无法获得读取该文件的权限。";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "再検索";
 "settings_midi_copy_log" = "ログをコピー";
 "settings_midi_clear_log" = "消去";
+"settings_midi_connected %@" = "接続済み: %@";
+"settings_midi_not_connected" = "未接続";
+"settings_midi_no_logs" = "ログはまだありません";
+"settings_unipack_count %lld" = "%lld個のUniPack";
+"settings_ok" = "OK";
 "import_no_file_access" = "そのファイルを読み取る権限を取得できませんでした。";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

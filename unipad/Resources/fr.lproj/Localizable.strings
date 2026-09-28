@@ -265,6 +265,11 @@
 "settings_midi_rescan" = "Analyser à nouveau";
 "settings_midi_copy_log" = "Copier le journal";
 "settings_midi_clear_log" = "Effacer";
+"settings_midi_connected %@" = "Connecté : %@";
+"settings_midi_not_connected" = "Non connecté";
+"settings_midi_no_logs" = "Aucun journal pour l’instant";
+"settings_unipack_count %lld" = "%lld UniPacks";
+"settings_ok" = "OK";
 "import_no_file_access" = "Impossible d'obtenir l'autorisation de lire ce fichier.";
 "import_pack_confirm" = "Install this pack?";
 "import_pack_confirm_source" = "from %@";

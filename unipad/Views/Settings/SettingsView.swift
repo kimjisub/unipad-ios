@@ -161,8 +161,8 @@ struct SettingsView: View {
                         settingsRow(
                             title: "MIDI",
                             subtitle: MidiManager.shared.isConnected
-                                ? "Connected: \(MidiManager.shared.connectedDeviceName ?? "?")"
-                                : "Not connected"
+                                ? String(localized: "settings_midi_connected \(MidiManager.shared.connectedDeviceName ?? "?")")
+                                : String(localized: "settings_midi_not_connected")
                         )
                     }
                 }
@@ -215,7 +215,7 @@ struct SettingsView: View {
 
                         if showMidiLog {
                             if midiManager.debugLog.isEmpty {
-                                Text("No logs yet")
+                                Text(String(localized: "settings_midi_no_logs"))
                                     .font(.system(size: 11))
                                     .foregroundStyle(AppColors.textSecondary)
                                     .padding(.vertical, 4)
@@ -311,7 +311,7 @@ struct SettingsView: View {
                 sectionLabel(String(localized: "settings_storage"))
                 settingsCard {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(vm.unipackCount) UniPacks")
+                        Text(String(localized: "settings_unipack_count \(vm.unipackCount)"))
                             .font(.system(size: 14))
                             .foregroundStyle(AppColors.textPrimary)
                         if !vm.storageUsed.isEmpty {
@@ -359,7 +359,7 @@ struct SettingsView: View {
             .platformNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("OK") { showCommunityDialog = false }
+                    Button(String(localized: "settings_ok")) { showCommunityDialog = false }
                 }
             }
         }
