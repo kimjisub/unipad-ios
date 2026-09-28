@@ -140,6 +140,61 @@ struct PackDeletionTests {
         #expect(try repo.find(id: "Pack A") == nil)
     }
 
+    private func seedPlays(_ id: String, count: Int) throws {
+        _ = try repo.getOrCreate(id: id)
+        for _ in 0..<count {
+            try repo.recordOpen(id: id)
+        }
+    }
+
+    @Test func deleteUpdatesTotalPlayCountWithoutRelaunch() throws {
+        defer { cleanUp() }
+        let item = try installPack("Pack A")
+        _ = try installPack("Pack B")
+        try seedPlays("Pack A", count: 3)
+        try seedPlays("Pack B", count: 2)
+        vm.updateStats()
+        #expect(vm.totalOpenCount == 5)
+
+        vm.deleteItem(item)
+
+        #expect(!vm.deleteFailed)
+        #expect(vm.totalOpenCount == 2)
+        #expect(Int64(vm.totalOpenCount) == (try repo.totalOpenCount()))
+    }
+
+    @Test func fileDeleteFailureKeepsTotalPlayCount() throws {
+        defer { cleanUp() }
+        let item = try installPack("Pack A")
+        _ = try installPack("Pack B")
+        try seedPlays("Pack A", count: 3)
+        try seedPlays("Pack B", count: 2)
+        vm.updateStats()
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: workspace.path)
+
+        vm.deleteItem(item)
+
+        #expect(vm.deleteFailed)
+        #expect(vm.totalOpenCount == 5)
+    }
+
+    /// The files are gone but the row stays, so the total still counts the row.
+    @Test func rowDeleteFailureShowsStoredTotal() throws {
+        defer { cleanUp() }
+        let item = try installPack("Pack A")
+        _ = try installPack("Pack B")
+        try seedPlays("Pack A", count: 3)
+        try seedPlays("Pack B", count: 2)
+        vm.updateStats()
+        vm.makeRecordRemover = { _ in FailingRecordRemover() }
+
+        vm.deleteItem(item)
+
+        #expect(vm.deleteFailed)
+        #expect(Int64(vm.totalOpenCount) == (try repo.totalOpenCount()))
+        #expect(vm.totalOpenCount == 5)
+    }
+
     @Test func deleteWithoutSavedRowSucceeds() throws {
         defer { cleanUp() }
         let item = try installPack("Pack A")

@@ -33,7 +33,7 @@ struct MainTotalPanel: View {
 
             // Stats
             VStack(spacing: 8) {
-                StatRow(label: String(localized: "MPT_playCount"), value: "\(openCount)")
+                StatRow(label: String(localized: "MPT_playCount"), value: "\(openCount)", valueIdentifier: "main.total.playCount")
                 StatRow(label: String(localized: "MTP_count"), value: unipackCount.map(String.init) ?? "-")
                 StatRow(
                     label: String(localized: "MTP_size"),
@@ -76,6 +76,7 @@ struct MainTotalPanel: View {
 private struct StatRow: View {
     let label: String
     let value: String
+    var valueIdentifier: String?
 
     var body: some View {
         HStack {
@@ -88,6 +89,7 @@ private struct StatRow: View {
             Text(value)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.white)
+                .accessibilityIdentifier(valueIdentifier ?? "")
         }
     }
 }

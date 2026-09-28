@@ -355,6 +355,7 @@ final class MainViewModel {
         }
         selectedItem = nil
         refreshList()
+        updateStats()
     }
 }
 
