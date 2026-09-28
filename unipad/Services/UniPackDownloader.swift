@@ -32,6 +32,15 @@ actor UniPackDownloader {
     }
 
     private let importer = UniPackImporter()
+    private let session: URLSession
+
+    /// Chunks are written to disk on the session's delegate queue, so downloads get their own
+    /// session instead of occupying the queue that `URLSession.shared` callbacks share.
+    private static let downloadSession = URLSession(configuration: .default)
+
+    init(session: URLSession = downloadSession) {
+        self.session = session
+    }
 
     func download(
         title: String,
@@ -111,66 +120,132 @@ actor UniPackDownloader {
         preKnownFileSize: Int64,
         delegate: Delegate?
     ) async throws -> (URL, URLResponse) {
-        let (asyncBytes, response) = try await URLSession.shared.bytes(from: url)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            // A 404/HTML body used to be written to disk and surface later as "EOCD not found".
-            throw DownloadError.httpError(statusCode: http.statusCode)
-        }
+        let writer = DownloadFileWriter(destination: destination)
+        let task = session.dataTask(with: url)
+        task.delegate = writer
+        writer.cancelOnTermination(task)
+        task.resume()
 
-        let contentLength = response.expectedContentLength
-        let fileSize = max(contentLength, preKnownFileSize)
-
-        guard let outputStream = OutputStream(url: destination, append: false) else {
-            throw DownloadError.emptyResponse
-        }
-        outputStream.open()
-        defer { outputStream.close() }
-
-        let bufferSize = 1024
-        var buffer = [UInt8]()
-        buffer.reserveCapacity(bufferSize)
-        var downloadedSize: Int64 = 0
-        var prevPercent = -1
-
-        for try await byte in asyncBytes {
-            buffer.append(byte)
-
-            if buffer.count >= bufferSize {
-                try Self.writeAll(buffer, to: outputStream)
-                downloadedSize += Int64(buffer.count)
-                buffer.removeAll(keepingCapacity: true)
-
-                if fileSize > 0 {
-                    let percent = Int(Double(downloadedSize) / Double(fileSize) * 100)
-                    if percent != prevPercent {
-                        prevPercent = percent
-                        await delegate?.onDownloadProgress(percent: percent, downloadedSize: downloadedSize, fileSize: fileSize)
-                    }
+        do {
+            var prevPercent = -1
+            for try await progress in writer.progress {
+                let fileSize = max(progress.expected, preKnownFileSize)
+                guard fileSize > 0 else { continue }
+                let percent = Int(Double(progress.received) / Double(fileSize) * 100)
+                if percent != prevPercent {
+                    prevPercent = percent
+                    await delegate?.onDownloadProgress(percent: percent, downloadedSize: progress.received, fileSize: fileSize)
                 }
             }
+            // A cancelled consumer ends the stream without an error; the file is incomplete then.
+            try Task.checkCancellation()
+        } catch {
+            // The caller deletes the partial file next; a callback still in flight must not recreate it.
+            await writer.waitUntilComplete()
+            throw error
         }
 
-        // Flush remaining bytes
-        if !buffer.isEmpty {
-            try Self.writeAll(buffer, to: outputStream)
-        }
-
+        guard let response = writer.response else { throw DownloadError.emptyResponse }
         return (destination, response)
     }
+}
 
-    /// OutputStream.write may write fewer bytes than asked (or fail on a full disk); the return
-    /// value was ignored before and produced a truncated ZIP that failed later with an opaque error.
-    private static func writeAll(_ bytes: [UInt8], to stream: OutputStream) throws {
-        var offset = 0
-        while offset < bytes.count {
-            let written = bytes[offset...].withUnsafeBufferPointer { ptr -> Int in
-                guard let base = ptr.baseAddress else { return 0 }
-                return stream.write(base, maxLength: ptr.count)
+/// Appends a data task's body to `destination` in the chunks URLSession delivers, so the body is
+/// never collected in memory. Progress is coalesced to the newest value so a busy main actor
+/// cannot make it queue.
+private final class DownloadFileWriter: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    struct Progress: Sendable {
+        let received: Int64
+        let expected: Int64
+    }
+
+    let progress: AsyncThrowingStream<Progress, Error>
+    private let continuation: AsyncThrowingStream<Progress, Error>.Continuation
+    private let destination: URL
+
+    // Written only on the session's serial delegate queue; `response` is read after `progress` ends.
+    private(set) var response: URLResponse?
+    private var handle: FileHandle?
+    private var received: Int64 = 0
+    private var failure: Error?
+
+    private let completionLock = NSLock()
+    private var isComplete = false
+    private var completionWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(destination: URL) {
+        self.destination = destination
+        (progress, continuation) = AsyncThrowingStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+    }
+
+    /// Stops the transfer when the consumer goes away (its task is cancelled).
+    func cancelOnTermination(_ task: URLSessionTask) {
+        continuation.onTermination = { _ in task.cancel() }
+    }
+
+    /// Returns once the task has completed and the file is closed. Deliberately not cancellable:
+    /// it is awaited on the cancellation path itself, and a cancelled task always completes.
+    func waitUntilComplete() async {
+        await withCheckedContinuation { waiter in
+            let alreadyComplete = completionLock.withLock {
+                if !isComplete { completionWaiters.append(waiter) }
+                return isComplete
             }
-            if written <= 0 {
-                throw stream.streamError ?? DownloadError.writeFailed
+            if alreadyComplete { waiter.resume() }
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            // A 404/HTML body used to be written to disk and surface later as "EOCD not found".
+            failure = UniPackDownloader.DownloadError.httpError(statusCode: http.statusCode)
+            completionHandler(.cancel)
+            return
+        }
+        do {
+            guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+                throw UniPackDownloader.DownloadError.writeFailed
             }
-            offset += written
+            handle = try FileHandle(forWritingTo: destination)
+            self.response = response
+            completionHandler(.allow)
+        } catch {
+            failure = error
+            completionHandler(.cancel)
+        }
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let handle, failure == nil else { return }
+        do {
+            try handle.write(contentsOf: data)
+        } catch {
+            failure = error
+            dataTask.cancel()
+            return
+        }
+        received += Int64(data.count)
+        continuation.yield(Progress(received: received, expected: response?.expectedContentLength ?? -1))
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        try? handle?.close()
+        handle = nil
+        let waiters = completionLock.withLock {
+            isComplete = true
+            defer { completionWaiters.removeAll() }
+            return completionWaiters
+        }
+        waiters.forEach { $0.resume() }
+        if let failure = failure ?? error {
+            continuation.finish(throwing: failure)
+        } else {
+            continuation.finish()
         }
     }
 }

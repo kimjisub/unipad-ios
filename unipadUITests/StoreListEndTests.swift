@@ -26,22 +26,11 @@ final class StoreListEndTests: XCTestCase {
     }
 
     private func openStore() -> XCUIElement {
-        let back = app.buttons["chevron.left"].firstMatch
-        for _ in 0..<3 where !back.exists {
-            UITestSupport.revealHomeCard(.download, in: app).tap()
-            _ = back.waitForExistence(timeout: 5)
-        }
-        let list = app.scrollViews["store.list"]
-        if !list.waitForExistence(timeout: 30) {
-            UITestSupport.attachScreenshot("store-not-loaded", to: self)
-            XCTFail(back.exists ? "store list never loaded (no network on the simulator?)" : "download card did not open the store")
-        }
-        XCTAssertTrue(rows(in: list).firstMatch.waitForExistence(timeout: 15), "store list has no rows")
-        return list
+        UITestSupport.openStore(in: app, testCase: self)
     }
 
     private func rows(in list: XCUIElement) -> XCUIElementQuery {
-        list.descendants(matching: .any).matching(identifier: "store.row")
+        UITestSupport.storeRows(in: list)
     }
 
     private func scrollToEnd(_ list: XCUIElement) -> XCUIElement {

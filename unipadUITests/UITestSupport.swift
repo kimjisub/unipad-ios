@@ -67,6 +67,26 @@ enum UITestSupport {
         return element
     }
 
+    /// Opens the store from the home card and waits until its list has rows.
+    static func openStore(in app: XCUIApplication, testCase: XCTestCase) -> XCUIElement {
+        let back = app.buttons["chevron.left"].firstMatch
+        for _ in 0..<3 where !back.exists {
+            revealHomeCard(.download, in: app).tap()
+            _ = back.waitForExistence(timeout: 5)
+        }
+        let list = app.scrollViews["store.list"]
+        if !list.waitForExistence(timeout: 30) {
+            attachScreenshot("store-not-loaded", to: testCase)
+            XCTFail(back.exists ? "store list never loaded (no network on the simulator?)" : "download card did not open the store")
+        }
+        XCTAssertTrue(storeRows(in: list).firstMatch.waitForExistence(timeout: 15), "store list has no rows")
+        return list
+    }
+
+    static func storeRows(in list: XCUIElement) -> XCUIElementQuery {
+        list.descendants(matching: .any).matching(identifier: "store.row")
+    }
+
     static func attachScreenshot(_ name: String, to testCase: XCTestCase) {
         let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         a.name = name
