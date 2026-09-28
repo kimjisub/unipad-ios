@@ -37,13 +37,17 @@ actor UniPackImporter {
     @discardableResult
     func importPack(from sourceURL: URL, to workspace: URL, delegate: Delegate?) async throws -> URL {
         let fileName = sourceURL.deletingPathExtension().lastPathComponent
-        let targetFolder = FileManagerExtensions.makeNextPath(dir: workspace, name: fileName, extension: "")
 
         await delegate?.onImportStart()
 
+        // A download or another import of the same name may run at the same time, so only the
+        // folder claimed here is written to or deleted.
+        var claimedFolder: URL?
+
         do {
             let fm = FileManager.default
-            try fm.createDirectory(at: targetFolder, withIntermediateDirectories: true)
+            let targetFolder = try FileManagerExtensions.claimNextPath(dir: workspace, name: fileName, extension: "", isDirectory: true)
+            claimedFolder = targetFolder
 
             // Copy source to temp location for extraction
             let tempZip = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
@@ -61,7 +65,6 @@ actor UniPackImporter {
             unipack.load()
             unipack.loadDetail()
             if unipack.criticalError {
-                FileManagerExtensions.deleteDirectory(at: targetFolder)
                 throw ImportError.criticalError(unipack.errorDetail ?? "Invalid unipack structure")
             }
 
@@ -71,7 +74,9 @@ actor UniPackImporter {
 
         } catch {
             logger.error("Import failed: \(error.localizedDescription)")
-            FileManagerExtensions.deleteDirectory(at: targetFolder)
+            if let claimedFolder {
+                FileManagerExtensions.deleteDirectory(at: claimedFolder)
+            }
             await delegate?.onImportError(error)
             throw error
         }
