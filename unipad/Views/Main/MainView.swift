@@ -246,7 +246,11 @@ struct MainView: View {
                         unipackCapacity: vm.unipackCapacity,
                         themeName: vm.currentThemeName,
                         updateAvailable: vm.updateAvailable,
-                        onSettingsClick: { router.navigate(to: .settings) },
+                        recentPacks: MainRecentPacks.select(from: vm.unipackItems),
+                        onRecentPackClick: { item in
+                            vm.toggleSelection(item)
+                            vm.scrollToItemId = item.id
+                        },
                         onUpdateClick: { PlatformHelpers.openURL(Self.appStoreURL) }
                     )
                     .transition(.opacity)
@@ -261,75 +265,43 @@ struct MainView: View {
 
     @ViewBuilder
     private var rightPanel: some View {
+        let isLibraryEmpty = vm.unipackItems.isEmpty && !vm.isRefreshing && vm.searchQuery.isEmpty
         VStack(spacing: 0) {
-            if vm.unipackItems.isEmpty && !vm.isRefreshing && vm.searchQuery.isEmpty {
+            topBar(showsListControls: !isLibraryEmpty)
+            if isLibraryEmpty {
                 emptyStateView
+            } else if vm.unipackItems.isEmpty && !vm.searchQuery.isEmpty {
+                searchEmptyView
             } else {
-                sortBar
-                if vm.unipackItems.isEmpty && !vm.searchQuery.isEmpty {
-                    searchEmptyView
-                } else {
-                    packList
-                }
+                packList
             }
         }
     }
 
-    // MARK: - Sort Bar
+    // MARK: - Top Bar
 
     @State private var showSearch = false
 
-    private var sortBar: some View {
+    /// Settings stays reachable on every home state; sort and search only appear once there is a list.
+    private func topBar(showsListControls: Bool) -> some View {
         VStack(spacing: 4) {
             HStack {
-                HStack(spacing: 0) {
-                    Menu {
-                        ForEach(MainViewModel.SortMethod.allCases, id: \.rawValue) { method in
-                            Button(method.displayName) {
-                                vm.updateSortMethod(method)
-                            }
-                        }
-                    } label: {
-                        Text(vm.sortMethod.displayName)
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppColors.textPrimary)
-                            .padding(.leading, 10)
-                            .padding(.vertical, 4)
-                    }
-
-                    Button {
-                        vm.toggleSortOrder()
-                    } label: {
-                        Image(systemName: vm.sortAscending ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 18))
-                            .foregroundStyle(AppColors.textPrimary)
-                            .padding(.trailing, 10)
-                            .padding(.vertical, 4)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
+                if showsListControls {
+                    sortControls
                 }
-                .background(AppColors.darkSurfaceHigh)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 Spacer()
 
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showSearch.toggle()
-                        if !showSearch {
-                            vm.searchQuery = ""
-                            vm.refreshList()
-                        }
-                    }
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 20))
-                        .foregroundStyle(showSearch ? AppColors.blue : AppColors.textPrimary)
+                if showsListControls {
+                    searchToggle
                 }
-                .frame(width: 36, height: 36)
+
+                SettingsButton {
+                    router.navigate(to: .settings)
+                }
             }
 
-            if showSearch {
+            if showsListControls && showSearch {
                 SearchBar(
                     text: Binding(
                         get: { vm.searchQuery },
@@ -340,6 +312,54 @@ struct MainView: View {
             }
         }
         .padding(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 8))
+    }
+
+    private var sortControls: some View {
+        HStack(spacing: 0) {
+            Menu {
+                ForEach(MainViewModel.SortMethod.allCases, id: \.rawValue) { method in
+                    Button(method.displayName) {
+                        vm.updateSortMethod(method)
+                    }
+                }
+            } label: {
+                Text(vm.sortMethod.displayName)
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .padding(.leading, 10)
+                    .padding(.vertical, 4)
+            }
+
+            Button {
+                vm.toggleSortOrder()
+            } label: {
+                Image(systemName: vm.sortAscending ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 18))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .padding(.trailing, 10)
+                    .padding(.vertical, 4)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+        }
+        .background(AppColors.darkSurfaceHigh)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var searchToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showSearch.toggle()
+                if !showSearch {
+                    vm.searchQuery = ""
+                    vm.refreshList()
+                }
+            }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 20))
+                .foregroundStyle(showSearch ? AppColors.blue : AppColors.textPrimary)
+        }
+        .frame(width: 36, height: 36)
     }
 
     // MARK: - Pack List
@@ -475,6 +495,29 @@ struct MainView: View {
             }
             .accessibilityIdentifier("main.guide.import")
         }
+    }
+}
+
+// MARK: - Settings Button
+
+private struct SettingsButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(String(localized: "setting"), systemImage: "gearshape")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppColors.textPrimary)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AppColors.darkSurfaceHigh)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        // Existing and pending UI tests find the home screen through this identifier.
+        .accessibilityIdentifier("gearshape")
     }
 }
 

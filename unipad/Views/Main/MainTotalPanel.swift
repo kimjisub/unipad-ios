@@ -6,16 +6,31 @@ struct MainTotalPanel: View {
     let unipackCapacity: String?
     let themeName: String?
     let updateAvailable: Bool
-    var onSettingsClick: () -> Void
+    let recentPacks: [UniPackItem]
+    var onRecentPackClick: (UniPackItem) -> Void
     var onUpdateClick: () -> Void
 
     private var versionString: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
 
+    /// Short screens drop recent packs one at a time rather than clipping the stats.
     var body: some View {
+        ViewThatFits(in: .vertical) {
+            ForEach((0...recentPacks.count).reversed(), id: \.self) { shown in
+                content(recentPacks: Array(recentPacks.prefix(shown)))
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppColors.darkSurface)
+        )
+    }
+
+    private func content(recentPacks: [UniPackItem]) -> some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer(minLength: 0)
 
             // Logo + version
             VStack(spacing: 8) {
@@ -47,29 +62,23 @@ struct MainTotalPanel: View {
             .background(AppColors.darkSurfaceHigh)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Spacer()
+            Spacer(minLength: 12)
 
-            // Bottom row: update + settings
-            HStack {
-                if updateAvailable {
+            if !recentPacks.isEmpty {
+                MainRecentPacksSection(items: recentPacks, onSelect: onRecentPackClick)
+            }
+
+            if updateAvailable {
+                HStack {
                     Text(String(localized: "update_available"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(AppColors.blue)
                         .onTapGesture(perform: onUpdateClick)
+                    Spacer()
                 }
-                Spacer()
-                Button(action: onSettingsClick) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 20))
-                        .foregroundStyle(AppColors.textPrimary)
-                }
+                .padding(.top, 8)
             }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(AppColors.darkSurface)
-        )
     }
 }
 
