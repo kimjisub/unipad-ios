@@ -43,7 +43,7 @@ struct UnipackListItemView: View {
                                     HStack(spacing: 0) {
                                         Image(systemName: "play.fill")
                                             .font(.system(size: 24))
-                                        Text("Play")
+                                        Text(String(localized: "unipack_play"))
                                             .font(.system(size: 13))
                                     }
                                     .foregroundStyle(.white)

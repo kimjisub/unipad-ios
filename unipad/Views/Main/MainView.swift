@@ -143,6 +143,11 @@ struct MainView: View {
         } message: {
             Text(String(localized: "doYouWantToDeleteUniPack"))
         }
+        .alert(String(localized: "error"), isPresented: $vm.deleteFailed) {
+            Button("OK") {}
+        } message: {
+            Text(String(localized: "errOccur"))
+        }
         .overlay {
             if showImportResult, let result = vm.importResult {
                 ZStack {
@@ -225,11 +230,7 @@ struct MainView: View {
                         themeName: vm.currentThemeName,
                         updateAvailable: vm.updateAvailable,
                         onSettingsClick: { router.navigate(to: .settings) },
-                        onUpdateClick: {
-                            if let url = URL(string: "https://apps.apple.com/app/unipad/id1668033585") {
-                                PlatformHelpers.openURL(url)
-                            }
-                        }
+                        onUpdateClick: { PlatformHelpers.openURL(Self.appStoreURL) }
                     )
                     .transition(.opacity)
                 }
@@ -415,13 +416,27 @@ struct MainView: View {
         }
     }
 
+    /// Centred when it fits; on short screens the same content scrolls instead of being clipped.
     private var emptyStateView: some View {
-        VStack {
-            Spacer()
-            guidingActionsRow
-                .padding(.horizontal, 16)
-            Spacer()
+        ViewThatFits(in: .vertical) {
+            VStack {
+                Spacer(minLength: 0)
+                emptyStateContent
+                Spacer(minLength: 0)
+            }
+            ScrollView {
+                emptyStateContent
+            }
         }
+    }
+
+    private var emptyStateContent: some View {
+        VStack(spacing: 12) {
+            FirstPackGuide()
+            guidingActionsRow
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
     }
 
     /// The only entry points to the store and to file import on the home screen.
@@ -447,6 +462,53 @@ struct MainView: View {
 }
 
 // MARK: - Guiding Chip
+
+/// Tells someone with an empty library how to get a pack and start playing.
+private struct FirstPackGuide: View {
+    static let getStartedURL = URL(string: "https://unipad.io/docs/get-started")!
+
+    private let stepKeys: [String] = [
+        "main_empty_step_get_pack",
+        "main_empty_step_play",
+        "main_empty_step_no_launchpad",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(String(localized: "main_empty_title"))
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(AppColors.white)
+
+            ForEach(Array(stepKeys.enumerated()), id: \.offset) { index, key in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(index + 1).")
+                    // LocalizedStringKey renders the **bold** button names in the strings.
+                    Text(LocalizedStringKey(key))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(AppColors.textPrimary)
+            }
+
+            Button {
+                PlatformHelpers.openURL(Self.getStartedURL)
+            } label: {
+                HStack(spacing: 4) {
+                    Text(String(localized: "main_empty_guide_link"))
+                    Image(systemName: "arrow.up.right")
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppColors.orange)
+            }
+            .accessibilityIdentifier("main.guide.getStarted")
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(AppColors.darkSurfaceHigh.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
 
 private struct GuidingChip: View {
     let icon: String
@@ -494,3 +556,6 @@ private final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked
     }
 }
 
+extension MainView {
+    static let appStoreURL = URL(string: "https://apps.apple.com/app/id6760479102")!
+}

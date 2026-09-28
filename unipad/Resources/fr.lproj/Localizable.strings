@@ -111,6 +111,12 @@
 "guide_download_new" = "Télécharger de nouveaux packs";
 "guide_import_external" = "Importer les packs téléchargés";
 "guide_restore_packs" = "Récupérer les packs manquants";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "Connexion au launchpad…";
@@ -268,5 +274,7 @@
 "settings_midi_copy_log" = "Copier le journal";
 "settings_midi_clear_log" = "Effacer";
 "import_no_file_access" = "Impossible d'obtenir l'autorisation de lire ce fichier.";
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Impossible de charger ou d'enregistrer les signets et le nombre de lectures pour le moment. Vos modifications seront perdues à la fermeture d'UniPad.";
 "temporary_store_notice_dismiss" = "Fermer";

@@ -35,7 +35,7 @@ final class DesignScreenshots: XCTestCase {
         // back is the exception, handled in `back(to:_:)`.
         continueAfterFailure = true
         app = XCUIApplication()
-        app.launchArguments += ["-UniPadFirebaseLocalOnly", "YES"]
+        app.launchArguments += UITestSupport.englishLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }

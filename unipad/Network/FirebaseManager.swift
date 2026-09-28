@@ -26,7 +26,9 @@ protocol FirestoreServiceProtocol: Sendable {
 
 /// Protocol for Firebase Cloud Messaging token management.
 protocol FCMServiceProtocol: Sendable {
-    func getToken() async throws -> String
+    /// Whether FCM addresses this install by installation ID instead of a registration token.
+    var usesInstallationID: Bool { get }
+    func register() async throws -> PushRegistration
     func subscribeToTopic(_ topic: String) async throws
     func unsubscribeFromTopic(_ topic: String) async throws
 }
@@ -163,10 +165,14 @@ final class RealtimeDatabaseService: FirestoreServiceProtocol {
 
 /// Stub FCM service. Replace with real Firebase implementation.
 final class FCMServiceStub: FCMServiceProtocol {
-    func getToken() async throws -> String {
-        // TODO: Implement with Firebase Messaging SDK
-        // return try await Messaging.messaging().token()
-        return ""
+    let usesInstallationID: Bool
+
+    init(usesInstallationID: Bool = false) {
+        self.usesInstallationID = usesInstallationID
+    }
+
+    func register() async throws -> PushRegistration {
+        throw PushRegistrationError.unavailable
     }
 
     func subscribeToTopic(_ topic: String) async throws {
@@ -230,18 +236,14 @@ final class AnalyticsServiceLive: AnalyticsServiceProtocol, @unchecked Sendable 
 
 #if canImport(FirebaseMessaging)
 final class MessagingServiceLive: NSObject, FCMServiceProtocol, @unchecked Sendable {
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "FCM")
+    private let registrationClient = FirebaseMessagingRegistrationClient()
 
-    func getToken() async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            Messaging.messaging().token { token, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                continuation.resume(returning: token ?? "")
-            }
-        }
+    var usesInstallationID: Bool {
+        registrationClient.isInstallationIdEnabled
+    }
+
+    func register() async throws -> PushRegistration {
+        try await PushRegistrar(client: registrationClient).register()
     }
 
     func subscribeToTopic(_ topic: String) async throws {
@@ -266,10 +268,6 @@ final class MessagingServiceLive: NSObject, FCMServiceProtocol, @unchecked Senda
                 }
             }
         }
-    }
-
-    func onNewRegistrationToken(_ token: String?) {
-        logger.info("FCM registration token refreshed: \(token ?? "<nil>")")
     }
 }
 #endif
@@ -323,6 +321,18 @@ enum FirebaseRuntime {
         return false
 #endif
     }()
+
+    /// Debug-only, for UI tests: a local-only run presents the installation-ID model with the stub,
+    /// not Firebase, behind it.
+    static let fakeInstallationIdLaunchArgument = "UniPadFakeInstallationIdModel"
+
+    static let fakesInstallationIdModel: Bool = {
+#if DEBUG
+        return isLocalOnly && UserDefaults.standard.bool(forKey: fakeInstallationIdLaunchArgument)
+#else
+        return false
+#endif
+    }()
 }
 
 // MARK: - Firebase Manager
@@ -344,7 +354,7 @@ final class FirebaseManager: ObservableObject {
     private init() {
         self.firestore = RealtimeDatabaseService()
         if FirebaseRuntime.isLocalOnly {
-            self.messaging = FCMServiceStub()
+            self.messaging = FCMServiceStub(usesInstallationID: FirebaseRuntime.fakesInstallationIdModel)
             self.analytics = AnalyticsServiceStub()
             self.crashlytics = CrashlyticsServiceStub()
             self.remoteConfig = RemoteConfigServiceStub()
@@ -382,10 +392,18 @@ final class FirebaseManager: ObservableObject {
     }
 
 #if canImport(FirebaseMessaging)
+    private var registrationCallbacks: PushRegistrationCallbackRecorder {
+        PushRegistrationCallbackRecorder(analytics: analytics) { [logger] message in
+            logger.info("\(message, privacy: .public)")
+        }
+    }
+
     func onMessagingTokenRefreshed(_ token: String?) {
-        (messaging as? MessagingServiceLive)?.onNewRegistrationToken(token)
-        analytics.logEvent(name: "fcm_token_refreshed", parameters: ["has_token": token != nil])
-        logger.info("FCM token refreshed callback received")
+        registrationCallbacks.registrationTokenRefreshed(token)
+    }
+
+    func onMessagingInstallationRegistered(_ installationID: String?) {
+        registrationCallbacks.installationRegistered(installationID)
     }
 #endif
 }

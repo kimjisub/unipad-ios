@@ -18,7 +18,7 @@ final class HomeGuidingCardsTests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
-        app.launchArguments += ["-UniPadFirebaseLocalOnly", "YES"]
+        app.launchArguments += UITestSupport.englishLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "home never appeared")

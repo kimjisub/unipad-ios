@@ -111,6 +111,12 @@
 "guide_download_new" = "Mag-download ng bagong packs";
 "guide_import_external" = "I-import ang na-download na packs";
 "guide_restore_packs" = "I-recover ang nawawalang packs";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "Kumokonekta sa launchpad…";
@@ -268,5 +274,7 @@
 "settings_midi_copy_log" = "Kopyahin ang tala";
 "settings_midi_clear_log" = "Linisin";
 "import_no_file_access" = "Hindi makuha ang pahintulot para basahin ang file na iyon.";
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Hindi ma-load o ma-save ang mga bookmark at bilang ng paglalaro ngayon. Mawawala ang iyong mga pagbabago kapag isinara ang UniPad.";
 "temporary_store_notice_dismiss" = "Isara";

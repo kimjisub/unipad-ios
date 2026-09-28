@@ -111,6 +111,12 @@
 "guide_download_new" = "Scarica nuovi pack";
 "guide_import_external" = "Importa pack scaricati";
 "guide_restore_packs" = "Recupera pack mancanti";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "Connessione launchpad…";
@@ -268,5 +274,7 @@
 "settings_midi_copy_log" = "Copia registro";
 "settings_midi_clear_log" = "Cancella";
 "import_no_file_access" = "Non è stato possibile ottenere il permesso di leggere quel file.";
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Al momento non è possibile caricare o salvare i segnalibri e il numero di riproduzioni. Le modifiche che fai andranno perse alla chiusura di UniPad.";
 "temporary_store_notice_dismiss" = "Chiudi";

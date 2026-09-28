@@ -1,7 +1,12 @@
 import Foundation
 import SwiftData
 
-final class UnipackRepository: Sendable {
+/// Removes a pack's saved row (bookmark, play count, last opened date).
+protocol UnipackRecordRemoving {
+    @MainActor func delete(id: String) throws
+}
+
+final class UnipackRepository: UnipackRecordRemoving, Sendable {
     private let modelContainer: ModelContainer
 
     init(modelContainer: ModelContainer) {
@@ -57,6 +62,13 @@ final class UnipackRepository: Sendable {
         guard let entity = try find(id: id) else { return }
         entity.openCount += 1
         entity.lastOpenedAt = Date()
+        try modelContainer.mainContext.save()
+    }
+
+    @MainActor
+    func delete(id: String) throws {
+        guard let entity = try find(id: id) else { return }
+        modelContainer.mainContext.delete(entity)
         try modelContainer.mainContext.save()
     }
 }

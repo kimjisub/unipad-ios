@@ -96,8 +96,8 @@ class UniPackFolder: UniPack {
         }
     }
 
-    override func delete() {
-        try? FileManager.default.removeItem(at: rootFolder)
+    override func delete() throws {
+        try FileManager.default.removeItem(at: rootFolder)
     }
 
     override func getPathString() -> String {

@@ -111,6 +111,12 @@
 "guide_download_new" = "pack အသစ်များ ဒေါင်းလုဒ်လုပ်ရန်";
 "guide_import_external" = "ဒေါင်းလုဒ်လုပ်ထားသော pack များ တင်သွင်းရန်";
 "guide_restore_packs" = "ပျောက်ဆုံးနေသော pack များ ပြန်လည်ရယူရန်";
+"main_empty_title" = "Play your first UniPack";
+"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
+"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
+"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
+"main_empty_guide_link" = "Getting started guide";
+"unipack_play" = "Play";
 
 /* Launchpad */
 "launchpadConnecting" = "Launchpad ချိတ်ဆက်နေသည်…";
@@ -268,5 +274,7 @@
 "settings_midi_copy_log" = "မှတ်တမ်း ကူးယူရန်";
 "settings_midi_clear_log" = "ရှင်းလင်းရန်";
 "import_no_file_access" = "ထိုဖိုင်ကို ဖတ်ရန် ခွင့်ပြုချက် မရရှိပါ။";
+"import_pack_confirm" = "Install this pack?";
+"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "ယခု စာညှပ်များနှင့် ဖွင့်သည့်အကြိမ်များကို ဖွင့်ယူ၍ သို့မဟုတ် သိမ်းဆည်း၍ မရပါ။ UniPad ကို ပိတ်လိုက်ပါက ပြုလုပ်ထားသော ပြောင်းလဲမှုများ ပျောက်သွားပါမည်။";
 "temporary_store_notice_dismiss" = "ပိတ်ရန်";
