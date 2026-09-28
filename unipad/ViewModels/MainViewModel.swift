@@ -328,8 +328,10 @@ final class MainViewModel {
         let pack = UniPackFolder(rootFolder: folderURL)
         pack.load()
         pack.loadDetail()
-        if pack.criticalError {
-            importResult = .warning(pack.errorDetail ?? String(localized: "errOccur"))
+        // The importer already rejected critical errors, so any detail left is a soft parser error:
+        // the pack is kept and shown as a warning, as in showImportResultForNew.
+        if let detail = pack.errorDetail {
+            importResult = .warning(detail)
         } else {
             importResult = .success(pack)
         }
