@@ -1,4 +1,4 @@
-import CoreGraphics
+import SwiftUI
 import Testing
 @testable import unipad
 
@@ -45,6 +45,32 @@ struct PlayLayoutTests {
         #expect(l.padCenterX < width / 2)
         #expect(abs(l.padCenterX + l.gridWidth / 2 + l.chainWidth - (width - menuStrip)) < 0.001)
         assertChainColumnsFit(l, width: width)
+    }
+
+    /// iPhone 16e landscape keeps 21pt at the bottom for the home indicator: the grid stays on the
+    /// screen's centre line but in the middle of the safe area's height, so neither it nor its
+    /// chain rows reach below the safe area (unipad-ios#37).
+    @Test func padsKeepClearOfTheHomeIndicatorWhenTheSafeAreaIsLopsided() {
+        let insets = EdgeInsets(top: 0, leading: 47, bottom: 21, trailing: 47)
+        for bottomRow in [false, true] {
+            let l = PlayLayout(viewSize: CGSize(width: 750, height: 369), buttonX: 8, buttonY: 8, showAllSides: bottomRow, reservedWidth: menuStrip, safeAreaInsets: insets)
+            let chainRowHeight = bottomRow ? l.chainHeight : 0
+            #expect(l.padCenterX + insets.leading == CGFloat(844) / 2)
+            #expect(l.padCenterY - l.gridHeight / 2 - chainRowHeight >= -0.001)
+            #expect(l.padCenterY + l.gridHeight / 2 + chainRowHeight <= 369.001)
+            #expect(l.cellSize == CGFloat(369) / CGFloat(bottomRow ? 10 : 8))
+            assertChainColumnsFit(l, width: 750)
+        }
+    }
+
+    /// On iPhone 16e the pads' centre is 10.5pt above the screen's, so a 7:2 theme image grows from
+    /// the screen's height to 411pt to reach the bottom edge from there.
+    @Test func themeImageCoversTheScreenFromThePadsCentre() {
+        let size = PlayLayout.coverSize(of: CGSize(width: 2520, height: 720), centredOn: CGPoint(x: 422, y: 184.5), in: CGSize(width: 844, height: 390))
+        #expect(abs(size.height - 411) < 0.001)
+        #expect(abs(size.width - 411 * 3.5) < 0.001)
+        let centred = PlayLayout.coverSize(of: CGSize(width: 2520, height: 720), centredOn: CGPoint(x: 422, y: 195), in: CGSize(width: 844, height: 390))
+        #expect(abs(centred.height - 390) < 0.001)
     }
 
     @Test func largeGridsStayInsideTheScreen() {

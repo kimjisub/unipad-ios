@@ -109,6 +109,33 @@ enum UITestSupport {
         list.descendants(matching: .any).matching(identifier: "store.row")
     }
 
+    /// Sets a play option switch in the open option panel. The row is one combined
+    /// accessibility element labelled with the option's name.
+    /// The option panel scrolls on a landscape iPhone, so the switch is first brought into view.
+    /// Each row carries a long-press gesture over its whole width, so only the toggle at the
+    /// trailing edge flips the value.
+    static func setPlayOption(_ label: String, on: Bool, in app: XCUIApplication) {
+        let row = app.switches[label].firstMatch
+        guard row.waitForExistence(timeout: 5) else {
+            XCTFail("no \(label) option in the menu")
+            return
+        }
+        let panel = app.scrollViews.firstMatch
+        let inView = { panel.frame.contains(row.frame) }
+        for _ in 0..<6 where !inView() {
+            if row.frame.midY < panel.frame.midY { panel.swipeDown(velocity: .slow) } else { panel.swipeUp(velocity: .slow) }
+        }
+        guard inView() else {
+            XCTFail("\(label) option never scrolled into view")
+            return
+        }
+
+        let isOn: () -> Bool = { (row.value as? String) == "1" }
+        guard isOn() != on else { return }
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(isOn(), on, "\(label) option did not switch")
+    }
+
     static func attachScreenshot(_ name: String, to testCase: XCTestCase) {
         let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         a.name = name

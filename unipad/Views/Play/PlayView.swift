@@ -18,7 +18,7 @@ struct PlayView: View {
             errorOverlay
         }
         .background {
-            background.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
         }
         .platformNavigationBarHidden(true)
         #if canImport(UIKit)
@@ -97,54 +97,51 @@ struct PlayView: View {
 
     // MARK: - Background
 
-    @ViewBuilder
-    private var background: some View {
-        if let playbg = theme.playbg {
-            Image(platformImage: playbg)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .ignoresSafeArea()
-        } else {
-            Color.black.ignoresSafeArea()
-        }
-
-        if let customLogo = theme.customLogo {
-            VStack {
-                HStack {
-                    Spacer()
-                    Image(platformImage: customLogo)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 90)
-                        .padding(.top, 16)
-                        .padding(.trailing, 16)
-                }
-                Spacer()
-            }
-        }
+    /// The theme image centred on the pads, so the body it paints in the middle sits under them.
+    /// The pads keep to the safe area, which ends above the home indicator, so this centre is a
+    /// little above the screen's and the image grows just enough to still cover the screen.
+    /// It is drawn from the same layout while the pack loads, so it holds still when the pads appear.
+    private func themeBody(_ playbg: PlatformImage, layout: PlayLayout, in geometry: GeometryProxy) -> some View {
+        let insets = geometry.safeAreaInsets
+        let size = PlayLayout.coverSize(
+            of: playbg.size,
+            centredOn: CGPoint(x: layout.padCenterX + insets.leading, y: layout.padCenterY + insets.top),
+            in: CGSize(width: geometry.size.width + insets.leading + insets.trailing, height: geometry.size.height + insets.top + insets.bottom)
+        )
+        return Image(platformImage: playbg)
+            .resizable()
+            .frame(width: size.width, height: size.height)
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("playBackground")
+            .position(x: layout.padCenterX, y: layout.padCenterY)
     }
 
     // MARK: - Play Content
 
-    @ViewBuilder
     private var playContent: some View {
-        if vm.startReady, let unipack = vm.unipack {
-            GeometryReader { geometry in
-                let w = geometry.size.width
-                let h = geometry.size.height
-                let showAllSides = vm.scbProLightMode.checked
-                // Android shows the bottom row whenever the pack has more than 8 chains; here
-                // chains 9-16 were unreachable on screen without Pro Light Mode.
-                let showBottomRow = showAllSides || unipack.chain > PlayViewModel.chainIndexOffset
-                let layout = PlayLayout(viewSize: CGSize(width: w, height: h), buttonX: unipack.buttonX, buttonY: unipack.buttonY, showAllSides: showBottomRow, reservedWidth: chromeStripWidth)
-                let centerX = layout.padCenterX
-                let centerY = h / 2
-                let padLeft = centerX - layout.gridWidth / 2
+        // The reader keeps to the safe area, so the pads, menu and logo stay clear of the notch
+        // and the home indicator.
+        GeometryReader { geometry in
+            let showAllSides = vm.scbProLightMode.checked
+            let layout = playLayout(for: vm.unipack, in: geometry)
 
-                playContentGrid(unipack: unipack, layout: layout, centerX: centerX, centerY: centerY, padLeft: padLeft, showAllSides: showAllSides)
-                playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: w, viewHeight: h, centerY: centerY)
+            if let playbg = theme.playbg {
+                themeBody(playbg, layout: layout, in: geometry)
+            }
+            if vm.startReady, let unipack = vm.unipack {
+                let padLeft = layout.padCenterX - layout.gridWidth / 2
+                playContentGrid(unipack: unipack, layout: layout, centerX: layout.padCenterX, centerY: layout.padCenterY, padLeft: padLeft, showAllSides: showAllSides)
+                playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: geometry.size.width, viewHeight: geometry.size.height, centerY: geometry.size.height / 2)
             }
         }
+    }
+
+    /// Lays out `unipack`'s pads, or an 8x8 pack's until the pack has been read.
+    private func playLayout(for unipack: UniPack?, in geometry: GeometryProxy) -> PlayLayout {
+        // Android shows the bottom row whenever the pack has more than 8 chains; here
+        // chains 9-16 were unreachable on screen without Pro Light Mode.
+        let showBottomRow = vm.scbProLightMode.checked || (unipack?.chain ?? 0) > PlayViewModel.chainIndexOffset
+        return PlayLayout(viewSize: geometry.size, buttonX: unipack?.buttonX ?? 8, buttonY: unipack?.buttonY ?? 8, showAllSides: showBottomRow, reservedWidth: chromeStripWidth, safeAreaInsets: geometry.safeAreaInsets)
     }
 
     @ViewBuilder
@@ -246,6 +243,7 @@ struct PlayView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: maxLogoWidth, height: 40)
                 .position(x: viewWidth - chromeStripWidth - maxLogoWidth / 2 - 8, y: 28)
+                .accessibilityIdentifier("playLogo")
         }
 
         if !vm.isOptionWindowVisible && vm.optionViewVisible {
@@ -467,11 +465,14 @@ struct PlayLayout {
     let gridHeight: CGFloat
     let chainWidth: CGFloat
     let chainHeight: CGFloat
-    /// The pad grid sits on the screen's centre line, like Android. It moves left only as far as
-    /// needed to keep the right chain column clear of the trailing strip reserved for the menu.
+    /// The pad grid sits on the screen's centre line, like Android, and in the middle of the safe
+    /// area's height, clear of the home indicator. It moves left only as far as needed to keep the
+    /// right chain column clear of the trailing strip reserved for the menu. Both are in
+    /// `viewSize`'s coordinates, the safe area, which the screen overhangs by `safeAreaInsets`.
     let padCenterX: CGFloat
+    let padCenterY: CGFloat
 
-    init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false, reservedWidth: CGFloat = 0) {
+    init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false, reservedWidth: CGFloat = 0, safeAreaInsets: EdgeInsets = EdgeInsets()) {
         let chainColumns = 2
         let chainRows = showAllSides ? 2 : 0
         let totalWidth = max(viewSize.width - reservedWidth, 0)
@@ -485,6 +486,18 @@ struct PlayLayout {
         gridHeight = cellSize * CGFloat(buttonX)
         chainWidth = cellSize
         chainHeight = cellSize
-        padCenterX = min(viewSize.width / 2, viewSize.width - reservedWidth - chainWidth - gridWidth / 2)
+        let screenCenterX = (viewSize.width + safeAreaInsets.trailing - safeAreaInsets.leading) / 2
+        padCenterX = min(screenCenterX, viewSize.width - reservedWidth - chainWidth - gridWidth / 2)
+        padCenterY = viewSize.height / 2
+    }
+
+    /// The size at which an image of `imageSize`, centred on `center`, covers all of `screenSize`
+    /// without being stretched.
+    static func coverSize(of imageSize: CGSize, centredOn center: CGPoint, in screenSize: CGSize) -> CGSize {
+        guard imageSize.width > 0, imageSize.height > 0 else { return screenSize }
+        let halfWidth = max(center.x, screenSize.width - center.x)
+        let halfHeight = max(center.y, screenSize.height - center.y)
+        let scale = max(halfWidth * 2 / imageSize.width, halfHeight * 2 / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
     }
 }
