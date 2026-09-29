@@ -70,9 +70,9 @@ final class DesignScreenshots: XCTestCase {
     /// then shot and asserted on whatever screen it was left on. A back that does
     /// not arrive stops the walk instead.
     private func back(to marker: XCUIElement, _ screen: String) throws {
-        let chevron = app.buttons["chevron.left"].firstMatch
+        let chevron = UITestSupport.backButton(in: app)
         let tapped = chevron.waitForExistence(timeout: 5) && chevron.isHittable
-        if tapped { chevron.tap() }
+        if tapped { UITestSupport.tapBack(in: app) }
         guard tapped, marker.waitForExistence(timeout: 10) else {
             dumpTree("00-tree-back-failed-\(screen)")
             throw BackFailed(screen: screen)

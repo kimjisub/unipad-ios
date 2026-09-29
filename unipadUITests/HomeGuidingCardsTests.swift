@@ -29,7 +29,7 @@ final class HomeGuidingCardsTests: XCTestCase {
     }
 
     private var home: XCUIElement { app.buttons["gearshape"] }
-    private var backButton: XCUIElement { app.buttons["chevron.left"].firstMatch }
+    private var backButton: XCUIElement { UITestSupport.backButton(in: app) }
 
     /// The top bar with search only exists once there is at least one pack.
     private func requireTopBar() throws -> XCUIElement {
@@ -56,7 +56,7 @@ final class HomeGuidingCardsTests: XCTestCase {
         XCTAssertTrue(backButton.waitForExistence(timeout: 10), "download card did not open the store")
         XCTAssertFalse(home.exists, "still on home after tapping the download card")
         UITestSupport.attachScreenshot("store-from-card", to: self)
-        backButton.tap()
+        UITestSupport.tapBack(in: app)
         XCTAssertTrue(home.waitForExistence(timeout: 10), "back from the store did not arrive home")
     }
 
@@ -107,7 +107,7 @@ final class HomeGuidingCardsTests: XCTestCase {
     func testSettingsStillOpensFromHome() throws {
         home.tap()
         XCTAssertTrue(app.buttons["Information"].waitForExistence(timeout: 10), "settings never opened")
-        backButton.tap()
+        UITestSupport.tapBack(in: app)
         XCTAssertTrue(home.waitForExistence(timeout: 10), "back from settings did not arrive home")
     }
 

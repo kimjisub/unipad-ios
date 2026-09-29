@@ -30,7 +30,7 @@ final class SettingsBackNavigationTests: XCTestCase {
 
     private var home: XCUIElement { app.buttons["gearshape"] }
     private var settings: XCUIElement { app.buttons["Information"] }
-    private var backButton: XCUIElement { app.buttons["chevron.left"].firstMatch }
+    private var backButton: XCUIElement { UITestSupport.backButton(in: app) }
 
     private func openSettings() {
         home.tap()
@@ -48,7 +48,7 @@ final class SettingsBackNavigationTests: XCTestCase {
     private func tapBack(from screen: String, expecting marker: XCUIElement) {
         XCTAssertTrue(backButton.waitForExistence(timeout: 5), "\(screen) has no back button")
         XCTAssertTrue(backButton.isHittable, "\(screen) back button is not hittable")
-        backButton.tap()
+        UITestSupport.tapBack(in: app)
         XCTAssertTrue(marker.waitForExistence(timeout: 10), "back from \(screen) did not arrive")
     }
 

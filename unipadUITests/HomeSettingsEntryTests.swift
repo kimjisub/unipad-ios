@@ -65,9 +65,9 @@ final class HomeSettingsEntryTests: XCTestCase {
         XCTAssertTrue(app.buttons[language.information].waitForExistence(timeout: 10),
                       "[\(language.code)] settings never opened")
         UITestSupport.attachScreenshot("\(language.code)-settings", to: self)
-        let back = app.buttons["chevron.left"].firstMatch
+        let back = UITestSupport.backButton(in: app)
         XCTAssertTrue(back.waitForExistence(timeout: 5), "[\(language.code)] settings has no back button")
-        back.tap()
+        UITestSupport.tapBack(in: app)
         XCTAssertTrue(settingsButton.waitForExistence(timeout: 10), "[\(language.code)] back from settings never reached home")
     }
 

@@ -29,7 +29,7 @@ final class AppLanguageTests: XCTestCase {
     }
 
     private var home: XCUIElement { app.buttons["gearshape"] }
-    private var backButton: XCUIElement { app.buttons["chevron.left"].firstMatch }
+    private var backButton: XCUIElement { UITestSupport.backButton(in: app) }
 
     private func shot(_ language: Language, _ name: String) {
         UITestSupport.attachScreenshot("\(language.code)-\(name)", to: self)
@@ -37,7 +37,7 @@ final class AppLanguageTests: XCTestCase {
 
     private func back(_ language: Language, from screen: String) {
         XCTAssertTrue(backButton.waitForExistence(timeout: 5), "[\(language.code)] no back on \(screen)")
-        backButton.tap()
+        UITestSupport.tapBack(in: app)
         XCTAssertTrue(home.waitForExistence(timeout: 10), "[\(language.code)] back from \(screen) never reached home")
     }
 
@@ -60,7 +60,7 @@ final class AppLanguageTests: XCTestCase {
                       "[\(language.code)] theme never opened")
         shot(language, "03-theme")
         XCTAssertTrue(backButton.waitForExistence(timeout: 5))
-        backButton.tap()
+        UITestSupport.tapBack(in: app)
         XCTAssertTrue(information.waitForExistence(timeout: 10), "[\(language.code)] back from theme never reached settings")
         back(language, from: "settings")
 

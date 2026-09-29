@@ -42,6 +42,29 @@ enum UITestSupport {
         }
     }
 
+    /// The back chevron every pushed screen draws for itself (the navigation bar is hidden).
+    static func backButton(in app: XCUIApplication) -> XCUIElement {
+        app.buttons["chevron.left"].firstMatch
+    }
+
+    /// Taps the middle of the part of `element` that is on screen, the way a finger would.
+    ///
+    /// On a screen with no side safe area (iPhone SE in landscape) Settings' back
+    /// button starts at x = -4 because its 44pt tap area reaches past the glyph.
+    /// On iOS 27 `XCUIElement.tap()` on that button never reaches the app, while
+    /// touches anywhere inside it (x = 2 to 46) go back home, so the tap is sent to
+    /// a screen point instead.
+    static func tapOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+        let visible = element.frame.intersection(app.windows.firstMatch.frame)
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: visible.midX, dy: visible.midY))
+            .tap()
+    }
+
+    static func tapBack(in app: XCUIApplication) {
+        tapOnScreen(backButton(in: app), in: app)
+    }
+
     /// The home screen's download and import cards. They sit in the middle of an
     /// empty list and after the last pack of a full one, so a long list has to be
     /// scrolled before the card can be tapped. Packs load after home appears, so
@@ -68,7 +91,7 @@ enum UITestSupport {
 
     /// Opens the store from the home card and waits until its list has rows.
     static func openStore(in app: XCUIApplication, testCase: XCTestCase) -> XCUIElement {
-        let back = app.buttons["chevron.left"].firstMatch
+        let back = backButton(in: app)
         for _ in 0..<3 where !back.exists {
             revealHomeCard(.download, in: app).tap()
             _ = back.waitForExistence(timeout: 5)
