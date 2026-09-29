@@ -203,6 +203,10 @@ final class MainViewModel {
 
             loadedItems = items
             applyListFilter()
+            // The reload replaced the selected pack's object, so its detail has to be read again.
+            if let selectedItem {
+                loadDetailIfNeeded(selectedItem)
+            }
             isRefreshing = false
         }
     }
@@ -401,8 +405,15 @@ struct UniPackItem: Identifiable, Hashable {
         self.createdAt = createdAt
     }
 
+    /// Compares the saved record too: `@Observable` skips notifying for an equal value, so a
+    /// reload that only changed the play count would otherwise never redraw the selected panel.
+    /// Identity alone is `id`.
     static func == (lhs: UniPackItem, rhs: UniPackItem) -> Bool {
         lhs.id == rhs.id
+            && lhs.isBookmarked == rhs.isBookmarked
+            && lhs.openCount == rhs.openCount
+            && lhs.lastOpenedAt == rhs.lastOpenedAt
+            && lhs.createdAt == rhs.createdAt
     }
 
     func hash(into hasher: inout Hasher) {

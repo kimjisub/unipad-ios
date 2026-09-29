@@ -96,6 +96,7 @@ struct MainPackPanel: View {
                         Text("\(item.openCount)")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(Color(hex: 0x1A1A1A))
+                            .accessibilityIdentifier("main.pack.playCount")
                     }
 
                     Spacer()
@@ -107,7 +108,8 @@ struct MainPackPanel: View {
                         )
                         DateRow(
                             label: String(localized: "MPP_lastPlayed"),
-                            value: formatDate(item.lastOpenedAt)
+                            value: formatDate(item.lastOpenedAt),
+                            valueIdentifier: "main.pack.lastPlayed"
                         )
                     }
                 }
@@ -162,6 +164,7 @@ struct MainPackPanel: View {
 private struct DateRow: View {
     let label: String
     let value: String
+    var valueIdentifier: String?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -171,6 +174,7 @@ private struct DateRow: View {
             Text(value)
                 .font(.system(size: 10))
                 .foregroundStyle(Color(hex: 0x333333))
+                .accessibilityIdentifier(valueIdentifier ?? "")
         }
     }
 }

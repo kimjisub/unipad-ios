@@ -176,6 +176,41 @@ struct MainSearchTests {
         #expect(vm.selectedItem == nil)
     }
 
+    /// Play records the open, and returning home reloads the list (`MainView.onAppear`);
+    /// the selected pack's panel has to be told about the new count and time.
+    @Test func returningFromPlayUpdatesSelectedPanel() async throws {
+        defer { cleanUp() }
+        try installLibrary()
+        await reload()
+        await type("alan")
+        let faded = try #require(vm.unipackItems.first { $0.unipack.title == "Faded" })
+        vm.toggleSelection(faded)
+
+        vm.recordOpen(faded)
+        var selectionChanged = false
+        withObservationTracking {
+            _ = vm.selectedItem
+        } onChange: {
+            selectionChanged = true
+        }
+        await reload()
+
+        let saved = try #require(try repo.find(id: faded.unipack.id))
+        #expect(saved.openCount == 1)
+        #expect(selectionChanged)
+        #expect(vm.selectedItem?.openCount == saved.openCount)
+        #expect(vm.selectedItem?.lastOpenedAt == saved.lastOpenedAt)
+        #expect(vm.searchQuery == "alan")
+        #expect(titles == ["Faded", "The Spectre"])
+        #expect(try repo.totalOpenCount() == 1)
+        // The reload made a fresh pack object; the panel must not stay on "Measuring".
+        let selected = try #require(vm.selectedItem)
+        for _ in 0..<1_000 where !selected.unipack.detailLoaded {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(selected.unipack.detailLoaded)
+    }
+
     @Test func recentPacksFollowSearch() async throws {
         defer { cleanUp() }
         try installLibrary()

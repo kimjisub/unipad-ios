@@ -44,6 +44,23 @@ final class MainSearchUITests: XCTestCase {
         searchField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
     }
 
+    private var panelPlayCount: XCUIElement {
+        app.staticTexts["main.pack.playCount"]
+    }
+
+    private var panelLastPlayed: XCUIElement {
+        app.staticTexts["main.pack.lastPlayed"]
+    }
+
+    /// The panel's date as the app formats it under `englishLaunchArguments()`.
+    private static func panelDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f.string(from: date)
+    }
+
     private func expectOnly(_ visible: [String], _ step: String) {
         for title in visible {
             XCTAssertTrue(row(title).waitForExistence(timeout: 5), "\(step): '\(title)' is missing")
@@ -90,6 +107,8 @@ final class MainSearchUITests: XCTestCase {
         search("김지섭")
         searchField.typeText("\n")
         row(Self.faded).tap()
+        XCTAssertTrue(panelPlayCount.waitForExistence(timeout: 5), "the selected pack's panel never showed its play count")
+        let countBeforePlay = try XCTUnwrap(Int(panelPlayCount.label), "play count '\(panelPlayCount.label)' is not a number")
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 5), "Play never appeared for the selected pack")
         play.tap()
@@ -103,6 +122,15 @@ final class MainSearchUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 10), "never returned home")
         expectOnly([Self.faded], "09-back-home-search-kept")
+        // Playing records one open; the panel still showing the old count is the bug this guards.
+        let expectedCount = "\(countBeforePlay + 1)"
+        let counted = NSPredicate(format: "label == %@", expectedCount)
+        let updated = expectation(for: counted, evaluatedWith: panelPlayCount)
+        let measured = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.staticTexts["Measuring"].firstMatch)
+        let waited = XCTWaiter().wait(for: [updated, measured], timeout: 10)
+        UITestSupport.attachScreenshot("09b-panel-after-play", to: self)
+        XCTAssertEqual(waited, .completed, "panel play count '\(panelPlayCount.label)' (expected \(expectedCount)) or its sound/LED counts never settled")
+        XCTAssertEqual(panelLastPlayed.label, Self.panelDate(Date()), "panel last played was not updated to today")
 
         clearSearch()
         expectOnly([Self.faded, Self.sunflower, Self.spring], "10-cleared-after-play")
