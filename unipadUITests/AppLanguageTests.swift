@@ -17,9 +17,10 @@ final class AppLanguageTests: XCTestCase {
     private struct Language {
         let code: String
         let locale: String
-        /// `settings_info` and `settings_theme` in that language's Localizable.strings.
+        /// `settings_info`, `settings_theme` and `unipack_play` in that language's Localizable.strings.
         let information: String
         let theme: String
+        let play: String
     }
 
     private var app: XCUIApplication!
@@ -69,36 +70,33 @@ final class AppLanguageTests: XCTestCase {
         shot(language, "04-store")
         back(language, from: "store")
 
-        // The file picker is system UI; its cancel button is in the simulator's language.
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let cancel = app.buttons
-            .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
-            .firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "[\(language.code)] the file picker never opened")
+        let cancel = UITestSupport.settledFilePickerCancelButton(in: app, timeout: 20)
         shot(language, "05-import")
+        guard let cancel else {
+            XCTFail("[\(language.code)] the file picker never settled full screen with its cancel button")
+            return
+        }
         cancel.tap()
-        XCTAssertTrue(home.waitForExistence(timeout: 10), "[\(language.code)] closing the file picker never reached home")
+        // Home stays in the tree under the picker, so only a hittable home means the picker closed.
+        XCTAssertTrue(UITestSupport.waitUntilHittable(home, timeout: 10),
+                      "[\(language.code)] closing the file picker never reached home")
 
-        // Selecting a pack reveals a play button in the flag at the row's leading
-        // edge. Its text is in the language under test, so it is found by where it
-        // sits: the button just before the row's title on the same line.
+        // Selecting a pack reveals a play button, labelled in the language under
+        // test, in the flag at the row's leading edge. Buttons come and go while
+        // the picker leaves and home settles, so both taps wait for their target
+        // to be hittable instead of reading the button list at a fixed moment.
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
         guard packTitles.count > 0 else {
             throw XCTSkip("no pack in the library, so pack selection and play were not walked")
         }
         let title = packTitles.element(boundBy: 0)
+        XCTAssertTrue(UITestSupport.waitUntilHittable(title, timeout: 10), "[\(language.code)] the pack row never settled on screen")
         title.tap()
-        sleep(1)
+        let play = app.buttons[language.play].firstMatch
+        let playReady = UITestSupport.waitUntilHittable(play, timeout: 10)
         shot(language, "06-pack-selected")
-        // The detail panel repeats the title, so every copy of it is tried.
-        let titleFrames = packTitles.allElementsBoundByIndex.map(\.frame)
-        let play = app.buttons.allElementsBoundByIndex.first { button in
-            let f = button.frame
-            return titleFrames.contains { row in
-                f.maxX <= row.minX && row.minX - f.maxX < 80 && f.minY < row.maxY && f.maxY > row.minY
-            }
-        }
-        guard let play else {
+        guard playReady else {
             let tree = XCTAttachment(string: app.debugDescription)
             tree.name = "\(language.code)-06-tree"
             tree.lifetime = .keepAlways
@@ -114,16 +112,16 @@ final class AppLanguageTests: XCTestCase {
 
     @MainActor
     func testKorean() throws {
-        try walk(in: Language(code: "ko", locale: "ko_KR", information: "정보", theme: "테마"))
+        try walk(in: Language(code: "ko", locale: "ko_KR", information: "정보", theme: "테마", play: "재생"))
     }
 
     @MainActor
     func testSpanish() throws {
-        try walk(in: Language(code: "es", locale: "es_ES", information: "Información", theme: "Tema"))
+        try walk(in: Language(code: "es", locale: "es_ES", information: "Información", theme: "Tema", play: "Reproducir"))
     }
 
     @MainActor
     func testGerman() throws {
-        try walk(in: Language(code: "de", locale: "de_DE", information: "Informationen", theme: "Design"))
+        try walk(in: Language(code: "de", locale: "de_DE", information: "Informationen", theme: "Design", play: "Play"))
     }
 }

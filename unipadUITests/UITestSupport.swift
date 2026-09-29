@@ -65,6 +65,45 @@ enum UITestSupport {
         tapOnScreen(backButton(in: app), in: app)
     }
 
+    /// Waits until `element` is on screen where a tap would reach it. An element
+    /// is listed while a system sheet still covers it or while its screen is
+    /// still settling; tapping it then makes XCUITest scroll to it first and the
+    /// tap goes nowhere.
+    static func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: element)
+        return XCTWaiter().wait(for: [hittable], timeout: timeout) == .completed
+    }
+
+    /// The system file picker's cancel button, once the picker has settled.
+    ///
+    /// The picker runs in its own process and lays itself out several times as it
+    /// opens: as a sheet, as a split view whose sidebar has a cancel button of its
+    /// own, and with a phone-width bar, before it fills the screen. Its cancel
+    /// button is listed at each of those places in turn, and XCUITest waits only
+    /// for the app to go idle, not the picker, so a tap aimed at an earlier layout
+    /// lands on empty space once the picker has moved on, and the picker stays
+    /// open. The button is returned only once it sits in the full-width bar the
+    /// picker ends in and has stopped moving. Its label is in the app's language.
+    static func settledFilePickerCancelButton(in app: XCUIApplication, timeout: TimeInterval) -> XCUIElement? {
+        let bar = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        let cancel = bar.buttons
+            .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
+            .firstMatch
+        let screenWidth = app.windows.firstMatch.frame.width
+        var lastFrame = CGRect.null
+        let settled = NSPredicate { _, _ in
+            guard cancel.exists, bar.frame.width == screenWidth else {
+                lastFrame = .null
+                return false
+            }
+            let frame = cancel.frame
+            defer { lastFrame = frame }
+            return frame == lastFrame
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: settled, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed ? cancel : nil
+    }
+
     /// The home screen's download and import cards. They sit in the middle of an
     /// empty list and after the last pack of a full one, so a long list has to be
     /// scrolled before the card can be tapped. Packs load after home appears, so
