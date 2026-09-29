@@ -86,10 +86,10 @@ final class LaunchpadProMK3Driver: BaseMidiDriver {
 
     override func sendFunctionKeyLed(f: Int, velocity: Int) {
         if (0...31).contains(f) {
-            sendSignal(cmd: UInt8(truncatingIfNeeded: Self.circleCode[f][0]),
-                       sig: UInt8(truncatingIfNeeded: Self.circleCode[f][1]),
-                       note: UInt8(truncatingIfNeeded: Self.circleCode[f][2]),
-                       velocity: UInt8(truncatingIfNeeded: velocity))
+            sendSignal(cmd: Self.circleCode[f][0],
+                       sig: Self.circleCode[f][1],
+                       note: Self.circleCode[f][2],
+                       velocity: velocity)
         } else if f == 32 || f == 99 {
             // Logo / Mode LED on Launchpad Pro MK3: CC 99 on Channel 1
             sendSignal(cmd: 11, sig: -80, note: 99, velocity: velocity)

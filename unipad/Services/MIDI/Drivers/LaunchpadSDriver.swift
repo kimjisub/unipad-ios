@@ -57,10 +57,10 @@ final class LaunchpadSDriver: BaseMidiDriver {
 
     override func sendFunctionKeyLed(f: Int, velocity: Int) {
         if (0...15).contains(f) {
-            sendSignal(cmd: UInt8(truncatingIfNeeded: Self.circleCode[f][0]),
-                       sig: UInt8(truncatingIfNeeded: Self.circleCode[f][1]),
-                       note: UInt8(truncatingIfNeeded: Self.circleCode[f][2]),
-                       velocity: UInt8(truncatingIfNeeded: Self.sCode(velocity)))
+            sendSignal(cmd: Self.circleCode[f][0],
+                       sig: Self.circleCode[f][1],
+                       note: Self.circleCode[f][2],
+                       velocity: Self.sCode(velocity))
         }
     }
 

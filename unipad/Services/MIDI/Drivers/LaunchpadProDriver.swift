@@ -73,17 +73,18 @@ final class LaunchpadProDriver: BaseMidiDriver {
 
     override func sendFunctionKeyLed(f: Int, velocity: Int) {
         if (0...31).contains(f) {
-            sendSignal(cmd: UInt8(truncatingIfNeeded: Self.circleCode[f][0]),
-                       sig: UInt8(truncatingIfNeeded: Self.circleCode[f][1]),
-                       note: UInt8(truncatingIfNeeded: Self.circleCode[f][2]),
-                       velocity: UInt8(truncatingIfNeeded: velocity))
+            sendSignal(cmd: Self.circleCode[f][0],
+                       sig: Self.circleCode[f][1],
+                       note: Self.circleCode[f][2],
+                       velocity: velocity)
         } else if f == 32 || f == 99 {
             // Mode / Logo light on stock Novation firmware
-            if velocity == 0 {
+            let level = Self.midiDataByte(velocity)
+            if level == 0 {
                 sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0B, 0x63, 0x00, 0x00, 0x00, 0xF7])
                 sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0A, 0x63, 0x00, 0xF7])
             } else {
-                sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0A, 0x63, UInt8(velocity & 0x7F), 0xF7])
+                sendRawSignal(bytes: [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0A, 0x63, level, 0xF7])
             }
         }
     }

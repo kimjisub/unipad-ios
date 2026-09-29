@@ -99,10 +99,10 @@ final class MatrixDriver: BaseMidiDriver {
 
     override func sendFunctionKeyLed(f: Int, velocity: Int) {
         if (0...31).contains(f) {
-            sendSignal(cmd: UInt8(truncatingIfNeeded: Self.circleCode[f][0]),
-                       sig: UInt8(truncatingIfNeeded: Self.circleCode[f][1]),
-                       note: UInt8(truncatingIfNeeded: Self.circleCode[f][2]),
-                       velocity: UInt8(truncatingIfNeeded: velocity))
+            sendSignal(cmd: Self.circleCode[f][0],
+                       sig: Self.circleCode[f][1],
+                       note: Self.circleCode[f][2],
+                       velocity: velocity)
         }
     }
 

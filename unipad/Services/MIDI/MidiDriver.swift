@@ -88,11 +88,18 @@ class BaseMidiDriver: MidiDriver {
         sendSignalListener?.onSend(cmd: cmd, sig: sig, note: note, velocity: velocity)
     }
 
+    /// LED codes come from pack text (`on 1 1 FF0000 200` is accepted), but a MIDI data byte is 7 bits.
+    static func midiDataByte(_ velocity: Int) -> UInt8 {
+        UInt8(min(max(velocity, 0), 127))
+    }
+
+    /// cmd, sig and note are signed status/note values that wrap into a byte on purpose (`sig: -80` is 0xB0);
+    /// only the velocity is limited to 0...127.
     func sendSignal(cmd: Int, sig: Int, note: Int, velocity: Int) {
         sendSignal(cmd: UInt8(truncatingIfNeeded: cmd),
                    sig: UInt8(truncatingIfNeeded: sig),
                    note: UInt8(truncatingIfNeeded: note),
-                   velocity: UInt8(truncatingIfNeeded: velocity))
+                   velocity: Self.midiDataByte(velocity))
     }
 
     func sendRawSignal(bytes: [UInt8], cableNumber: Int = 0) {
