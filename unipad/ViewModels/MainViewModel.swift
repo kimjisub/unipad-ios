@@ -40,6 +40,8 @@ final class MainViewModel {
     // MARK: - Pack List
 
     var unipackItems: [UniPackItem] = []
+    /// Every pack from the last disk scan, before the search filter and sort.
+    private var loadedItems: [UniPackItem] = []
     var selectedItem: UniPackItem?
     var isRefreshing = false
     var searchQuery = ""
@@ -171,6 +173,12 @@ final class MainViewModel {
     }
     var modelContainer: ModelContainer?
 
+    /// Every pack folder in every workspace. A call is a full disk scan, so only reloads go through it.
+    var packFolderSource: () -> [URL] = {
+        let workspaces = WorkspaceManager.shared
+        return workspaces.availableWorkspaces.flatMap { workspaces.getUnipackFolders(workspace: $0) }
+    }
+
     func refreshList() {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -179,30 +187,33 @@ final class MainViewModel {
             var items: [UniPackItem] = []
             let repo = modelContainer.map { UnipackRepository(modelContainer: $0) }
 
-            for workspace in workspaceManager.availableWorkspaces {
-                let folders = workspaceManager.getUnipackFolders(workspace: workspace)
-                for folderURL in folders {
-                    let pack = UniPackFolder(rootFolder: folderURL)
-                    pack.load()
+            for folderURL in packFolderSource() {
+                let pack = UniPackFolder(rootFolder: folderURL)
+                pack.load()
 
-                    let entity = try? repo?.getOrCreate(id: pack.id)
-                    items.append(UniPackItem(
-                        unipack: pack,
-                        isBookmarked: entity?.bookmark ?? false,
-                        openCount: entity?.openCount ?? 0,
-                        lastOpenedAt: entity?.lastOpenedAt,
-                        createdAt: entity?.createdAt
-                    ))
-                }
+                let entity = try? repo?.getOrCreate(id: pack.id)
+                items.append(UniPackItem(
+                    unipack: pack,
+                    isBookmarked: entity?.bookmark ?? false,
+                    openCount: entity?.openCount ?? 0,
+                    lastOpenedAt: entity?.lastOpenedAt,
+                    createdAt: entity?.createdAt
+                ))
             }
 
-            let selectedPath = selectedItem?.id
-            unipackItems = sortedItems(filterItems(items))
-
-            if let selectedPath {
-                selectedItem = unipackItems.first { $0.id == selectedPath }
-            }
+            loadedItems = items
+            applyListFilter()
             isRefreshing = false
+        }
+    }
+
+    /// Rebuilds the visible list from `loadedItems` without touching the disk.
+    private func applyListFilter() {
+        let selectedPath = selectedItem?.id
+        unipackItems = sortedItems(filterItems(loadedItems))
+
+        if let selectedPath {
+            selectedItem = unipackItems.first { $0.id == selectedPath }
         }
     }
 
@@ -248,6 +259,11 @@ final class MainViewModel {
                 self.detailLoadVersion += 1
             }
         }
+    }
+
+    func updateSearchQuery(_ query: String) {
+        searchQuery = query
+        applyListFilter()
     }
 
     private func filterItems(_ items: [UniPackItem]) -> [UniPackItem] {

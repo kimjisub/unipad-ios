@@ -288,7 +288,7 @@ struct MainView: View {
                 SearchBar(
                     text: Binding(
                         get: { vm.searchQuery },
-                        set: { vm.searchQuery = $0; vm.refreshList() }
+                        set: { vm.updateSearchQuery($0) }
                     )
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -333,8 +333,7 @@ struct MainView: View {
             withAnimation(.easeInOut(duration: 0.2)) {
                 showSearch.toggle()
                 if !showSearch {
-                    vm.searchQuery = ""
-                    vm.refreshList()
+                    vm.updateSearchQuery("")
                 }
             }
         } label: {
