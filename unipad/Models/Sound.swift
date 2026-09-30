@@ -1,6 +1,6 @@
 import Foundation
 
-struct Sound {
+nonisolated struct Sound {
     static let noWormhole = -1
     // Packs are parsed on the main thread and inside the importer/downloader actors at the same
     // time; an unsynchronized counter could hand two sounds the same id (the SoundEngine buffer key).

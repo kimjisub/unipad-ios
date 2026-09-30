@@ -2,9 +2,9 @@ import Foundation
 import os
 import CoreFoundation
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "UniPackFolder")
+nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "UniPackFolder")
 
-class UniPackFolder: UniPack {
+nonisolated class UniPackFolder: UniPack {
     private let rootFolder: URL
 
     private var infoFile: URL?
@@ -20,6 +20,20 @@ class UniPackFolder: UniPack {
 
     init(rootFolder: URL) {
         self.rootFolder = rootFolder
+    }
+
+    /// A pack to parse `source`'s detail into. It holds the files and the grid the parsers read and
+    /// shares nothing else with `source`, so parsing it leaves `source` untouched.
+    private init(parsingDetailOf source: UniPackFolder) {
+        rootFolder = source.rootFolder
+        super.init()
+        soundsDir = source.soundsDir
+        keySoundFile = source.keySoundFile
+        keyLedDir = source.keyLedDir
+        autoPlayFile = source.autoPlayFile
+        buttonX = source.buttonX
+        buttonY = source.buttonY
+        chain = source.chain
     }
 
     override func lastModified() -> TimeInterval {
@@ -41,17 +55,25 @@ class UniPackFolder: UniPack {
 
     @discardableResult
     override func loadDetailWithProgress(onPhase: (String, Int, Int) -> Void) -> UniPack {
-        if !criticalError && !detailLoaded {
-            let totalPhases = 3
-            onPhase("keySound", 0, totalPhases)
-            parseKeySound()
-            onPhase("keyLed", 1, totalPhases)
-            parseKeyLed()
-            onPhase("autoPlay", 2, totalPhases)
-            parseAutoPlay()
-            detailLoaded = true
+        if let read = makeDetailRead() {
+            applyDetail(read(onPhase))
         }
         return self
+    }
+
+    override func makeDetailRead() -> DetailRead? {
+        guard !criticalError && !detailLoaded else { return nil }
+        let scratch = UniPackFolder(parsingDetailOf: self)
+        return { onPhase in
+            let totalPhases = 3
+            onPhase("keySound", 0, totalPhases)
+            scratch.parseKeySound()
+            onPhase("keyLed", 1, totalPhases)
+            scratch.parseKeyLed()
+            onPhase("autoPlay", 2, totalPhases)
+            scratch.parseAutoPlay()
+            return scratch.parsedDetail
+        }
     }
 
     override func checkFile() {

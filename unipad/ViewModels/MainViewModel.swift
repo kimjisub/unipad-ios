@@ -254,15 +254,30 @@ final class MainViewModel {
 
     var detailLoadVersion = 0
 
-    private func loadDetailIfNeeded(_ item: UniPackItem) {
-        guard !item.unipack.detailLoaded else { return }
-        Task.detached(priority: .userInitiated) {
-            let _ = item.unipack.loadDetail()
-            await MainActor.run { [weak self] in
-                guard let self, self.selectedItem?.id == item.id else { return }
+    /// Detail reads under way, by pack object: a pack asked for again meanwhile is not read again.
+    @ObservationIgnored private var detailReads: [ObjectIdentifier: Task<Void, Never>] = [:]
+
+    /// Reads the pack's detail off the main actor and gives the pack the whole result here, on the
+    /// main actor, where the panel reads it. Returns the read to wait for, or nil when there is
+    /// nothing left to read.
+    @discardableResult
+    private func loadDetailIfNeeded(_ item: UniPackItem) -> Task<Void, Never>? {
+        let unipack = item.unipack
+        let key = ObjectIdentifier(unipack)
+        if let reading = detailReads[key] { return reading }
+        guard let read = unipack.makeDetailRead() else { return nil }
+
+        let reading = Task { [weak self] in
+            let detail = await Task.detached(priority: .userInitiated) { read { _, _, _ in } }.value
+            unipack.applyDetail(detail)
+            guard let self else { return }
+            self.detailReads[key] = nil
+            if self.selectedItem?.id == item.id {
                 self.detailLoadVersion += 1
             }
         }
+        detailReads[key] = reading
+        return reading
     }
 
     func updateSearchQuery(_ query: String) {
@@ -337,15 +352,15 @@ final class MainViewModel {
     }
 
     /// Matches on the imported folder so the dialog, and its play action, can never point at another pack.
-    func showImportResult(forImportedFolder folder: URL) {
-        if let newItem = unipackItems.first(where: { $0.id == folder.path }) {
-            newItem.unipack.loadDetail()
-            // Android shows the parser's soft errors as a warning; they were never surfaced here.
-            if let detail = newItem.unipack.errorDetail {
-                importResult = .warning(detail)
-            } else {
-                importResult = .success(newItem.unipack)
-            }
+    /// Returns once the result is set, which is after the pack's detail has been read.
+    func showImportResult(forImportedFolder folder: URL) async {
+        guard let newItem = unipackItems.first(where: { $0.id == folder.path }) else { return }
+        await loadDetailIfNeeded(newItem)?.value
+        // Android shows the parser's soft errors as a warning; they were never surfaced here.
+        if let detail = newItem.unipack.errorDetail {
+            importResult = .warning(detail)
+        } else {
+            importResult = .success(newItem.unipack)
         }
     }
 

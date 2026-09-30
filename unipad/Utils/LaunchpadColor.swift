@@ -1,6 +1,6 @@
 import Foundation
 
-enum LaunchpadColor {
+nonisolated enum LaunchpadColor {
     static let argb: [UInt32] = [
         0x00000000, // 0
         0x77fafafa, // 1

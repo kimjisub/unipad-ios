@@ -1,9 +1,9 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "UniPack")
+nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "UniPack")
 
-class UniPack: Equatable, Hashable {
+nonisolated class UniPack: Equatable, Hashable {
     private var errors: [String] = []
     var errorDetail: String? {
         errors.isEmpty ? nil : errors.joined(separator: "\n")
@@ -43,6 +43,40 @@ class UniPack: Equatable, Hashable {
 
     func loadDetailWithProgress(onPhase: (String, Int, Int) -> Void) -> UniPack {
         return loadDetail()
+    }
+
+    /// Reads a pack's detail without touching the pack, so it can run on another thread while the
+    /// pack stays in use where it lives. Runs once.
+    typealias DetailRead = (_ onPhase: (String, Int, Int) -> Void) -> UniPackDetail
+
+    /// Nil when there is nothing to read: the detail is already in, or the pack cannot be read.
+    func makeDetailRead() -> DetailRead? { nil }
+
+    /// Takes a finished read in one step, on the thread the pack is used from, so that nothing
+    /// there sees half a detail. A pack that already has its detail keeps it.
+    func applyDetail(_ detail: UniPackDetail) {
+        guard !detailLoaded else { return }
+        soundTable = detail.soundTable
+        soundCount = detail.soundCount
+        ledAnimationTable = detail.ledAnimationTable
+        ledTableCount = detail.ledTableCount
+        autoPlayTable = detail.autoPlayTable
+        errors.append(contentsOf: detail.errors)
+        criticalError = criticalError || detail.criticalError
+        detailLoaded = true
+    }
+
+    /// Everything the detail parsers left in this pack, as the value a detail read hands on.
+    var parsedDetail: UniPackDetail {
+        UniPackDetail(
+            soundTable: soundTable,
+            soundCount: soundCount,
+            ledAnimationTable: ledAnimationTable,
+            ledTableCount: ledTableCount,
+            autoPlayTable: autoPlayTable,
+            errors: errors,
+            criticalError: criticalError
+        )
     }
 
     func checkFile() { fatalError("Subclasses must override") }
@@ -167,9 +201,23 @@ class UniPack: Equatable, Hashable {
     var description: String { "UniPack(id=\(id))" }
 }
 
+// MARK: - Detail
+
+/// What reading a pack's detail (keySound, keyLed, autoPlay) produces, kept apart from the pack
+/// until the pack takes it with `applyDetail`.
+nonisolated struct UniPackDetail: Sendable {
+    var soundTable: [[[Deque<Sound>?]]]?
+    var soundCount = 0
+    var ledAnimationTable: [[[Deque<LedAnimation>?]]]?
+    var ledTableCount = 0
+    var autoPlayTable: AutoPlay?
+    var errors: [String] = []
+    var criticalError = false
+}
+
 // MARK: - Deque (value-type circular queue backed by Array)
 
-struct Deque<Element>: Sequence {
+nonisolated struct Deque<Element>: Sequence {
     private var storage: [Element] = []
 
     var isEmpty: Bool { storage.isEmpty }
@@ -197,7 +245,7 @@ struct Deque<Element>: Sequence {
 
 // MARK: - Safe Array Subscript
 
-extension Array {
+nonisolated extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

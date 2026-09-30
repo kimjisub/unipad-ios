@@ -1,6 +1,6 @@
 import Foundation
 
-struct LedAnimation {
+nonisolated struct LedAnimation {
     static let defaultVelocity = 4
 
     let ledEvents: [LedEvent]

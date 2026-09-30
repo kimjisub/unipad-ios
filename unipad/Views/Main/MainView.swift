@@ -110,15 +110,13 @@ struct MainView: View {
                             UsageAnalytics.shared.packImportFailed(source: .file, error: error)
                         }
 
-                        await MainActor.run {
-                            vm.isImportingInProgress = false
-                            vm.refreshList()
-                            vm.updateStats()
-                            if let importedFolder {
-                                vm.showImportResult(forImportedFolder: importedFolder)
-                            }
-                            showImportResult = true
+                        vm.isImportingInProgress = false
+                        vm.refreshList()
+                        vm.updateStats()
+                        if let importedFolder {
+                            await vm.showImportResult(forImportedFolder: importedFolder)
                         }
+                        showImportResult = true
                     }
                 } catch {
                     UsageAnalytics.shared.packImportFailed(source: .file, error: error)

@@ -1,6 +1,6 @@
 import Foundation
 
-struct AutoPlay {
+nonisolated struct AutoPlay {
     var elements: [Element]
 
     enum Element {

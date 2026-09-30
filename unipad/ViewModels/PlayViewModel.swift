@@ -142,6 +142,9 @@ final class PlayViewModel {
 
     @ObservationIgnored private let usageSession = UsageAnalytics.shared.makePlaySession()
 
+    /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
+    @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
+
     // MARK: - Load
 
     func loadUnipack(path: String) async throws {
@@ -155,8 +158,12 @@ final class PlayViewModel {
         let url = URL(fileURLWithPath: path)
         logger.info("loadUnipack: url=\(url.path), exists=\(FileManager.default.fileExists(atPath: url.path))")
 
-        let pack = UniPackFolder(rootFolder: url)
-        pack.load()
+        // The folder reads run off the main actor so the loading screen keeps drawing. The screen
+        // may be left meanwhile (cleanup() has run and the task is cancelled): whatever a read
+        // returns after that must not build an engine or touch state.
+        let pack = makePack(url)
+        _ = await Task.detached(priority: .userInitiated) { pack.load() }.value
+        if Task.isCancelled { return }
 
         if pack.criticalError {
             logger.error("loadUnipack: critical error - \(pack.errorDetail ?? "unknown")")
@@ -174,11 +181,17 @@ final class PlayViewModel {
 
         loadingPhase = "detail"
         loadingPhaseIndex = 1
-        pack.loadDetailWithProgress { phase, index, total in
-            self.loadingPhase = phase
-            self.loadingPhaseIndex = index + 1
-            self.loadingPhaseTotal = total + 1
-        }
+        // Phase updates are queued to main in read order.
+        _ = await Task.detached(priority: .userInitiated) { [weak self] in
+            pack.loadDetailWithProgress { phase, index, total in
+                DispatchQueue.main.async {
+                    self?.loadingPhase = phase
+                    self?.loadingPhaseIndex = index + 1
+                    self?.loadingPhaseTotal = total + 1
+                }
+            }
+        }.value
+        if Task.isCancelled { return }
 
         logger.info("loadUnipack: detail loaded - soundCount=\(pack.soundCount), ledCount=\(pack.ledTableCount), keyLedExist=\(pack.keyLedExist), autoPlayExist=\(pack.autoPlayExist)")
 
