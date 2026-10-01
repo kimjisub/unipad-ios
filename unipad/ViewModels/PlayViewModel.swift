@@ -1181,6 +1181,7 @@ private final class LedListenerAdapter: LedRunner.Listener {
 
 // MARK: - AutoPlay Listener Adapter
 
+@MainActor
 private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     private weak var viewModel: PlayViewModel?
 
@@ -1189,109 +1190,85 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     }
 
     func onStart() {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel else { return }
-            vm.autoPlayProgress = 0
-            if let unipack = vm.unipack, unipack.squareButton {
-                vm.autoPlayControlVisible = true
-            }
+        guard let vm = viewModel else { return }
+        vm.autoPlayProgress = 0
+        if let unipack = vm.unipack, unipack.squareButton {
+            vm.autoPlayControlVisible = true
         }
     }
 
     func onPadTouchOn(x: Int, y: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.padTouch(x: x, y: y, isDown: true)
-        }
+        viewModel?.padTouch(x: x, y: y, isDown: true)
     }
 
     func onPadTouchOff(x: Int, y: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.padTouch(x: x, y: y, isDown: false)
-        }
+        viewModel?.padTouch(x: x, y: y, isDown: false)
     }
 
     func onChainChange(c: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.chain.setValue(c)
-        }
+        viewModel?.chain.setValue(c)
     }
 
     private static let guideVelocity = 17 // LED_ORANGE
 
     func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            cm.add(x: x, y: y, channel: .guide, color: ChannelManager.noColor, code: Self.guideVelocity)
-            vm.refreshPadFromChannel(x: x, y: y)
-            if x >= 0, x < vm.padGuideTargets.count, y >= 0, y < vm.padGuideTargets[x].count {
-                vm.padGuideTargets[x][y] = targetWallTimeMs
-            }
+        guard let vm = viewModel, let cm = vm.channelManager else { return }
+        cm.add(x: x, y: y, channel: .guide, color: ChannelManager.noColor, code: Self.guideVelocity)
+        vm.refreshPadFromChannel(x: x, y: y)
+        if x >= 0, x < vm.padGuideTargets.count, y >= 0, y < vm.padGuideTargets[x].count {
+            vm.padGuideTargets[x][y] = targetWallTimeMs
         }
     }
 
     func onGuidePadOff(x: Int, y: Int) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            cm.remove(x: x, y: y, channel: .guide)
-            vm.refreshPadFromChannel(x: x, y: y)
-            if x >= 0, x < vm.padGuideTargets.count, y >= 0, y < vm.padGuideTargets[x].count {
-                vm.padGuideTargets[x][y] = 0
-            }
+        guard let vm = viewModel, let cm = vm.channelManager else { return }
+        cm.remove(x: x, y: y, channel: .guide)
+        vm.refreshPadFromChannel(x: x, y: y)
+        if x >= 0, x < vm.padGuideTargets.count, y >= 0, y < vm.padGuideTargets[x].count {
+            vm.padGuideTargets[x][y] = 0
         }
     }
 
     func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {
         // The countdown ramp (1, 2, 3, 21) goes to the launchpad only, as on Android; writing it
         // into the GUIDE channel faded the on-screen guide pad from orange to white and green.
-        Task { @MainActor in
-            MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: velocity)
-        }
+        MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: velocity)
     }
 
     func onGuideChainOn(c: Int) {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
-            let index = PlayViewModel.chainIndexOffset + c
-            cm.add(x: -1, y: index, channel: .guide, color: ChannelManager.noColor, code: Self.guideVelocity)
-            vm.refreshChainFromChannel(index: index)
-        }
+        guard let vm = viewModel, let cm = vm.channelManager else { return }
+        let index = PlayViewModel.chainIndexOffset + c
+        cm.add(x: -1, y: index, channel: .guide, color: ChannelManager.noColor, code: Self.guideVelocity)
+        vm.refreshChainFromChannel(index: index)
     }
 
     func onRemoveGuide() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.removeAllGuide()
-        }
+        viewModel?.removeAllGuide()
     }
 
     func chainButsRefresh() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.chainBtnsRefresh()
-        }
+        viewModel?.chainBtnsRefresh()
     }
 
     func onProgressUpdate(progress: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoPlayProgress = progress
-        }
+        viewModel?.autoPlayProgress = progress
     }
 
     func onEnd() {
-        Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel else { return }
-            vm.isAutoPlayPlaying = false
-            vm.autoPlayRunner?.practiceGuide = false
-            vm.autoPlayRunner?.stepMode = false
-            vm.isPracticeMode = false
-            vm.scbAutoPlay.setCheckedSilently(false)
-            vm.autoPlayControlVisible = false
-            if let unipack = vm.unipack, unipack.keyLedExist {
-                vm.scbLed.setChecked(true)
-                vm.scbFeedbackLight.setChecked(false)
-            } else {
-                vm.scbFeedbackLight.setChecked(true)
-            }
-            vm.refreshWatermark()
+        guard let vm = viewModel else { return }
+        vm.isAutoPlayPlaying = false
+        vm.autoPlayRunner?.practiceGuide = false
+        vm.autoPlayRunner?.stepMode = false
+        vm.isPracticeMode = false
+        vm.scbAutoPlay.setCheckedSilently(false)
+        vm.autoPlayControlVisible = false
+        if let unipack = vm.unipack, unipack.keyLedExist {
+            vm.scbLed.setChecked(true)
+            vm.scbFeedbackLight.setChecked(false)
+        } else {
+            vm.scbFeedbackLight.setChecked(true)
         }
+        vm.refreshWatermark()
     }
 }
 

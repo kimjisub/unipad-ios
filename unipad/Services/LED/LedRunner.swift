@@ -327,6 +327,10 @@ final class LedRunner {
     }
 
     private class LedAnimationState {
+        // Like ChainObserver, this storage has no UI cleanup. Releasing it from the runner's
+        // isolated deinit must not enter the older runtime's nested task-local cleanup crash.
+        nonisolated deinit {}
+
         let buttonX: Int
         let buttonY: Int
         let chainAtCreation: Int

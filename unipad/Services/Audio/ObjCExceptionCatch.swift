@@ -7,7 +7,7 @@ import Foundation
 /// engine is not rendering, and an NSException that crosses Swift frames terminates the app. The
 /// guards in `AudioSessionGate` close the window they can see; this catches the rest, so the worst
 /// case is one silent pad instead of a crash.
-func runCatchingObjCException(_ body: () -> Void) -> String? {
+nonisolated func runCatchingObjCException(_ body: () -> Void) -> String? {
     guard let exception = UPRunCatchingObjCException(body) else { return nil }
     return "\(exception.name.rawValue): \(exception.reason ?? "no reason given")"
 }

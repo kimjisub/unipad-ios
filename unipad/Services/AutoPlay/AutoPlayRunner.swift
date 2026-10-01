@@ -26,6 +26,7 @@ final class AutoPlayRunner {
     private var task: Task<Void, Never>?
     var active: Bool { task.map { !$0.isCancelled } ?? false }
 
+    @MainActor
     protocol Listener: AnyObject {
         func onStart()
         func onPadTouchOn(x: Int, y: Int)

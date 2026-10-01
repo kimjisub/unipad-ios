@@ -4,6 +4,11 @@ import Foundation
 /// the state lives behind a lock; observers are notified outside it, and callers that mutate UI
 /// state must call setValue on the main thread (the runners hop there first).
 final class ChainObserver {
+    // Destruction only releases storage; it never calls observers or changes UI. An implicit
+    // isolated deinit enters the older Swift runtime's task-local cleanup crash (swift#88036),
+    // reproduced when the LED/autoplay owner releases this chain on iOS 26.3.1.
+    nonisolated deinit {}
+
     var range: ClosedRange<Int> = Int.min...Int.max
 
     private let lock = NSLock()
