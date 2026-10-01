@@ -44,6 +44,9 @@ final class SoundEngine {
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
+    /// Test observations for finite-loop completion and stale callback cancellation.
+    private(set) var repeatedBuffersScheduled = 0
+    var activeVoiceCount: Int { nodePlayID.filter { $0 != 0 }.count }
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -426,17 +429,7 @@ final class SoundEngine {
             if sound.loop == -1 {
                 node.scheduleBuffer(buffer, at: nil, options: .loops)
             } else if sound.loop > 0 {
-                func scheduleRemaining(_ remaining: Int) {
-                    guard remaining > 0 else { release(); return }
-                    node.scheduleBuffer(buffer, at: nil, options: []) { [weak node] in
-                        guard let node, node.isPlaying else { return }
-                        scheduleRemaining(remaining - 1)
-                    }
-                }
-                node.scheduleBuffer(buffer, at: nil, options: []) { [weak node] in
-                    guard let node, node.isPlaying else { return }
-                    scheduleRemaining(sound.loop)
-                }
+                scheduleRepeatedBuffer(buffer, nodeIndex: nodeIndex, playID: playID, repeatsLeft: sound.loop)
             } else {
                 node.scheduleBuffer(buffer, at: nil, options: []) { release() }
             }
@@ -463,6 +456,33 @@ final class SoundEngine {
         }
     }
 
+    /// Completion callbacks can run while stop() holds AVFoundation's engine locks. Never read
+    /// or schedule an audio node there: stop() waits for that callback to return. Rejoin the main
+    /// queue first, then check the play ID so a stopped/stolen voice cannot schedule another repeat.
+    private func scheduleRepeatedBuffer(_ buffer: AVAudioPCMBuffer, nodeIndex: Int, playID: Int, repeatsLeft: Int) {
+        repeatedBuffersScheduled += 1
+        // Refill before playback drains; only the final callback frees the voice after rendering.
+        let callbackType: AVAudioPlayerNodeCompletionCallbackType = repeatsLeft == 0 ? .dataPlayedBack : .dataConsumed
+        playerNodes[nodeIndex].scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: callbackType) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.playerNodes.indices.contains(nodeIndex),
+                      self.nodePlayID[nodeIndex] == playID else { return }
+                guard repeatsLeft > 0 else {
+                    self.nodePlayID[nodeIndex] = 0
+                    return
+                }
+                let failure = runCatchingObjCException {
+                    self.scheduleRepeatedBuffer(buffer, nodeIndex: nodeIndex, playID: playID, repeatsLeft: repeatsLeft - 1)
+                }
+                if let failure {
+                    self.nodePlayID[nodeIndex] = 0
+                    self.gate.playbackFailed(reason: failure)
+                }
+            }
+        }
+    }
+
     func soundOff(x: Int, y: Int) {
         guard isUsable else { return }
         let c = chain.value
@@ -476,6 +496,7 @@ final class SoundEngine {
     func destroy() {
         // Terminal: a notification that lands after this must not restart the engine we just stopped.
         gate.shutDown()
+        for i in nodePlayID.indices { nodePlayID[i] = 0 }
         for token in observerTokens {
             NotificationCenter.default.removeObserver(token)
         }

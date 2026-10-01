@@ -1,6 +1,9 @@
 import Foundation
 import QuartzCore
 
+/// The screen owns playback state. Keeping each tick on the same actor as stop/reset avoids
+/// suspending a detached task while it owns an NSLock and waits to read actor-isolated state.
+@MainActor
 final class AutoPlayRunner {
     static let guideLookaheadMs: Int64 = 800
     private static let guideLedUpdateIntervalMs: Int64 = 50
@@ -11,12 +14,12 @@ final class AutoPlayRunner {
     private let chain: ChainObserver
     private let loopDelay: TimeInterval
 
-    @Volatile var playmode: Bool = true
-    @Volatile var beforeStartPlaying: Bool = true
-    @Volatile var practiceGuide: Bool = false
-    @Volatile var stepMode: Bool = false
+    var playmode: Bool = true
+    var beforeStartPlaying: Bool = true
+    var practiceGuide: Bool = false
+    var stepMode: Bool = false
 
-    @Volatile private(set) var progress: Int = 0 {
+    private(set) var progress: Int = 0 {
         didSet { listener?.onProgressUpdate(progress: progress) }
     }
 
@@ -53,25 +56,20 @@ final class AutoPlayRunner {
     private var waitStartTime: Int64 = 0
 
     // key = x*256+y, value = targetWallTimeMs
-    /// Guide pads currently lit, keyed by guideKey. Written by the runner task and cleared by
-    /// stop() on the main thread, so every access goes through withGuides (unipad-android #32
-    /// was the same race on Android).
+    /// Guide pads currently lit, keyed by guideKey. Ticks and stop() run on the main actor.
     private var activeGuides: [Int: Int64] = [:]
-    private let guidesLock = NSLock()
 
     /// The run that stop() cancelled last; launch() waits for it so two runs never overlap.
     private var previousRun: Task<Void, Never>?
 
     @discardableResult
-    private func withGuides<T>(file: String = #fileID, line: Int = #line, _ body: (inout [Int: Int64]) -> T) -> T {
-        guidesLock.lockWithDeadlockDetection(file: file, line: line)
-        defer { guidesLock.unlock() }
+    private func withGuides<T>(_ body: (inout [Int: Int64]) -> T) -> T {
         return body(&activeGuides)
     }
 
-    /// Empties activeGuides and returns the keys that were lit, for LED cleanup outside the lock.
-    private func drainGuides(file: String = #fileID, line: Int = #line) -> [Int] {
-        withGuides(file: file, line: line) { guides in
+    /// Empties activeGuides and returns the keys that were lit for LED cleanup.
+    private func drainGuides() -> [Int] {
+        withGuides { guides in
             let keys = Array(guides.keys)
             guides.removeAll()
             return keys
@@ -80,14 +78,12 @@ final class AutoPlayRunner {
     private var lastGuideUpdateMs: Int64 = 0
 
     // Step mode state
-    private let stepLock = NSLock()
     private var _stepPendingPads: Set<Int> = []
     private var _stepScanned = false
     private var _stepStartProgress: Int = 0
     private var _stepChainValue: Int = -1
 
-    // Lock-free queue for pad presses from MainActor → runner thread
-    private let pressedKeysLock = NSLock()
+    // Pad presses are drained by the next tick on the main actor.
     private var _pressedKeysQueue: [Int] = []
 
     init(
@@ -127,11 +123,11 @@ final class AutoPlayRunner {
 
         let previousRun = self.previousRun
         self.previousRun = nil
-        task = Task.detached(priority: .userInitiated) { [weak self] in
+        task = Task(priority: .userInitiated) { [weak self] in
             // A run that stop() cancelled may still be inside its last iteration; let it finish
             // so two runs never touch guideTimeline / guideIndex at the same time.
             _ = await previousRun?.value
-            guard let self else { return }
+            guard let self, !Task.isCancelled else { return }
 
             self.progress = 0
             self.listener?.onStart()
@@ -216,8 +212,7 @@ final class AutoPlayRunner {
                                 self.guideIndex += 1
                             }
 
-                            // Guide expiration + LED brightness update: decide under the lock in one
-                            // pass, emit the listener calls after it is released
+                            // Decide guide expiration and LED brightness in one pass before notifying.
                             let throttle = currTime - self.lastGuideUpdateMs >= Self.guideLedUpdateIntervalMs
                             var expired: [Int] = []
                             var ledUpdates: [(key: Int, velocity: Int)] = []
@@ -287,9 +282,7 @@ final class AutoPlayRunner {
 
                         let currentChain = self.chain.value
 
-                        // 체인이 바뀌면 현재 스텝을 되돌리고 재스캔. resetStepState() writes the same
-                        // fields from the main thread, so they are only touched under stepLock.
-                        self.stepLock.lockWithDeadlockDetection()
+                        // A chain change rewinds the current step for another scan.
                         let chainChanged = currentChain != self._stepChainValue && self._stepChainValue >= 0
                         var rewindTo: Int? = nil
                         if chainChanged && self._stepScanned {
@@ -298,7 +291,6 @@ final class AutoPlayRunner {
                             self._stepScanned = false
                         }
                         self._stepChainValue = currentChain
-                        self.stepLock.unlock()
                         if let rewindTo { self.progress = rewindTo }
                         if chainChanged { self.waitingForChain = -1 }
 
@@ -310,10 +302,8 @@ final class AutoPlayRunner {
                                 needsScan = true
                             }
                         } else {
-                            self.stepLock.lockWithDeadlockDetection()
                             let scanned = self._stepScanned
                             let isEmpty = self._stepPendingPads.isEmpty
-                            self.stepLock.unlock()
 
                             if !scanned || isEmpty {
                                 needsScan = true
@@ -322,13 +312,9 @@ final class AutoPlayRunner {
 
                         if needsScan {
                             self.listener?.onRemoveGuide()
-                            self.stepLock.lockWithDeadlockDetection()
                             self._stepStartProgress = self.progress
-                            self.stepLock.unlock()
                             self.stepScanNext(autoPlay: autoPlay)
-                            self.stepLock.lockWithDeadlockDetection()
                             self._stepScanned = !self._stepPendingPads.isEmpty || self.waitingForChain >= 0
-                            self.stepLock.unlock()
                         }
                     }
 
@@ -374,16 +360,12 @@ final class AutoPlayRunner {
     }
 
     func resetStepState() {
-        pressedKeysLock.lockWithDeadlockDetection()
         _pressedKeysQueue.removeAll()
-        pressedKeysLock.unlock()
 
-        stepLock.lockWithDeadlockDetection()
         _stepPendingPads.removeAll()
         _stepScanned = false
         _stepStartProgress = 0
         _stepChainValue = -1
-        stepLock.unlock()
         // Leaving step mode while the guide waited for a chain left waitingForChain >= 0 with
         // waitStartTime 0; on resume startTime jumped far into the future and autoplay froze
         // (same fix as Android AutoPlayRunner.resetStepState, 2026-09-07).
@@ -393,25 +375,19 @@ final class AutoPlayRunner {
 
     func stepPadPressed(x: Int, y: Int) {
         let key = guideKey(x: x, y: y)
-        pressedKeysLock.lockWithDeadlockDetection()
         _pressedKeysQueue.append(key)
-        pressedKeysLock.unlock()
     }
 
     private func drainPressedKeys() {
-        pressedKeysLock.lockWithDeadlockDetection()
         let keys = _pressedKeysQueue
         _pressedKeysQueue.removeAll()
-        pressedKeysLock.unlock()
 
-        stepLock.lockWithDeadlockDetection()
         var removedKeys: [Int] = []
         for key in keys {
             if _stepPendingPads.remove(key) != nil {
                 removedKeys.append(key)
             }
         }
-        stepLock.unlock()
 
         for key in removedKeys {
             listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
@@ -455,40 +431,10 @@ final class AutoPlayRunner {
             }
         }
 
-        stepLock.lockWithDeadlockDetection()
         _stepPendingPads = newPending
-        stepLock.unlock()
     }
 
     private static func currentTimeMillis() -> Int64 {
         Int64(CACurrentMediaTime() * 1000)
-    }
-}
-
-// Property wrapper for thread-safe volatile-like access.
-// A class, not a struct: a struct wrapper's setter is `mutating`, so a write held a *modify*
-// access on the enclosing stored property for the whole locked call while the runner thread
-// read it, and Swift's runtime exclusivity check trapped ("Simultaneous accesses") when play
-// mode was switched or the seek control dragged during playback. The NSLock never covered that.
-@propertyWrapper
-final class Volatile<Value: Sendable>: @unchecked Sendable {
-    private var _value: Value
-    private let lock = NSLock()
-
-    init(wrappedValue: Value) {
-        _value = wrappedValue
-    }
-
-    var wrappedValue: Value {
-        get {
-            lock.lockWithDeadlockDetection()
-            defer { lock.unlock() }
-            return _value
-        }
-        set {
-            lock.lockWithDeadlockDetection()
-            defer { lock.unlock() }
-            _value = newValue
-        }
     }
 }
