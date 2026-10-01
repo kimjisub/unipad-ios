@@ -10,6 +10,10 @@ The old test searches for ` - ` in a title. AP-001's actual title is `Conformanc
 The overlay requires exactly one matching title within `main.packList`, taps it,
 then taps **Play**. Scoping to the list avoids the duplicate title in the recent
 pack card after a previous run.
+This route requires the existing shared UniPack library. Title navigation tries
+one upward swipe; a fixture outside that reach fails rather than being reported
+as played. Empty-library setup and general long-list navigation are outside this
+AP-001 route.
 It does not use a URL or bypass the system confirmation dialog. Stage one fixture
 at a time because the sample packs share titles. Direct file staging tests the
 player entry path; it does **not** verify ZIP import.
@@ -74,16 +78,37 @@ file. The legacy run **must fail**; the exact-title run must pass:
   --pack '<original-AP-001.zip>' --out "$PAPERCLIP_RUN_SCRATCH_DIR/evidence/run-1"
 ```
 
-`run.py` checks all 149 product files against the baseline, builds the overlay,
+`run.py` enumerates the full baseline tree and checks all 149 product files,
+refusing an empty list or any missing/changed baseline file before building.
+It requires a fresh output directory to avoid reusing stale recordings, builds the overlay,
 records the app and runner SHA-256 values, installs without opening the app,
 preserves the existing library by path and hash, stages the unchanged fixture,
 records video, and executes only the new test with parallel testing disabled, code coverage disabled, and verbose failure
 diagnostics disabled. The UI command has a three-minute timeout.
-Its `finally` block terminates the app, removes only its newly created fixture,
+Its cleanup terminates the app, removes only its successfully created fixture,
 resolves the current app data container again (Xcode can relocate it),
 compares all pre-existing library hashes, and calls `devices.py down` even when
-the test fails. If a failure occurs before starting `run.py`, return the device
+pack validation, UI execution or recording fails. Recording finalization has a
+30-second timeout followed by forced recorder termination; the remaining cleanup
+steps and receipt save are attempted independently. Missing/empty video or a
+nonzero recorder exit is a failure. `receipt.json` records execution and cleanup
+errors and device return after those steps finish. If the current app container
+cannot be resolved, the fixture is preserved for inspection and the run fails;
+it never guesses a deletion path. If a failure occurs before starting `run.py`, return the device
 with the same harness command. Never overwrite an existing Conformance fixture.
+If output-directory setup itself fails, the tool still attempts app termination
+and device return but cannot save a receipt there; read its nonzero exit and error.
+
+Run the device-free regression checks before borrowing a device:
+
+```sh
+. /Users/kimjisub/GitHub/unipad/project/paperclip/env.sh && python3 meta/ios-conformance-ui/check_runner.py
+```
+
+These checks use fake external commands and run-owned temporary files to cover
+changed/empty product lists, folder collisions, missing packs, fixture extraction
+and UI command failure, recorder launch/exit/timeout/missing-video failures,
+container lookup failure and device-return failure. They do not launch an app.
 
 Export readable XCTest attachments before the run scratch directory expires:
 
