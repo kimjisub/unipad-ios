@@ -24,7 +24,7 @@ struct MainSearchTests {
         let workspace = workspace
         let scans = scans
         vm.packFolderSource = {
-            scans.count += 1
+            scans.increment()
             let folders = (try? FileManager.default.contentsOfDirectory(
                 at: workspace, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
             )) ?? []
@@ -53,7 +53,7 @@ struct MainSearchTests {
     /// Lets the main-actor reload task that `refreshList()` schedules run to completion.
     private func settle() async {
         while vm.isRefreshing {
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
     }
 
@@ -304,7 +304,12 @@ struct MainSearchTests {
     }
 }
 
-@MainActor
-private final class ScanCounter {
-    var count = 0
+/// The folder scan runs off the main actor, so the count is written from another thread.
+private final class ScanCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var scans = 0
+
+    var count: Int { lock.withLock { scans } }
+
+    func increment() { lock.withLock { scans += 1 } }
 }

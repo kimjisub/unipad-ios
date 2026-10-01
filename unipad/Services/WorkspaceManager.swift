@@ -9,7 +9,7 @@ final class WorkspaceManager: ObservableObject {
     private let logger = Logger(subsystem: "com.kimjisub.unipad", category: "Workspace")
     private let preferenceManager = PreferenceManager.shared
 
-    struct Workspace: Identifiable, Equatable {
+    nonisolated struct Workspace: Identifiable, Equatable, Sendable {
         let id: String
         let name: String
         let url: URL
@@ -26,6 +26,11 @@ final class WorkspaceManager: ObservableObject {
     // MARK: - Workspace Discovery
 
     var availableWorkspaces: [Workspace] {
+        Self.currentWorkspaces()
+    }
+
+    /// Touches the disk (creates the folder when missing), so it is callable from any thread for a background read.
+    nonisolated static func currentWorkspaces() -> [Workspace] {
         var workspaces: [Workspace] = []
 
         let documentsURL = Self.documentsDirectory
@@ -38,11 +43,11 @@ final class WorkspaceManager: ObservableObject {
     }
 
     /// Documents directory used as app workspace root
-    static var documentsDirectory: URL {
+    nonisolated static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
 
-    static func ensureDirectoryExists(at url: URL) {
+    nonisolated static func ensureDirectoryExists(at url: URL) {
         let fm = FileManager.default
         if !fm.fileExists(atPath: url.path) {
             try? fm.createDirectory(at: url, withIntermediateDirectories: true)
@@ -83,6 +88,15 @@ final class WorkspaceManager: ObservableObject {
     }
 
     func getUnipackFolders(workspace: Workspace) -> [URL] {
+        Self.unipackFolders(in: workspace)
+    }
+
+    /// Every pack folder in every workspace. A full disk scan, callable from any thread.
+    nonisolated static func allUnipackFolders() -> [URL] {
+        currentWorkspaces().flatMap { unipackFolders(in: $0) }
+    }
+
+    nonisolated static func unipackFolders(in workspace: Workspace) -> [URL] {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: workspace.url, includingPropertiesForKeys: [.isDirectoryKey]) else {
             return []

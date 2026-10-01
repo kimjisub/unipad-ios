@@ -110,12 +110,8 @@ struct MainView: View {
                             UsageAnalytics.shared.packImportFailed(source: .file, error: error)
                         }
 
-                        vm.isImportingInProgress = false
-                        vm.refreshList()
                         vm.updateStats()
-                        if let importedFolder {
-                            await vm.showImportResult(forImportedFolder: importedFolder)
-                        }
+                        await vm.completeImport(importedFolder: importedFolder)
                         showImportResult = true
                     }
                 } catch {
@@ -578,7 +574,7 @@ private struct GuidingChip: View {
 
 // MARK: - MainViewImportDelegate
 
-private final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked Sendable {
+final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked Sendable {
     weak var viewModel: MainViewModel?
 
     init(viewModel: MainViewModel) {
@@ -587,9 +583,8 @@ private final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked
 
     @MainActor func onImportStart() {}
 
-    @MainActor func onImportComplete(folder: URL) {
-        viewModel?.showImportSuccessForFolder(folder)
-    }
+    /// The result is shown by `MainViewModel.completeImport` once the reloaded list has the pack.
+    @MainActor func onImportComplete(folder: URL) {}
 
     @MainActor func onImportError(_ error: Error) {
         viewModel?.importResult = .error(error.localizedDescription)

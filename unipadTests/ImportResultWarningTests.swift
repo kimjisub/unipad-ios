@@ -49,14 +49,19 @@ struct ImportResultWarningTests {
 
     /// Runs the same path as picking a ZIP on the main screen: importer, completion callback, view model.
     private func importThroughViewModel(_ zip: URL, into packs: URL) async -> URL? {
-        try? await UniPackImporter().importPack(from: zip, to: packs, delegate: ViewModelDelegate(viewModel: vm))
+        vm.packFolderSource = {
+            (try? FileManager.default.contentsOfDirectory(at: packs, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
+        }
+        let folder = try? await UniPackImporter().importPack(from: zip, to: packs, delegate: MainViewImportDelegate(viewModel: vm))
+        await vm.completeImport(importedFolder: folder)
+        return folder
     }
 
-    @Test func completePackShowsSuccess() throws {
+    @Test func completePackShowsSuccess() async throws {
         defer { cleanUp() }
         let folder = try makePack("Complete", soundFiles: ["a.wav", "b.wav"])
 
-        vm.showImportSuccessForFolder(folder)
+        await vm.showImportResult(forImportedFolder: folder)
 
         guard case .success(let pack) = vm.importResult else {
             Issue.record("expected success, got \(String(describing: vm.importResult))")
@@ -65,11 +70,11 @@ struct ImportResultWarningTests {
         #expect(pack.soundCount == 2)
     }
 
-    @Test func missingSoundFileShowsWarning() throws {
+    @Test func missingSoundFileShowsWarning() async throws {
         defer { cleanUp() }
         let folder = try makePack("MissingSound", soundFiles: ["a.wav"])
 
-        vm.showImportSuccessForFolder(folder)
+        await vm.showImportResult(forImportedFolder: folder)
 
         guard case .warning(let message) = vm.importResult else {
             Issue.record("expected warning, got \(String(describing: vm.importResult))")
@@ -151,19 +156,6 @@ struct ImportResultWarningTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: packs.path).isEmpty)
         #expect(try Data(contentsOf: zip) == original)
     }
-}
-
-/// Mirrors the main screen's private import delegate, which forwards the importer's callbacks to the view model.
-private final class ViewModelDelegate: UniPackImporter.Delegate, @unchecked Sendable {
-    let viewModel: MainViewModel
-
-    init(viewModel: MainViewModel) {
-        self.viewModel = viewModel
-    }
-
-    @MainActor func onImportStart() {}
-    @MainActor func onImportComplete(folder: URL) { viewModel.showImportSuccessForFolder(folder) }
-    @MainActor func onImportError(_ error: Error) { viewModel.importResult = .error(error.localizedDescription) }
 }
 
 @MainActor
