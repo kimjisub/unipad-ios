@@ -12,6 +12,8 @@ the device in `finally`. It records commands, exit codes, test summaries and res
 in `$PAPERCLIP_RUN_SCRATCH_DIR/release-features`. Upload the evidence before the run ends.
 Do not use `booted` as an Xcode destination. `26.3` is the runtime's harness name; its installed
 OS version is 26.3.1. Other supported harness runtime names may be supplied with `--os`.
+Use `--derived-data <path>` to reuse a simulator build cache; its exact path is recorded
+in every command and the checks still rebuild and execute each iteration.
 
 Equivalent single-run command (substitute the ID printed by `devices.py up-ios`):
 

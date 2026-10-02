@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--os", default="", help="Harness runtime name, e.g. 26.3")
     parser.add_argument("--configuration", choices=["Debug", "Release"], default="Release")
     parser.add_argument("--iterations", type=int, default=3)
+    parser.add_argument("--derived-data", type=Path, help="Reuse a build cache; exact path is recorded in each command")
     args = parser.parse_args()
     if args.iterations < 1:
         parser.error("iterations must be positive")
@@ -38,7 +39,7 @@ def main():
             command = ["xcodebuild", "test", "-project", "unipad.xcodeproj", "-scheme", "unipad",
                        "-testPlan", "ReleaseFeatures", "-configuration", args.configuration,
                        "-destination", f"platform=iOS Simulator,id={device}",
-                       "-derivedDataPath", str(out / "build"), "-parallel-testing-enabled", "NO",
+                       "-derivedDataPath", str(args.derived_data.resolve() if args.derived_data else out / "build"), "-parallel-testing-enabled", "NO",
                        "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never",
                        "-resultBundlePath", str(result), "UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS",
                        "ENABLE_TESTABILITY=YES", "CODE_SIGNING_ALLOWED=NO"]
