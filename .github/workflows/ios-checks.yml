@@ -87,6 +87,15 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
 
+      - name: Summarize unit test results
+        if: always()
+        run: |
+          if [[ -d "$RUNNER_TEMP/UnitTests.xcresult" ]]; then
+            xcrun xcresulttool get test-results summary \
+              --path "$RUNNER_TEMP/UnitTests.xcresult" --compact \
+              | tee "$RUNNER_TEMP/test-summary.json"
+          fi
+
       - name: Save build and test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -95,6 +104,7 @@ jobs:
           path: |
             ${{ runner.temp }}/build.log
             ${{ runner.temp }}/unit-tests.log
+            ${{ runner.temp }}/test-summary.json
             ${{ runner.temp }}/UnitTests.xcresult
           retention-days: 7
           if-no-files-found: ignore
