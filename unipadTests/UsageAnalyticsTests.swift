@@ -142,8 +142,9 @@ struct UsageAnalyticsTests {
         session.ended()
         session.ended()
 
-        #expect(sink.events.map(\.name) == ["pack_load", "play_start", "play_end"])
+        #expect(sink.events.map(\.name) == ["pack_load", "play_start", "play_first_input", "play_end"])
         #expect(sink.events(named: "play_start")[0].parameters == ["trigger": "autoplay"])
+        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad"]])
         #expect(sink.events(named: "play_end")[0].parameters == ["duration_bucket": "30s_2m"])
     }
 
@@ -158,6 +159,33 @@ struct UsageAnalyticsTests {
         session.playTriggered(.pad)
 
         #expect(sink.events.map(\.name) == ["pack_load"])
+    }
+
+    @Test func automaticOnlyVisitHasNoHumanInputAndNextVisitCanRecordOne() {
+        let sink = RecordingAnalytics()
+        let analytics = UsageAnalytics(sink: sink)
+        let automatic = analytics.makePlaySession()
+        automatic.loadStarted()
+        automatic.loadSucceeded()
+        automatic.playTriggered(.autoplay)
+        automatic.playTriggered(.autoplay)
+        automatic.ended()
+        automatic.playTriggered(.pad)
+        #expect(sink.events(named: "play_first_input").isEmpty)
+
+        let next = analytics.makePlaySession()
+        next.loadStarted()
+        next.playTriggered(.pad)
+        next.loadSucceeded()
+        next.playTriggered(.pad)
+        next.playTriggered(.autoplay)
+        next.playTriggered(.pad)
+        next.ended()
+        #expect(sink.events(named: "play_start").map(\.parameters) == [
+            ["trigger": "autoplay"], ["trigger": "pad"],
+        ])
+        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad"]])
+        #expect(sink.events(named: "play_end").count == 2)
     }
 
     @Test func everyParameterIsAllowedAndCategorical() {
