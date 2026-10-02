@@ -81,17 +81,28 @@ final class MidiManager: ObservableObject {
 
     // MARK: - Initialization
 
-    private init() {}
+    private let transport: (any MidiTransport)?
+
+    init(transport: (any MidiTransport)? = nil) {
+        self.transport = transport
+    }
 
     func start() {
         log("MidiManager.start()")
         setupDriverListeners()
-        setupCoreMIDI()
+        if let transport {
+            transport.start { [weak self] cmd, sig, note, velocity in
+                self?.driver.getSignal(cmd: cmd, sig: sig, note: note, velocity: velocity)
+            }
+        } else {
+            setupCoreMIDI()
+        }
         scanForDevices()
     }
 
     func stop() {
         disconnect()
+        transport?.stop()
         if midiClient != 0 {
             MIDIClientDispose(midiClient)
             midiClient = 0
@@ -244,6 +255,17 @@ final class MidiManager: ObservableObject {
     // MARK: - Device Discovery
 
     func scanForDevices() {
+        if let transport {
+            guard !isConnected else { return }
+            for (index, name) in transport.deviceNames.enumerated() {
+                guard let entry = findDriverForDevice(name: name), transport.connect(index: index) else { continue }
+                connectedDeviceName = entry.name
+                finishConnection(newDriver: entry.factory())
+                listener?.onConnected()
+                return
+            }
+            return
+        }
         let sourceCount = MIDIGetNumberOfSources()
         let destCount = MIDIGetNumberOfDestinations()
 
@@ -506,16 +528,21 @@ final class MidiManager: ObservableObject {
         // isConnected first: the driver's didSet only fires cycleListener.onConnected (which draws
         // the current LEDs onto the new device) when it is already true, so a hot-plugged
         // Launchpad stayed dark until an unrelated redraw.
-        isConnected = true
-        driver = driverEntry.factory()
-        midiInputLogCount = 0
+        finishConnection(newDriver: driverEntry.factory())
 
         log("Connected: \(driverEntry.name), srcPort=\(connectedSourcePortIndex), dstPort=\(connectedDestinationPortIndex)")
         listener?.onLog("Connected: \(driverEntry.name) (sourcePort=\(connectedSourcePortIndex), destPort=\(connectedDestinationPortIndex))")
         listener?.onConnected()
     }
 
+    private func finishConnection(newDriver: MidiDriver) {
+        isConnected = true
+        driver = newDriver
+        midiInputLogCount = 0
+    }
+
     func disconnect() {
+        transport?.disconnect()
         if connectedSource != 0 {
             MIDIPortDisconnectSource(inputPort, connectedSource)
         }
@@ -552,6 +579,10 @@ final class MidiManager: ObservableObject {
     // MARK: - MIDI Output
 
     func sendMIDIMessage(cmd: UInt8, sig: UInt8, note: UInt8, velocity: UInt8) {
+        if let transport {
+            transport.send([sig, note, velocity])
+            return
+        }
         let dest = connectedDestination
         let port = outputPort
         guard dest != 0, port != 0 else { return }
@@ -567,6 +598,10 @@ final class MidiManager: ObservableObject {
     }
 
     func sendSysEx(messages: [[UInt8]], cableNumber: Int = 0) {
+        if let transport {
+            for message in messages { transport.send(message) }
+            return
+        }
         // SysEx always goes to DAW destination (entity 0), falling back to main destination
         let destination = connectedDawDestination != 0 ? connectedDawDestination : connectedDestination
         guard destination != 0 else { return }

@@ -201,6 +201,9 @@ struct PlayView: View {
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)
         .accessibilityIdentifier("playPadGrid")
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        .accessibilityValue("\(vm.soundEngine?.activeVoiceCount ?? 0),\(vm.soundEngine?.playsStarted ?? 0)")
+#endif
         .position(x: centerX, y: centerY)
 
         ChainBarView(
@@ -295,6 +298,10 @@ struct PlayView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+#if DEBUG || UNIPAD_RELEASE_TESTS
+                .accessibilityIdentifier("play.autoplay.toggle")
+                .accessibilityValue(vm.isAutoPlayPlaying ? "playing" : "paused")
+#endif
 
                 Button { vm.autoPlayNext() } label: {
                     Image(systemName: "forward.end.fill")

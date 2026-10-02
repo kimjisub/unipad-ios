@@ -87,9 +87,7 @@ final class AppLanguageTests: XCTestCase {
         // the picker leaves and home settles, so both taps wait for their target
         // to be hittable instead of reading the button list at a fixed moment.
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else {
-            throw XCTSkip("no pack in the library, so pack selection and play were not walked")
-        }
+        XCTAssertGreaterThan(packTitles.count, 0, "the test must prepare a pack for the language walk")
         let title = packTitles.element(boundBy: 0)
         XCTAssertTrue(UITestSupport.waitUntilHittable(title, timeout: 10), "[\(language.code)] the pack row never settled on screen")
         title.tap()

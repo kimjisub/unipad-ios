@@ -1,7 +1,6 @@
 import XCTest
 
-/// Seed Documents/UniPack/Faded from the repository's Faded.zip before running.
-/// Without the sample pack this check is skipped, as with other pack UI tests.
+/// ReleaseFeatures prepares a silent Faded fixture automatically; missing content fails.
 /// Exercises playback across the dependency update with production collection off.
 final class DependencyPlaybackSmokeTests: XCTestCase {
     @MainActor
@@ -14,9 +13,7 @@ final class DependencyPlaybackSmokeTests: XCTestCase {
         UITestSupport.attachScreenshot("dependency-01-home", to: self)
 
         let pack = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Faded")).firstMatch
-        guard pack.waitForExistence(timeout: 30) else {
-            throw XCTSkip("Faded is not installed in Documents/UniPack; playback was not checked")
-        }
+        XCTAssertTrue(pack.waitForExistence(timeout: 30), "the test must prepare its Faded fixture")
         pack.tap()
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 10))

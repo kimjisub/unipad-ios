@@ -22,6 +22,10 @@ struct ChainBarView: View {
                     onTap: { if index >= PlayViewModel.chainIndexOffset { onChainTap(index - PlayViewModel.chainIndexOffset) } }
                 )
                 .frame(width: cellSize, height: cellSize)
+#if DEBUG || UNIPAD_RELEASE_TESTS
+                .accessibilityIdentifier("play.chain.\(index - PlayViewModel.chainIndexOffset)")
+                .accessibilityValue(index < chainItems.count && chainItems[index]?.channel == .chain ? "selected" : "unselected")
+#endif
             } else {
                 Color.clear
                     .frame(width: cellSize, height: cellSize)

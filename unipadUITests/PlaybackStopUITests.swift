@@ -1,7 +1,7 @@
 import XCTest
 
-/// Install Fixtures/PlaybackStop in Documents/unipack before running. Missing content fails the
-/// check rather than silently skipping a stop/exit regression. All audio in this fixture is silent.
+/// ReleaseFeatures prepares PlaybackStop automatically; ordinary runs need Fixtures/PlaybackStop.
+/// Missing content fails instead of skipping the stop/exit regression. The fixture is silent.
 final class PlaybackStopUITests: XCTestCase {
     private let app = XCUIApplication()
 
@@ -10,12 +10,16 @@ final class PlaybackStopUITests: XCTestCase {
         continueAfterFailure = false
         app.launchArguments += UITestSupport.englishLaunchArguments()
         app.launch()
+        defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
 
         for round in 0..<3 {
             openPack()
             let grid = app.otherElements["playPadGrid"]
             for _ in 0..<4 { grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap() }
+            if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
+                XCTAssertEqual(grid.value as? String, "1,4", "repeat-stop coverage requires a voice still playing before exit")
+            }
             if round == 0 { UITestSupport.attachScreenshot("01-repeated-input", to: self) }
             leave()
             if round == 0 { UITestSupport.attachScreenshot("02-home-after-sound", to: self) }
@@ -39,7 +43,7 @@ final class PlaybackStopUITests: XCTestCase {
     private func openPack() {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "PlaybackStop must be prepared by the suite or installed before an ordinary run")
         title.tap()
         let play = app.buttons["Play"].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }

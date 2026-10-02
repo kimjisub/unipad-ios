@@ -1,0 +1,29 @@
+{
+  "configurations": [
+    {
+      "id": "AB5DC206-2D7E-4430-BEE3-78A3E3431E01",
+      "name": "All tests",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2B9E2F5E6CE300402705",
+        "name": "unipadTests"
+      },
+      "parallelizable": false
+    },
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2BA82F5E6CE300402705",
+        "name": "unipadUITests"
+      },
+      "parallelizable": false
+    }
+  ],
+  "version": 1
+}

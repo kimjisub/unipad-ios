@@ -16,11 +16,15 @@ enum UITestSupport {
     }
 
     static func launchArguments(language: String, locale: String) -> [String] {
-        [
+        var arguments = [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
         ]
+        if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
+            arguments += ["-UniPadReleaseTest", UUID().uuidString]
+        }
+        return arguments
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself

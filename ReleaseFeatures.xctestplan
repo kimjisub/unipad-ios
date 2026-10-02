@@ -1,0 +1,120 @@
+{
+  "configurations": [
+    {
+      "id": "D8837B0C-81D1-4A64-A142-D8A2C6D65E70",
+      "name": "Release features",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false,
+    "testTimeoutsEnabled": true,
+    "defaultTestExecutionTimeAllowance": 360,
+    "maximumTestExecutionTimeAllowance": 600,
+    "environmentVariableEntries": [
+      {
+        "key": "UNIPAD_RELEASE_SUITE",
+        "value": "1"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2B9E2F5E6CE300402705",
+        "name": "unipadTests"
+      },
+      "parallelizable": false,
+      "selectedTests": {
+        "suites": [
+          {
+            "name": "PackDeletionTests"
+          },
+          {
+            "name": "UniPackDownloaderTests"
+          },
+          {
+            "name": "UniPackImporterOverlapTests"
+          },
+          {
+            "name": "ImportResultDialogTests"
+          },
+          {
+            "name": "LedRunnerTests"
+          },
+          {
+            "name": "LocalizationBundleTests"
+          },
+          {
+            "name": "AudioSessionGateTests"
+          },
+          {
+            "name": "SoundEngineInterruptionTests"
+          },
+          {
+            "name": "LaunchpadCoreCFWDriverTests"
+          },
+          {
+            "name": "LaunchpadProCFWDriverTests"
+          }
+        ],
+        "xctestClasses": [
+          {
+            "name": "ReleaseMidiTests"
+          },
+          {
+            "name": "ReleasePlaybackTests"
+          },
+          {
+            "name": "PlaybackStopTests"
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2BA82F5E6CE300402705",
+        "name": "unipadUITests"
+      },
+      "parallelizable": false,
+      "selectedTests": {
+        "xctestClasses": [
+          {
+            "name": "ReleaseFeatureUITests"
+          },
+          {
+            "name": "PlaybackStopUITests"
+          },
+          {
+            "name": "DependencyPlaybackSmokeTests"
+          },
+          {
+            "name": "SettingsBackNavigationTests"
+          },
+          {
+            "name": "PlayThemeLayoutTests",
+            "xctestMethods": [
+              "testThemePickedOnThemeScreenLaysOutPlay()",
+              "testGridSitsOnSskinBackground()"
+            ]
+          },
+          {
+            "name": "AppLanguageTests",
+            "xctestMethods": [
+              "testKorean()"
+            ]
+          },
+          {
+            "name": "StoreDownloadTests"
+          },
+          {
+            "name": "StoreListEndTests"
+          }
+        ]
+      }
+    }
+  ],
+  "version": 2
+}
