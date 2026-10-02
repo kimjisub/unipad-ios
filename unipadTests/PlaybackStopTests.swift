@@ -33,6 +33,37 @@ final class PlaybackStopTests: XCTestCase {
         @TaskLocal static var marker = 0
     }
 
+    func testSoundLoadingAdapterCanBeReleasedWithPendingCallbacksInsideATaskLocalScope() async {
+        var screen: PlayViewModel? = PlayViewModel()
+        weak var releasedScreen = screen
+        for _ in 0..<100 {
+            let owner = screen!
+            await withCheckedContinuation { continuation in
+                // Exercise synchronous listener destruction without a current Swift task, as in
+                // SoundEngine's executor-scheduled teardown. Keep the fixture owner in this task.
+                DispatchQueue.main.async {
+                    withUnsafeCurrentTask { XCTAssertNil($0) }
+                    weak var releasedAdapter: SoundLoadingAdapter?
+                    ReleaseContext.$marker.withValue(1) {
+                        let adapter = SoundLoadingAdapter(viewModel: owner)
+                        releasedAdapter = adapter
+                        adapter.onStart(soundCount: 1)
+                        adapter.onProgressTick()
+                        adapter.onEnd()
+                        adapter.onException(NSError(domain: "PlaybackStopTests", code: 1))
+                    }
+                    XCTAssertNil(releasedAdapter, "queued callbacks must not retain the listener")
+                    continuation.resume()
+                }
+            }
+        }
+        XCTAssertEqual(screen?.soundLoadingMax, 0, "callbacks after listener release must do nothing")
+        XCTAssertEqual(screen?.soundLoadingProgress, 0)
+        XCTAssertEqual(screen?.startReady, false)
+        screen = nil
+        XCTAssertNil(releasedScreen, "the listener must not retain the screen")
+    }
+
     func testChainStateCanBeReleasedInsideATaskLocalScope() {
         // Releasing the LED/autoplay chain state under task-local storage used to enter Swift's
         // older-runtime isolated-deinit path and free an invalid pointer on iOS 26.3.1.
