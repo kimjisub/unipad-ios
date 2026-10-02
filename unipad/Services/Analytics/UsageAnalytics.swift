@@ -8,6 +8,7 @@ enum UsageEvent {
     static let packImport = "pack_import"
     static let packLoad = "pack_load"
     static let playStart = "play_start"
+    static let playFirstInput = "play_first_input"
     static let playEnd = "play_end"
 }
 

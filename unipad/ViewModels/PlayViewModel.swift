@@ -140,7 +140,11 @@ final class PlayViewModel {
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
 
-    @ObservationIgnored private let usageSession = UsageAnalytics.shared.makePlaySession()
+    @ObservationIgnored private let usageSession: PlaySessionTracker
+
+    init(usageAnalytics: UsageAnalytics = .shared) {
+        usageSession = usageAnalytics.makePlaySession()
+    }
 
     /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
     @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
@@ -541,11 +545,11 @@ final class PlayViewModel {
 
     private static let pressedVelocity = 3 // LED_RED
 
-    func padTouch(x: Int, y: Int, isDown: Bool) {
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger = .pad) {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
-            usageSession.playTriggered(.pad)
+            usageSession.playTriggered(trigger)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
             if autoPlayRunner?.stepMode == true {
@@ -807,7 +811,6 @@ final class PlayViewModel {
         }
 
         if currentMode == .none {
-            usageSession.playTriggered(.autoplay)
             applyModeFlags(runner, mode)
             scbAutoPlay.setCheckedSilently(true)
             if let unipack {
@@ -1198,11 +1201,11 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     }
 
     func onPadTouchOn(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: true)
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay)
     }
 
     func onPadTouchOff(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: false)
+        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay)
     }
 
     func onChainChange(c: Int) {
