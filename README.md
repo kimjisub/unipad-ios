@@ -44,6 +44,22 @@ open unipad.xcodeproj
 
 3. Select your target device or simulator and hit **Run** (`Cmd + R`).
 
+## Pull request checks
+
+Every pull request runs one **iOS checks / Build and unit tests** job on a
+GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
+Simulator without signing and runs the `unipadTests` target in Debug on an
+available iPhone simulator. UI tests are excluded. Dependencies use the
+committed `Package.resolved` versions.
+
+The job needs no repository secrets or signing credentials. It replaces the
+Firebase plist only in its disposable checkout with clearly fake values from
+`ci/firebase_fixture.py`; the existing unit-test runtime uses local Firebase
+stubs. App configuration, version, and behavior in normal builds are unchanged.
+Build logs and the test result bundle are available in the run's
+`ios-check-results` artifact for seven days. This workflow does not upload to
+a store or change required checks.
+
 ## Connecting a Launchpad
 
 1. Connect your Launchpad to your device using a USB adapter or USB-C cable.
