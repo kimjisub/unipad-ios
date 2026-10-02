@@ -19,12 +19,43 @@ final class PlaybackStopTests: XCTestCase {
         return root
     }
 
+    /// Hosted CI simulators were seen stopping the whole test process for 18–41 s at arbitrary lines,
+    /// so no wait here may hinge on a short wall-clock window. A reported failure ends a wait at once;
+    /// this bound only ends a run in which nothing is ever reported.
+    private static let silenceLimit: TimeInterval = 120
+
+    private struct WaitFailed: LocalizedError {
+        let errorDescription: String?
+    }
+
+    private func wait(
+        for what: String,
+        until done: () -> Bool,
+        failure: () -> String? = { nil }
+    ) async throws {
+        let deadline = Date().addingTimeInterval(Self.silenceLimit)
+        while !done() {
+            if let reason = failure() { throw WaitFailed(errorDescription: "\(what) failed: \(reason)") }
+            guard Date() < deadline else {
+                throw WaitFailed(errorDescription: "\(what) reported nothing within \(Int(Self.silenceLimit)) s")
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// Sound loading ends in `startReady`; a pack that cannot be read or sounds that cannot be
+    /// decoded end in a load error or a quit request instead, and fail the wait with that reason.
+    private func waitForSound(_ vm: PlayViewModel) async throws {
+        try await wait(for: "sound loading", until: { vm.startReady }, failure: {
+            if let error = vm.unipackLoadError { return error }
+            return vm.quitRequested ? vm.toastMessage ?? "the screen asked to quit" : nil
+        })
+    }
+
     private func loaded(_ root: URL) async throws -> PlayViewModel {
         let vm = PlayViewModel()
         try await vm.loadUnipack(path: root.path)
-        let deadline = Date().addingTimeInterval(15)
-        while !vm.startReady && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        XCTAssertTrue(vm.startReady)
+        try await waitForSound(vm)
         _ = try XCTUnwrap(vm.soundEngine)
         return vm
     }
@@ -141,12 +172,9 @@ final class PlaybackStopTests: XCTestCase {
         vm.makePack = { _ in pack }
         try await vm.loadUnipack(path: root.path)
         defer { vm.cleanup() }
-        let deadline = Date().addingTimeInterval(15)
-        while !vm.startReady && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        XCTAssertTrue(vm.startReady)
+        try await waitForSound(vm)
         vm.switchPlayMode(.autoPlay)
-        let played = Date().addingTimeInterval(2)
-        while pack.soundSelections.count < expected.count && Date() < played { try await Task.sleep(for: .milliseconds(10)) }
+        try await wait(for: "autoplay", until: { pack.soundSelections.count >= expected.count })
         XCTAssertEqual(pack.soundSelections, expected)
         XCTAssertEqual(pack.lightSelections, expected)
         XCTAssertEqual(vm.soundEngine?.playsStarted, expected.count)
@@ -268,10 +296,7 @@ final class PlaybackStopTests: XCTestCase {
             let engine = try XCTUnwrap(vm.soundEngine)
             defer { vm.cleanup() }
             vm.padTouch(x: 0, y: 0, isDown: true)
-            let deadline = Date().addingTimeInterval(5)
-            while engine.activeVoiceCount > 0 && Date() < deadline {
-                try await Task.sleep(for: .milliseconds(10))
-            }
+            try await wait(for: "finite repeats", until: { engine.activeVoiceCount == 0 })
             XCTAssertEqual(engine.repeatedBuffersScheduled, loop, "keySound stores total plays, not additional repeats")
             XCTAssertEqual(engine.activeVoiceCount, 0)
         }
@@ -306,7 +331,7 @@ final class PlaybackStopTests: XCTestCase {
             let runner = try XCTUnwrap(vm.autoPlayRunner)
             vm.switchPlayMode(.stepPractice)
             try await Task.sleep(for: .milliseconds(30 + round % 10 * 7))
-            XCTAssertGreaterThan(runner.progress, 0, "step scan did not run")
+            try await wait(for: "step scan", until: { runner.progress > 0 })
             let began = Date()
             if round.isMultiple(of: 2) {
                 vm.cleanup()
