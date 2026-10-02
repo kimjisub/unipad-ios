@@ -3,7 +3,8 @@ import Testing
 @testable import unipad
 
 /// Each scenario records the production analytics calls in its own sink, without parsing the
-/// process-wide log or touching Firebase. The suite serializes scenarios that use MidiManager.
+/// process-wide log or touching Firebase. The common parent suite also serializes pack-loading
+/// tests, whose readiness callbacks install a receiver on the same MidiManager.
 @MainActor
 final class PlayUsageScenario {
     let sink = UsageAnalyticsTests.RecordingAnalytics()
