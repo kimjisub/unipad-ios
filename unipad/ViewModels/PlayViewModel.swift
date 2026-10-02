@@ -1098,7 +1098,12 @@ final class PlayViewModel {
 
 // MARK: - Sound Loading Adapter
 
-private final class SoundLoadingAdapter: SoundEngine.LoadingListener {
+final class SoundLoadingAdapter: SoundEngine.LoadingListener {
+    // Only weak storage is released here; no callback or UI work needs the main actor.
+    // Implicit isolated destruction enters Swift's task-local cleanup crash on older runtimes
+    // (swift#88036), including when SoundEngine releases this listener during its own teardown.
+    nonisolated deinit {}
+
     private weak var viewModel: PlayViewModel?
 
     init(viewModel: PlayViewModel) {
