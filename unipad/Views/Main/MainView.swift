@@ -67,7 +67,7 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImportFailed"))) { notification in
             if let errorMsg = notification.userInfo?["error"] as? String {
-                vm.importResult = .error(errorMsg)
+                vm.showImportError(errorMsg)
             }
             showImportResult = true
         }
@@ -85,7 +85,7 @@ struct MainView: View {
 
                 guard url.startAccessingSecurityScopedResource() else {
                     UsageAnalytics.shared.packImportFailed(source: .file, error: CocoaError(.fileReadNoPermission))
-                    vm.importResult = .error(String(localized: "import_no_file_access"))
+                    vm.showImportError(String(localized: "import_no_file_access"))
                     showImportResult = true
                     return
                 }
@@ -116,12 +116,12 @@ struct MainView: View {
                     }
                 } catch {
                     UsageAnalytics.shared.packImportFailed(source: .file, error: error)
-                    vm.importResult = .error(error.localizedDescription)
+                    vm.showImportError(error.localizedDescription)
                     showImportResult = true
                 }
             case .failure(let error):
                 UsageAnalytics.shared.packImportFailed(source: .file, error: error)
-                vm.importResult = .error(error.localizedDescription)
+                vm.showImportError(error.localizedDescription)
                 showImportResult = true
             }
         }
@@ -587,7 +587,7 @@ final class MainViewImportDelegate: UniPackImporter.Delegate, @unchecked Sendabl
     @MainActor func onImportComplete(folder: URL) {}
 
     @MainActor func onImportError(_ error: Error) {
-        viewModel?.importResult = .error(error.localizedDescription)
+        viewModel?.showImportError(error.localizedDescription)
     }
 }
 

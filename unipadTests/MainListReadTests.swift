@@ -475,7 +475,7 @@ struct MainListReadTests {
         #expect(probe.folderWalks == 0, "a title-sorted reload walked \(probe.folderWalks) pack folders")
     }
 
-    @Test func downloadDateReloadsWalkOnlyThePackFoldersThatChanged() async throws {
+    @Test func downloadDateReloadsWalkEachPackOnceAndFilteringReusesTheSnapshot() async throws {
         defer { cleanUp() }
         try installPack("mid", title: "Mid")
         let new = try installPack("new", title: "New")
@@ -490,14 +490,18 @@ struct MainListReadTests {
         vm.refreshList()
         try await settle()
         #expect(titles == ["Old", "Mid", "New"])
-        #expect(probe.folderWalks == 3, "unchanged packs were walked again: \(probe.folderWalks) walks")
+        #expect(probe.folderWalks == 6, "each disk reload should walk each pack once: \(probe.folderWalks) walks")
+        vm.updateSearchQuery("mid")
+        vm.updateSearchQuery("")
+        #expect(probe.folderWalks == 6, "filtering walked the pack folders again")
 
         try Data().write(to: new.appending(path: "autoPlay"))
         vm.refreshList()
         try await settle()
 
         #expect(titles == ["Old", "Mid", "New"])
-        #expect(probe.folderWalks == 4, "the changed pack should be walked once more: \(probe.folderWalks) walks")
+        #expect(probe.folderWalks == 9, "a disk reload should read fresh sort keys once: \(probe.folderWalks) walks")
+        #expect(probe.folderWalksOnMainThread == 0)
     }
 
     @Test func aFileAddedToAPacksSoundsFolderWalksThatPackAgain() async throws {
@@ -514,6 +518,71 @@ struct MainListReadTests {
         try await settle()
 
         #expect(probe.folderWalks == 2, "a change in sounds/ reused the old sort key: \(probe.folderWalks) walks")
+    }
+
+    /// Set deterministic dates on real files, rather than the probed pack's synthetic sort key.
+    private func setFileDates(in folder: URL, to time: TimeInterval) throws {
+        let files = try #require(FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey]))
+        for case let file as URL in files {
+            if try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+                try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: time)], ofItemAtPath: file.path)
+            }
+        }
+    }
+
+    @Test func downloadDateReloadReflectsAnExistingFileRewrite() async throws {
+        defer { cleanUp() }
+        let older = try installPack("a", title: "A")
+        let newer = try installPack("b", title: "B")
+        try setFileDates(in: older, to: 100)
+        try setFileDates(in: newer, to: 150)
+        vm.readPack = { UniPackFolder(rootFolder: $0).load() }
+        vm.sortMethod = .downloadDate
+        vm.sortAscending = false
+        vm.refreshList()
+        try await settle()
+        #expect(titles == ["B", "A"])
+        let folderDate = try older.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+
+        // A non-atomic rewrite preserves the parent directory's modification date.
+        let keySound = older.appending(path: "keySound")
+        try "1 1 1 a.wav\n".write(to: keySound, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 200)], ofItemAtPath: keySound.path)
+        #expect(try older.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == folderDate)
+        vm.refreshList()
+        try await settle()
+
+        #expect(titles == ["A", "B"])
+        #expect(vm.unipackItems.first?.lastModified == 200)
+    }
+
+    @Test func downloadDateReloadReflectsADeepFolderChange() async throws {
+        defer { cleanUp() }
+        let older = try installPack("a", title: "A")
+        let newer = try installPack("b", title: "B")
+        let sounds = older.appending(path: "sounds")
+        let deep = sounds.appending(path: "nested/deep")
+        try FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        try Data().write(to: deep.appending(path: "existing.wav"))
+        try setFileDates(in: older, to: 100)
+        try setFileDates(in: newer, to: 150)
+        vm.readPack = { UniPackFolder(rootFolder: $0).load() }
+        vm.sortMethod = .downloadDate
+        vm.sortAscending = false
+        vm.refreshList()
+        try await settle()
+        #expect(titles == ["B", "A"])
+        let soundsDate = try sounds.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+
+        let added = deep.appending(path: "added.wav")
+        try Data().write(to: added)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 200)], ofItemAtPath: added.path)
+        #expect(try sounds.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == soundsDate)
+        vm.refreshList()
+        try await settle()
+
+        #expect(titles == ["A", "B"])
+        #expect(vm.unipackItems.first?.lastModified == 200)
     }
 
     @Test func switchingToDownloadDateDuringAReadShowsTheDownloadDateOrder() async throws {
@@ -626,6 +695,52 @@ struct MainListReadTests {
 
         #expect(!vm.isImportingInProgress)
         #expect(importedPack()?.title == "B")
+    }
+
+    @Test func aLaterImportFailureIsNotReplacedByAnEarlierSuccess() async throws {
+        defer { cleanUp() }
+        let older = try installPack("a", title: "A")
+        let probe = ListProbe(heldDetails: ["a"])
+        connect(probe)
+        vm.isImportingInProgress = true
+        let finishingOlder = Task { await vm.completeImport(importedFolder: older) }
+        try await waitUntil { probe.detailReadCount >= 1 }
+
+        let error = NSError(domain: "MainListReadTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Later import failed"])
+        MainViewImportDelegate(viewModel: vm).onImportError(error)
+        await vm.completeImport(importedFolder: nil)
+        #expect(!vm.isImportingInProgress)
+        probe.releaseDetail(of: "a")
+        await finishingOlder.value
+        try await settle()
+
+        guard case .error(let message) = vm.importResult else {
+            Issue.record("the earlier success replaced the later error: \(String(describing: vm.importResult))")
+            return
+        }
+        #expect(message == "Later import failed")
+        #expect(!vm.isImportingInProgress)
+    }
+
+    @Test func anImportErrorInvalidatesEarlierSuccessBeforeCompletion() async throws {
+        defer { cleanUp() }
+        let older = try installPack("a", title: "A")
+        let probe = ListProbe(heldDetails: ["a"])
+        connect(probe)
+        vm.refreshList()
+        try await settle()
+        let showingOlder = Task { await vm.showImportResult(forImportedFolder: older) }
+        try await waitUntil { probe.detailReadCount >= 1 }
+
+        let error = NSError(domain: "MainListReadTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Later import failed"])
+        MainViewImportDelegate(viewModel: vm).onImportError(error)
+        probe.releaseDetail(of: "a")
+        #expect(await showingOlder.value == false)
+        guard case .error(let message) = vm.importResult else {
+            Issue.record("the earlier success replaced the error before completion")
+            return
+        }
+        #expect(message == "Later import failed")
     }
 
     @Test func selectingTheImportedPackWhileItsResultIsReadReadsItsDetailOnce() async throws {

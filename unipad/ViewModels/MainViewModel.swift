@@ -190,9 +190,6 @@ final class MainViewModel {
     /// The reload under way, including the follow-up read; import waits on it to find the imported pack.
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
 
-    /// The download-date sort keys from the last reload that read them.
-    @ObservationIgnored private var modificationTimes = PackModificationTimes()
-
     func refreshList() {
         guard !isRefreshing else {
             reloadRequestedAgain = true
@@ -207,12 +204,9 @@ final class MainViewModel {
                 let read = await Self.readPacks(
                     listing: packFolderSource,
                     reading: readPack,
-                    knownTimes: sortMethod == .downloadDate ? modificationTimes : nil
+                    readModificationTimes: sortMethod == .downloadDate
                 )
-                if let times = read.times {
-                    modificationTimes = times
-                }
-                if sortMethod == .downloadDate && read.times == nil {
+                if sortMethod == .downloadDate && !read.includesModificationTimes {
                     // The sort turned to download date while this read skipped the times.
                     reloadRequestedAgain = true
                 } else if !runningReadIsStale {
@@ -232,28 +226,23 @@ final class MainViewModel {
 
     private nonisolated struct ListRead {
         let packs: [ReadPack]
-        /// Nil when the read skipped the modification times, which only the download-date sort uses.
-        let times: PackModificationTimes?
+        /// Only download-date reloads read file times; other sorts leave them at zero.
+        let includesModificationTimes: Bool
     }
 
-    /// Lists the pack folders and reads each pack's info files, away from the main actor. With
-    /// `knownTimes` it also takes each folder's modification time, walking only the folders that changed.
-    /// The packs are handed over whole and are not touched here afterwards.
+    /// Lists folders and reads each pack off the main actor. A download-date reload takes the
+    /// newest file time once per pack. Directory dates cannot detect in-place file rewrites or
+    /// deep edits, so keys are reused only within this snapshot, never across disk reloads.
     @concurrent private static func readPacks(
         listing: @Sendable () -> [URL],
         reading: @Sendable (URL) -> UniPack,
-        knownTimes: PackModificationTimes?
+        readModificationTimes: Bool
     ) async -> sending ListRead {
-        let folders = listing()
-        guard let knownTimes else {
-            return ListRead(packs: folders.map { ReadPack(pack: reading($0), lastModified: 0) }, times: nil)
-        }
-        var times = PackModificationTimes()
-        let packs = folders.map { folder in
+        let packs = listing().map { folder in
             let pack = reading(folder)
-            return ReadPack(pack: pack, lastModified: times.read(pack, in: folder, reusing: knownTimes))
+            return ReadPack(pack: pack, lastModified: readModificationTimes ? pack.lastModified() : 0)
         }
-        return ListRead(packs: packs, times: times)
+        return ListRead(packs: packs, includesModificationTimes: readModificationTimes)
     }
 
     /// Adds the saved record (bookmark, play count) to the packs that were read and shows them.
@@ -427,8 +416,17 @@ final class MainViewModel {
         if let importedFolder {
             // A later import owns the progress now and takes it down with its own result.
             guard await showImportResult(forImportedFolder: importedFolder) else { return }
+        } else {
+            // A failed completion also supersedes any earlier successful detail read.
+            importResultRequests += 1
         }
         isImportingInProgress = false
+    }
+
+    /// Invalidates earlier detail reads as soon as a failure arrives, before completion resumes.
+    func showImportError(_ message: String) {
+        importResultRequests += 1
+        importResult = .error(message)
     }
 
     /// Matches on the imported folder so the dialog, and its play action, can never point at another pack.
@@ -499,49 +497,6 @@ final class MainViewModel {
 }
 
 // MARK: - Supporting Types
-
-/// Each pack folder's download-date sort key: the newest file time inside it, which takes a walk of
-/// every file in the pack. A folder is walked again only when the modification date of the folder or
-/// of a folder directly in it (sounds, keyLED) has moved, as a file added, replaced or removed there
-/// does. A file rewritten in place, or a change deeper down, keeps the old key until the app restarts.
-nonisolated struct PackModificationTimes: Sendable {
-    private struct Entry: Sendable {
-        let folderDates: [Date]
-        let time: TimeInterval
-    }
-
-    private var entries: [String: Entry] = [:]
-
-    /// The pack's sort key, taken from `known` when the folder has not changed since it was walked.
-    mutating func read(_ pack: UniPack, in folder: URL, reusing known: PackModificationTimes) -> TimeInterval {
-        let folderDates = Self.folderDates(of: folder)
-        if let folderDates, let entry = known.entries[folder.path], entry.folderDates == folderDates {
-            entries[folder.path] = entry
-            return entry.time
-        }
-        let time = pack.lastModified()
-        if let folderDates {
-            entries[folder.path] = Entry(folderDates: folderDates, time: time)
-        }
-        return time
-    }
-
-    /// The folder's modification date followed by those of the folders directly in it, by name.
-    private static func folderDates(of folder: URL) -> [Date]? {
-        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isDirectoryKey]
-        guard
-            let date = try? folder.resourceValues(forKeys: keys).contentModificationDate,
-            let children = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys))
-        else { return nil }
-        let childDates = children
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            .compactMap { child -> Date? in
-                guard let values = try? child.resourceValues(forKeys: keys), values.isDirectory == true else { return nil }
-                return values.contentModificationDate
-            }
-        return [date] + childDates
-    }
-}
 
 struct UniPackItem: Identifiable, Hashable {
     let id: String
