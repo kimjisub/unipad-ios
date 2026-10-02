@@ -293,7 +293,7 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
     func configureForAppLaunch() async {
         let remoteConfig = RemoteConfig.remoteConfig()
         let settings = RemoteConfigSettings()
-#if DEBUG
+#if DEBUG || UNIPAD_RELEASE_TESTS
         settings.minimumFetchInterval = 60
 #endif
         remoteConfig.configSettings = settings
@@ -315,7 +315,7 @@ enum FirebaseRuntime {
 
     static let isLocalOnly: Bool = {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return true }
-#if DEBUG
+#if DEBUG || UNIPAD_RELEASE_TESTS
         return UserDefaults.standard.bool(forKey: localOnlyLaunchArgument)
 #else
         return false
@@ -327,7 +327,7 @@ enum FirebaseRuntime {
     static let fakeInstallationIdLaunchArgument = "UniPadFakeInstallationIdModel"
 
     static let fakesInstallationIdModel: Bool = {
-#if DEBUG
+#if DEBUG || UNIPAD_RELEASE_TESTS
         return isLocalOnly && UserDefaults.standard.bool(forKey: fakeInstallationIdLaunchArgument)
 #else
         return false
@@ -352,7 +352,11 @@ final class FirebaseManager: ObservableObject {
     let remoteConfig: RemoteConfigServiceProtocol
 
     private init() {
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        self.firestore = ReleaseTestSupport.root != nil ? ReleaseStore() : RealtimeDatabaseService()
+#else
         self.firestore = RealtimeDatabaseService()
+#endif
         if FirebaseRuntime.isLocalOnly {
             self.messaging = FCMServiceStub(usesInstallationID: FirebaseRuntime.fakesInstallationIdModel)
             self.analytics = AnalyticsServiceStub()

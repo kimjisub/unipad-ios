@@ -1,7 +1,7 @@
 import XCTest
 
-/// Downloads a real pack from the store and waits until it is installed, so the downloader is
-/// checked end to end (network, progress on screen, extraction, validation). Needs network access.
+/// Checks the complete download/extraction/validation flow. ReleaseFeatures supplies an offline
+/// store and URLProtocol response; ordinary runs use the real store.
 final class StoreDownloadTests: XCTestCase {
 
     private static let installTimeout: TimeInterval = 300
@@ -36,6 +36,7 @@ final class StoreDownloadTests: XCTestCase {
         }
         UITestSupport.attachScreenshot("store-download-selected", to: self)
         downloadButton.tap()
+        UITestSupport.dismissSystemAlerts()
 
         let progress = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '%' AND label CONTAINS 'MB'")).firstMatch
         if progress.waitForExistence(timeout: 30) {

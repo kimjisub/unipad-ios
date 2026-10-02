@@ -295,6 +295,10 @@ struct PlayView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+#if DEBUG || UNIPAD_RELEASE_TESTS
+                .accessibilityIdentifier("play.autoplay.toggle")
+                .accessibilityValue(vm.isAutoPlayPlaying ? "playing" : "paused")
+#endif
 
                 Button { vm.autoPlayNext() } label: {
                     Image(systemName: "forward.end.fill")

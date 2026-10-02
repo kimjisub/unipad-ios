@@ -66,6 +66,9 @@ struct unipadApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var router = AppRouter()
     @State private var midiBanner = MidiBannerCoordinator()
+#if DEBUG || UNIPAD_RELEASE_TESTS
+    @State private var openedTestLink = false
+#endif
     #if canImport(UIKit) && canImport(FirebaseCore)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     #endif
@@ -74,7 +77,13 @@ struct unipadApp: App {
     @State private var modelStoreStatus: ModelStoreStatus
 
     init() {
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        do { try ReleaseTestSupport.prepare() }
+        catch { fatalError("Release test fixture could not be prepared: \(error)") }
+        let opened = ModelContainerFactory.make(storeURL: ReleaseTestSupport.storeURL)
+#else
         let opened = ModelContainerFactory.make()
+#endif
         sharedModelContainer = opened.container
         _modelStoreStatus = State(initialValue: ModelStoreStatus(openError: opened.persistentStoreError))
     }
@@ -143,6 +152,13 @@ struct unipadApp: App {
             }
             .onAppear {
                 midiBanner.start()
+#if DEBUG || UNIPAD_RELEASE_TESTS
+                if !openedTestLink, ReleaseTestSupport.root != nil,
+                   let link = UserDefaults.standard.string(forKey: "UniPadReleaseURL"), let url = URL(string: link) {
+                    openedTestLink = true
+                    router.handleDeepLink(url)
+                }
+#endif
                 modelStoreStatus.reportIfNeeded(to: FirebaseManager.shared.crashlytics)
             }
             .onReceive(MidiManager.shared.$isConnected.removeDuplicates()) { connected in

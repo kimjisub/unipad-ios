@@ -1,7 +1,7 @@
 import XCTest
 
-/// Install Fixtures/PlaybackStop in Documents/unipack before running. Missing content fails the
-/// check rather than silently skipping a stop/exit regression. All audio in this fixture is silent.
+/// ReleaseFeatures prepares PlaybackStop automatically; ordinary runs need Fixtures/PlaybackStop.
+/// Missing content fails instead of skipping the stop/exit regression. The fixture is silent.
 final class PlaybackStopUITests: XCTestCase {
     private let app = XCUIApplication()
 
@@ -39,7 +39,7 @@ final class PlaybackStopUITests: XCTestCase {
     private func openPack() {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "PlaybackStop must be prepared by the suite or installed before an ordinary run")
         title.tap()
         let play = app.buttons["Play"].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }

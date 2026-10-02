@@ -48,6 +48,9 @@ final class UniPadAPI: Sendable {
 
     private init() {
         let config = URLSessionConfiguration.default
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        ReleaseTestSupport.configure(config)
+#endif
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 300
         session = URLSession(configuration: config)
