@@ -23,6 +23,11 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad",
 ///   running engine clears the state.
 /// - `.shutDown`: the owner called `destroy()`. Terminal; a late notification cannot resurrect it.
 final class AudioSessionGate {
+    // SoundEngine releases this gate during its main-actor teardown. Destruction only releases
+    // stored state and hooks; it never invokes the hooks or performs audio/UI work. Avoid Swift's
+    // older-runtime isolated-deinit task-local cleanup crash when no current task exists (#88036).
+    nonisolated deinit {}
+
     enum State: Equatable {
         case ready
         case interrupted

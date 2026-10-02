@@ -35,9 +35,10 @@ final class PlaybackStopTests: XCTestCase {
 
     func testSoundLoadingAdapterCanBeReleasedWithPendingCallbacksInsideATaskLocalScope() async {
         var screen: PlayViewModel? = PlayViewModel()
-        weak var releasedScreen = screen
+        weak var releasedScreen: PlayViewModel?
         for _ in 0..<100 {
             let owner = screen!
+            releasedScreen = owner
             await withCheckedContinuation { continuation in
                 // Exercise synchronous listener destruction without a current Swift task, as in
                 // SoundEngine's executor-scheduled teardown. Keep the fixture owner in this task.
@@ -62,6 +63,24 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(screen?.startReady, false)
         screen = nil
         XCTAssertNil(releasedScreen, "the listener must not retain the screen")
+    }
+
+    func testAudioSessionGateCanBeReleasedInsideATaskLocalScope() {
+        // Match executor-scheduled SoundEngine teardown: task-local storage, no current Swift task.
+        withUnsafeCurrentTask { XCTAssertNil($0) }
+        for _ in 0..<100 {
+            weak var released: AudioSessionGate?
+            ReleaseContext.$marker.withValue(1) {
+                let gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
+                    isEngineRunning: { false },
+                    activateSession: {},
+                    startEngine: {}
+                ))
+                released = gate
+                XCTAssertEqual(gate.state, .ready)
+            }
+            XCTAssertNil(released, "the audio session gate must be released immediately")
+        }
     }
 
     func testChainStateCanBeReleasedInsideATaskLocalScope() {
