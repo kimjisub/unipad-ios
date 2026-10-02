@@ -28,7 +28,9 @@ nonisolated enum ReleaseTestSupport {
             for (folder, title) in [("Release", "Release Fixture - Tests"),
                                     ("PlaybackStop", "Playback Stop Fixture"),
                                     ("Faded", "Faded - Tests")] {
-                let repeats = folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat") ? 10_000 : 0
+                let needsLongVoice = folder == "PlaybackStop" ||
+                    (folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat"))
+                let repeats = needsLongVoice ? 10_000 : 0
                 try makePack(at: library.appendingPathComponent(folder), title: title, firstPadRepeats: repeats)
             }
         }

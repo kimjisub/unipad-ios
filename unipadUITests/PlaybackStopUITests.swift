@@ -10,12 +10,16 @@ final class PlaybackStopUITests: XCTestCase {
         continueAfterFailure = false
         app.launchArguments += UITestSupport.englishLaunchArguments()
         app.launch()
+        defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
 
         for round in 0..<3 {
             openPack()
             let grid = app.otherElements["playPadGrid"]
             for _ in 0..<4 { grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap() }
+            if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
+                XCTAssertEqual(grid.value as? String, "1,4", "repeat-stop coverage requires a voice still playing before exit")
+            }
             if round == 0 { UITestSupport.attachScreenshot("01-repeated-input", to: self) }
             leave()
             if round == 0 { UITestSupport.attachScreenshot("02-home-after-sound", to: self) }

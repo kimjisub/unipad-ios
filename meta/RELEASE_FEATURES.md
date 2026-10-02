@@ -49,9 +49,10 @@ it does not overwrite Swift package conditions such as `SWIFT_PACKAGE`.
 A UUID launch argument gives each UI test its own `Documents/ReleaseTests/<UUID>/UniPack`
 library and SwiftData history store. Relaunching with that UUID keeps its history. Existing
 simulator libraries are not deleted. Silent WAV files, LED scripts and autoplay data are
-generated locally. The background test gives its first pad 10,000 finite repeats of
+generated locally. The repeat-stop fixture and the background test give their first pad 10,000 finite repeats of
 a silent 10 ms buffer and asserts one active voice before Home and a new sound request
-after foregrounding. The share/download ZIP is generated with the production ZIP writer.
+after foregrounding. The stop/exit UI test also requires one active voice after four
+inputs before leaving each of its three rounds. The share/download ZIP is generated with the production ZIP writer.
 
 The store uses a fake `FirestoreServiceProtocol`; share metadata and downloads use
 `URLProtocol`. Unexpected requests fail instead of reaching live servers. Firebase analytics,
