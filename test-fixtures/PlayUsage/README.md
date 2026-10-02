@@ -26,4 +26,14 @@ Expected records after `pack_load`:
 
 The unit suite also drives decoded MIDI input, both practice modes, input before readiness,
 invalid coordinates, repeat callbacks and repeated cleanup. Each scenario uses its own analytics
-sink under a single serialized suite. Observation failures are regular test failures.
+sink under a single serialized suite. The pack-loading tests are nested in that same
+`PlayUsageRecordTests` suite because becoming ready also replaces `MidiManager.shared.controller`.
+Swift Testing's recursive `.serialized` trait prevents the two groups from overlapping; giving
+each group its own serialized trait would still allow them to overlap. A regression test checks
+the loading test's runtime parent, so moving it back to a separate suite fails.
+
+Select `-only-testing:unipadTests/PlayUsageRecordTests` to run both groups, or
+`-only-testing:unipadTests/PlayUsageRecordTests/PlayViewModelLoadTests` for only loading.
+`PlaybackStopTests` uses XCTest, which finishes before Swift Testing starts in this test target.
+Use `-parallel-testing-enabled NO` to keep Xcode from cloning the harness-leased simulator.
+Observation failures are regular test failures.

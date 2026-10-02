@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import unipad
 
-/// Recovered scenarios share one serialized scope. Assertions are ordinary failures, including
-/// missing readiness or runner completion; no known-issue wrapper can swallow an observation error.
+/// All Swift Testing cases that install a PlayViewModel MIDI receiver share this serialized scope,
+/// including the nested pack-loading suite. Assertions remain ordinary failures.
 @MainActor
 @Suite(.serialized)
 struct PlayUsageRecordTests {
