@@ -149,6 +149,54 @@ class RunnerChecks(unittest.TestCase):
         self.assert_returned()
         self.assert_failed()
 
+    def add_xcode_generated_files(self):
+        names = [
+            'unipad.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+            'unipad.xcodeproj/project.xcworkspace/contents.xcworkspacedata',
+            'unipad.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
+        ]
+        for name in names:
+            path = self.source / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'Xcode generated')
+        return names
+
+    def test_xcode_generated_files_allowed_after_baseline_build(self):
+        self.add_xcode_generated_files()
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['unchangedProductFiles'], len(self.baseline_files))
+
+    def test_xcode_generated_files_allowed_with_exact_overlay_for_rerun(self):
+        self.add_xcode_generated_files()
+        (self.source / 'unipadUITests/PlayPadLayoutTests.swift').write_bytes(
+            (runner.TOOLS / 'PlayPadLayoutTests.swift').read_bytes())
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+
+    def test_xcode_generated_files_do_not_allow_changed_product(self):
+        self.add_xcode_generated_files()
+        (self.source / 'unipad/product.swift').write_bytes(b'changed')
+        self.assert_rejected_before_build()
+
+    def test_source_next_to_xcode_generated_files_rejected(self):
+        names = self.add_xcode_generated_files()
+        (self.source / names[0]).with_name('QAExtra.swift').write_bytes(b'added source')
+        self.assert_rejected_before_build()
+
+    def test_xcode_generated_symlink_rejected(self):
+        name = self.add_xcode_generated_files()[0]
+        path = self.source / name
+        path.unlink()
+        path.symlink_to(self.source / 'unipad/product.swift')
+        self.assert_rejected_before_build()
+
+    def test_tracked_xcode_generated_file_still_compared(self):
+        name = self.add_xcode_generated_files()[0]
+        self.baseline_files[name] = b'tracked original'
+        self.mock_product_files.append(name)
+        self.assert_rejected_before_build()
+
     def test_added_product_rejected_before_build(self):
         (self.source / 'unipad/QAExtra.swift').write_bytes(b'added product')
         self.assert_rejected_before_build()

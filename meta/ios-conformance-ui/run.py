@@ -20,6 +20,14 @@ BASELINE = '5dd4cac10f3ede280c9f5207e949a46b624c297f'
 BUNDLE = 'kim.jisub.unipad'
 AP001_SHA256 = 'fecc1cd0f58e0153751dd58574bc39b98b6e0f4e4fad86ca617ca24cf71f16b5'
 TOOLS = Path(__file__).resolve().parent
+# Xcode writes these workspace artifacts even with derived data kept elsewhere.
+# Only untracked regular files at these exact paths are exempt; tracked inputs
+# still undergo byte comparison, and other files in these directories fail.
+XCODE_GENERATED_FILES = {
+    'unipad.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+    'unipad.xcodeproj/project.xcworkspace/contents.xcworkspacedata',
+    'unipad.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist',
+}
 
 
 def invoke(command, log=None, check=True, timeout=None):
@@ -53,7 +61,9 @@ def check_product(source):
         raise RuntimeError('Product baseline file list is empty; refuse to build or launch')
     actual_files = {str(p.relative_to(source)) for p in source.rglob('*')
                     if not p.is_dir() or p.is_symlink()}
-    added = sorted(actual_files - baseline_files)
+    added = sorted(name for name in actual_files - baseline_files
+                   if name not in XCODE_GENERATED_FILES
+                   or (source / name).is_symlink() or not (source / name).is_file())
     missing = sorted(baseline_files - actual_files)
     changed = []
     overlay = 'unipadUITests/PlayPadLayoutTests.swift'

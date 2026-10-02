@@ -81,10 +81,17 @@ file. The legacy run **must fail**; the exact-title run must pass:
 `run.py` compares the entire 236-file baseline archive by path and bytes, including
 all 149 files under `unipad/`, bundled themes, project configuration and test
 support. It rejects additions, deletions, changes and symbolic links before
-building, and refuses an empty baseline list. The only allowed difference is
+building, and refuses an empty baseline list. The only allowed change to a baseline
+file is
 `unipadUITests/PlayPadLayoutTests.swift` with exactly this tool's overlay bytes;
-the original baseline file is also accepted on the first run. No generated files
-or other overlays are allowed in the source archive. Keep derived data and
+the original baseline file is also accepted on the first run. Xcode-generated
+regular files are allowed only at these exact paths under
+`unipad.xcodeproj/project.xcworkspace/`: `xcshareddata/swiftpm/Package.resolved`,
+`contents.xcworkspacedata` and `xcshareddata/IDEWorkspaceChecks.plist`. This permits
+the baseline build above and subsequent overlay reruns. If any of these paths is
+tracked in the baseline, it is still compared by bytes; symbolic links and all
+other added files (including source beside generated files) are rejected.
+No other overlays are allowed in the source archive. Keep derived data and
 output in separate directories. The receipt's `unchangedProductFiles` counter
 now counts the full 236-file archive (including the validated overlay), rather
 than only the 149 files under `unipad/`.
@@ -114,6 +121,7 @@ Run the device-free regression checks before borrowing a device:
 ```
 
 These checks use fake external commands and run-owned temporary files to cover
+Xcode-generated files after a baseline build and on overlay reruns,
 source/theme additions, deletions and changes, project/overlay changes, symbolic
 links, exact-overlay reruns, empty baseline lists, folder collisions, missing packs, fixture extraction
 and UI command failure, recorder launch/exit/timeout/missing-video failures,
