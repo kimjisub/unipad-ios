@@ -78,8 +78,16 @@ file. The legacy run **must fail**; the exact-title run must pass:
   --pack '<original-AP-001.zip>' --out "$PAPERCLIP_RUN_SCRATCH_DIR/evidence/run-1"
 ```
 
-`run.py` enumerates the full baseline tree and checks all 149 product files,
-refusing an empty list or any missing/changed baseline file before building.
+`run.py` compares the entire 236-file baseline archive by path and bytes, including
+all 149 files under `unipad/`, bundled themes, project configuration and test
+support. It rejects additions, deletions, changes and symbolic links before
+building, and refuses an empty baseline list. The only allowed difference is
+`unipadUITests/PlayPadLayoutTests.swift` with exactly this tool's overlay bytes;
+the original baseline file is also accepted on the first run. No generated files
+or other overlays are allowed in the source archive. Keep derived data and
+output in separate directories. The receipt's `unchangedProductFiles` counter
+now counts the full 236-file archive (including the validated overlay), rather
+than only the 149 files under `unipad/`.
 It requires a fresh output directory to avoid reusing stale recordings, builds the overlay,
 records the app and runner SHA-256 values, installs without opening the app,
 preserves the existing library by path and hash, stages the unchanged fixture,
@@ -106,7 +114,8 @@ Run the device-free regression checks before borrowing a device:
 ```
 
 These checks use fake external commands and run-owned temporary files to cover
-changed/empty product lists, folder collisions, missing packs, fixture extraction
+source/theme additions, deletions and changes, project/overlay changes, symbolic
+links, exact-overlay reruns, empty baseline lists, folder collisions, missing packs, fixture extraction
 and UI command failure, recorder launch/exit/timeout/missing-video failures,
 container lookup failure and device-return failure. They do not launch an app.
 

@@ -43,18 +43,33 @@ def save(path, data):
 
 
 def check_product(source):
+    # Compare the entire archived tree: synchronized Swift groups pick up new
+    # files, and themes/project/test support live outside the unipad directory.
     files = subprocess.check_output(
-        ['git', 'ls-tree', '-r', '--name-only', '--full-tree', BASELINE], cwd=TOOLS
-    ).decode().splitlines()
-    product_files = [p for p in files if p.startswith('unipad/')]
-    if not product_files:
+        ['git', 'ls-tree', '-r', '--name-only', '--full-tree', '-z', BASELINE], cwd=TOOLS
+    ).decode().split('\0')
+    baseline_files = {p for p in files if p}
+    if not baseline_files or not any(p.startswith('unipad/') for p in baseline_files):
         raise RuntimeError('Product baseline file list is empty; refuse to build or launch')
-    changed = [p for p in product_files if not (source / p).is_file() or
-               (source / p).read_bytes() != subprocess.check_output(
-                   ['git', 'show', f'{BASELINE}:{p}'], cwd=TOOLS)]
-    if changed:
-        raise RuntimeError(f'Product baseline differs: {changed}')
-    return len(product_files)
+    actual_files = {str(p.relative_to(source)) for p in source.rglob('*')
+                    if not p.is_dir() or p.is_symlink()}
+    added = sorted(actual_files - baseline_files)
+    missing = sorted(baseline_files - actual_files)
+    changed = []
+    overlay = 'unipadUITests/PlayPadLayoutTests.swift'
+    for name in sorted(baseline_files & actual_files):
+        path = source / name
+        if path.is_symlink() or not path.is_file():
+            changed.append(name)
+            continue
+        content = path.read_bytes()
+        baseline = subprocess.check_output(['git', 'show', f'{BASELINE}:{name}'], cwd=TOOLS)
+        if content != baseline and not (
+                name == overlay and content == (TOOLS / 'PlayPadLayoutTests.swift').read_bytes()):
+            changed.append(name)
+    if added or missing or changed:
+        raise RuntimeError(f'Product baseline differs: added={added}; missing={missing}; changed={changed}')
+    return len(baseline_files)
 
 
 def finish_recording(video, path, receipt):
