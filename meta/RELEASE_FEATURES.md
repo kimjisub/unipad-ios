@@ -47,7 +47,9 @@ it does not overwrite Swift package conditions such as `SWIFT_PACKAGE`.
 A UUID launch argument gives each UI test its own `Documents/ReleaseTests/<UUID>/UniPack`
 library and SwiftData history store. Relaunching with that UUID keeps its history. Existing
 simulator libraries are not deleted. Silent WAV files, LED scripts and autoplay data are
-generated locally. The share/download ZIP is generated with the production ZIP writer.
+generated locally. The background test gives its first pad 10,000 finite repeats of
+a silent 10 ms buffer and asserts one active voice before Home and a new sound request
+after foregrounding. The share/download ZIP is generated with the production ZIP writer.
 
 The store uses a fake `FirestoreServiceProtocol`; share metadata and downloads use
 `URLProtocol`. Unexpected requests fail instead of reaching live servers. Firebase analytics,
@@ -74,7 +76,7 @@ in the issue's verification record; do not infer that a check passed from its pr
 | MIDI discovery/input/output | Partial | Existing driver tests | Fake device boundary with production manager and MK2 driver | CoreMIDI virtual source/destination creation returned `kMIDINotPermitted` (-10844) on iOS 27; physical USB and CoreMIDI integration need device checks |
 | Store/download, delete/history/bookmark | Automatic | `StoreDownloadTests`, `PackDeletionTests` | Offline store/download; delete and reinstall the same pack, assert bookmark and play count cleared | Real store availability is monitored separately |
 | Language, skin, rotation, safe area | Partial | `AppLanguageTests`, `PlayThemeLayoutTests`, `StoreListEndTests` | Reuse with self-prepared packs and offline store | Settings' language row has no change action in the current app; no in-app language switch is claimed. Older screens require their own independent safe-area reference |
-| Background/lock return | Partial | Audio interruption unit tests | Play, Home button, foreground return, new pad input and exit | XCTest cannot press the simulator lock button with its public device API; real lock/unlock is a physical-device check |
+| Background/lock return | Partial | Audio interruption unit tests | Active finite-repeat voice, Home button, foreground return, new sound request and exit | XCTest cannot press the simulator lock button with its public device API; real lock/unlock is a physical-device check |
 
 ## Manual release checks
 

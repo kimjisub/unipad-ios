@@ -187,6 +187,7 @@ final class ReleaseFeatureUITests: XCTestCase {
     func testPreparedPackOpensAndBackgroundReturnStaysResponsive() {
         let app = makeApp()
         defer { app.terminate() }
+        app.launchArguments += ["-UniPadReleaseRepeat", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
         let title = app.staticTexts["Release Fixture - Tests"].firstMatch
@@ -197,12 +198,14 @@ final class ReleaseFeatureUITests: XCTestCase {
         let grid = app.otherElements["playPadGrid"]
         XCTAssertTrue(grid.waitForExistence(timeout: 15))
         grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap()
+        XCTAssertEqual(grid.value as? String, "1,1", "a voice must still be playing before backgrounding")
         UITestSupport.attachScreenshot("release-play-before-background", to: self)
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
         app.activate()
         XCTAssertTrue(grid.waitForExistence(timeout: 10))
         grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap()
+        XCTAssertEqual(grid.value as? String, "1,2", "foreground input must request a new sound")
         app.buttons["line.3.horizontal"].tap()
         XCTAssertTrue(app.buttons["rectangle.portrait.and.arrow.right"].waitForExistence(timeout: 5))
         app.buttons["rectangle.portrait.and.arrow.right"].tap()

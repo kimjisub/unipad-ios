@@ -201,6 +201,9 @@ struct PlayView: View {
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)
         .accessibilityIdentifier("playPadGrid")
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        .accessibilityValue("\(vm.soundEngine?.activeVoiceCount ?? 0),\(vm.soundEngine?.playsStarted ?? 0)")
+#endif
         .position(x: centerX, y: centerY)
 
         ChainBarView(

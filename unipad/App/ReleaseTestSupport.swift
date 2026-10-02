@@ -28,7 +28,8 @@ nonisolated enum ReleaseTestSupport {
             for (folder, title) in [("Release", "Release Fixture - Tests"),
                                     ("PlaybackStop", "Playback Stop Fixture"),
                                     ("Faded", "Faded - Tests")] {
-                try makePack(at: library.appendingPathComponent(folder), title: title)
+                let repeats = folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat") ? 10_000 : 0
+                try makePack(at: library.appendingPathComponent(folder), title: title, firstPadRepeats: repeats)
             }
         }
         let download = root.appendingPathComponent("download")
@@ -41,13 +42,13 @@ nonisolated enum ReleaseTestSupport {
         }
     }
 
-    static func makePack(at root: URL, title: String) throws {
+    static func makePack(at root: URL, title: String, firstPadRepeats: Int = 0) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: root.appendingPathComponent("sounds"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
         try "title=\(title)\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=2\n"
             .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
-        try "1 1 1 silence.wav 0\n1 1 2 silence.wav 0\n2 1 1 silence.wav 0\n"
+        try "1 1 1 silence.wav \(firstPadRepeats)\n1 1 2 silence.wav 0\n2 1 1 silence.wav 0\n"
             .write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
         try "on 1 1 a 5\ndelay 1000\noff 1 1\n"
             .write(to: root.appendingPathComponent("keyLed/1 1 1 1"), atomically: true, encoding: .utf8)
