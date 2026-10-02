@@ -722,6 +722,30 @@ struct MainListReadTests {
         #expect(!vm.isImportingInProgress)
     }
 
+    @Test func externalFailureDuringCompletionDoesNotLeaveProgressStuck() async throws {
+        defer { cleanUp() }
+        let older = try installPack("a", title: "A")
+        let probe = ListProbe(heldDetails: ["a"])
+        connect(probe)
+        vm.isImportingInProgress = true
+        let finishingOlder = Task { await vm.completeImport(importedFolder: older) }
+        try await waitUntil { probe.detailReadCount >= 1 }
+
+        // The external failure notification only shows the error; no completion follows it.
+        vm.showImportError("External import failed")
+        #expect(!vm.isImportingInProgress, "the error dialog is still covered by progress")
+        probe.releaseDetail(of: "a")
+        await finishingOlder.value
+
+        guard case .error(let message) = vm.importResult else {
+            Issue.record("the earlier success replaced the external error")
+            return
+        }
+        #expect(message == "External import failed")
+        #expect(!vm.isImportingInProgress, "the invalidated completion left progress stuck")
+        #expect(probe.timedOutWaits == 0)
+    }
+
     @Test func anImportErrorInvalidatesEarlierSuccessBeforeCompletion() async throws {
         defer { cleanUp() }
         let older = try installPack("a", title: "A")

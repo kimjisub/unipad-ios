@@ -423,10 +423,12 @@ final class MainViewModel {
         isImportingInProgress = false
     }
 
-    /// Invalidates earlier detail reads as soon as a failure arrives, before completion resumes.
+    /// A failure supersedes earlier detail reads and ends progress, including external failures
+    /// that have no subsequent completion callback.
     func showImportError(_ message: String) {
         importResultRequests += 1
         importResult = .error(message)
+        isImportingInProgress = false
     }
 
     /// Matches on the imported folder so the dialog, and its play action, can never point at another pack.
