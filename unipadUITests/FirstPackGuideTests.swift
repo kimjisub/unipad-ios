@@ -2,17 +2,12 @@
 //  FirstPackGuideTests.swift
 //  unipadUITests
 //
-//  Walks a fresh install from the empty-library guide to a playing pack:
+//  Walks an isolated empty library from the guide to a playing pack:
 //  the guide in English, Korean, Spanish and German, its link opening the
-//  browser, importing Faded.zip through the file picker, the guide going away,
+//  browser, importing a generated archive through the file picker, the guide going away,
 //  and the Play label in each language.
 //
-//  The file picker can only show files the simulator has, so copy the pack into
-//  the simulator's On My iPhone folder first; the import step skips otherwise.
-//  That folder is the `File Provider Storage` inside the app group whose
-//  metadata names `group.com.apple.FileProvider.LocalStorage`, under
-//  ~/Library/Developer/CoreSimulator/Devices/<udid>/data/Containers/Shared/AppGroup/.
-//  Uninstall the app first so the library starts empty.
+//  The shared fixture creates the archive in Documents for the system picker.
 //
 
 import XCTest
@@ -43,7 +38,7 @@ final class FirstPackGuideTests: XCTestCase {
         noLaunchpad: english.noLaunchpad, link: english.link, play: english.play)
     private static let all = [english, korean, spanish, german]
 
-    private static let packFile = "Faded"
+    private let token = UUID().uuidString
 
     private var app: XCUIApplication!
 
@@ -55,13 +50,14 @@ final class FirstPackGuideTests: XCTestCase {
     private var home: XCUIElement { app.buttons["gearshape"] }
     private var guideLink: XCUIElement { app.buttons["main.guide.getStarted"] }
     private var packTitles: XCUIElementQuery {
-        app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
+        app.scrollViews["main.packList"].staticTexts.matching(identifier: "Downloaded Fixture")
     }
 
     private func launch(_ language: Language) {
         app?.terminate()
         app = XCUIApplication()
-        app.launchArguments += UITestSupport.launchArguments(language: language.code, locale: language.locale)
+        app.launchArguments += UITestSupport.launchArguments(language: language.code, locale: language.locale,
+                                                              library: "empty", token: token, file: true)
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "[\(language.code)] home never appeared")
@@ -90,16 +86,15 @@ final class FirstPackGuideTests: XCTestCase {
         let title = packTitles.element(boundBy: 0)
         guard title.waitForExistence(timeout: 10) else { return nil }
         title.tap()
-        let label = app.staticTexts[language.play].firstMatch
+        let label = app.buttons[language.play].firstMatch
         guard label.waitForExistence(timeout: 5) else { return nil }
         return label
     }
 
     private func requireEmptyLibrary() throws {
         launch(Self.english)
-        if !text(Self.english.title).waitForExistence(timeout: 10) && packTitles.count > 0 {
-            throw XCTSkip("the library is not empty; uninstall the app before this test")
-        }
+        XCTAssertTrue(text(Self.english.title).waitForExistence(timeout: 10), "the test must prepare an empty library")
+        XCTAssertEqual(packTitles.count, 0)
     }
 
     // MARK: - Steps
@@ -129,46 +124,15 @@ final class FirstPackGuideTests: XCTestCase {
         XCTAssertTrue(text(Self.english.title).exists, "the guide went away after coming back from Safari")
     }
 
-    /// Opens a picker row, trying each label in turn, because the picker follows the app language.
-    @discardableResult
-    private func tapFirst(_ labels: [String], timeout: TimeInterval = 3) -> Bool {
-        let predicate = NSPredicate(format: "label IN %@", labels)
-        for query in [app.buttons, app.cells, app.staticTexts] {
-            let element = query.matching(predicate).firstMatch
-            if element.waitForExistence(timeout: timeout) && element.isHittable {
-                element.tap()
-                return true
-            }
-        }
-        return false
-    }
-
     private func importPackThroughPicker(_ language: Language, success: String) throws {
         launch(language)
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let cancel = app.buttons.matching(NSPredicate(format: "label IN %@", ["Cancel", "취소"])).firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "[\(language.code)] the file picker never opened")
-        shot(language, "03-picker")
-
-        let pack = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label BEGINSWITH %@", Self.packFile)).firstMatch
-        if !pack.waitForExistence(timeout: 3) {
-            tapFirst(["Browse", "둘러보기"])
-            tapFirst(["On My iPhone", "나의 iPhone"])
-        }
-        guard pack.waitForExistence(timeout: 10) else {
-            shot(language, "03-picker-no-pack")
-            add(XCTAttachment(string: app.debugDescription))
-            cancel.tap()
-            throw XCTSkip("\(Self.packFile).zip is not in the simulator's On My iPhone folder")
-        }
-        shot(language, "04-picker-pack")
-        pack.tap()
+        try UITestSupport.selectPreparedArchive(token: token, in: app)
 
         let done = text(success)
         XCTAssertTrue(done.waitForExistence(timeout: 60), "[\(language.code)] \"\(success)\" never appeared")
         shot(language, "05-import-done")
-        app.buttons.matching(NSPredicate(format: "label IN %@", ["Accept", "확인"])).firstMatch.tap()
+        app.buttons["main.importResult.ok"].tap()
 
         XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 10), "[\(language.code)] the pack is not listed")
         XCTAssertFalse(text(language.title).exists, "[\(language.code)] the guide is still shown with a pack")

@@ -22,7 +22,7 @@ final class PlayThemeLayoutTests: XCTestCase {
     private func openFirstPack(in app: XCUIApplication) throws -> String {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let faded = packTitles.matching(NSPredicate(format: "label CONTAINS[c] %@", "Faded")).firstMatch
         let title = faded.exists ? faded : packTitles.element(boundBy: 0)
         let name = title.label
@@ -41,9 +41,7 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     private func safeArea(of window: CGRect) throws -> CGRect {
         let key = "\(Int(window.width))x\(Int(window.height))"
-        guard let insets = Self.landscapeSafeAreas[key] else {
-            throw XCTSkip("no reference safe area for a \(key) screen")
-        }
+        let insets = try XCTUnwrap(Self.landscapeSafeAreas[key], "no independently measured safe area for a \(key) screen")
         return CGRect(x: window.minX + insets.side, y: window.minY,
                       width: window.width - insets.side * 2, height: window.height - insets.bottom)
     }

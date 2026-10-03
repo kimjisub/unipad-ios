@@ -2,14 +2,12 @@
 //  ImportResultDialogFlowTests.swift
 //  unipadUITests
 //
-//  Imports Faded.zip through the file picker in Korean, English and German and
+//  Imports a generated archive through the file picker in Korean, English and German and
 //  checks the import-complete card: its wording, its two buttons, that OK only
 //  closes it without counting a play, that Play now opens the imported pack, and
 //  that tapping outside closes it.
 //
-//  The file picker can only show files the simulator has, so copy the pack into
-//  the simulator's On My iPhone folder first; the tests skip otherwise (see
-//  FirstPackGuideTests for where that folder is).
+//  Shared fixtures prepare an isolated empty library and a Documents archive.
 //
 
 import XCTest
@@ -32,8 +30,8 @@ final class ImportResultDialogFlowTests: XCTestCase {
     private static let german = Language(
         code: "de", locale: "de_DE", success: "Pack importiert!", ok: "OK", playNow: "Jetzt spielen", playCount: "Wiedergaben")
 
-    private static let packFile = "Faded"
-    private static let packTitle = "Alan Walker - Faded"
+    private let token = UUID().uuidString
+    private static let packTitle = "Downloaded Fixture"
 
     private var app: XCUIApplication!
 
@@ -50,11 +48,8 @@ final class ImportResultDialogFlowTests: XCTestCase {
 
     private func launch(_ language: Language) {
         app = XCUIApplication()
-        app.launchArguments += [
-            "-UniPadFirebaseLocalOnly", "YES",
-            "-AppleLanguages", "(\(language.code))",
-            "-AppleLocale", language.locale,
-        ]
+        app.launchArguments = UITestSupport.launchArguments(language: language.code, locale: language.locale,
+                                                            library: "empty", token: token, file: true)
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "[\(language.code)] home never appeared")
@@ -64,49 +59,21 @@ final class ImportResultDialogFlowTests: XCTestCase {
         UITestSupport.attachScreenshot("\(language.code)-\(name)", to: self)
     }
 
-    @discardableResult
-    private func tapFirst(_ labels: [String], timeout: TimeInterval = 3) -> Bool {
-        let predicate = NSPredicate(format: "label IN %@", labels)
-        for query in [app.buttons, app.cells, app.staticTexts] {
-            let element = query.matching(predicate).firstMatch
-            if element.waitForExistence(timeout: timeout) && element.isHittable {
-                element.tap()
-                return true
-            }
-        }
-        return false
-    }
-
-    /// The home screen's total play count, read from the number on the same row as its label.
-    private func playCount(_ language: Language) -> String? {
-        let label = app.staticTexts[language.playCount].firstMatch
-        guard label.waitForExistence(timeout: 5) else { return nil }
-        let row = label.frame
-        let values = app.staticTexts.allElementsBoundByIndex.filter {
-            $0.frame.minX > row.maxX && abs($0.frame.midY - row.midY) < 4
-        }
-        return values.first?.label
+    /// Stable identifier of the total count, independent of translation and text layout.
+    private func playCount() -> String? {
+        let count = app.staticTexts["main.total.playCount"].firstMatch
+        return count.waitForExistence(timeout: 5) ? count.label : nil
     }
 
     private func importPack(_ language: Language) throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let pack = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label BEGINSWITH %@", Self.packFile)).firstMatch
-        if !pack.waitForExistence(timeout: 3) {
-            tapFirst(["Browse", "둘러보기", "Durchsuchen"])
-            tapFirst(["On My iPhone", "나의 iPhone", "Auf meinem iPhone"])
-        }
-        guard pack.waitForExistence(timeout: 10) else {
-            add(XCTAttachment(string: app.debugDescription))
-            throw XCTSkip("\(Self.packFile).zip is not in the simulator's On My iPhone folder")
-        }
-        pack.tap()
+        try UITestSupport.selectPreparedArchive(token: token, in: app)
     }
 
     private func assertDialog(_ language: Language, _ name: String) {
         XCTAssertTrue(dialogTitle.waitForExistence(timeout: 60), "[\(language.code)] the card never appeared")
         XCTAssertEqual(dialogTitle.label, language.success)
-        XCTAssertTrue(app.staticTexts[Self.packTitle].exists, "[\(language.code)] the card does not name the pack")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, Self.packTitle, "[\(language.code)] the card does not name the pack")
         XCTAssertEqual(okButton.label, language.ok)
         XCTAssertEqual(playNowButton.label, language.playNow)
         XCTAssertTrue(okButton.isHittable && playNowButton.isHittable, "[\(language.code)] a button is covered")
@@ -127,7 +94,7 @@ final class ImportResultDialogFlowTests: XCTestCase {
     private func runFlow(_ language: Language) throws {
         launch(language)
         shot(language, "01-home")
-        let before = playCount(language)
+        let before = try XCTUnwrap(playCount(), "the total play count must be shown")
 
         try importPack(language)
         assertDialog(language, "02")
@@ -135,11 +102,7 @@ final class ImportResultDialogFlowTests: XCTestCase {
         XCTAssertFalse(dialogTitle.waitForExistence(timeout: 2), "[\(language.code)] OK did not close the card")
         XCTAssertTrue(home.waitForExistence(timeout: 5), "[\(language.code)] OK did not return home")
         XCTAssertFalse(playGrid.exists, "[\(language.code)] OK opened the play screen")
-        if let before {
-            XCTAssertEqual(playCount(language), before, "[\(language.code)] OK counted a play")
-        } else {
-            add(XCTAttachment(string: "play count not found on home:\n\(app.debugDescription)"))
-        }
+        XCTAssertEqual(playCount(), before, "[\(language.code)] OK counted a play")
         shot(language, "03-after-ok")
 
         try importPack(language)

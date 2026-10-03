@@ -20,18 +20,32 @@ nonisolated enum ReleaseTestSupport {
     @MainActor static func prepare() throws {
         guard let root else { return }
         let fm = FileManager.default
-        guard !fm.fileExists(atPath: root.path) else { return }
+        guard !fm.fileExists(atPath: root.path) else {
+            try updateDeleteProtection(in: root)
+            return
+        }
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         let library = root.appendingPathComponent("UniPack")
         try fm.createDirectory(at: library, withIntermediateDirectories: true)
         if !UserDefaults.standard.bool(forKey: "UniPadReleaseEmpty") {
-            for (folder, title) in [("Release", "Release Fixture - Tests"),
-                                    ("PlaybackStop", "Playback Stop Fixture"),
-                                    ("Faded", "Faded - Tests")] {
-                let needsLongVoice = folder == "PlaybackStop" ||
-                    (folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat"))
-                let repeats = needsLongVoice ? 10_000 : 0
-                try makePack(at: library.appendingPathComponent(folder), title: title, firstPadRepeats: repeats)
+            switch UserDefaults.standard.string(forKey: "UniPadUITestLibrary") {
+            case "search":
+                for (folder, title, producer) in [("Faded", "Alan Walker - Faded", "Otarygen, 김지섭, K1A2"),
+                                                  ("Sunflower", "Sunflower", "Post Malone"),
+                                                  ("Spring", "봄날", "방탄소년단")] {
+                    try makePack(at: library.appendingPathComponent(folder), title: title, producer: producer)
+                }
+            case "deletion":
+                try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
+            default:
+                for (folder, title) in [("Release", "Release Fixture - Tests"),
+                                        ("PlaybackStop", "Playback Stop Fixture"),
+                                        ("Faded", "Faded - Tests")] {
+                    let needsLongVoice = folder == "PlaybackStop" ||
+                        (folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat"))
+                    let repeats = needsLongVoice ? 10_000 : 0
+                    try makePack(at: library.appendingPathComponent(folder), title: title, firstPadRepeats: repeats)
+                }
             }
         }
         let download = root.appendingPathComponent("download")
@@ -42,13 +56,30 @@ nonisolated enum ReleaseTestSupport {
         if UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token {
             try fm.copyItem(at: archive, to: WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseFixture-\(token).zip"))
         }
+        try updateDeleteProtection(in: root)
     }
 
-    static func makePack(at root: URL, title: String, firstPadRepeats: Int = 0) throws {
+    /// Protect the complete isolated deletion fixture, as the old host's recursive lock did.
+    /// A subsequent launch with NO unlocks the directories before their contents.
+    private static func updateDeleteProtection(in root: URL) throws {
+        guard UserDefaults.standard.string(forKey: "UniPadUITestLibrary") == "deletion" else { return }
+        let pack = root.appendingPathComponent("UniPack/Deletion")
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: pack.path) else { return }
+        let contents = try fm.subpathsOfDirectory(atPath: pack.path)
+        var paths = [pack] + contents.map { pack.appendingPathComponent($0) }
+        let protect = UserDefaults.standard.bool(forKey: "UniPadUITestDeleteFailure")
+        if protect { paths.reverse() }
+        for path in paths {
+            try fm.setAttributes([.immutable: protect], ofItemAtPath: path.path)
+        }
+    }
+
+    static func makePack(at root: URL, title: String, producer: String = "Tests", firstPadRepeats: Int = 0) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: root.appendingPathComponent("sounds"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
-        try "title=\(title)\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=2\n"
+        try "title=\(title)\nproducerName=\(producer)\nbuttonX=8\nbuttonY=8\nchain=2\n"
             .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
         try "1 1 1 silence.wav \(firstPadRepeats)\n1 1 2 silence.wav 0\n2 1 1 silence.wav 0\n"
             .write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)

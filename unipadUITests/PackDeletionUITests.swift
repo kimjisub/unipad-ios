@@ -5,25 +5,38 @@
 
 import XCTest
 
-/// Delete confirmation on the home screen. The pack is copied into the app's
-/// Documents/UniPack by the host before the run (a UI test cannot write into the
-/// app's sandbox); without it the tests are skipped.
+/// Each check gets an isolated generated pack. Play counts are created through UI input;
+/// deletion failures protect the generated pack and exercise the real file removal path.
 final class PackDeletionUITests: XCTestCase {
 
     static let packTitle = "UI Test Pack"
 
     private var app: XCUIApplication!
+    private let token = UUID().uuidString
+    private var expectsDeleteFailure: Bool { name.contains("testFailedDelete") }
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "deletion", token: token)
+            + ["-UniPadUITestDeleteFailure", expectsDeleteFailure ? "YES" : "NO"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
 
+    override func tearDownWithError() throws {
+        if expectsDeleteFailure {
+            app.terminate()
+            app.launchArguments = UITestSupport.englishLaunchArguments(library: "deletion", token: token)
+                + ["-UniPadUITestDeleteFailure", "NO"]
+            app.launch()
+            XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "the protected fixture must be unlocked")
+        }
+        app.terminate()
+    }
+
     private var packRow: XCUIElement {
-        app.staticTexts[Self.packTitle].firstMatch
+        app.scrollViews["main.packList"].staticTexts[Self.packTitle].firstMatch
     }
 
     private var deleteButton: XCUIElement {
@@ -31,9 +44,7 @@ final class PackDeletionUITests: XCTestCase {
     }
 
     private func openDeleteConfirmation() throws {
-        guard packRow.waitForExistence(timeout: 30) else {
-            throw XCTSkip("'\(Self.packTitle)' is not installed in Documents/UniPack")
-        }
+        XCTAssertTrue(packRow.waitForExistence(timeout: 30), "the fixture must prepare \(Self.packTitle)")
         if !deleteButton.exists {
             packRow.tap()
         }
@@ -55,14 +66,12 @@ final class PackDeletionUITests: XCTestCase {
 
     /// Bookmarks the pack first so the host can check that a reinstall does not bring the bookmark back.
     func testAcceptRemovesPack() throws {
-        guard packRow.waitForExistence(timeout: 30) else {
-            throw XCTSkip("'\(Self.packTitle)' is not installed in Documents/UniPack")
-        }
+        XCTAssertTrue(packRow.waitForExistence(timeout: 30), "the fixture must prepare \(Self.packTitle)")
         packRow.tap()
         let bookmark = app.buttons.matching(NSPredicate(format: "identifier == 'bookmark' OR label == 'Bookmark'")).firstMatch
-        if bookmark.waitForExistence(timeout: 5) {
-            bookmark.tap()
-        }
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 5))
+        bookmark.tap()
+        XCTAssertTrue(app.buttons["bookmark.fill"].waitForExistence(timeout: 5))
         try openDeleteConfirmation()
 
         app.alerts.firstMatch.buttons["Accept"].tap()
@@ -83,16 +92,12 @@ final class PackDeletionUITests: XCTestCase {
         return Int(totalPlayCount.label)
     }
 
-    /// Needs the host to seed the pack's saved play count and to pass it as
-    /// `TEST_RUNNER_UNIPAD_DELETED_PACK_PLAYS` to xcodebuild.
+    /// Playing first creates a nonzero count, without host-prepared database rows.
     func testAcceptUpdatesTotalPlayCountWithoutRelaunch() throws {
-        guard let plays = ProcessInfo.processInfo.environment["UNIPAD_DELETED_PACK_PLAYS"].flatMap(Int.init) else {
-            throw XCTSkip("The pack's play count is not set up by the host")
-        }
-        guard packRow.waitForExistence(timeout: 30) else {
-            throw XCTSkip("'\(Self.packTitle)' is not installed in Documents/UniPack")
-        }
+        UITestSupport.playAndReturn(packRow, in: app)
+        let plays = 1
         let before = try XCTUnwrap(readTotalPlayCount(), "Total play count is not shown")
+        XCTAssertEqual(before, plays)
         attach("total_before_delete")
 
         try openDeleteConfirmation()
@@ -107,10 +112,9 @@ final class PackDeletionUITests: XCTestCase {
 
     /// Cancelling leaves the saved plays, so the total must not move.
     func testCancelKeepsTotalPlayCount() throws {
-        guard packRow.waitForExistence(timeout: 30) else {
-            throw XCTSkip("'\(Self.packTitle)' is not installed in Documents/UniPack")
-        }
+        UITestSupport.playAndReturn(packRow, in: app)
         let before = try XCTUnwrap(readTotalPlayCount(), "Total play count is not shown")
+        XCTAssertEqual(before, 1)
 
         try openDeleteConfirmation()
         app.alerts.firstMatch.buttons["Cancel"].tap()
@@ -121,17 +125,11 @@ final class PackDeletionUITests: XCTestCase {
         attach("total_after_cancel")
     }
 
-    /// Needs the host to lock the pack folder first (`chflags -R uchg`, so no file in it
-    /// can be removed) and to pass
-    /// `TEST_RUNNER_UNIPAD_EXPECT_DELETE_FAILURE=1` to xcodebuild.
+    /// The fixture protects all its files; both failed attempts must retain the pack and count.
     func testFailedDeleteShowsErrorAndAllowsRetry() throws {
-        guard ProcessInfo.processInfo.environment["UNIPAD_EXPECT_DELETE_FAILURE"] == "1" else {
-            throw XCTSkip("Deletion failure is not set up by the host")
-        }
-        guard packRow.waitForExistence(timeout: 30) else {
-            throw XCTSkip("'\(Self.packTitle)' is not installed in Documents/UniPack")
-        }
-        let totalBefore = readTotalPlayCount()
+        UITestSupport.playAndReturn(packRow, in: app)
+        let totalBefore = try XCTUnwrap(readTotalPlayCount())
+        XCTAssertEqual(totalBefore, 1)
         for attempt in 1...2 {
             try openDeleteConfirmation()
             app.alerts.firstMatch.buttons["Accept"].tap()

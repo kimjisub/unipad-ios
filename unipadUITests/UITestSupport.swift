@@ -11,20 +11,83 @@ enum UITestSupport {
     /// ("Information", "Theme", "Play", option names). The app follows the
     /// simulator's language, so these pin it to English to make the result the
     /// same whatever language the simulator was left in.
-    static func englishLaunchArguments() -> [String] {
-        launchArguments(language: "en", locale: "en_US")
+    static func englishLaunchArguments(library: String = "standard", token: String = UUID().uuidString,
+                                       file: Bool = false) -> [String] {
+        launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file)
     }
 
-    static func launchArguments(language: String, locale: String) -> [String] {
+    static func launchArguments(language: String, locale: String, library: String = "standard",
+                                token: String = UUID().uuidString, file: Bool = false) -> [String] {
         var arguments = [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
         ]
         if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
-            arguments += ["-UniPadReleaseTest", UUID().uuidString]
+            arguments += ["-UniPadReleaseTest", token, "-UniPadUITestLibrary", library,
+                          "-UniPadReleaseEmpty", library == "empty" ? "YES" : "NO",
+                          "-UniPadReleaseFile", file ? "YES" : "NO"]
         }
         return arguments
+    }
+
+    /// Creates a recent-play record through the same controls the user uses.
+    static func playAndReturn(_ title: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(title.waitForExistence(timeout: 30), "the test pack must be prepared")
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 5))
+        play.tap()
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 30))
+        app.buttons["line.3.horizontal"].tap()
+        let quit = app.buttons["rectangle.portrait.and.arrow.right"]
+        XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        quit.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        // Close the selected-pack panel so its total and recent packs are visible.
+        title.tap()
+        XCTAssertTrue(app.staticTexts["main.total.playCount"].waitForExistence(timeout: 5))
+    }
+
+    /// Select the archive generated for this launch, through the system file picker.
+    /// Browsing avoids relying on Spotlight to have indexed a freshly created file.
+    static func selectPreparedArchive(token: String, in app: XCUIApplication) throws {
+        _ = try XCTUnwrap(settledFilePickerCancelButton(in: app, timeout: 20))
+        func tapRow(_ names: [String]) {
+            let row = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label IN %@", names)).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "missing file picker row: \(names)")
+            XCTAssertTrue(waitUntilHittable(row, timeout: 5))
+            row.tap()
+        }
+        let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen"])).firstMatch
+        if browse.exists { browse.tap() }
+        tapRow(["On My iPhone", "나의 iPhone", "Auf meinem iPhone"])
+        tapRow(["UniPad", "unipad"])
+        let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
+        let icon = cell.images.firstMatch
+        let list = app.collectionViews.firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        let search = app.searchFields.firstMatch
+        let tabs = app.tabBars.firstMatch
+        XCTAssertTrue(search.exists && tabs.exists)
+        let window = app.windows.firstMatch.frame
+        let viewport = CGRect(x: window.minX, y: search.frame.maxY + 4, width: window.width,
+                              height: tabs.frame.minY - search.frame.maxY - 8)
+        func visible() -> Bool { icon.exists && viewport.contains(icon.frame) && icon.isHittable }
+        for _ in 0..<25 {
+            if visible() { break }
+            let high = list.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.40))
+            let low = list.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.62))
+            if icon.exists && icon.frame.minY < viewport.minY {
+                high.press(forDuration: 0.1, thenDragTo: low, withVelocity: .slow, thenHoldForDuration: 0.2)
+            } else {
+                low.press(forDuration: 0.1, thenDragTo: high, withVelocity: .slow, thenHoldForDuration: 0.2)
+            }
+        }
+        XCTAssertTrue(cell.waitForExistence(timeout: 5))
+        XCTAssertTrue(visible(), "the archive icon must be visible before selecting it")
+        icon.tap()
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself
@@ -33,10 +96,11 @@ enum UITestSupport {
     static func dismissSystemAlerts() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         for _ in 0..<3 {
+            guard springboard.alerts.firstMatch.waitForExistence(timeout: 1) else { return }
             var tapped = false
             for label in ["허용 안 함", "Don't Allow", "허용", "Allow", "OK", "확인"] {
                 let b = springboard.buttons[label]
-                if b.waitForExistence(timeout: 2) {
+                if b.exists && b.isHittable {
                     b.tap()
                     tapped = true
                     break

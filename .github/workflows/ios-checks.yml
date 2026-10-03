@@ -142,10 +142,10 @@ jobs:
               ['xcrun', 'simctl', 'list', 'devices', 'available', '--json']
           ))['devices']
           iphones = [device for runtime, items in sorted(devices.items(), reverse=True)
-                     if '.iOS-' in runtime for device in items
+                     if runtime.endswith('.iOS-26-3') for device in items
                      if device['name'] == 'iPhone 17 Pro' and device['isAvailable']]
           if not iphones:
-              raise SystemExit('No iPhone 17 Pro simulator for the measured layout assertions')
+              raise SystemExit('No iPhone 17 Pro on iOS 26.3 for the measured layout assertions')
           device = iphones[0]
           print(f"Using {device['name']} ({device['udid']})")
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
@@ -162,6 +162,7 @@ jobs:
       - name: Run all UI tests
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+          TEST_RUNNER_UNIPAD_RELEASE_SUITE: '1'
         run: |
           xcodebuild test -quiet \
             -project unipad.xcodeproj -scheme unipad -configuration Debug \
