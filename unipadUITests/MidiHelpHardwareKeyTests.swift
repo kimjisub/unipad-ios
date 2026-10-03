@@ -81,8 +81,16 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     }
 
     private func assertOnlyHelpClosed(_ labels: Labels) {
+        let closed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
+        if !closed {
+            UITestSupport.attachScreenshot("real-escape-still-open", to: self)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "real-escape-still-open-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
+        XCTAssertTrue(closed, "Escape must close the help")
         XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["midi.help.close"].exists)
         XCTAssertTrue(app.buttons["midi.confirm"].exists, "Escape must close only the help")
         waitSixSeconds()
         XCTAssertTrue(app.buttons["midi.help.open"].exists, "the selection must stay after the help closes")
