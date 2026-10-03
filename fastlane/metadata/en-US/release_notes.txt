@@ -1,1 +1,33 @@
-Improved audio reliability and theme labels, and added usage metrics to help improve pack loading and playback.
+Getting started and your library
+- Find your first UniPack with guidance in an empty library.
+- See clearer pack details after importing and use Play now to open that pack.
+- Download and import from the home cards, with duplicate toolbar icons removed.
+- Find Settings by name and see recently played packs on the home screen.
+- Search the loaded library without rereading every pack folder as you type. Library and pack-detail reads run in the background.
+- Keep selected-pack play counts and last-played details current after returning from play.
+- Deleting a pack clears its saved play history and bookmark after successful deletion, updates library totals, and shows deletion errors. Reimporting that pack starts fresh.
+
+Importing and downloading
+- Show a warning when an imported pack is missing sound files.
+- Keep import progress visible until the result is ready and prevent an earlier success from replacing a later failure.
+- Protect separate downloads and imports from sharing installation folders or removing each other's files.
+- Write pack downloads in chunks and clean up partial files after cancelled or failed transfers finish.
+- Ask about notifications on the first store download instead of at app launch. Downloads do not wait for permission; unanswered permission checks can be retried.
+- Point the update link to the current UniPad App Store page.
+
+Playing and lights
+- Fix app hangs when stopping repeated sounds, leaving play, or changing step-practice mode. Preserve the order of AutoPlay sounds, lights, and chain changes.
+- Fix a crash when playback helpers are released.
+- Keep endless light animations running past a processing limit and turn lights off on release.
+- Reject malformed light commands and limit out-of-range Launchpad brightness values.
+- Center the pad grid while keeping chains clear of the menu, and keep the theme background steady while a pack opens.
+
+Language and settings
+- Follow the device language and translate more device-status, pack-count, and community text.
+- Explain the pad tap-order number setting and its required play-screen switch.
+- Enlarge the Settings back button's touch area.
+
+Stability
+- Ensure the build includes the official protection against a server-data key that can cause an app crash.
+
+Thank you to Aezurolp for reporting the theme background problem, and to everyone helping us check UniPad.
