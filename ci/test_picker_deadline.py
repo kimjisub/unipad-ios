@@ -13,21 +13,23 @@ class PickerDeadlineTests(unittest.TestCase):
         end = source.index("    private static func attachPickerDiagnostics", start)
         helper = source[start:end]
         program = "import Foundation\nimport XCTest\nstruct Support {\n" + helper + "}\n" + r"""
-let arrivesAt = Date().addingTimeInterval(1.8)
 let target = CGRect(x: 740, y: 28, width: 37, height: 36)
-let late = Support.waitForSettledFrame(timeout: 2,
+let stable = Support.waitForSettledFrame(timeout: 3,
+    waitForArrival: { _ in true }, frame: { target })
+let arrivesAt = Date().addingTimeInterval(2.8)
+let late = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in Thread.sleep(until: arrivesAt); return true },
     frame: { Date() >= arrivesAt ? target : nil })
-let missing = Support.waitForSettledFrame(timeout: 2,
+let missing = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in false }, frame: { nil })
 var position = 0
-let moving = Support.waitForSettledFrame(timeout: 2,
+let moving = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in true }, frame: {
         position += 1
         return CGRect(x: position, y: 28, width: 37, height: 36)
     })
-print("Late control settled:", late, "missing accepted:", missing, "moving accepted:", moving)
-exit(late && !missing && !moving ? 0 : 1)
+print("Stable control settled:", stable, "late control settled:", late, "missing accepted:", missing, "moving accepted:", moving)
+exit(stable && late && !missing && !moving ? 0 : 1)
 """
         developer = subprocess.check_output(["xcode-select", "-p"], text=True).strip()
         frameworks = str(Path(developer) / "Platforms/MacOSX.platform/Developer/Library/Frameworks")
