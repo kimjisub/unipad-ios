@@ -111,13 +111,13 @@ jobs:
 
   ui-tests:
     name: UI tests
-    runs-on: macos-15
+    runs-on: xcode-27
     timeout-minutes: 60
     defaults:
       run:
         shell: bash
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
       - name: Check out source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -142,10 +142,10 @@ jobs:
               ['xcrun', 'simctl', 'list', 'devices', 'available', '--json']
           ))['devices']
           iphones = [device for runtime, items in sorted(devices.items(), reverse=True)
-                     if runtime.endswith(('.iOS-26-2', '.iOS-26-3')) for device in items
+                     if runtime.endswith('.iOS-27-0') for device in items
                      if device['name'] == 'iPhone 17 Pro' and device['isAvailable']]
           if not iphones:
-              raise SystemExit('No iPhone 17 Pro on iOS 26.2 or 26.3 for the measured layout assertions')
+              raise SystemExit('No iPhone 17 Pro on iOS 27 for the complete UI suite, including VoiceOver')
           device = iphones[0]
           print(f"Using {device['name']} ({device['udid']})")
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
@@ -164,13 +164,11 @@ jobs:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
           TEST_RUNNER_UNIPAD_RELEASE_SUITE: '1'
         run: |
-          xcodebuild test -quiet \
+          ci/host-keys.sh "$SIMULATOR_UDID" "$RUNNER_TEMP/DerivedData" test -quiet \
             -project unipad.xcodeproj -scheme unipad -configuration Debug \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
-            -only-testing:unipadUITests -parallel-testing-enabled NO \
+            -only-testing:unipadUITests \
             -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee "$RUNNER_TEMP/ui-tests.log"

@@ -59,10 +59,11 @@ struct MarqueeText: View {
     private var textHeight: CGFloat {
         #if canImport(UIKit)
         let uiFont = UIFont.systemFont(ofSize: fontSize)
-        #else
-        let uiFont = NSFont.systemFont(ofSize: fontSize)
-        #endif
         return uiFont.lineHeight + 4
+        #else
+        let nsFont = NSFont.systemFont(ofSize: fontSize)
+        return NSLayoutManager().defaultLineHeight(for: nsFont) + 4
+        #endif
     }
 
     private func resetAnimation() {

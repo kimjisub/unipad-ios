@@ -26,19 +26,20 @@ class UISimulatorTests(unittest.TestCase):
     def device(self, name='iPhone 17 Pro', available=True):
         return {'name': name, 'isAvailable': available, 'udid': 'measured-phone'}
 
-    def test_accepts_ios_26_2_installed_on_macos_15_runner(self):
-        self.assertEqual(self.select({'com.apple.CoreSimulator.SimRuntime.iOS-26-2': [self.device()]}),
+    def test_accepts_ios_27_on_xcode_27_runner(self):
+        self.assertEqual(self.select({'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [self.device()]}),
                          'udid=measured-phone\n')
 
-    def test_accepts_local_ios_26_3(self):
-        self.assertEqual(self.select({'com.apple.CoreSimulator.SimRuntime.iOS-26-3': [self.device()]}),
+    def test_selects_ios_27_when_older_runtimes_are_also_installed(self):
+        self.assertEqual(self.select({'com.apple.CoreSimulator.SimRuntime.iOS-26-3': [self.device(name='iPhone 17')],
+                                     'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [self.device()]}),
                          'udid=measured-phone\n')
 
-    def test_rejects_unmeasured_phone_unavailable_phone_and_ios_27(self):
+    def test_rejects_unmeasured_unavailable_and_pre_voiceover_runtime(self):
         for inventory in [
-            {'com.apple.CoreSimulator.SimRuntime.iOS-26-2': [self.device(name='iPhone 17')]},
-            {'com.apple.CoreSimulator.SimRuntime.iOS-26-2': [self.device(available=False)]},
-            {'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [self.device()]},
+            {'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [self.device(name='iPhone 17')]},
+            {'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [self.device(available=False)]},
+            {'com.apple.CoreSimulator.SimRuntime.iOS-26-3': [self.device()]},
             {},
         ]:
             with self.subTest(inventory=inventory), self.assertRaises(SystemExit):
