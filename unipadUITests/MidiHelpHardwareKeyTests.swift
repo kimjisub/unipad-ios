@@ -157,8 +157,9 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         XCTAssertTrue(speech.contains(labels.close), "VoiceOver must be on the close button: \(speech)")
         pressHostKeys(Self.escape)
         XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
-        // Preserve the immediate verdict; a later dismissal only adds evidence.
-        let closeWasPresent = app.buttons["midi.help.close"].exists
+        // The opener remains in XCTest's tree even while accessibility-hidden.
+        // Wait for dismissal itself after the HID request, not for that opener.
+        let closeWasPresent = !app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
         if closeWasPresent {
             let before = try voiceOver.currentSpeech().utterance
             UITestSupport.attachScreenshot("escape-still-open-\(language)", to: self)
