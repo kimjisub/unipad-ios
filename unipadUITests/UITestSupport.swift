@@ -56,13 +56,27 @@ enum UITestSupport {
         func tapRow(_ names: [String]) {
             let row = app.descendants(matching: .any)
                 .matching(NSPredicate(format: "label IN %@", names)).firstMatch
-            XCTAssertTrue(row.waitForExistence(timeout: 10), "missing file picker row: \(names)")
+            let found = row.waitForExistence(timeout: 10)
+            if !found { attachPickerDiagnostics(in: app, details: "missing row: \(names)") }
+            XCTAssertTrue(found, "missing file picker row: \(names)")
             XCTAssertTrue(waitUntilHittable(row, timeout: 5))
             row.tap()
         }
         let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen"])).firstMatch
         if browse.exists { browse.tap() }
-        tapRow(["On My iPhone", "나의 iPhone", "Auf meinem iPhone"])
+        let localNames = ["On My iPhone", "나의 iPhone", "Auf meinem iPhone"]
+        let localStorage = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label IN %@", localNames)).firstMatch
+        // On iOS 27 Browse restores its last folder after switching from Recents.
+        // Return through its navigation history to Locations before choosing the path.
+        for _ in 0..<4 {
+            if localStorage.waitForExistence(timeout: 2) { break }
+            let back = app.buttons["DOC.navBarButton.backInHistory"]
+            guard back.exists && back.isEnabled else { break }
+            XCTAssertTrue(waitUntilHittable(back, timeout: 5))
+            back.tap()
+        }
+        tapRow(localNames)
         tapRow(["UniPad", "unipad"])
         let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
         let icon = cell.images.firstMatch
