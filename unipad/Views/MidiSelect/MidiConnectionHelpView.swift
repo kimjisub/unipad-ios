@@ -129,7 +129,7 @@ struct MidiConnectionHelpView: View {
                         case .miniMK3:
                             Text(MidiHelpText.text("midi_help_mini_mk3"))
                             Button(MidiHelpText.text("midi_help_manufacturer")) {
-                                openURL(Self.manufacturerGuide) { accepted in
+                                manufacturerGuideOpener(Self.manufacturerGuide) { accepted in
                                     linkOpenFailed = !accepted
                                 }
                             }
@@ -162,6 +162,19 @@ struct MidiConnectionHelpView: View {
             .onAppear { titleFocused = true }
             .onChange(of: supplement) { _, _ in linkOpenFailed = false }
         }
+    }
+
+    private var manufacturerGuideOpener: OpenURLAction {
+        #if DEBUG
+        // Exercise SwiftUI's rejected-open completion in local UI tests only.
+        // Release builds always use the system opener; a failed web request is
+        // deliberately not treated as a rejected external open.
+        if UserDefaults.standard.bool(forKey: "UniPadFirebaseLocalOnly"),
+           ProcessInfo.processInfo.arguments.contains("-UniPadHelpRejectExternalURL") {
+            return OpenURLAction { _ in .discarded }
+        }
+        #endif
+        return openURL
     }
 
     private func closeHelp() {
