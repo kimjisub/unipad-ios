@@ -190,6 +190,9 @@ enum UITestSupport {
     static func waitForSettledFrame(timeout: TimeInterval,
                                     waitForArrival: (TimeInterval) -> Bool,
                                     frame: @escaping () -> CGRect?) -> Bool {
+        // Accessibility discovery can finish near its deadline on a hosted runner.
+        // Give the two stable-frame samples their own bounded wait after arrival.
+        guard waitForArrival(timeout) else { return false }
         var lastFrame = CGRect.null
         let settled = NSPredicate { _, _ in
             guard let current = frame() else {

@@ -68,6 +68,8 @@ it through the system picker. Counts and recent packs are prepared through UI
 playback. A deletion-error check protects the generated pack and unlocks it in
 teardown. Loading-layout checks explicitly pause an isolated pack load for five
 seconds so the unchanged frame assertions observe both loading and playback.
+Picker control arrival and frame stabilization have separate bounded waits; a
+host test executes the actual Swift wait for late, missing and moving controls.
 File-picker checks also start from Recents and scroll inside the unobscured file viewport.
 If picker readiness or archive visibility fails, screenshots, the accessibility
 hierarchy and the measured bounds are retained for diagnosis.
