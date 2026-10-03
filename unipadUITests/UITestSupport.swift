@@ -171,24 +171,36 @@ enum UITestSupport {
             .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
             .firstMatch
         let screenWidth = app.windows.firstMatch.frame.width
-        var lastFrame = CGRect.null
-        let settled = NSPredicate { _, _ in
-            guard cancel.exists, bar.frame.width == screenWidth else {
-                lastFrame = .null
-                return false
-            }
-            let frame = cancel.frame
-            defer { lastFrame = frame }
-            return frame == lastFrame
-        }
-        let expectation = XCTNSPredicateExpectation(predicate: settled, object: nil)
-        guard XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed else {
+        let didSettle = waitForSettledFrame(timeout: timeout,
+            waitForArrival: { cancel.waitForExistence(timeout: $0) },
+            frame: {
+                guard cancel.exists, bar.frame.width == screenWidth else { return nil }
+                return cancel.frame
+            })
+        guard didSettle else {
             attachPickerDiagnostics(in: app, details:
                 "initial window width \(screenWidth), window \(app.windows.firstMatch.frame), " +
                 "navigation \(bar.exists ? bar.frame : .null), cancel exists \(cancel.exists)")
             return nil
         }
         return cancel
+    }
+
+    /// Requires two consecutive samples of the same final control frame.
+    static func waitForSettledFrame(timeout: TimeInterval,
+                                    waitForArrival: (TimeInterval) -> Bool,
+                                    frame: @escaping () -> CGRect?) -> Bool {
+        var lastFrame = CGRect.null
+        let settled = NSPredicate { _, _ in
+            guard let current = frame() else {
+                lastFrame = .null
+                return false
+            }
+            defer { lastFrame = current }
+            return current == lastFrame
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: settled, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
     private static func attachPickerDiagnostics(in app: XCUIApplication, details: String) {

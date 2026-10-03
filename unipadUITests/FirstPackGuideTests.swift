@@ -156,6 +156,20 @@ final class FirstPackGuideTests: XCTestCase {
         shot(language, "08-play")
     }
 
+    /// Slow accessibility discovery must not consume the frame-settling deadline.
+    @MainActor
+    func testPickerSettlingGetsItsOwnDeadlineAfterLateArrival() {
+        let arrivesAt = Date().addingTimeInterval(1.8)
+        let frame = CGRect(x: 740, y: 28, width: 37, height: 36)
+        XCTAssertTrue(UITestSupport.waitForSettledFrame(timeout: 2,
+            waitForArrival: { _ in
+                Thread.sleep(until: arrivesAt)
+                return true
+            },
+            frame: { Date() >= arrivesAt ? frame : nil }),
+            "a control arriving near its deadline still needs two stable frame samples")
+    }
+
     /// The picker can remember Recents instead of opening a directory.
     @MainActor
     func testPreparedArchiveCanBeSelectedFromRecentItems() throws {
