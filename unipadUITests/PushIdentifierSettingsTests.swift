@@ -41,10 +41,14 @@ final class PushIdentifierSettingsTests: XCTestCase {
     /// The row sits at the bottom of the Information pane, below the fold in landscape.
     private func reveal(_ element: XCUIElement) {
         let pane = app.scrollViews.containing(titled(element.label)).firstMatch
-        for _ in 0..<5 where !element.isHittable {
+        // A partially clipped row can be reported as hittable even though its tap lands
+        // outside the pane. Bring the entire row into view before tapping its center.
+        for _ in 0..<5 {
+            if element.isHittable && pane.frame.contains(element.frame) { break }
             pane.swipeUp()
         }
         XCTAssertTrue(element.isHittable, "\(element) is never on screen")
+        XCTAssertTrue(pane.frame.contains(element.frame), "the identifier row is clipped")
     }
 
     private func assertAlertShows(_ message: String) {

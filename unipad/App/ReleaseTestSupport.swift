@@ -2,7 +2,7 @@
 import Foundation
 import AVFoundation
 
-/// Compiled only by the release-check command, never by a store/archive build.
+/// Compiled only in Debug or explicit release checks, never by a store/archive build.
 /// Every UI test gets its own library and database. Existing simulator packs are left intact.
 nonisolated enum ReleaseTestSupport {
     static var token: String? { UserDefaults.standard.string(forKey: "UniPadReleaseTest") }
@@ -11,6 +11,12 @@ nonisolated enum ReleaseTestSupport {
         return WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseTests/\(token)")
     }
     static var storeURL: URL? { root?.appendingPathComponent("history.sqlite") }
+
+    /// Tiny packs finish before a UI test can sample the loading background.
+    /// Only the explicit layout check in an isolated library requests this pause.
+    static var holdPlayLoading: Bool {
+        root != nil && UserDefaults.standard.bool(forKey: "UniPadUITestHoldPlayLoading")
+    }
 
     static func configure(_ configuration: URLSessionConfiguration) {
         guard root != nil else { return }

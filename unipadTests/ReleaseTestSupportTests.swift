@@ -60,6 +60,23 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
     }
 
+    func testPlayLoadingPauseRequiresBothIsolatedLibraryAndExplicitRequest() {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadUITestHoldPlayLoading"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(true, forKey: keys[1])
+        for token in [nil, "not-a-uuid"] as [String?] {
+            defaults.set(token, forKey: keys[0])
+            XCTAssertFalse(ReleaseTestSupport.holdPlayLoading)
+        }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        XCTAssertFalse(ReleaseTestSupport.holdPlayLoading)
+        defaults.set(true, forKey: keys[1])
+        XCTAssertTrue(ReleaseTestSupport.holdPlayLoading)
+    }
+
     func testWorkspaceSelectsSeparateLibraryForValidToken() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "UniPadReleaseTest")

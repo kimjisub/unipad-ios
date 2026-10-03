@@ -66,7 +66,9 @@ uses a UUID-scoped library and history store. Search and deletion checks generat
 their own packs; import checks generate a silent archive in Documents and select
 it through the system picker. Counts and recent packs are prepared through UI
 playback. A deletion-error check protects the generated pack and unlocks it in
-teardown. Missing setup fails instead of skipping a check. The fixture code is
+teardown. Loading-layout checks explicitly pause an isolated pack load for five
+seconds so the unchanged frame assertions observe both loading and playback.
+Missing setup fails instead of skipping a check. The fixture code is
 compiled out of ordinary Release/archive builds.
 
 For a local run, use the same `xcodebuild` command in the workflow and export

@@ -7,10 +7,11 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     /// A theme given here is pinned in the argument domain, which also hides what the Theme
     /// screen saves, so the walk through the Theme screen launches without one.
-    private func launch(theme: String? = nil) -> XCUIApplication {
+    private func launch(theme: String? = nil, holdLoading: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += UITestSupport.englishLaunchArguments()
         if let theme { app.launchArguments += ["-SelectedTheme", theme] }
+        if holdLoading { app.launchArguments += ["-UniPadUITestHoldPlayLoading", "YES"] }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         return app
@@ -100,7 +101,7 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// one the pads first appear on: the theme must not grow or move when play starts.
     private func assertThemeHoldsStillWhileOpening(theme: String, orientation: UIDeviceOrientation) throws {
         XCUIDevice.shared.orientation = orientation
-        let app = launch(theme: theme)
+        let app = launch(theme: theme, holdLoading: true)
         let label = "[\(theme) \(orientation == .landscapeLeft ? "left" : "right") opening]"
         // `playBackdrop` is the separate loading fill the play screen used to draw, so this check
         // also catches it coming back.
