@@ -1,3 +1,4 @@
+#if DEBUG || UNIPAD_RELEASE_TESTS
 import Foundation
 import XCTest
 @testable import unipad
@@ -109,3 +110,4 @@ private final class FixtureDownloadRecorder: UniPackDownloader.Delegate, @unchec
     func onInstallComplete(folder: URL) { self.folder = folder }
     func onError(_ error: Error) { self.error = error }
 }
+#endif
