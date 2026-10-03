@@ -157,7 +157,26 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         XCTAssertTrue(speech.contains(labels.close), "VoiceOver must be on the close button: \(speech)")
         pressHostKeys(Self.escape)
         XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["midi.help.close"].exists, "Escape must close the help")
+        // Preserve the immediate verdict; a later dismissal only adds evidence.
+        let closeWasPresent = app.buttons["midi.help.close"].exists
+        if closeWasPresent {
+            let before = try voiceOver.currentSpeech().utterance
+            UITestSupport.attachScreenshot("escape-still-open-\(language)", to: self)
+            let start = Date()
+            let eventuallyClosed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 10)
+            let after = try voiceOver.currentSpeech().utterance
+            let diagnostic = XCTAttachment(string: """
+                before=\(before)
+                after=\(after)
+                closed=\(eventuallyClosed)
+                seconds=\(Date().timeIntervalSince(start))
+                """)
+            diagnostic.name = "escape-delay-diagnostic-\(language)"
+            diagnostic.lifetime = .keepAlways
+            add(diagnostic)
+            UITestSupport.attachScreenshot("escape-diagnostic-after-\(language)", to: self)
+        }
+        XCTAssertFalse(closeWasPresent, "Escape must close the help")
         XCTAssertTrue(app.buttons["midi.confirm"].exists)
         let returned = try voiceOver.currentSpeech().utterance
         let focus = XCTAttachment(string: returned)
