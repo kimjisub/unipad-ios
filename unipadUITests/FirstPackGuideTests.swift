@@ -156,6 +156,27 @@ final class FirstPackGuideTests: XCTestCase {
         shot(language, "08-play")
     }
 
+    /// The picker can remember Recents instead of opening a directory.
+    @MainActor
+    func testPreparedArchiveCanBeSelectedFromRecentItems() throws {
+        launch(Self.korean)
+        UITestSupport.revealHomeCard(.import, in: app).tap()
+        let recents = app.tabBars.buttons
+            .matching(NSPredicate(format: "label IN %@", ["Recents", "최근 항목"]))
+            .firstMatch
+        XCTAssertTrue(recents.waitForExistence(timeout: 20))
+        recents.tap()
+        shot(Self.korean, "picker-recents")
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "picker-recents-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+        try UITestSupport.selectPreparedArchive(token: token, in: app)
+        XCTAssertTrue(text("불러오기 성공!").waitForExistence(timeout: 60))
+        app.buttons["main.importResult.ok"].tap()
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 10))
+    }
+
     @MainActor
     func testFromEmptyGuideToPlayingAPack() throws {
         try requireEmptyLibrary()

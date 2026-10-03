@@ -75,15 +75,28 @@ enum UITestSupport {
         let viewport = CGRect(x: window.minX, y: search.frame.maxY + 4, width: window.width,
                               height: tabs.frame.minY - search.frame.maxY - 8)
         func visible() -> Bool { icon.exists && viewport.contains(icon.frame) && icon.isHittable }
-        for _ in 0..<25 {
-            if visible() { break }
-            let high = list.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.40))
-            let low = list.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.62))
-            if icon.exists && icon.frame.minY < viewport.minY {
+        let deadline = Date().addingTimeInterval(60)
+        while !visible() && Date() < deadline {
+            // The collection view also extends underneath the search bar and tabs.
+            // Drag inside the unobscured viewport, towards its centre, rather than
+            // using a fixed fraction of the covered collection view.
+            let frame = icon.exists ? icon.frame : CGRect.null
+            let moveDown = !frame.isNull && frame.midY < viewport.midY
+            let distance = frame.isNull ? viewport.height * 0.65 :
+                min(viewport.height * 0.65, max(16, abs(frame.midY - viewport.midY)))
+            let x = viewport.minX + viewport.width * 0.8
+            let high = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: x, dy: viewport.midY - distance / 2))
+            let low = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: x, dy: viewport.midY + distance / 2))
+            if moveDown {
                 high.press(forDuration: 0.1, thenDragTo: low, withVelocity: .slow, thenHoldForDuration: 0.2)
             } else {
                 low.press(forDuration: 0.1, thenDragTo: high, withVelocity: .slow, thenHoldForDuration: 0.2)
             }
+        }
+        if !visible() {
+            attachPickerDiagnostics(in: app, details: "archive \(icon.frame), viewport \(viewport)")
         }
         XCTAssertTrue(cell.waitForExistence(timeout: 5))
         XCTAssertTrue(visible(), "the archive icon must be visible before selecting it")
@@ -169,7 +182,25 @@ enum UITestSupport {
             return frame == lastFrame
         }
         let expectation = XCTNSPredicateExpectation(predicate: settled, object: nil)
-        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed ? cancel : nil
+        guard XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed else {
+            attachPickerDiagnostics(in: app, details:
+                "initial window width \(screenWidth), window \(app.windows.firstMatch.frame), " +
+                "navigation \(bar.exists ? bar.frame : .null), cancel exists \(cancel.exists)")
+            return nil
+        }
+        return cancel
+    }
+
+    private static func attachPickerDiagnostics(in app: XCUIApplication, details: String) {
+        XCTContext.runActivity(named: "File picker did not settle: " + details) { activity in
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.lifetime = .keepAlways
+            activity.add(screenshot)
+            let tree = XCTAttachment(string: details + "\n" + app.debugDescription)
+            tree.name = "file-picker-state"
+            tree.lifetime = .keepAlways
+            activity.add(tree)
+        }
     }
 
     /// The home screen's download and import cards. They sit in the middle of an
