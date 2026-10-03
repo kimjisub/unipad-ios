@@ -33,7 +33,11 @@ final class WorkspaceManager: ObservableObject {
     nonisolated static func currentWorkspaces() -> [Workspace] {
         var workspaces: [Workspace] = []
 
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        let documentsURL = ReleaseTestSupport.root ?? Self.documentsDirectory
+#else
         let documentsURL = Self.documentsDirectory
+#endif
         let uniPackDir = documentsURL.appendingPathComponent("UniPack", isDirectory: true)
         Self.ensureDirectoryExists(at: uniPackDir)
 
