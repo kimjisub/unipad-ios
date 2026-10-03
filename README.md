@@ -63,7 +63,7 @@ skip because their input packs were not prepared. Logs, screenshots and the
 result bundle are saved in `ios-ui-check-results` for seven days.
 
 The UI runner sets `TEST_RUNNER_UNIPAD_RELEASE_SUITE=1`. Each test launch then
-uses a UUID-scoped library and history store. Search and deletion checks generate
+uses a UUID-scoped library and history store. Search, deletion and play-usage checks generate
 their own packs; import checks generate a silent archive in Documents and select
 it through the system picker. Counts and recent packs are prepared through UI
 playback. A deletion-error check protects the generated pack and unlocks it in

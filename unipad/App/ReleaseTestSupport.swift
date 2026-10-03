@@ -41,6 +41,18 @@ nonisolated enum ReleaseTestSupport {
                                                   ("Spring", "봄날", "방탄소년단")] {
                     try makePack(at: library.appendingPathComponent(folder), title: title, producer: producer)
                 }
+            case "play-usage":
+                let pack = library.appendingPathComponent("PlayUsage")
+                try makePack(at: pack, title: "JIS20 First Input Fixture", producer: "Tester")
+                // Match the short, one-chain scenario pack in test-fixtures/PlayUsage.
+                for (name, contents) in [
+                    ("info", "title=JIS20 First Input Fixture\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n"),
+                    ("keySound", "1 1 1 silence.wav\n1 1 2 silence.wav\n1 1 3 silence.wav\n"),
+                    ("autoPlay", "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n"),
+                ] {
+                    try contents.write(to: pack.appendingPathComponent(name), atomically: true, encoding: .utf8)
+                }
+                try fm.removeItem(at: pack.appendingPathComponent("keyLed/1 1 1 1"))
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
             default:

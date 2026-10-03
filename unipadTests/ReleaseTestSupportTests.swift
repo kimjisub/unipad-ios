@@ -5,6 +5,35 @@ import XCTest
 
 @MainActor
 final class ReleaseTestSupportTests: XCTestCase {
+    func testPlayUsageLibraryPreparesTheScreenScenariosPack() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("play-usage", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let folders = WorkspaceManager.unipackFolders(in: workspace)
+        XCTAssertEqual(folders.count, 1)
+        let folder = try XCTUnwrap(folders.first)
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertEqual(pack.title, "JIS20 First Input Fixture")
+        XCTAssertEqual(pack.buttonX, 8)
+        XCTAssertEqual(pack.buttonY, 8)
+        XCTAssertEqual(pack.chain, 1)
+        XCTAssertTrue(pack.squareButton)
+        XCTAssertEqual(pack.soundCount, 3)
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("autoPlay"), encoding: .utf8),
+                       "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n")
+    }
+
     func testSearchLibraryHasTitlesAndProducersUsedByScreenChecks() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
