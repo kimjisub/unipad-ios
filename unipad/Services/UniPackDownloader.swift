@@ -36,7 +36,13 @@ actor UniPackDownloader {
 
     /// Chunks are written to disk on the session's delegate queue, so downloads get their own
     /// session instead of occupying the queue that `URLSession.shared` callbacks share.
-    private static let downloadSession = URLSession(configuration: .default)
+    private static let downloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        ReleaseTestSupport.configure(configuration)
+#endif
+        return URLSession(configuration: configuration)
+    }()
 
     init(session: URLSession = downloadSession) {
         self.session = session

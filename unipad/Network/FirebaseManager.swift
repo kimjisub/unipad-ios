@@ -352,7 +352,11 @@ final class FirebaseManager: ObservableObject {
     let remoteConfig: RemoteConfigServiceProtocol
 
     private init() {
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        self.firestore = ReleaseTestSupport.root != nil ? ReleaseStore() : RealtimeDatabaseService()
+#else
         self.firestore = RealtimeDatabaseService()
+#endif
         if FirebaseRuntime.isLocalOnly {
             self.messaging = FCMServiceStub(usesInstallationID: FirebaseRuntime.fakesInstallationIdModel)
             self.analytics = AnalyticsServiceStub()

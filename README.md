@@ -46,28 +46,13 @@ open unipad.xcodeproj
 
 ## Pull request checks
 
-Every pull request runs **iOS checks / Build and unit tests** on a
+Every pull request runs one **iOS checks / Build and unit tests** job on a
 GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
-available iPhone simulator. Dependencies use the
+available iPhone simulator. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
 
-The staged **iOS checks / UI tests** job runs the entire `unipadUITests` target
-in Debug on iPhone 17 Pro, with parallel execution disabled. That device has
-independently measured safe-area references in the layout tests. No class or
-test is excluded: `DesignScreenshots` asserts that navigation reaches each
-screen, so it remains part of regression coverage. `ci/check_ui_results.py`
-rejects failed, skipped, empty, and incomplete results, including tests that
-skip because their input packs were not prepared. Logs, screenshots and the
-result bundle are saved in `ios-ui-check-results` for seven days.
-
-The UI job is still being prepared: the existing tests' manual pack, file-picker,
-history and deletion-failure setup must be made repeatable before its first PR
-run. A passing build or the Python result-checker tests alone does not establish
-that the UI suite passes. This work does not add SwiftLint; warning policy and
-any new lint tool are a separate technical-owner decision.
-
-Both jobs need no repository secrets or signing credentials. They replace the
+The job needs no repository secrets or signing credentials. It replaces the
 Firebase plist only in its disposable checkout with clearly fake values from
 `ci/firebase_fixture.py`; the existing unit-test runtime uses local Firebase
 stubs. App configuration, version, and behavior in normal builds are unchanged.
