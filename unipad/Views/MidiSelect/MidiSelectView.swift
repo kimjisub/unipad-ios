@@ -51,7 +51,11 @@ struct MidiSelectView: View {
                         supplement: selection.helpSupplement
                     ) {
                         selection.isHelpPresented = false
-                        helpButtonFocused = true
+                        // Restore focus after the selection controls are visible
+                        // in the accessibility tree again.
+                        DispatchQueue.main.async {
+                            helpButtonFocused = true
+                        }
                     }
                 }
             }
