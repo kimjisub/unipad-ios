@@ -8,5 +8,4 @@ enum Route: Hashable {
     case settingsStorage
     case theme
     case midiSelect
-    case importByUrl(code: String)
 }

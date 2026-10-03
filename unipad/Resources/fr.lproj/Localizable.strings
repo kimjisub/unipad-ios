@@ -4,7 +4,6 @@
 "warning" = "Avertissement";
 "error" = "ERREUR";
 "errOccur" = "Une erreur s'est produite.";
-"wait_a_sec" = "Veuillez patienter…";
 "importing" = "Importation";
 "loading" = "Chargement";
 "loading_phase_info" = "Lecture des informations…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "En attente de téléchargement";
 "downloading" = "Téléchargement en cours";
 "downloaded" = "Téléchargé";
-"success" = "Succès";
 "failed" = "Échec";
 "delete" = "Supprimer";
 "add_bookmark" = "Signet";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Copié dans le presse-papiers.";
 "outOfMemory" = "Mémoire insuffisante.\nLibérez de la mémoire et réessayez.";
-"unipackNotFound" = "UniPack introuvable.";
 
 /* Guide */
 "guide_download_new" = "Télécharger de nouveaux packs";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Impossible d'obtenir l'autorisation de lire ce fichier.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Impossible de charger ou d'enregistrer les signets et le nombre de lectures pour le moment. Vos modifications seront perdues à la fermeture d'UniPad.";
 "temporary_store_notice_dismiss" = "Fermer";

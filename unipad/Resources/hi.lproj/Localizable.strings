@@ -4,7 +4,6 @@
 "warning" = "चेतावनी";
 "error" = "त्रुटि";
 "errOccur" = "एक त्रुटि हुई है।";
-"wait_a_sec" = "कृपया प्रतीक्षा करें…";
 "importing" = "आयात हो रहा है";
 "loading" = "लोड हो रहा है";
 "loading_phase_info" = "जानकारी पढ़ रहा है…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "डाउनलोड प्रतीक्षा";
 "downloading" = "डाउनलोड हो रहा है";
 "downloaded" = "डाउनलोड हुआ";
-"success" = "सफल";
 "failed" = "विफल";
 "delete" = "हटाएं";
 "add_bookmark" = "बुकमार्क";
@@ -105,7 +103,6 @@
 "import_result_ok" = "ठीक है";
 "copied" = "क्लिपबोर्ड पर कॉपी हुआ।";
 "outOfMemory" = "मेमोरी समाप्त.\nकुछ मेमोरी खाली करें और पुनः प्रयास करें।";
-"unipackNotFound" = "UniPack नहीं मिला।";
 
 /* Guide */
 "guide_download_new" = "नए पैक डाउनलोड करें";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "ठीक है";
 "import_no_file_access" = "उस फ़ाइल को पढ़ने की अनुमति नहीं मिल सकी।";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "अभी बुकमार्क और प्ले गिनती लोड या सेव नहीं की जा सकती। UniPad बंद करने पर आपके बदलाव खो जाएंगे।";
 "temporary_store_notice_dismiss" = "बंद करें";

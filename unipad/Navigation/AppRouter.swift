@@ -118,12 +118,6 @@ final class AppRouter {
                !path.isEmpty {
                 navigate(to: .play(packPath: path))
             }
-        case "unipack":
-            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-               let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
-               !code.isEmpty {
-                navigate(to: .importByUrl(code: code))
-            }
         default:
             break
         }

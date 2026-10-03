@@ -4,7 +4,6 @@
 "warning" = "သတိပေးချက်";
 "error" = "အမှား";
 "errOccur" = "အမှားတစ်ခုဖြစ်ပွားခဲ့သည်။";
-"wait_a_sec" = "ခဏစောင့်ပါ…";
 "importing" = "ထည့်သွင်းနေသည်";
 "loading" = "ဖွင့်နေသည်";
 "loading_phase_info" = "အချက်အလက် ဖတ်နေသည်…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "ဒေါင်းလုဒ်စောင့်နေသည်";
 "downloading" = "ဒေါင်းလုဒ်ဆွဲနေသည်";
 "downloaded" = "ဒေါင်းလုဒ်ပြီး";
-"success" = "အောင်မြင်သည်";
 "failed" = "မအောင်မြင်ပါ";
 "delete" = "ဖျက်မည်";
 "add_bookmark" = "စာညှပ်";
@@ -105,7 +103,6 @@
 "import_result_ok" = "အိုကေ";
 "copied" = "ကလစ်ဘုတ်သို့ ကူးယူပြီး။";
 "outOfMemory" = "မမ်မိုရီ ကုန်သွားပါပြီ.\nမမ်မိုရီ ရှင်းလင်းပြီး ထပ်ကြိုးစားပါ။";
-"unipackNotFound" = "UniPack မတွေ့ပါ။";
 
 /* Guide */
 "guide_download_new" = "pack အသစ်များ ဒေါင်းလုဒ်လုပ်ရန်";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "UniPack %lld ခု";
 "settings_ok" = "OK";
 "import_no_file_access" = "ထိုဖိုင်ကို ဖတ်ရန် ခွင့်ပြုချက် မရရှိပါ။";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "ယခု စာညှပ်များနှင့် ဖွင့်သည့်အကြိမ်များကို ဖွင့်ယူ၍ သို့မဟုတ် သိမ်းဆည်း၍ မရပါ။ UniPad ကို ပိတ်လိုက်ပါက ပြုလုပ်ထားသော ပြောင်းလဲမှုများ ပျောက်သွားပါမည်။";
 "temporary_store_notice_dismiss" = "ပိတ်ရန်";

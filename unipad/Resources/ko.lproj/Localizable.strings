@@ -4,7 +4,6 @@
 "warning" = "경고";
 "error" = "에러";
 "errOccur" = "문제가 발생하였습니다.";
-"wait_a_sec" = "잠시만 기다려주세요…";
 "importing" = "불러오는 중";
 "loading" = "로딩중";
 "loading_phase_info" = "정보 읽는 중…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "다운로드 대기중";
 "downloading" = "다운로드 중";
 "downloaded" = "다운로드 됨";
-"success" = "성공";
 "failed" = "실패";
 "delete" = "삭제";
 "add_bookmark" = "북마크";
@@ -105,7 +103,6 @@
 "import_result_ok" = "확인";
 "copied" = "클립보드에 복사되었습니다.";
 "outOfMemory" = "메모리 공간이 부족합니다.\n메모리 확보 후 다시 시도해주세요.";
-"unipackNotFound" = "유니팩이 발견되지 않았습니다.";
 
 /* Guide */
 "guide_download_new" = "새로운 팩 다운로드";
@@ -283,10 +280,6 @@
 
 /* 가져오기 오류 */
 "import_no_file_access" = "파일 접근 권한을 얻을 수 없습니다.";
-
-/* Deep link install confirmation */
-"import_pack_confirm" = "이 팩을 설치할까요?";
-"import_pack_confirm_source" = "%@ 에서";
 
 /* 임시 저장소 안내 */
 "temporary_store_notice" = "지금은 북마크와 플레이 횟수를 불러오거나 저장할 수 없습니다. 앱을 닫으면 지금 바꾼 내용은 사라집니다.";

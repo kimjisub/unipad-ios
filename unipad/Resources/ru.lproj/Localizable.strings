@@ -4,7 +4,6 @@
 "warning" = "Предупреждение";
 "error" = "ОШИБКА";
 "errOccur" = "Произошла ошибка.";
-"wait_a_sec" = "Подождите немного…";
 "importing" = "Импорт";
 "loading" = "Загрузка";
 "loading_phase_info" = "Чтение информации…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Ожидание загрузки";
 "downloading" = "Скачивание";
 "downloaded" = "Загружено";
-"success" = "Успешно";
 "failed" = "Ошибка";
 "delete" = "Удалить";
 "add_bookmark" = "Закладка";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Скопировано в буфер обмена.";
 "outOfMemory" = "Недостаточно памяти.\nОсвободите память и повторите.";
-"unipackNotFound" = "UniPack не найден.";
 
 /* Guide */
 "guide_download_new" = "Скачать новые паки";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Не удалось получить разрешение на чтение этого файла.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Сейчас не удаётся загрузить или сохранить закладки и количество игр. Ваши изменения пропадут после закрытия UniPad.";
 "temporary_store_notice_dismiss" = "Закрыть";

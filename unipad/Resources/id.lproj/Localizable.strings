@@ -4,7 +4,6 @@
 "warning" = "Peringatan";
 "error" = "Kesalahan";
 "errOccur" = "Terjadi kesalahan.";
-"wait_a_sec" = "Tunggu sebentar…";
 "importing" = "Mengimpor";
 "loading" = "Memuat";
 "loading_phase_info" = "Membaca info…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Menunggu Unduhan";
 "downloading" = "Mengunduh";
 "downloaded" = "Terunduh";
-"success" = "Berhasil";
 "failed" = "Gagal";
 "delete" = "Hapus";
 "add_bookmark" = "Bookmark";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Disalin ke clipboard.";
 "outOfMemory" = "Kehabisan memori.\nKosongkan memori dan coba lagi.";
-"unipackNotFound" = "UniPack tidak ditemukan.";
 
 /* Guide */
 "guide_download_new" = "Unduh pack baru";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Tidak bisa mendapatkan izin untuk membaca berkas itu.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Bookmark dan jumlah main tidak dapat dimuat atau disimpan saat ini. Perubahan yang Anda buat akan hilang saat UniPad ditutup.";
 "temporary_store_notice_dismiss" = "Tutup";

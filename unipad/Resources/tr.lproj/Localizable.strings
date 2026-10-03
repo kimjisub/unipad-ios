@@ -4,7 +4,6 @@
 "warning" = "Uyarı";
 "error" = "Hata";
 "errOccur" = "Bir hata oluştu.";
-"wait_a_sec" = "Bir an bekleyin…";
 "importing" = "İçe aktarılıyor";
 "loading" = "Yükleniyor";
 "loading_phase_info" = "Bilgi okunuyor…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "İndirme Bekleniyor";
 "downloading" = "İndiriliyor";
 "downloaded" = "İndirildi";
-"success" = "Başarılı";
 "failed" = "Başarısız";
 "delete" = "Sil";
 "add_bookmark" = "Yer İmi";
@@ -105,7 +103,6 @@
 "import_result_ok" = "Tamam";
 "copied" = "Panoya kopyalandı.";
 "outOfMemory" = "Yetersiz bellek.\nBelleği boşaltın ve tekrar deneyin.";
-"unipackNotFound" = "UniPack bulunamadı.";
 
 /* Guide */
 "guide_download_new" = "Yeni paketler indir";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPack";
 "settings_ok" = "Tamam";
 "import_no_file_access" = "Bu dosyayı okuma izni alınamadı.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Yer imleri ve oynatma sayıları şu anda yüklenemiyor veya kaydedilemiyor. Yaptığınız değişiklikler UniPad kapandığında kaybolacak.";
 "temporary_store_notice_dismiss" = "Kapat";

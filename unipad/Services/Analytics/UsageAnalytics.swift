@@ -33,8 +33,6 @@ enum PackImportSource: String {
     /// Opened from another app ("Open in UniPad").
     case openIn = "open_in"
     case store
-    /// Downloaded by UniShare code.
-    case code
 }
 
 enum PlayTrigger: String {
@@ -66,12 +64,6 @@ enum UsageErrorType: String {
             case .httpError(let status): return status == 404 ? .notFound : .server
             case .writeFailed: return .storage
             case .emptyResponse, .cancelled: return .network
-            }
-        case let error as APIError:
-            switch error {
-            case .httpError(let status): return status == 404 ? .notFound : .server
-            case .invalidResponse, .decodingFailed: return .server
-            case .invalidURL, .networkError: return .network
             }
         case is URLError:
             return .network

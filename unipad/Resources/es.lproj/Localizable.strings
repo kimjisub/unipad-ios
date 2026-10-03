@@ -4,7 +4,6 @@
 "warning" = "Advertencia";
 "error" = "ERROR";
 "errOccur" = "Ha ocurrido un error.";
-"wait_a_sec" = "Espera un momento…";
 "importing" = "Importando";
 "loading" = "Cargando";
 "loading_phase_info" = "Leyendo información…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Esperando Descarga";
 "downloading" = "Descargando";
 "downloaded" = "Descargado";
-"success" = "Éxito";
 "failed" = "Falló";
 "delete" = "Eliminar";
 "add_bookmark" = "Marcador";
@@ -105,7 +103,6 @@
 "import_result_ok" = "Aceptar";
 "copied" = "Copiado al portapapeles.";
 "outOfMemory" = "Sin memoria.\nLibera algo de memoria e intenta de nuevo.";
-"unipackNotFound" = "UniPack no encontrado.";
 
 /* Guide */
 "guide_download_new" = "Descargar nuevos packs";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "Aceptar";
 "import_no_file_access" = "No se pudo obtener permiso para leer ese archivo.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Ahora mismo no se pueden cargar ni guardar los marcadores ni las veces jugadas. Los cambios que hagas se perderán al cerrar UniPad.";
 "temporary_store_notice_dismiss" = "Cerrar";

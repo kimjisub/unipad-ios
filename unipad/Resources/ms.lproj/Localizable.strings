@@ -4,7 +4,6 @@
 "warning" = "Amaran";
 "error" = "Ralat";
 "errOccur" = "Ralat telah berlaku.";
-"wait_a_sec" = "Tunggu sebentar…";
 "importing" = "Mengimport";
 "loading" = "Memuatkan";
 "loading_phase_info" = "Membaca maklumat…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Menunggu Muat Turun";
 "downloading" = "Memuat Turun";
 "downloaded" = "Dimuat Turun";
-"success" = "Berjaya";
 "failed" = "Gagal";
 "delete" = "Padam";
 "add_bookmark" = "Penanda Buku";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Disalin ke papan keratan.";
 "outOfMemory" = "Kehabisan memori.\nKosongkan memori dan cuba lagi.";
-"unipackNotFound" = "UniPack tidak dijumpai.";
 
 /* Guide */
 "guide_download_new" = "Muat turun pack baru";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Tidak dapat memperoleh kebenaran untuk membaca fail itu.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Penanda buku dan bilangan main tidak dapat dimuatkan atau disimpan buat masa ini. Perubahan yang anda buat akan hilang apabila UniPad ditutup.";
 "temporary_store_notice_dismiss" = "Tutup";

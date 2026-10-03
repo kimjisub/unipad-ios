@@ -4,7 +4,6 @@
 "warning" = "Cảnh báo";
 "error" = "LỖI";
 "errOccur" = "Đã xảy ra lỗi.";
-"wait_a_sec" = "Chờ một chút…";
 "importing" = "Đang nhập";
 "loading" = "Đang tải";
 "loading_phase_info" = "Đang đọc thông tin…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Chờ Tải xuống";
 "downloading" = "Đang tải xuống";
 "downloaded" = "Đã tải xuống";
-"success" = "Thành công";
 "failed" = "Thất bại";
 "delete" = "Xóa";
 "add_bookmark" = "Đánh dấu";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Đã sao chép vào clipboard.";
 "outOfMemory" = "Hết bộ nhớ.\nGiải phóng bộ nhớ và thử lại.";
-"unipackNotFound" = "Không tìm thấy UniPack.";
 
 /* Guide */
 "guide_download_new" = "Tải pack mới";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Không thể lấy quyền đọc tệp đó.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Hiện không thể tải hoặc lưu đánh dấu và số lần chơi. Những thay đổi bạn thực hiện sẽ mất khi đóng UniPad.";
 "temporary_store_notice_dismiss" = "Đóng";

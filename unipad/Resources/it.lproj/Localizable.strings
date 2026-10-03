@@ -4,7 +4,6 @@
 "warning" = "Avviso";
 "error" = "Errore";
 "errOccur" = "Si è verificato un errore.";
-"wait_a_sec" = "Attendi un momento…";
 "importing" = "Importazione";
 "loading" = "Caricamento";
 "loading_phase_info" = "Lettura informazioni…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "In attesa di download";
 "downloading" = "Download in corso";
 "downloaded" = "Scaricato";
-"success" = "Successo";
 "failed" = "Fallito";
 "delete" = "Elimina";
 "add_bookmark" = "Segnalibro";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Copiato negli appunti.";
 "outOfMemory" = "Memoria esaurita.\nLibera memoria e riprova.";
-"unipackNotFound" = "UniPack non trovato.";
 
 /* Guide */
 "guide_download_new" = "Scarica nuovi pack";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Non è stato possibile ottenere il permesso di leggere quel file.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Al momento non è possibile caricare o salvare i segnalibri e il numero di riproduzioni. Le modifiche che fai andranno perse alla chiusura di UniPad.";
 "temporary_store_notice_dismiss" = "Chiudi";

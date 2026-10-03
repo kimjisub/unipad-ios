@@ -4,7 +4,6 @@
 "warning" = "Warning";
 "error" = "ERROR";
 "errOccur" = "An error has occurred.";
-"wait_a_sec" = "Just wait a moment…";
 "importing" = "Importing";
 "loading" = "Loading";
 "loading_phase_info" = "Reading info…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Download Waiting";
 "downloading" = "Downloading";
 "downloaded" = "Downloaded";
-"success" = "Success";
 "failed" = "Failed";
 "delete" = "Delete";
 "add_bookmark" = "Bookmark";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Copied to clipboard.";
 "outOfMemory" = "Out of memory.\nFree some memory and retry.";
-"unipackNotFound" = "UniPack not found.";
 
 /* Guide */
 "guide_download_new" = "Download new packs";
@@ -283,10 +280,6 @@
 
 /* Import errors */
 "import_no_file_access" = "Could not get permission to read that file.";
-
-/* Deep link install confirmation */
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 
 /* Temporary store notice */
 "temporary_store_notice" = "Bookmarks and play counts can't be loaded or saved right now. Changes you make will be lost when UniPad closes.";

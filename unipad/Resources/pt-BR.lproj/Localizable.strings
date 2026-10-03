@@ -4,7 +4,6 @@
 "warning" = "Aviso";
 "error" = "Erro";
 "errOccur" = "Ocorreu um erro.";
-"wait_a_sec" = "Aguarde um momento…";
 "importing" = "Importando";
 "loading" = "Carregando";
 "loading_phase_info" = "Lendo informações…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Aguardando Download";
 "downloading" = "Baixando";
 "downloaded" = "Baixado";
-"success" = "Sucesso";
 "failed" = "Falhou";
 "delete" = "Excluir";
 "add_bookmark" = "Favorito";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Copiado para a área de transferência.";
 "outOfMemory" = "Sem memória.\nLibere memória e tente novamente.";
-"unipackNotFound" = "UniPack não encontrado.";
 
 /* Guide */
 "guide_download_new" = "Baixar novos packs";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Não foi possível obter permissão para ler esse arquivo.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "No momento, não é possível carregar nem salvar os favoritos e as vezes tocadas. As alterações que você fizer serão perdidas ao fechar o UniPad.";
 "temporary_store_notice_dismiss" = "Fechar";

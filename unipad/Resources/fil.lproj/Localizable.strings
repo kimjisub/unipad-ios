@@ -4,7 +4,6 @@
 "warning" = "Babala";
 "error" = "Error";
 "errOccur" = "May naganap na error.";
-"wait_a_sec" = "Sandali lang…";
 "importing" = "Ini-import";
 "loading" = "Naglo-load";
 "loading_phase_info" = "Binabasa ang info…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "Naghihintay ng Download";
 "downloading" = "Nagda-download";
 "downloaded" = "Na-download na";
-"success" = "Tagumpay";
 "failed" = "Nabigo";
 "delete" = "Tanggalin";
 "add_bookmark" = "Bookmark";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "Kinopya sa clipboard.";
 "outOfMemory" = "Walang sapat na memorya.\nMagpalaya ng memorya at subukan muli.";
-"unipackNotFound" = "Hindi nahanap ang UniPack.";
 
 /* Guide */
 "guide_download_new" = "Mag-download ng bagong packs";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "OK";
 "import_no_file_access" = "Hindi makuha ang pahintulot para basahin ang file na iyon.";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "Hindi ma-load o ma-save ang mga bookmark at bilang ng paglalaro ngayon. Mawawala ang iyong mga pagbabago kapag isinara ang UniPad.";
 "temporary_store_notice_dismiss" = "Isara";

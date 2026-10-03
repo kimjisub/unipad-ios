@@ -4,7 +4,6 @@
 "warning" = "警告";
 "error" = "错误";
 "errOccur" = "发生错误。";
-"wait_a_sec" = "请稍等…";
 "importing" = "导入中";
 "loading" = "加载中";
 "loading_phase_info" = "读取信息中…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "等待下载";
 "downloading" = "下载中";
 "downloaded" = "已下载";
-"success" = "成功";
 "failed" = "失败";
 "delete" = "删除";
 "add_bookmark" = "书签";
@@ -105,7 +103,6 @@
 "import_result_ok" = "确定";
 "copied" = "已复制到剪贴板。";
 "outOfMemory" = "内存不足。\n释放一些内存并重试。";
-"unipackNotFound" = "找不到 UniPack。";
 
 /* Guide */
 "guide_download_new" = "下载新包";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld 个 UniPack";
 "settings_ok" = "好";
 "import_no_file_access" = "无法获得读取该文件的权限。";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "目前无法加载或保存书签和演奏次数。关闭 UniPad 后，你所做的更改将会丢失。";
 "temporary_store_notice_dismiss" = "关闭";

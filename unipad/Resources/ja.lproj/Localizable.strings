@@ -4,7 +4,6 @@
 "warning" = "警告";
 "error" = "エラー";
 "errOccur" = "エラーが発生しました。";
-"wait_a_sec" = "少々お待ちください…";
 "importing" = "インポート中";
 "loading" = "読み込み中";
 "loading_phase_info" = "情報を読み込み中…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "ダウンロード待機中";
 "downloading" = "ダウンロード中";
 "downloaded" = "ダウンロード済み";
-"success" = "成功";
 "failed" = "失敗";
 "delete" = "削除";
 "add_bookmark" = "ブックマーク";
@@ -105,7 +103,6 @@
 "import_result_ok" = "OK";
 "copied" = "クリップボードにコピーしました。";
 "outOfMemory" = "メモリ不足です。\nメモリを解放してから再試行してください。";
-"unipackNotFound" = "UniPackが見つかりません。";
 
 /* Guide */
 "guide_download_new" = "新しいパックをダウンロード";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld個のUniPack";
 "settings_ok" = "OK";
 "import_no_file_access" = "そのファイルを読み取る権限を取得できませんでした。";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "現在、ブックマークと再生回数を読み込むことも保存することもできません。UniPad を閉じると、変更した内容は失われます。";
 "temporary_store_notice_dismiss" = "閉じる";

@@ -4,7 +4,6 @@
 "warning" = "คำเตือน";
 "error" = "ข้อผิดพลาด";
 "errOccur" = "เกิดข้อผิดพลาด";
-"wait_a_sec" = "กรุณารอสักครู่…";
 "importing" = "กำลังนำเข้า";
 "loading" = "กำลังโหลด";
 "loading_phase_info" = "กำลังอ่านข้อมูล…";
@@ -16,7 +15,6 @@
 "downloadWaiting" = "รอดาวน์โหลด";
 "downloading" = "กำลังดาวน์โหลด";
 "downloaded" = "ดาวน์โหลดแล้ว";
-"success" = "สำเร็จ";
 "failed" = "ล้มเหลว";
 "delete" = "ลบ";
 "add_bookmark" = "บุ๊กมาร์ก";
@@ -105,7 +103,6 @@
 "import_result_ok" = "ตกลง";
 "copied" = "คัดลอกไปยังคลิปบอร์ดแล้ว";
 "outOfMemory" = "หน่วยความจำไม่เพียงพอ\nกรุณาเคลียร์หน่วยความจำแล้วลองใหม่";
-"unipackNotFound" = "ไม่พบ UniPack";
 
 /* Guide */
 "guide_download_new" = "ดาวน์โหลดแพ็คใหม่";
@@ -279,7 +276,5 @@
 "settings_unipack_count %lld" = "%lld UniPacks";
 "settings_ok" = "ตกลง";
 "import_no_file_access" = "ไม่สามารถขอสิทธิ์อ่านไฟล์นั้นได้";
-"import_pack_confirm" = "Install this pack?";
-"import_pack_confirm_source" = "from %@";
 "temporary_store_notice" = "ขณะนี้ไม่สามารถโหลดหรือบันทึกบุ๊กมาร์กและจำนวนครั้งที่เล่นได้ การเปลี่ยนแปลงที่คุณทำจะหายไปเมื่อปิด UniPad";
 "temporary_store_notice_dismiss" = "ปิด";
