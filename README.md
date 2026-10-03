@@ -53,7 +53,7 @@ available iPhone simulator. Dependencies use the
 committed `Package.resolved` versions.
 
 The staged **iOS checks / UI tests** job runs the entire `unipadUITests` target
-in Debug on iPhone 17 Pro with iOS 26.3, with parallel execution disabled.
+in Debug on iPhone 17 Pro with iOS 26.2 or 26.3, with parallel execution disabled.
 That device has independently measured safe-area references in the layout tests. No class or
 test is excluded: `DesignScreenshots` asserts that navigation reaches each
 screen, so it remains part of regression coverage. `ci/check_ui_results.py`
@@ -72,7 +72,7 @@ Missing setup fails instead of skipping a check. The fixture code is
 compiled out of ordinary Release/archive builds.
 
 For a local run, use the same `xcodebuild` command in the workflow and export
-`TEST_RUNNER_UNIPAD_RELEASE_SUITE=1` first. Use iOS 26.3: on the local iOS 27 runtime,
+`TEST_RUNNER_UNIPAD_RELEASE_SUITE=1` first. Use iOS 26.2 or 26.3: on the local iOS 27 runtime,
 XCTest waits 300 seconds for crash-reporter synchronization after each UI test,
 even when its screen assertions pass. This work does not add SwiftLint; warning
 policy and any new lint tool are a separate technical-owner decision.
