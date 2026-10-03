@@ -144,6 +144,30 @@ jobs:
           iphones = [device for runtime, items in sorted(devices.items(), reverse=True)
                      if runtime.endswith('.iOS-27-0') for device in items
                      if device['name'] == 'iPhone 17 Pro' and device['isAvailable']]
+          if not iphones and os.environ.get('GITHUB_ACTIONS') == 'true':
+              # Hosted images may include the runtime without precreating this model.
+              # Local devices must still be borrowed through the maintenance harness.
+              runtimes = json.loads(subprocess.check_output(
+                  ['xcrun', 'simctl', 'list', 'runtimes', '--json']
+              ))['runtimes']
+              device_types = json.loads(subprocess.check_output(
+                  ['xcrun', 'simctl', 'list', 'devicetypes', '--json']
+              ))['devicetypes']
+              runtime = next((item for item in runtimes
+                              if item['identifier'].endswith('.iOS-27-0')
+                              and item['isAvailable']), None)
+              reference_type = 'com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro'
+              if runtime and any(item['identifier'] == reference_type for item in device_types):
+                  udid = subprocess.check_output(
+                      ['xcrun', 'simctl', 'create', 'UniPad UI reference',
+                       reference_type, runtime['identifier']], text=True
+                  ).strip()
+                  if not udid:
+                      raise SystemExit('Creating the reference simulator returned no device id')
+                  iphones = [{'name': 'iPhone 17 Pro', 'udid': udid}]
+              else:
+                  print(json.dumps({'devices': devices, 'runtimes': runtimes,
+                                    'devicetypes': device_types}, indent=2))
           if not iphones:
               raise SystemExit('No iPhone 17 Pro on iOS 27 for the complete UI suite, including VoiceOver')
           device = iphones[0]
