@@ -113,7 +113,7 @@ final class TraceLogClassicSettingTests: XCTestCase {
     func testNumbersAppearOnPadsWithTraceLogOn() throws {
         launch(Self.english, extraArguments: ["-TraceLogClassic", "YES"])
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let title = packTitles.element(boundBy: 0)
         title.tap()
         let play = app.buttons["Play"].firstMatch

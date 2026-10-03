@@ -5,9 +5,7 @@
 
 import XCTest
 
-/// Pack search on the home screen. The host copies the sample pack "Alan Walker - Faded"
-/// (producer "Otarygen, 김지섭, K1A2") and two small packs, "Sunflower" by "Post Malone" and
-/// "봄날" by "방탄소년단", into the app's Documents/UniPack before the run; without them the test is skipped.
+/// Searches isolated generated packs with English and Korean titles and producers.
 final class MainSearchUITests: XCTestCase {
 
     private static let faded = "Alan Walker - Faded"
@@ -19,7 +17,7 @@ final class MainSearchUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "search")
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -73,9 +71,9 @@ final class MainSearchUITests: XCTestCase {
 
     @MainActor
     func testSearchFiltersAndSurvivesPlay() throws {
-        guard row(Self.faded).waitForExistence(timeout: 30), row(Self.sunflower).exists, row(Self.spring).exists else {
-            throw XCTSkip("the search test packs are not installed in Documents/UniPack")
-        }
+        XCTAssertTrue(row(Self.faded).waitForExistence(timeout: 30), "the search fixture must prepare Faded")
+        XCTAssertTrue(row(Self.sunflower).exists, "the search fixture must prepare Sunflower")
+        XCTAssertTrue(row(Self.spring).exists, "the search fixture must prepare the Korean pack")
         UITestSupport.attachScreenshot("01-library", to: self)
 
         app.buttons["magnifyingglass"].tap()

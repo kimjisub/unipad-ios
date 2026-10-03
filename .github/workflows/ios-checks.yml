@@ -108,3 +108,89 @@ jobs:
             ${{ runner.temp }}/UnitTests.xcresult
           retention-days: 7
           if-no-files-found: ignore
+
+  ui-tests:
+    name: UI tests
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Prepare fake test configuration
+        run: |
+          python3 -m unittest discover -s ci -v
+          python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
+
+      - name: Select the reference iPhone simulator
+        id: simulator
+        run: |
+          xcodebuild -version
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          devices = json.loads(subprocess.check_output(
+              ['xcrun', 'simctl', 'list', 'devices', 'available', '--json']
+          ))['devices']
+          iphones = [device for runtime, items in sorted(devices.items(), reverse=True)
+                     if runtime.endswith(('.iOS-26-2', '.iOS-26-3')) for device in items
+                     if device['name'] == 'iPhone 17 Pro' and device['isAvailable']]
+          if not iphones:
+              raise SystemExit('No iPhone 17 Pro on iOS 26.2 or 26.3 for the measured layout assertions')
+          device = iphones[0]
+          print(f"Using {device['name']} ({device['udid']})")
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"udid={device['udid']}\n")
+          PY
+
+      - name: Resolve pinned dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project unipad.xcodeproj -scheme unipad \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile
+
+      - name: Run all UI tests
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+          TEST_RUNNER_UNIPAD_RELEASE_SUITE: '1'
+        run: |
+          xcodebuild test -quiet \
+            -project unipad.xcodeproj -scheme unipad -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -disableAutomaticPackageResolution \
+            -only-testing:unipadUITests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/ui-tests.log"
+
+      - name: Require every UI test to run and pass
+        if: always()
+        run: |
+          xcrun xcresulttool get test-results summary \
+            --path "$RUNNER_TEMP/UITests.xcresult" --compact \
+            | tee "$RUNNER_TEMP/ui-test-summary.json"
+          python3 ci/check_ui_results.py "$RUNNER_TEMP/ui-test-summary.json"
+
+      - name: Save UI test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ui-check-results
+          path: |
+            ${{ runner.temp }}/ui-tests.log
+            ${{ runner.temp }}/ui-test-summary.json
+            ${{ runner.temp }}/UITests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

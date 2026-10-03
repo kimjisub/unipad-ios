@@ -7,10 +7,11 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     /// A theme given here is pinned in the argument domain, which also hides what the Theme
     /// screen saves, so the walk through the Theme screen launches without one.
-    private func launch(theme: String? = nil) -> XCUIApplication {
+    private func launch(theme: String? = nil, holdLoading: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += UITestSupport.englishLaunchArguments()
         if let theme { app.launchArguments += ["-SelectedTheme", theme] }
+        if holdLoading { app.launchArguments += ["-UniPadUITestHoldPlayLoading", "YES"] }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         return app
@@ -22,7 +23,7 @@ final class PlayThemeLayoutTests: XCTestCase {
     private func openFirstPack(in app: XCUIApplication) throws -> String {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let faded = packTitles.matching(NSPredicate(format: "label CONTAINS[c] %@", "Faded")).firstMatch
         let title = faded.exists ? faded : packTitles.element(boundBy: 0)
         let name = title.label
@@ -41,9 +42,7 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     private func safeArea(of window: CGRect) throws -> CGRect {
         let key = "\(Int(window.width))x\(Int(window.height))"
-        guard let insets = Self.landscapeSafeAreas[key] else {
-            throw XCTSkip("no reference safe area for a \(key) screen")
-        }
+        let insets = try XCTUnwrap(Self.landscapeSafeAreas[key], "no independently measured safe area for a \(key) screen")
         return CGRect(x: window.minX + insets.side, y: window.minY,
                       width: window.width - insets.side * 2, height: window.height - insets.bottom)
     }
@@ -102,7 +101,7 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// one the pads first appear on: the theme must not grow or move when play starts.
     private func assertThemeHoldsStillWhileOpening(theme: String, orientation: UIDeviceOrientation) throws {
         XCUIDevice.shared.orientation = orientation
-        let app = launch(theme: theme)
+        let app = launch(theme: theme, holdLoading: true)
         let label = "[\(theme) \(orientation == .landscapeLeft ? "left" : "right") opening]"
         // `playBackdrop` is the separate loading fill the play screen used to draw, so this check
         // also catches it coming back.

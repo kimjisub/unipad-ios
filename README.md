@@ -46,13 +46,43 @@ open unipad.xcodeproj
 
 ## Pull request checks
 
-Every pull request runs one **iOS checks / Build and unit tests** job on a
+Every pull request runs **iOS checks / Build and unit tests** on a
 GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
-available iPhone simulator. UI tests are excluded. Dependencies use the
+available iPhone simulator. Dependencies use the
 committed `Package.resolved` versions.
 
-The job needs no repository secrets or signing credentials. It replaces the
+The staged **iOS checks / UI tests** job runs the entire `unipadUITests` target
+in Debug on iPhone 17 Pro with iOS 26.2 or 26.3, with parallel execution disabled.
+That device has independently measured safe-area references in the layout tests. No class or
+test is excluded: `DesignScreenshots` asserts that navigation reaches each
+screen, so it remains part of regression coverage. `ci/check_ui_results.py`
+rejects failed, skipped, empty, and incomplete results, including tests that
+skip because their input packs were not prepared. Logs, screenshots and the
+result bundle are saved in `ios-ui-check-results` for seven days.
+
+The UI runner sets `TEST_RUNNER_UNIPAD_RELEASE_SUITE=1`. Each test launch then
+uses a UUID-scoped library and history store. Search and deletion checks generate
+their own packs; import checks generate a silent archive in Documents and select
+it through the system picker. Counts and recent packs are prepared through UI
+playback. A deletion-error check protects the generated pack and unlocks it in
+teardown. Loading-layout checks explicitly pause an isolated pack load for five
+seconds so the unchanged frame assertions observe both loading and playback.
+Picker control arrival and frame stabilization have separate bounded waits; a
+host test executes the actual Swift wait for late, missing and moving controls.
+File-picker checks also start from Recents and scroll inside the unobscured file viewport.
+If picker readiness or archive visibility fails, screenshots, the accessibility
+hierarchy and the measured bounds are retained for diagnosis.
+Missing setup fails instead of skipping a check. The fixture code is
+compiled out of ordinary Release/archive builds.
+
+For a local run, use the same `xcodebuild` command in the workflow and export
+`TEST_RUNNER_UNIPAD_RELEASE_SUITE=1` first. Use iOS 26.2 or 26.3: on the local iOS 27 runtime,
+XCTest waits 300 seconds for crash-reporter synchronization after each UI test,
+even when its screen assertions pass. This work does not add SwiftLint; warning
+policy and any new lint tool are a separate technical-owner decision.
+
+Both jobs need no repository secrets or signing credentials. They replace the
 Firebase plist only in its disposable checkout with clearly fake values from
 `ci/firebase_fixture.py`; the existing unit-test runtime uses local Firebase
 stubs. App configuration, version, and behavior in normal builds are unchanged.

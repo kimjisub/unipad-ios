@@ -11,20 +11,96 @@ enum UITestSupport {
     /// ("Information", "Theme", "Play", option names). The app follows the
     /// simulator's language, so these pin it to English to make the result the
     /// same whatever language the simulator was left in.
-    static func englishLaunchArguments() -> [String] {
-        launchArguments(language: "en", locale: "en_US")
+    static func englishLaunchArguments(library: String = "standard", token: String = UUID().uuidString,
+                                       file: Bool = false) -> [String] {
+        launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file)
     }
 
-    static func launchArguments(language: String, locale: String) -> [String] {
+    static func launchArguments(language: String, locale: String, library: String = "standard",
+                                token: String = UUID().uuidString, file: Bool = false) -> [String] {
         var arguments = [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
         ]
         if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
-            arguments += ["-UniPadReleaseTest", UUID().uuidString]
+            arguments += ["-UniPadReleaseTest", token, "-UniPadUITestLibrary", library,
+                          "-UniPadReleaseEmpty", library == "empty" ? "YES" : "NO",
+                          "-UniPadReleaseFile", file ? "YES" : "NO"]
         }
         return arguments
+    }
+
+    /// Creates a recent-play record through the same controls the user uses.
+    static func playAndReturn(_ title: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(title.waitForExistence(timeout: 30), "the test pack must be prepared")
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 5))
+        play.tap()
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 30))
+        app.buttons["line.3.horizontal"].tap()
+        let quit = app.buttons["rectangle.portrait.and.arrow.right"]
+        XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        quit.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        // Close the selected-pack panel so its total and recent packs are visible.
+        title.tap()
+        XCTAssertTrue(app.staticTexts["main.total.playCount"].waitForExistence(timeout: 5))
+    }
+
+    /// Select the archive generated for this launch, through the system file picker.
+    /// Browsing avoids relying on Spotlight to have indexed a freshly created file.
+    static func selectPreparedArchive(token: String, in app: XCUIApplication) throws {
+        _ = try XCTUnwrap(settledFilePickerCancelButton(in: app, timeout: 20))
+        func tapRow(_ names: [String]) {
+            let row = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label IN %@", names)).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "missing file picker row: \(names)")
+            XCTAssertTrue(waitUntilHittable(row, timeout: 5))
+            row.tap()
+        }
+        let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen"])).firstMatch
+        if browse.exists { browse.tap() }
+        tapRow(["On My iPhone", "나의 iPhone", "Auf meinem iPhone"])
+        tapRow(["UniPad", "unipad"])
+        let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
+        let icon = cell.images.firstMatch
+        let list = app.collectionViews.firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        let search = app.searchFields.firstMatch
+        let tabs = app.tabBars.firstMatch
+        XCTAssertTrue(search.exists && tabs.exists)
+        let window = app.windows.firstMatch.frame
+        let viewport = CGRect(x: window.minX, y: search.frame.maxY + 4, width: window.width,
+                              height: tabs.frame.minY - search.frame.maxY - 8)
+        func visible() -> Bool { icon.exists && viewport.contains(icon.frame) && icon.isHittable }
+        let deadline = Date().addingTimeInterval(60)
+        while !visible() && Date() < deadline {
+            // The collection view also extends underneath the search bar and tabs.
+            // Drag inside the unobscured viewport, towards its centre, rather than
+            // using a fixed fraction of the covered collection view.
+            let frame = icon.exists ? icon.frame : CGRect.null
+            let moveDown = !frame.isNull && frame.midY < viewport.midY
+            let distance = frame.isNull ? viewport.height * 0.65 :
+                min(viewport.height * 0.65, max(16, abs(frame.midY - viewport.midY)))
+            let x = viewport.minX + viewport.width * 0.8
+            let high = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: x, dy: viewport.midY - distance / 2))
+            let low = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: x, dy: viewport.midY + distance / 2))
+            if moveDown {
+                high.press(forDuration: 0.1, thenDragTo: low, withVelocity: .slow, thenHoldForDuration: 0.2)
+            } else {
+                low.press(forDuration: 0.1, thenDragTo: high, withVelocity: .slow, thenHoldForDuration: 0.2)
+            }
+        }
+        if !visible() {
+            attachPickerDiagnostics(in: app, details: "archive \(icon.frame), viewport \(viewport)")
+        }
+        XCTAssertTrue(cell.waitForExistence(timeout: 5))
+        XCTAssertTrue(visible(), "the archive icon must be visible before selecting it")
+        icon.tap()
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself
@@ -33,10 +109,11 @@ enum UITestSupport {
     static func dismissSystemAlerts() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         for _ in 0..<3 {
+            guard springboard.alerts.firstMatch.waitForExistence(timeout: 1) else { return }
             var tapped = false
             for label in ["허용 안 함", "Don't Allow", "허용", "Allow", "OK", "확인"] {
                 let b = springboard.buttons[label]
-                if b.waitForExistence(timeout: 2) {
+                if b.exists && b.isHittable {
                     b.tap()
                     tapped = true
                     break
@@ -94,18 +171,51 @@ enum UITestSupport {
             .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
             .firstMatch
         let screenWidth = app.windows.firstMatch.frame.width
+        let didSettle = waitForSettledFrame(timeout: timeout,
+            waitForArrival: { cancel.waitForExistence(timeout: $0) },
+            frame: {
+                guard cancel.exists, bar.frame.width == screenWidth else { return nil }
+                return cancel.frame
+            })
+        guard didSettle else {
+            attachPickerDiagnostics(in: app, details:
+                "initial window width \(screenWidth), window \(app.windows.firstMatch.frame), " +
+                "navigation \(bar.exists ? bar.frame : .null), cancel exists \(cancel.exists)")
+            return nil
+        }
+        return cancel
+    }
+
+    /// Requires two consecutive samples of the same final control frame.
+    static func waitForSettledFrame(timeout: TimeInterval,
+                                    waitForArrival: (TimeInterval) -> Bool,
+                                    frame: @escaping () -> CGRect?) -> Bool {
+        // Accessibility discovery can finish near its deadline on a hosted runner.
+        // Give the two stable-frame samples their own bounded wait after arrival.
+        guard waitForArrival(timeout) else { return false }
         var lastFrame = CGRect.null
         let settled = NSPredicate { _, _ in
-            guard cancel.exists, bar.frame.width == screenWidth else {
+            guard let current = frame() else {
                 lastFrame = .null
                 return false
             }
-            let frame = cancel.frame
-            defer { lastFrame = frame }
-            return frame == lastFrame
+            defer { lastFrame = current }
+            return current == lastFrame
         }
         let expectation = XCTNSPredicateExpectation(predicate: settled, object: nil)
-        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed ? cancel : nil
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private static func attachPickerDiagnostics(in app: XCUIApplication, details: String) {
+        XCTContext.runActivity(named: "File picker did not settle: " + details) { activity in
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.lifetime = .keepAlways
+            activity.add(screenshot)
+            let tree = XCTAttachment(string: details + "\n" + app.debugDescription)
+            tree.name = "file-picker-state"
+            tree.lifetime = .keepAlways
+            activity.add(tree)
+        }
     }
 
     /// The home screen's download and import cards. They sit in the middle of an

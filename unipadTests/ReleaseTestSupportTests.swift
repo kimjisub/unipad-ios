@@ -5,6 +5,78 @@ import XCTest
 
 @MainActor
 final class ReleaseTestSupportTests: XCTestCase {
+    func testSearchLibraryHasTitlesAndProducersUsedByScreenChecks() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("search", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let packs = WorkspaceManager.unipackFolders(in: workspace).map { folder in
+            let pack = UniPackFolder(rootFolder: folder)
+            pack.load()
+            return pack
+        }
+        XCTAssertEqual(Set(packs.map(\.title)), Set(["Alan Walker - Faded", "Sunflower", "봄날"]))
+        XCTAssertEqual(packs.first { $0.title == "Sunflower" }?.producerName, "Post Malone")
+        XCTAssertTrue(packs.first { $0.title == "Alan Walker - Faded" }?.producerName.contains("김지섭") == true)
+    }
+
+    func testDeletionFixtureIsProtectedUntilNextLaunchUnlocksIt() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadUITestDeleteFailure"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("deletion", forKey: keys[2])
+        defaults.set(true, forKey: keys[3])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        let file = root.appendingPathComponent("UniPack/Deletion/info")
+        defer {
+            defaults.set(false, forKey: keys[3])
+            try? ReleaseTestSupport.prepare()
+            try? FileManager.default.removeItem(at: root)
+        }
+        try ReleaseTestSupport.prepare()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        XCTAssertEqual(attributes[.immutable] as? Bool, true)
+        XCTAssertThrowsError(try FileManager.default.removeItem(at: file))
+        let packRoot = file.deletingLastPathComponent()
+        XCTAssertThrowsError(try UniPackFolder(rootFolder: packRoot).delete())
+        let pack = UniPackFolder(rootFolder: packRoot)
+        pack.load()
+        XCTAssertFalse(pack.criticalError, "a rejected deletion must keep the full fixture readable")
+        XCTAssertEqual(pack.title, "UI Test Pack")
+        defaults.set(false, forKey: keys[3])
+        try ReleaseTestSupport.prepare()
+        try FileManager.default.removeItem(at: file)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    func testPlayLoadingPauseRequiresBothIsolatedLibraryAndExplicitRequest() {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadUITestHoldPlayLoading"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(true, forKey: keys[1])
+        for token in [nil, "not-a-uuid"] as [String?] {
+            defaults.set(token, forKey: keys[0])
+            XCTAssertFalse(ReleaseTestSupport.holdPlayLoading)
+        }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        XCTAssertFalse(ReleaseTestSupport.holdPlayLoading)
+        defaults.set(true, forKey: keys[1])
+        XCTAssertTrue(ReleaseTestSupport.holdPlayLoading)
+    }
+
     func testWorkspaceSelectsSeparateLibraryForValidToken() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "UniPadReleaseTest")
