@@ -5,7 +5,9 @@ import XCTest
 /// so these tests ask the host to press it through the simulator's HID input
 /// instead. Run them with `ci/host-keys.sh`; without it they are skipped.
 final class MidiHelpHardwareKeyTests: XCTestCase {
-    private static let escape = "key 41"
+    // AXe's short-key event can complete without dismissing help on iOS 27.
+    // Use one explicit down/hold/up press; never retry Escape or tap Close.
+    private static let escape = "key 41 --duration 0.15"
     private var app: XCUIApplication!
 
     private struct Labels {
