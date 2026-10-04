@@ -12,7 +12,8 @@ then taps **Play**. Scoping to the list avoids the duplicate title in the recent
 pack card after a previous run.
 This route requires the existing shared UniPack library. Starting at the top,
 title navigation checks the exact-title count at each step and swipes upward until
-the title is hittable, with a maximum of 40 swipes. Two or more matches at any
+the title is hittable. Reaching 40 swipes fails even if the title is then visible.
+Two or more matches at any
 step fail immediately. Unchanged visible labels after a swipe mean the end of
 the list; a missing title or exhausted swipe limit fails. Immediately before
 selection the count must still be exactly one and the title must be hittable.
@@ -139,7 +140,8 @@ and device return but cannot save a receipt there; read its nonzero exit and err
 
 The normal `check_selection.py` run models a list that creates only the current
 screen's labels. It covers the original pre-scroll failure, the new order,
-35 swipes, duplicate titles on the first or a later screen, a missing title at
+35 swipes, success at 39 swipes and rejection at 40, duplicate titles on the first
+or a later screen, a missing title at
 the list end, and the 40-swipe limit. `--overlay <path>` checks the ordering guards
 against a different Swift overlay, including the original for a failing base
 check. These are **ordering-model checks, not device evidence**; they do not

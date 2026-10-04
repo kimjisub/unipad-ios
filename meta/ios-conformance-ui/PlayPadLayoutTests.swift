@@ -40,6 +40,10 @@ final class PlayPadLayoutTests: XCTestCase {
                 XCTFail("Multiple exact fixture titles in main.packList")
                 return nil
             }
+            if swipes >= 40 {
+                XCTFail("Exact fixture title missing: 40-swipe limit")
+                return nil
+            }
             if count == 1 && matches.firstMatch.isHittable {
                 // Recheck immediately before returning the element for selection.
                 XCTAssertEqual(matches.count, 1, "Stage one unchanged fixture at a time; titles are shared")
@@ -50,10 +54,6 @@ final class PlayPadLayoutTests: XCTestCase {
                 .filter { $0.isHittable }.map { $0.label }
             if previousTitles == visibleTitles {
                 XCTFail("Exact fixture title missing: end of pack list")
-                return nil
-            }
-            if swipes >= 40 {
-                XCTFail("Exact fixture title missing: 40-swipe limit")
                 return nil
             }
             previousTitles = visibleTitles

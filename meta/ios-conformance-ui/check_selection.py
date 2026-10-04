@@ -39,14 +39,14 @@ def search_order(listing):
         counts.append(count)
         if count >= 2:
             raise AssertionError('Duplicate exact titles')
+        if listing.swipes >= 40:
+            raise AssertionError('Title missing: 40-swipe limit')
         if count == 1:
             assert listing.count == 1  # Selection-time recheck.
             return listing.swipes, counts
         visible = listing.titles
         if previous == visible:
             raise AssertionError('Title missing: end of pack list')
-        if listing.swipes >= 40:
-            raise AssertionError('Title missing: 40-swipe limit')
         previous = visible
         listing.swipe_up()
 
@@ -71,6 +71,11 @@ def check_model(overlay):
     swipes, counts = search_order(LazyList(long_screens))
     assert swipes == 35 and counts == [0] * 35 + [1]
     print(f'PASS long list: swipes={swipes} counts={counts}')
+    edge_screens = [[f'Pack {i}'] for i in range(39)] + [['Conformance']]
+    assert search_order(LazyList(edge_screens))[0] == 39
+    print('PASS below swipe limit: swipes=39')
+    expect_failure('title at swipe limit', lambda: search_order(
+        LazyList([[f'Pack {i}'] for i in range(40)] + [['Conformance']])), '40-swipe limit')
     expect_failure('duplicate on first screen', lambda: search_order(
         LazyList([['Conformance', 'Conformance']])), 'Duplicate')
     expect_failure('duplicate after scrolling', lambda: search_order(
@@ -88,7 +93,7 @@ def check_model(overlay):
     search = swift[start:swift.index('func testSyntheticPackInputAutoplayAndExit', start)]
     assert search.index('if count >= 2') < search.index('if count == 1 && matches.firstMatch.isHittable')
     assert search.index('previousTitles == visibleTitles') < search.index('list.swipeUp()')
-    assert search.index('swipes >= 40') < search.index('list.swipeUp()')
+    assert search.index('swipes >= 40') < search.index('if count == 1 && matches.firstMatch.isHittable')
     assert 'CONFORMANCE title-search swipes=' in search
     assert 'XCTAssertEqual(matches.count, 1' in search
     assert 'XCTAssertTrue(matches.firstMatch.isHittable' in search
