@@ -36,7 +36,6 @@ if [[ -z $axe ]]; then
 fi
 
 keys=$(mktemp -d "${PAPERCLIP_RUN_SCRATCH_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/unipad-host-keys.XXXXXX")
-log=$keys/presses.log
 trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
 
 {
@@ -44,13 +43,16 @@ trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
     for request in $keys/request-*; do
       id=${request:t}; id=${id#request-}
       steps=$(<$request)
-      if $axe batch --udid $udid --file $request >/dev/null; then
-        print "$(date +%T) performed: ${steps//$'\n'/; }" >>$log
+      print "$(date +%T) host request $id: ${steps//$'\n'/; }"
+      if $axe batch --udid $udid --file $request --verbose >$keys/output-$id 2>&1; then
+        print successful >$keys/response-$id
       else
-        print "$(date +%T) FAILED: ${steps//$'\n'/; }" >>$log
+        print failed >$keys/response-$id
       fi
+      cat $keys/output-$id
+      print "$(date +%T) host response $id: $(<$keys/response-$id)"
       rm -f $request
-      touch $keys/done-$id
+      mv $keys/response-$id $keys/done-$id
     done
     sleep 0.2
   done
@@ -60,5 +62,4 @@ responder=$!
 result=0
 TEST_RUNNER_HOST_KEYS_DIR=$keys xcodebuild "$@" \
   -destination "id=$udid" -derivedDataPath $derived -parallel-testing-enabled NO -collect-test-diagnostics never || result=$?
-[[ -f $log ]] && cat $log
 exit $result

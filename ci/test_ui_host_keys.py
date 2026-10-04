@@ -9,6 +9,47 @@ import unittest
 
 
 class UIHostKeysTests(unittest.TestCase):
+    def key_delivery(self, exit_code):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(dir=os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR")) as directory:
+            folder = Path(directory)
+            fake = folder / "bin"
+            fake.mkdir()
+            programs = {
+                "axe": f"#!/bin/sh\necho 'HID delivery result' >&2\nexit {exit_code}\n",
+                "xcodebuild": "#!/usr/bin/env python3\n" + textwrap.dedent('''\
+                    import os, pathlib, time
+                    keys = pathlib.Path(os.environ['TEST_RUNNER_HOST_KEYS_DIR'])
+                    (keys / 'request-probe').write_text('key 41 --duration 0.15')
+                    deadline = time.monotonic() + 5
+                    while not (keys / 'done-probe').exists():
+                        if time.monotonic() > deadline: raise SystemExit('No host response')
+                        time.sleep(0.05)
+                    print('HOST_RESPONSE=' + (keys / 'done-probe').read_text().strip())
+                    ''')
+            }
+            for name, content in programs.items():
+                path = fake / name
+                path.write_text(content)
+                path.chmod(0o755)
+            env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ['PATH'],
+                       PAPERCLIP_RUN_SCRATCH_DIR=str(folder))
+            result = subprocess.run(['ci/host-keys.sh', 'leased-device', str(folder / 'DD'), 'test'],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=10)
+            return result
+
+    def test_failed_key_delivery_is_not_acknowledged_as_success(self):
+        result = self.key_delivery(9)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOST_RESPONSE=failed', result.stdout)
+        self.assertIn('HID delivery result', result.stdout + result.stderr)
+
+    def test_successful_key_delivery_is_acknowledged_and_logged(self):
+        result = self.key_delivery(0)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOST_RESPONSE=successful', result.stdout)
+        self.assertIn('HID delivery result', result.stdout + result.stderr)
+
     def run_step(self, exit_code=0):
         root = Path(__file__).resolve().parents[1]
         workflow = (root / ".github/workflows/ios-checks.yml").read_text()

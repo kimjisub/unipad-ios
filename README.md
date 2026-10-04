@@ -83,7 +83,10 @@ using the pinned, checksum-verified AXe release. The same bridge also runs the
 English and Korean VoiceOver focus checks, which require Xcode 27 and iOS 27.
 No OS-dependent skip is accepted by the result gate. The responder uses the run
 scratch directory, exits after the test command, and prints key actions into
-the saved UI log.
+the saved UI log as they occur. Each host response records success or failure
+and the HID output in the test result bundle; a failed send cannot be accepted
+as a completed key press. The app's dismissal and focus assertions still check
+that the delivered input had its intended effect.
 
 For a local run, use the same `ci/host-keys.sh` command in the workflow with a
 harness-leased iPhone 17 Pro on iOS 27 and export

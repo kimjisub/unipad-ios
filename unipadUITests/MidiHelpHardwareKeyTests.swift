@@ -57,6 +57,14 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             FileManager.default.fileExists(atPath: "\(dir)/done-\(id)")
         }, evaluatedWith: nil)
         wait(for: [pressed], timeout: 30)
+        let response = try? String(contentsOfFile: "\(dir)/done-\(id)", encoding: .utf8)
+        let output = (try? String(contentsOfFile: "\(dir)/output-\(id)", encoding: .utf8)) ?? ""
+        let delivery = XCTAttachment(string: "request=\(keys)\nresponse=\(response ?? "missing")\n\(output)")
+        delivery.name = "host-key-delivery-\(id)"
+        delivery.lifetime = .keepAlways
+        add(delivery)
+        XCTAssertEqual(response?.trimmingCharacters(in: .whitespacesAndNewlines), "successful",
+                       "The host must deliver the key successfully: \(output)")
     }
 
     private func waitSixSeconds() {
