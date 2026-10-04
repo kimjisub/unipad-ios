@@ -15,8 +15,11 @@ final class PushIdentifierSettingsTests: XCTestCase {
 
     private var app: XCUIApplication!
 
+    /// The pane is laid out for the orientation the previous test left the device in, so each
+    /// test starts from the same one.
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
     }
 
     private func openSettings(extraLaunchArguments: [String] = []) {
