@@ -14,7 +14,12 @@ from unittest.mock import patch
 import zipfile
 
 sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location('runner', Path(__file__).with_name('run.py'))
+runner_path = Path(__file__).with_name('run.py')
+if '--runner' in sys.argv:
+    index = sys.argv.index('--runner')
+    runner_path = Path(sys.argv[index + 1])
+    del sys.argv[index:index + 2]
+spec = importlib.util.spec_from_file_location('runner', runner_path)
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
@@ -132,6 +137,120 @@ class RunnerChecks(unittest.TestCase):
 
     def assert_failed(self):
         self.assertFalse(self.receipt()['success'])
+
+    def assert_title_rejected_before_staging(self, filename, content):
+        folder = self.library / 'another-folder-name'
+        folder.mkdir()
+        (folder / filename).write_bytes(content)
+        before = runner.hashes(self.library)
+        with self.assertRaisesRegex(RuntimeError, 'Conformance|decode'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertEqual(runner.hashes(self.library), before)
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertNotIn('stagedName', self.receipt())
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse(any('recordVideo' in c for c in self.commands))
+
+    def assert_other_title_allowed(self, content):
+        folder = self.library / 'another-folder-name'
+        folder.mkdir()
+        (folder / 'info').write_bytes(content)
+        before = runner.hashes(self.library)
+        self.run_tool()
+        self.assert_cleaned()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['existingConformanceCount'], 0)
+        self.assertEqual(self.receipt()['stagedConformanceCount'], 1)
+        self.assertEqual(runner.hashes(self.library), before)
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertTrue(any('test-without-building' in c for c in self.commands))
+
+    def test_conformance_number_suffix_allowed(self):
+        self.assert_other_title_allowed(b'title=Conformance 2\n')
+
+    def test_conformance_letter_suffix_allowed(self):
+        self.assert_other_title_allowed(b'title=ConformanceX\n')
+
+    def test_overridden_conformance_title_allowed(self):
+        self.assert_other_title_allowed(b'title=Conformance\ntitle=Other\n')
+
+    def test_duplicate_title_in_differently_named_folder(self):
+        self.assert_title_rejected_before_staging('info', b'title=Conformance\n')
+
+    def test_duplicate_title_with_spaces(self):
+        self.assert_title_rejected_before_staging('info', b'  title = Conformance  \n')
+
+    def test_duplicate_title_after_leading_separator(self):
+        self.assert_title_rejected_before_staging('info', b'=title=Conformance\n')
+
+    def test_duplicate_title_after_multiple_leading_separators(self):
+        self.assert_title_rejected_before_staging('info', b'==title=Conformance\n')
+
+    def test_title_with_leading_value_separator_allowed(self):
+        self.assert_other_title_allowed(b'title==Conformance\n')
+
+    def test_empty_title_line_does_not_override_duplicate(self):
+        self.assert_title_rejected_before_staging('info', b'title=Conformance\ntitle=\n')
+
+    def test_duplicate_title_in_uppercase_info(self):
+        self.assert_title_rejected_before_staging('INFO', b'title=Conformance\n')
+
+    def test_duplicate_title_in_json(self):
+        self.assert_title_rejected_before_staging('info.json', b'{"title": "Conformance"}')
+
+    def test_undecodable_info_preserved_and_device_returned(self):
+        self.assert_title_rejected_before_staging('info', b'\xff')
+
+    def test_duplicate_title_with_utf8_bom(self):
+        self.assert_title_rejected_before_staging('info', '\ufefftitle = Conformance\n'.encode())
+
+    def test_duplicate_title_with_utf16_bom(self):
+        self.assert_title_rejected_before_staging('info', 'title=Conformance\n'.encode('utf-16'))
+
+    def test_duplicate_title_with_legacy_encoding(self):
+        self.assert_title_rejected_before_staging('info',
+                                                'producerName=한글\ntitle = Conformance\n'.encode('cp949'))
+
+    def test_unreadable_info_preserved_and_device_returned(self):
+        path = self.library / 'another-folder-name/info'
+        read_info = runner.read_info
+
+        def unreadable(info):
+            if info == path:
+                raise RuntimeError('Cannot decode info: permission denied')
+            return read_info(info)
+
+        with patch.object(runner, 'read_info', side_effect=unreadable):
+            self.assert_title_rejected_before_staging('info', b'title=Other pack\n')
+
+    def test_info_title_uses_last_value_first_separator_and_json_fallback(self):
+        folder = self.root / 'metadata'
+        folder.mkdir()
+        (folder / 'INFO.JSON').write_text('{"title": "Conformance"}')
+        self.assertEqual(runner.folder_title(folder), 'Conformance')
+        (folder / 'INFO').write_text('title = First\ntitle = Conformance=Other\ntitle=\n')
+        self.assertEqual(runner.folder_title(folder), 'Conformance=Other')
+        (folder / 'INFO').write_text('title = First\n  title = Conformance \n')
+        self.assertEqual(runner.folder_title(folder), 'Conformance')
+
+    def test_wrong_staged_title_stops_before_recording_and_ui(self):
+        extractall = zipfile.ZipFile.extractall
+
+        def wrong_title(archive, path):
+            extractall(archive, path)
+            (path / 'info').write_text('title=Other pack\n')
+
+        with patch.object(zipfile.ZipFile, 'extractall', new=wrong_title):
+            with self.assertRaisesRegex(RuntimeError, 'exactly one Conformance'):
+                self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertEqual(self.receipt()['stagedConformanceCount'], 0)
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse((self.out / 'walkthrough.mp4').exists())
 
     def test_changed_product_rejected_before_build(self):
         (self.source / 'unipad/product.swift').write_bytes(b'changed')

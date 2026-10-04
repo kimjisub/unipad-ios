@@ -50,6 +50,65 @@ def save(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def read_info(path):
+    # Match 5dd4cac UniPackFolder.readTextFile: UTF-8, BOM-marked UTF-16,
+    # EUC-KR, then CP949. Never guess a title from an unreadable info file.
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise RuntimeError(f'Cannot decode info: {path}') from error
+    encodings = ['utf-8']
+    if data.startswith((b'\xfe\xff', b'\xff\xfe')):
+        encodings.append('utf-16')
+    encodings.extend(['euc-kr', 'cp949'])
+    for encoding in encodings:
+        try:
+            text = data.decode(encoding)
+            return text[1:] if text.startswith('\ufeff') else text
+        except UnicodeError:
+            continue
+    raise RuntimeError(f'Cannot decode info: {path}')
+
+
+def folder_title(folder):
+    # checkFile compares names case-insensitively and prefers info to info.json.
+    info = None
+    info_json = None
+    for item in folder.iterdir():
+        if item.is_dir():
+            continue
+        if item.name.lower() == 'info':
+            info = item
+        elif item.name.lower() == 'info.json':
+            info_json = item
+    title = ''
+    if info is not None:
+        for raw_line in read_info(info).splitlines():
+            # Swift split skips leading empty components without using maxSplits.
+            # Keep any further '=' in the value after the first nonempty key.
+            parts = raw_line.strip().lstrip('=').split('=', 1)
+            # Empty trailing components are omitted before key/value trimming.
+            if len(parts) == 2 and all(parts):
+                key, value = (part.strip() for part in parts)
+                if key == 'title':
+                    title = value
+    elif info_json is not None:
+        try:
+            data = json.loads(info_json.read_bytes())
+        except (OSError, ValueError) as error:
+            raise RuntimeError(f'Cannot decode info.json: {info_json}') from error
+        if not isinstance(data, dict):
+            raise RuntimeError(f'Cannot decode info.json object: {info_json}')
+        if isinstance(data.get('title'), str):
+            title = data['title']
+    return title
+
+
+def conformance_folders(library):
+    return [folder for folder in library.iterdir()
+            if folder.is_dir() and folder_title(folder) == 'Conformance']
+
+
 def check_product(source):
     # Compare the entire archived tree: synchronized Swift groups pick up new
     # files, and themes/project/test support live outside the unipad directory.
@@ -158,7 +217,8 @@ def main():
         before = hashes(library)
         save(args.out / 'library-before.json', before)
         # Duplicate exact titles must never be resolved by choosing the first match.
-        existing = [p for p in library.glob('*/info') if 'title=Conformance' in p.read_text()]
+        existing = conformance_folders(library)
+        receipt['existingConformanceCount'] = len(existing)
         if existing:
             raise RuntimeError('A Conformance fixture is already installed; preserve it and stop')
         candidate = library / ('JIS-70-' + os.environ['PAPERCLIP_RUN_ID'])
@@ -171,6 +231,9 @@ def main():
             archive.extractall(staged)
         receipt['stagedName'] = staged.name
         receipt['stagedFiles'] = hashes(staged)
+        receipt['stagedConformanceCount'] = len(conformance_folders(library))
+        if receipt['stagedConformanceCount'] != 1:
+            raise RuntimeError('Expected exactly one Conformance title after staging; stop before UI execution')
         receipt['recordingStartedAt'] = time.time()
         with (args.out / 'recording.log').open('w') as recording_log:
             video = subprocess.Popen(['xcrun', 'simctl', 'io', args.udid, 'recordVideo', '--codec=h264',

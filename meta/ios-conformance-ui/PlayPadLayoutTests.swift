@@ -25,16 +25,48 @@ final class PlayPadLayoutTests: XCTestCase {
     }
 
     @MainActor
+    private func exactFixtureTitle(in list: XCUIElement) -> XCUIElement? {
+        let matches = list.staticTexts.matching(NSPredicate(format: "label == %@", "Conformance"))
+        var swipes = 0
+        var counts: [Int] = []
+        var previousTitles: [String]?
+        defer {
+            print("CONFORMANCE title-search swipes=\(swipes) counts=\(counts.map(String.init).joined(separator: ","))")
+        }
+        while true {
+            let count = matches.count
+            counts.append(count)
+            if count >= 2 {
+                XCTFail("Multiple exact fixture titles in main.packList")
+                return nil
+            }
+            if swipes >= 40 {
+                XCTFail("Exact fixture title missing: 40-swipe limit")
+                return nil
+            }
+            if count == 1 && matches.firstMatch.isHittable {
+                // Recheck immediately before returning the element for selection.
+                XCTAssertEqual(matches.count, 1, "Stage one unchanged fixture at a time; titles are shared")
+                XCTAssertTrue(matches.firstMatch.isHittable, "Exact fixture title not reachable")
+                return matches.firstMatch
+            }
+            let visibleTitles = list.staticTexts.allElementsBoundByIndex
+                .filter { $0.isHittable }.map { $0.label }
+            if previousTitles == visibleTitles {
+                XCTFail("Exact fixture title missing: end of pack list")
+                return nil
+            }
+            previousTitles = visibleTitles
+            list.swipeUp()
+            swipes += 1
+        }
+    }
+
+    @MainActor
     func testSyntheticPackInputAutoplayAndExit() throws {
         let list = app.scrollViews["main.packList"]
         XCTAssertTrue(list.waitForExistence(timeout: 30), "Pack list missing")
-        let matches = list.staticTexts.matching(NSPredicate(format: "label == %@", "Conformance"))
-        XCTAssertEqual(matches.count, 1, "Stage one unchanged fixture at a time; titles are shared")
-        let title = matches.firstMatch
-        if !title.isHittable {
-            list.swipeUp()
-        }
-        XCTAssertTrue(title.isHittable, "Exact fixture title not reachable")
+        guard let title = exactFixtureTitle(in: list) else { return }
         evidence("01-exact-title")
         title.tap()
         let play = app.buttons["Play"].firstMatch
