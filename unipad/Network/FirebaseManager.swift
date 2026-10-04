@@ -308,26 +308,27 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
 
 // MARK: - Firebase Runtime
 
-/// Keeps unit test runs, and Debug runs launched with `-UniPadFirebaseLocalOnly YES`, away from the
-/// production Firebase project: Firebase is not configured and every service is a local stub.
+/// Keeps unit test runs, and Debug or release-check runs launched with `-UniPadFirebaseLocalOnly YES`,
+/// away from the production Firebase project: Firebase is not configured and every service is a
+/// local stub. Store builds ignore both launch arguments.
 enum FirebaseRuntime {
     static let localOnlyLaunchArgument = "UniPadFirebaseLocalOnly"
 
     static let isLocalOnly: Bool = {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return true }
-#if DEBUG
+#if DEBUG || UNIPAD_RELEASE_TESTS
         return UserDefaults.standard.bool(forKey: localOnlyLaunchArgument)
 #else
         return false
 #endif
     }()
 
-    /// Debug-only, for UI tests: a local-only run presents the installation-ID model with the stub,
-    /// not Firebase, behind it.
+    /// For UI tests: a local-only run presents the installation-ID model with the stub, not
+    /// Firebase, behind it.
     static let fakeInstallationIdLaunchArgument = "UniPadFakeInstallationIdModel"
 
     static let fakesInstallationIdModel: Bool = {
-#if DEBUG
+#if DEBUG || UNIPAD_RELEASE_TESTS
         return isLocalOnly && UserDefaults.standard.bool(forKey: fakeInstallationIdLaunchArgument)
 #else
         return false
