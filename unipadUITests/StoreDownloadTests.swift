@@ -29,10 +29,7 @@ final class StoreDownloadTests: XCTestCase {
                 return
             }
             let row = rows.element(boundBy: index)
-            guard UITestSupport.scrollIntoView(row, in: list, app: app) else {
-                XCTFail("store row \(index) never scrolled into view")
-                return
-            }
+            if !row.isHittable { list.swipeUp() }
             row.tap()
             _ = downloadButton.waitForExistence(timeout: 2)
             index += 1

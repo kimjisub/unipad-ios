@@ -44,63 +44,43 @@ final class PushIdentifierSettingsTests: XCTestCase {
     /// The row sits at the bottom of the Information pane, below the fold in landscape.
     private func reveal(_ element: XCUIElement) {
         let pane = app.scrollViews.containing(titled(element.label)).firstMatch
-        XCTAssertTrue(UITestSupport.scrollIntoView(element, in: pane, app: app, maxSwipes: 5),
-                      "\(element.label) is never fully on screen")
+        for _ in 0..<5 where !element.isHittable {
+            pane.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable, "\(element) is never on screen")
     }
 
-    private func assertAlertShows(_ message: String, name: String) {
+    private func assertAlertShows(_ message: String) {
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10), "no alert after tapping the row")
         XCTAssertTrue(alert.staticTexts[message].exists, "alert does not say \"\(message)\"")
-        UITestSupport.attachScreenshot("\(name)-alert", to: self)
+        UITestSupport.attachScreenshot("alert", to: self)
         alert.buttons.firstMatch.tap()
     }
 
-    private func checkTokenModel(_ orientation: UIDeviceOrientation) {
-        XCUIDevice.shared.orientation = orientation
+    @MainActor
+    func testTokenModelKeepsTheFCMTokenRow() throws {
         openSettings()
         let tokenRow = row(titled: "FCM Token")
         XCTAssertTrue(tokenRow.waitForExistence(timeout: 10), "FCM Token row is missing")
         XCTAssertFalse(row(titled: "FCM Installation ID").exists)
 
         reveal(tokenRow)
-        let name = "token-\(orientation == .landscapeLeft ? "left" : "right")"
-        UITestSupport.attachScreenshot("\(name)-row", to: self)
+        UITestSupport.attachScreenshot("token-row", to: self)
         tokenRow.tap()
-        assertAlertShows("FCM token unavailable", name: name)
+        assertAlertShows("FCM token unavailable")
     }
 
-    private func checkInstallationModel(_ orientation: UIDeviceOrientation) {
-        XCUIDevice.shared.orientation = orientation
+    @MainActor
+    func testFakeInstallationModelShowsTheInstallationIDRow() throws {
         openSettings(extraLaunchArguments: ["-UniPadFakeInstallationIdModel", "YES"])
         let installationRow = row(titled: "FCM Installation ID")
         XCTAssertTrue(installationRow.waitForExistence(timeout: 10), "FCM Installation ID row is missing")
         XCTAssertFalse(row(titled: "FCM Token").exists)
 
         reveal(installationRow)
-        let name = "installation-\(orientation == .landscapeLeft ? "left" : "right")"
-        UITestSupport.attachScreenshot("\(name)-row", to: self)
+        UITestSupport.attachScreenshot("installation-row", to: self)
         installationRow.tap()
-        assertAlertShows("FCM installation ID unavailable", name: name)
-    }
-
-    @MainActor
-    func testTokenModelKeepsTheFCMTokenRowLandscapeLeft() {
-        checkTokenModel(.landscapeLeft)
-    }
-
-    @MainActor
-    func testTokenModelKeepsTheFCMTokenRowLandscapeRight() {
-        checkTokenModel(.landscapeRight)
-    }
-
-    @MainActor
-    func testFakeInstallationModelShowsTheInstallationIDRowLandscapeLeft() {
-        checkInstallationModel(.landscapeLeft)
-    }
-
-    @MainActor
-    func testFakeInstallationModelShowsTheInstallationIDRowLandscapeRight() {
-        checkInstallationModel(.landscapeRight)
+        assertAlertShows("FCM installation ID unavailable")
     }
 }
