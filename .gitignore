@@ -76,3 +76,6 @@ submission-note.md
 fastlane/.secrets/
 fastlane/report.xml
 fastlane/README.md
+
+# Private simulator recovery copies retained only when restoration fails
+.release-feature-recovery/
