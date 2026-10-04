@@ -22,6 +22,8 @@ xcodebuild test -project unipad.xcodeproj -scheme unipad -testPlan ReleaseFeatur
   -configuration Release -destination "platform=iOS Simulator,id=$DEVICE_ID" \
   -derivedDataPath "$PAPERCLIP_RUN_SCRATCH_DIR/release-build" \
   -parallel-testing-enabled NO -enableCodeCoverage NO -collect-test-diagnostics never \
+  -test-timeouts-enabled YES -default-test-execution-time-allowance 300 \
+  -maximum-test-execution-time-allowance 600 \
   -resultBundlePath "$PAPERCLIP_RUN_SCRATCH_DIR/release-run.xcresult" \
   UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS ENABLE_TESTABILITY=YES CODE_SIGNING_ALLOWED=NO
 ```
@@ -97,6 +99,11 @@ probe. To prove restart detection, run a negative control; **a nonzero exit is e
 . /Users/kimjisub/GitHub/unipad/project/paperclip/env.sh && python3 meta/run-release-features.py --os 26.3 --target-ref de32ad0 --iterations 1 --inject-restart
 ```
 
+All three test command paths (feature plan, fixture preparation and ordinary target)
+set XCTest timeouts: enabled, 300 seconds default and 600 seconds maximum per test.
+The runner's separate process limits (360 seconds for the ordinary-target UI invocation,
+1800 seconds for other commands) remain recorded; these are not XCTest timeouts.
+
 The exact target commit is archived without any credential configuration. A generated,
 invalid Firebase plist replaces that resource. The target is built as ordinary unsigned
 Release with an empty `UNIPAD_TEST_CONDITIONS` and `ENABLE_TESTABILITY=NO`; product Swift
@@ -143,8 +150,22 @@ data container, including Documents, preferences, SwiftData files and journal fi
 both copies by relative-path hashes before modifying anything. When no app was installed,
 record that state and uninstall the test app afterward. In `finally`, restore the original
 app and container, compare their complete before/after hashes, and return the device through
-`devices.py down` even if restoration fails. A termination signal uses the same cleanup path and is covered by an isolated,
-device-free signal regression. Cleanup errors fail the command and remain in
+`devices.py down` even if restoration fails. Both termination and interrupt requests use the same cleanup path. Once cleanup starts,
+requests are recorded without interrupting restoration, hash verification, device return or
+receipt writing; the command then fails to report the requested stop. Isolated, device-free
+regressions send the first request just after data deletion and midway through copying,
+including repeated requests, and verify complete restored hashes before returning the device.
+
+Original app/data copies live in the checkout's ignored, private (mode 0700)
+`.release-feature-recovery/release-features-<UUID>/original` directory, outside run-owned
+scratch. A manifest records the lent ID, bundle and original hashes. The runner deletes this
+copy only after successful app and complete data hash verification. If restoration fails,
+`receipt.json` records `recoveryBackupPath` and `recoveryBackupPreserved`; the copy and
+manifest survive run scratch cleanup for a subsequent harness-lent recovery of that exact
+device. Do not delete the worktree or this copy until recovery is confirmed, and never
+upload, commit or share its private contents. The copy is local recovery material, not a
+review artifact. Uncatchable stops (SIGKILL or host failure) cannot run `finally`; the same
+persistent copy remains available for recovery. Cleanup errors fail the command and remain in
 `receipt.json`; a partial backup never authorizes replacement. Original private backups
 are for restoration only: never include them, archived sources or built apps in evidence uploads.
 

@@ -111,6 +111,103 @@ assert receipt["deviceDownExitCode"] == 0 and not receipt["cleanupErrors"]
                                     env=environment, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_first_signals_during_restore_finish_hash_verification_and_device_return(self):
+        # Exercise real main/restore/restore_tree in isolated children. Inject
+        # the first signal after deletion and halfway through copying, for both
+        # stop signals; repeated requests must also leave cleanup uninterrupted.
+        self.run_restore_signal_checks()
+
+    def test_failed_restore_keeps_verified_backup_outside_run_scratch(self):
+        self.run_restore_signal_checks(fail_copy=True)
+
+    def run_restore_signal_checks(self, fail_copy=False):
+        program = r"""
+import importlib.util, os, signal, subprocess, sys, json, shutil
+from pathlib import Path
+from unittest.mock import patch
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("runner", sys.argv[1])
+runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
+root = Path(os.environ["PAPERCLIP_RUN_SCRATCH_DIR"])
+# __file__ identifies an isolated checkout, not the real repository.
+repo = root.parent / (root.name + "-checkout")
+repo.mkdir(); (repo / "meta").mkdir()
+(repo / "ReleaseFeatures.xctestplan").write_text('{}')
+runner.__file__ = str(repo / 'meta/run-release-features.py')
+original, app = root / 'data', root / 'app'
+original.mkdir(); app.mkdir()
+(original / 'history').write_bytes(b'original database')
+(original / 'preferences').write_bytes(b'original settings')
+(app / 'binary').write_bytes(b'original app')
+expected = runner.tree_hashes(original)
+order = []
+def output(argv, **kwargs):
+    if argv[:2] == ['git', 'diff']: return b''
+    return 'fake-device-or-commit\n'
+def command(record, argv, **kwargs):
+    if argv[-1] == 'down':
+        order.append('down')
+    if 'listapps' in argv: return subprocess.CompletedProcess(argv, 0, 'app list')
+    return subprocess.CompletedProcess(argv, 0)
+def check(*args):
+    (original / 'history').write_bytes(b'test data')
+copytree = shutil.copytree
+injected = False
+def copy(source, destination, **kwargs):
+    global injected
+    if Path(destination) == original:
+        assert not list(original.iterdir()), 'signal must follow deletion'
+        injected = True
+        if fail_copy: raise OSError('injected copy failure')
+        if phase == 'during-copy':
+            (original / 'history').write_bytes((Path(source) / 'history').read_bytes())
+            assert not (original / 'preferences').exists()
+        os.kill(os.getpid(), requested_signal)
+        os.kill(os.getpid(), signal.SIGINT)
+    return copytree(source, destination, **kwargs)
+fail_copy, phase, requested_signal = sys.argv[2] == 'true', sys.argv[3], int(sys.argv[4])
+with patch.object(runner, 'stage_source', side_effect=lambda repo, path: path.mkdir()), \
+     patch.object(runner.subprocess, 'check_output', side_effect=output), \
+     patch.object(runner.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, '{"kim.jisub.unipad": {}}')), \
+     patch.object(runner, 'container', side_effect=lambda record, device, kind, **kw: app if kind == 'app' else original), \
+     patch.object(runner, 'target_checks', side_effect=check), \
+     patch.object(runner, 'command', side_effect=command), \
+     patch.object(runner.shutil, 'copytree', side_effect=copy), \
+     patch('sys.argv', ['runner', '--target-ref', 'fake-target']):
+    try: runner.main()
+    except RuntimeError: pass
+receipt = json.loads(next(root.glob('release-features-*/receipt.json')).read_text())
+assert injected and order == ['down']
+assert not receipt['success'] and receipt.get('deviceDownExitCode') == 0
+if not fail_copy:
+    assert runner.tree_hashes(original) == expected, ('restoration interrupted', runner.tree_hashes(original))
+backup = Path(receipt['recoveryBackupPath'])
+if fail_copy:
+    assert receipt['cleanupErrors'] and receipt['recoveryBackupPreserved']
+    assert not backup.is_relative_to(root)
+    assert runner.tree_hashes(backup / 'data') == expected
+    assert runner.tree_hashes(backup / 'unipad.app') == runner.tree_hashes(app)
+    assert (backup / 'manifest.json').is_file()
+    shutil.rmtree(root)  # Simulate runtime removing run-owned scratch.
+    assert runner.tree_hashes(backup / 'data') == expected
+else:
+    assert receipt['appRestored'] and receipt['dataRestored']
+    assert runner.tree_hashes(original) == expected
+    assert receipt['terminationRequests'] and not receipt['cleanupErrors']
+    assert not backup.exists() and not receipt['recoveryBackupPreserved']
+shutil.rmtree(repo)
+"""
+        import signal
+        for phase in ['after-deletion', 'during-copy']:
+            for requested_signal in [signal.SIGTERM, signal.SIGINT]:
+                with self.subTest(phase=phase, signal=requested_signal), \
+                     tempfile.TemporaryDirectory(dir=os.environ['PAPERCLIP_RUN_SCRATCH_DIR']) as scratch:
+                    result = subprocess.run([sys.executable, '-c', program, str(Path(runner.__file__).resolve()),
+                                             str(fail_copy).lower(), phase, str(int(requested_signal))],
+                                            env=dict(os.environ, PAPERCLIP_RUN_SCRATCH_DIR=scratch),
+                                            capture_output=True, text=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_overlapping_commands_cannot_share_device_lease(self):
         with tempfile.TemporaryDirectory(dir=os.environ['PAPERCLIP_RUN_SCRATCH_DIR']) as scratch, \
              patch.dict(os.environ, {'PAPERCLIP_RUN_SCRATCH_DIR': scratch}):

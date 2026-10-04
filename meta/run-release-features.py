@@ -22,22 +22,30 @@ BUNDLE = "kim.jisub.unipad"
 BACKGROUND_TEST = "unipadUITests/ReleaseFeatureUITests/testPreparedPackOpensAndBackgroundReturnStaysResponsive"
 TARGET_TEST = BACKGROUND_TEST
 CREDENTIAL_CONFIGS = {"GoogleService-Info.plist", "google-services.json"}
+TEST_TIMEOUT_ARGS = ["-test-timeouts-enabled", "YES",
+                     "-default-test-execution-time-allowance", "300",
+                     "-maximum-test-execution-time-allowance", "600"]
 
 
 
 @contextmanager
 def stop_signals():
-    # Paperclip can stop a run while it owns a modified simulator. Convert
-    # termination into the same exception path that restores data in finally.
-    previous = signal.getsignal(signal.SIGTERM)
+    # Stop execution promptly, but defer further stop requests from the start
+    # of cleanup through restoration, hash verification, return and receipt.
+    state = {"cleaning": False, "received": []}
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
     def stop(signum, frame):
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        raise KeyboardInterrupt("Termination requested; restore and return the device")
-    signal.signal(signal.SIGTERM, stop)
+        state["received"].append(signal.Signals(signum).name)
+        if not state["cleaning"]:
+            state["cleaning"] = True
+            raise KeyboardInterrupt("Termination requested; restore and return the device")
+    for sig in previous:
+        signal.signal(sig, stop)
     try:
-        yield
+        yield state
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 @contextmanager
@@ -164,12 +172,19 @@ def snapshot(record, device, out):
     app = container(record, device, "app")
     data = container(record, device, "data")
     backup = out / "original"
-    backup.mkdir()
+    # Unlike run-owned evidence, this private recovery copy survives runtime
+    # scratch deletion. Only remove it after complete restoration is verified.
+    out.parent.mkdir(mode=0o700, exist_ok=True)
+    out.mkdir(mode=0o700)
+    backup.mkdir(mode=0o700)
+    record["recoveryBackupPath"] = str(backup)
     saved = {"app": copy_verified(app, backup / "unipad.app"),
              "data": copy_verified(data, backup / "data"), "root": backup}
     record["originalAppHashes"] = saved["app"]
     record["originalDataHashes"] = saved["data"]
     record["backupVerified"] = True
+    (backup / "manifest.json").write_text(json.dumps({"device": device, "bundle": BUNDLE,
+                                                    "app": saved["app"], "data": saved["data"]}, indent=2) + "\n")
     return saved
 
 
@@ -263,7 +278,7 @@ def xcode_args(source, build, device, configuration="Release", testing=True):
               "-destination", f"platform=iOS Simulator,id={device}", "-derivedDataPath", str(build),
               "CODE_SIGNING_ALLOWED=NO"]
     if testing:
-        result += ["-parallel-testing-enabled", "NO", "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never"]
+        result += ["-parallel-testing-enabled", "NO", "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never", *TEST_TIMEOUT_ARGS]
     return result
 
 
@@ -414,7 +429,7 @@ def target_checks(args, record, repo, source, build, device, out):
     fixture_result = out / "fixture.xcresult"
     argv = ["xcodebuild", "test-without-building", "-xctestrun", str(fixture_run),
             "-destination", f"platform=iOS Simulator,id={device}", "-parallel-testing-enabled", "NO",
-            "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never",
+            "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never", *TEST_TIMEOUT_ARGS,
             "-only-testing:" + BACKGROUND_TEST, "-resultBundlePath", str(fixture_result)]
     command(record, argv, log=out / "fixture.log")
     summarize(fixture_result, record.setdefault("fixtureRun", {}), out)
@@ -461,7 +476,7 @@ def target_checks(args, record, repo, source, build, device, out):
         result = run_out / "result.xcresult"
         argv = ["xcodebuild", "test-without-building", "-xctestrun", str(target_run),
                 "-destination", f"platform=iOS Simulator,id={device}", "-parallel-testing-enabled", "NO",
-                "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never",
+                "-enableCodeCoverage", "NO", "-collect-test-diagnostics", "never", *TEST_TIMEOUT_ARGS,
                 "-only-testing:" + TARGET_TEST, "-resultBundlePath", str(result)]
         row = run_target_ui(record, argv, device, run_out, args.inject_restart)
         summarize(result, row, run_out)
@@ -503,12 +518,12 @@ def main():
     snapshot_complete = False
     failure = None
     cleanup_errors = []
-    with run_lock(), stop_signals():
+    with run_lock(), stop_signals() as stop_state:
         try:
             device_requested = True
             device = subprocess.check_output(["python3", str(harness), "up-ios", *([args.os] if args.os else [])], text=True).strip()
             record["device"] = device
-            saved = snapshot(record, device, out)
+            saved = snapshot(record, device, repo / ".release-feature-recovery" / out.name)
             snapshot_complete = True
             build = args.derived_data.resolve() if args.derived_data else out / "build"
             if args.target_ref:
@@ -528,10 +543,13 @@ def main():
             failure = error
             record["executionError"] = f"{type(error).__name__}: {error}"
         finally:
+            stop_state["cleaning"] = True
             if device is not None:
                 if snapshot_complete:
                     try:
                         restore(record, device, saved)
+                        if saved is not None:
+                            shutil.rmtree(saved["root"].parent)
                     except BaseException as error:
                         cleanup_errors.append(f"restoration: {error}")
             if device_requested:
@@ -539,6 +557,12 @@ def main():
                     record["deviceDownExitCode"] = command(record, ["python3", str(harness), "down"], timeout=60).returncode
                 except BaseException as error:
                     cleanup_errors.append(f"device return: {error}")
+            record["terminationRequests"] = stop_state["received"]
+            if stop_state["received"] and failure is None:
+                failure = KeyboardInterrupt("Termination requested during cleanup; restoration and return completed")
+                record["executionError"] = f"{type(failure).__name__}: {failure}"
+            if "recoveryBackupPath" in record:
+                record["recoveryBackupPreserved"] = Path(record["recoveryBackupPath"]).exists()
             record["cleanupErrors"] = cleanup_errors
             record["success"] = failure is None and not cleanup_errors
             (out / "receipt.json").write_text(json.dumps(record, indent=2) + "\n")
