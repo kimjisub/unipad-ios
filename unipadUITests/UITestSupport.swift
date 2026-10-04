@@ -65,10 +65,18 @@ enum UITestSupport {
             while row.exists && !viewport.contains(row.frame) && Date() < deadline {
                 // Locations may restore its scroll offset after a previous import.
                 // isHittable also accepts a row clipped by the home indicator.
+                // Application swipe directions can stay portrait-relative after
+                // the picker rotates. Use vertical points in its current viewport.
+                let distance = min(viewport.height * 0.5,
+                                   max(100, abs(row.frame.midY - viewport.midY)))
+                let high = app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: viewport.midX, dy: viewport.midY - distance / 2))
+                let low = app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: viewport.midX, dy: viewport.midY + distance / 2))
                 if row.frame.midY > viewport.midY {
-                    app.swipeUp(velocity: .slow)
+                    low.press(forDuration: 0.1, thenDragTo: high, withVelocity: .slow, thenHoldForDuration: 0.2)
                 } else {
-                    app.swipeDown(velocity: .slow)
+                    high.press(forDuration: 0.1, thenDragTo: low, withVelocity: .slow, thenHoldForDuration: 0.2)
                 }
             }
             let settled = waitForSettledFrame(timeout: 10,

@@ -46,8 +46,27 @@ final class App {
     var scrolls = 0
     init(_ frame: CGRect) { row = Element(frame) }
     func descendants(matching: Match) -> Query { Query(firstMatch: row) }
-    func swipeUp(velocity: Match) { scrolls += 1; row.frame.origin.y -= 100 }
-    func swipeDown(velocity: Match) { scrolls += 1; row.frame.origin.y += 100 }
+    // Reproduce the recorded landscape app gesture: it moves horizontally.
+    func swipeUp(velocity: Match) { scrolls += 1; Thread.sleep(forTimeInterval: 0.05) }
+    func swipeDown(velocity: Match) { scrolls += 1; Thread.sleep(forTimeInterval: 0.05) }
+    func coordinate(withNormalizedOffset offset: CGVector) -> Coordinate {
+        Coordinate(app: self, point: CGPoint(x: offset.dx * 874, y: offset.dy * 402))
+    }
+}
+struct Coordinate {
+    let app: App
+    let point: CGPoint
+    func withOffset(_ offset: CGVector) -> Coordinate {
+        Coordinate(app: app, point: CGPoint(x: point.x + offset.dx, y: point.y + offset.dy))
+    }
+    func press(forDuration: TimeInterval, thenDragTo end: Coordinate,
+               withVelocity: Match, thenHoldForDuration: TimeInterval) {
+        app.scrolls += 1
+        // A vertical drag stays inside the visible picker list.
+        precondition(point.x == end.point.x && point.x >= 78 && point.x <= 796)
+        precondition(point.y >= 24 && point.y <= 378 && end.point.y >= 24 && end.point.y <= 378)
+        app.row.frame.origin.y += end.point.y - point.y
+    }
 }
 extension Match { static var slow: Match { .any } }
 struct Support {
@@ -61,6 +80,7 @@ var passed = true
 for (name, frame, expectedScrolls) in [
     ("visible", CGRect(x: 78, y: 180, width: 718, height: 44), 0),
     ("home-indicator-clipped", CGRect(x: 78, y: 372, width: 718, height: 44), 1),
+    ("recorded-landscape-clipped", CGRect(x: 78, y: 384.67, width: 718, height: 52), 1),
     ("top-clipped", CGRect(x: 78, y: -12, width: 718, height: 44), 1),
 ] {
     let app = App(frame)
@@ -82,7 +102,7 @@ exit(passed && assertionFailures == 0 ? 0 : 1)
                 str(path / "probe.swift"), "-o", str(path / "probe")],
                 capture_output=True, text=True, timeout=120)
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
-            result = subprocess.run([str(path / "probe")], capture_output=True, text=True, timeout=40)
+            result = subprocess.run([str(path / "probe")], capture_output=True, text=True, timeout=120)
             print(result.stdout, end="")
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
