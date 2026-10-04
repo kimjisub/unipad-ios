@@ -7,10 +7,13 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     /// A theme given here is pinned in the argument domain, which also hides what the Theme
     /// screen saves, so the walk through the Theme screen launches without one.
-    private func launch(theme: String? = nil) -> XCUIApplication {
+    private func launch(theme: String? = nil, observeLoading: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += UITestSupport.englishLaunchArguments()
         if let theme { app.launchArguments += ["-SelectedTheme", theme] }
+        if observeLoading {
+            app.launchArguments += ["-UniPadReleaseThemeLoading", "YES"]
+        }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         return app
@@ -102,7 +105,7 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// one the pads first appear on: the theme must not grow or move when play starts.
     private func assertThemeHoldsStillWhileOpening(theme: String, orientation: UIDeviceOrientation) throws {
         XCUIDevice.shared.orientation = orientation
-        let app = launch(theme: theme)
+        let app = launch(theme: theme, observeLoading: true)
         let label = "[\(theme) \(orientation == .landscapeLeft ? "left" : "right") opening]"
         // `playBackdrop` is the separate loading fill the play screen used to draw, so this check
         // also catches it coming back.
@@ -113,12 +116,18 @@ final class PlayThemeLayoutTests: XCTestCase {
         var loadingFrames: [CGRect] = []
         let deadline = Date().addingTimeInterval(60)
         while !grid.exists, Date() < deadline {
-            if themeImage.exists { loadingFrames.append(themeImage.frame) }
+            if themeImage.exists {
+                loadingFrames.append(themeImage.frame)
+                if loadingFrames.count == 1 {
+                    UITestSupport.attachScreenshot("\(label)-loading", to: self)
+                }
+            }
         }
         XCTAssertTrue(grid.waitForExistence(timeout: 5), "\(label) pad grid never appeared")
         let playing = app.images["playBackground"]
         XCTAssertTrue(playing.waitForExistence(timeout: 5), "\(label) theme background never appeared")
         let playFrame = playing.frame
+        UITestSupport.attachScreenshot("\(label)-playing", to: self)
         let seen = Set(loadingFrames.map { "\($0)" }).sorted().joined(separator: " ")
         XCTContext.runActivity(named: "\(label) pack \(pack) window \(app.windows.firstMatch.frame) loading \(loadingFrames.count) samples \(seen) play \(playFrame)") { _ in }
 
