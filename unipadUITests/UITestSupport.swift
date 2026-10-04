@@ -109,7 +109,21 @@ enum UITestSupport {
         XCTAssertTrue(list.waitForExistence(timeout: 10))
         let search = app.searchFields.firstMatch
         let tabs = app.tabBars.firstMatch
-        XCTAssertTrue(search.exists && tabs.exists)
+        // The previous folder's collection view remains in the accessibility tree
+        // during navigation. Wait for the destination's controls before measuring
+        // its unobscured file area; its tab bar can arrive after the folder cells.
+        let controlsSettled = waitForSettledFrame(timeout: 20,
+            waitForArrival: { tabs.waitForExistence(timeout: $0) && search.waitForExistence(timeout: $0) },
+            frame: {
+                let screen = app.windows.firstMatch.frame
+                guard search.exists, tabs.exists, screen.contains(search.frame), screen.contains(tabs.frame),
+                      tabs.frame.minY > search.frame.maxY + 8 else { return nil }
+                return search.frame.union(tabs.frame)
+            })
+        if !controlsSettled {
+            attachPickerDiagnostics(in: app, details: "folder controls: search exists \(search.exists), tabs exist \(tabs.exists)")
+        }
+        XCTAssertTrue(controlsSettled, "the folder search and tabs must be present, visible and stable")
         let window = app.windows.firstMatch.frame
         let viewport = CGRect(x: window.minX, y: search.frame.maxY + 4, width: window.width,
                               height: tabs.frame.minY - search.frame.maxY - 8)
