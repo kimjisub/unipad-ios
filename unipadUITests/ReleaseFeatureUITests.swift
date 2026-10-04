@@ -10,7 +10,8 @@ final class ReleaseFeatureUITests: XCTestCase {
 
     private func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments() + ["-UniPadReleaseTest", UUID().uuidString]
+        let token = ProcessInfo.processInfo.environment["UNIPAD_TARGET_FIXTURE_TOKEN"] ?? UUID().uuidString
+        app.launchArguments = UITestSupport.englishLaunchArguments() + ["-UniPadReleaseTest", token]
         return app
     }
 
@@ -184,7 +185,11 @@ final class ReleaseFeatureUITests: XCTestCase {
     }
 
     @MainActor
-    func testPreparedPackOpensAndBackgroundReturnStaysResponsive() {
+    func testPreparedPackOpensAndBackgroundReturnStaysResponsive() throws {
+        if ProcessInfo.processInfo.environment["UNIPAD_TARGET_EVIDENCE"] != nil {
+            try checkTargetReleaseAppSettingsReturn()
+            return
+        }
         let app = makeApp()
         defer { app.terminate() }
         app.launchArguments += ["-UniPadReleaseRepeat", "YES"]
@@ -206,10 +211,133 @@ final class ReleaseFeatureUITests: XCTestCase {
         XCTAssertTrue(grid.waitForExistence(timeout: 10))
         grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap()
         XCTAssertEqual(grid.value as? String, "1,2", "foreground input must request a new sound")
+        XCTAssertEqual(grid.value as? String, "1,2", "repeat voice must be active before switching apps")
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.activate()
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 10))
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+        app.activate()
+        XCTAssertTrue(grid.waitForExistence(timeout: 10))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap()
+        XCTAssertEqual(grid.value as? String, "1,3", "input after Settings must request a new sound")
+        UITestSupport.attachScreenshot("release-play-after-settings", to: self)
         app.buttons["line.3.horizontal"].tap()
         XCTAssertTrue(app.buttons["rectangle.portrait.and.arrow.right"].waitForExistence(timeout: 5))
         app.buttons["rectangle.portrait.and.arrow.right"].tap()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 10))
         UITestSupport.attachScreenshot("release-home-after-background", to: self)
     }
+
+    /// Drives an independently built, ordinary Release app. The host checks process
+    /// continuity at acknowledged checkpoints; no product test identifiers are used.
+    @MainActor
+    private func checkTargetReleaseAppSettingsReturn() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let directory = URL(fileURLWithPath: try XCTUnwrap(environment["UNIPAD_TARGET_EVIDENCE"]))
+        let app = XCUIApplication(bundleIdentifier: "kim.jisub.unipad")
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment = ["XCTestConfigurationFilePath": "release-target-local-only"]
+        defer { app.terminate() }
+
+        @discardableResult
+        func checkpoint(_ name: String) throws -> [String: String] {
+            try Data().write(to: directory.appendingPathComponent(name + ".ready"), options: .atomic)
+            let response = directory.appendingPathComponent(name + ".ack")
+            let deadline = Date().addingTimeInterval(30)
+            while !FileManager.default.fileExists(atPath: response.path), Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            let data = try Data(contentsOf: response)
+            let result = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
+            XCTAssertNil(result["error"], result["error"] ?? "")
+            return result
+        }
+        func capture(_ name: String) throws {
+            try app.debugDescription.write(to: directory.appendingPathComponent(name + "-tree.txt"), atomically: true, encoding: .utf8)
+            // The host owns native screenshots; do not retain an XCTest screenshot
+            // transaction while waiting for simctl to capture the same display.
+            try checkpoint("capture-" + name)
+        }
+
+        app.launch()
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
+        try capture("target-home")
+        let title = app.staticTexts["Release Fixture - Tests"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        title.tap()
+        XCTAssertTrue(app.buttons["Play"].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Play"].firstMatch.tap()
+        let menu = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 20), "both versions expose the player menu")
+        menu.tap()
+        UITestSupport.setPlayOption("Trace Log", on: true, in: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+
+        // Both versions put the menu at the centre of a 56-point trailing
+        // strip. Infer the landscape safe area from this common control rather
+        // than using the candidate-only grid identifier or one device's pixels.
+        let window = app.windows.firstMatch.frame
+        let trailing = window.maxX - menu.frame.midX - 28
+        let safeWidth = window.width - trailing * 2
+        let safeHeight = (menu.frame.midY - window.minY) * 2
+        XCTAssertGreaterThan(window.width, window.height)
+        XCTAssertGreaterThanOrEqual(trailing, 0)
+        XCTAssertGreaterThan(safeWidth, 300)
+        XCTAssertGreaterThan(safeHeight, 200)
+        let cell = min(safeHeight / 8, (safeWidth - 56) / 10)
+        let oldCenter = (safeWidth - 56) / 2
+        let newCenter = min(safeWidth / 2, safeWidth - 56 - cell * 5)
+        XCTAssertLessThan(abs(oldCenter - newCenter), cell, "the two pad interiors must overlap")
+        let commonCenter = (oldCenter + newCenter) / 2
+        let geometry: [String: Double] = ["width": window.width, "height": window.height,
+                                         "left": window.minX + trailing + min(oldCenter, newCenter) - cell * 4,
+                                         "top": menu.frame.midY - cell * 4,
+                                         "right": window.minX + trailing + max(oldCenter, newCenter) + cell * 4,
+                                         "bottom": menu.frame.midY + cell * 4]
+        try JSONSerialization.data(withJSONObject: geometry).write(to: directory.appendingPathComponent("geometry.json"))
+        func input(column: CGFloat) {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(
+                CGVector(dx: window.minX + trailing + commonCenter + cell * (column - 3.5),
+                         dy: menu.frame.midY - cell * 3.5)).tap()
+            // Let the fixture's transient LED end. The retained trace proves input.
+            Thread.sleep(forTimeInterval: 2)
+        }
+        try capture("before-input")
+        input(column: 0)
+        try capture("before-settings")
+        try checkpoint("before-settings")
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.activate()
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 10))
+        // Ordinary apps may be suspended while Settings owns the foreground.
+        // Both are background states; the host independently rejects a changed PID.
+        let background = app.wait(for: .runningBackground, timeout: 5)
+            || app.wait(for: .runningBackgroundSuspended, timeout: 5)
+        let backgroundState = ["appState": app.state.rawValue]
+        try JSONSerialization.data(withJSONObject: backgroundState).write(
+            to: directory.appendingPathComponent("background-state.json"), options: .atomic)
+        XCTAssertTrue(background, "target background state: \(app.state.rawValue)")
+        let response = try checkpoint("in-settings")
+        if response["restart"] == "true" {
+            // Explicit launch reapplies the local-only environment. On this
+            // simulator, automatic activation after termination omitted it.
+            app.launch()
+        } else {
+            app.activate()
+        }
+        try checkpoint("after-return")
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "return must preserve the player")
+        XCTAssertFalse(app.buttons["gearshape"].exists, "a relaunched home screen is a failure")
+        try capture("after-return")
+        // A different mapped pad tests foreground input without retriggering the
+        // public version's known finite-repeat stop defect (fixed in PR #51).
+        // The instrumented branch still retriggers the repeat pad after each return.
+        input(column: 1)
+        try capture("after-input")
+        try checkpoint("after-input")
+        // Exit/stop while repeating is covered by PlaybackStopUITests on the
+        // instrumented source; this target comparison ends on the returned player.
+    }
+
 }
