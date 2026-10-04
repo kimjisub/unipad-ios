@@ -33,6 +33,21 @@ final class SoundEngine {
     private var nodePlayID: [Int]
     private var nextPlayID = 1
 
+    private enum Input: Hashable {
+        case identified(UUID)
+        // MIDI and autoplay have paired pad events, without a touch identity.
+        case pad(Int, Int)
+    }
+    private struct StartedPlayback {
+        let playID: Int
+        let isInfinite: Bool
+    }
+    private var inputPlayback: [Input: StartedPlayback] = [:]
+
+    private func input(x: Int, y: Int, id: UUID?) -> Input {
+        id.map(Input.identified) ?? .pad(x, y)
+    }
+
     private let unipack: UniPack
     private let chain: ChainObserver
     private var loadingListener: LoadingListener?
@@ -369,6 +384,7 @@ final class SoundEngine {
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
     /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
     private func releaseAllVoices() {
+        inputPlayback.removeAll()
         let nodes = playerNodes
         _ = runCatchingObjCException {
             for node in nodes { repeatScheduler.stop(node) }
@@ -379,7 +395,9 @@ final class SoundEngine {
         }
     }
 
-    func soundOn(x: Int, y: Int) {
+    func soundOn(x: Int, y: Int, inputID: UUID? = nil) {
+        let input = input(x: x, y: y, id: inputID)
+        inputPlayback.removeValue(forKey: input)
         guard isUsable else { return }
         let c = chain.value
         guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
@@ -453,6 +471,7 @@ final class SoundEngine {
             return
         }
         playsStarted += 1
+        inputPlayback[input] = StartedPlayback(playID: playID, isInfinite: sound.loop == -1)
 
         unipack.soundPush(c: c, x: x, y: y)
 
@@ -465,17 +484,16 @@ final class SoundEngine {
         }
     }
 
-    func soundOff(x: Int, y: Int) {
-        guard isUsable else { return }
-        let c = chain.value
-        guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
-        guard let sound = unipack.soundGet(c: c, x: x, y: y) else { return }
-        if sound.loop == -1 {
-            stopByPlayID(stopID[c][x][y])
-        }
+    func soundOff(x: Int, y: Int, inputID: UUID? = nil) {
+        // Consume once. Neither a new chain nor the next sound in a pad's sequence can
+        // change which voice this input started; a stolen/finished play ID is harmless.
+        guard let started = inputPlayback.removeValue(forKey: input(x: x, y: y, id: inputID)),
+              started.isInfinite else { return }
+        stopByPlayID(started.playID)
     }
 
     func destroy() {
+        inputPlayback.removeAll()
         // Terminal: a notification that lands after this must not restart the engine we just stopped.
         gate.shutDown()
         for i in nodePlayID.indices { nodePlayID[i] = 0 }
