@@ -110,7 +110,20 @@ enum UITestSupport {
         }
         tapRow(localNames)
         tapRow(["UniPad", "unipad"])
-        tapRow(["ReleaseTestImports"])
+        // Grid folder titles can accept a synthetic tap without opening the folder.
+        // Select its fully visible thumbnail once, using the existing screen helper.
+        let fixtureFolder = app.cells.containing(.staticText, identifier: "00-ReleaseTestImports").firstMatch
+        let folderIcon = fixtureFolder.images.firstMatch
+        let folderViewport = app.windows.firstMatch.frame.insetBy(dx: 0, dy: 24)
+        XCTAssertTrue(waitForSettledFrame(timeout: 10,
+            waitForArrival: { folderIcon.waitForExistence(timeout: $0) },
+            frame: {
+                guard folderIcon.exists else { return nil }
+                let current = folderIcon.frame
+                return folderViewport.contains(current) ? current : nil
+            }), "the isolated picker folder icon must be fully visible and stable")
+        XCTAssertTrue(waitUntilHittable(folderIcon, timeout: 5))
+        tapOnScreen(folderIcon, in: app)
         let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
         let icon = cell.images.firstMatch
         let list = app.collectionViews.firstMatch

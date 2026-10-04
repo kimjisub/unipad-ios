@@ -64,7 +64,7 @@ result bundle are saved in `ios-ui-check-results` for seven days.
 
 The UI runner sets `TEST_RUNNER_UNIPAD_RELEASE_SUITE=1`. Each test launch then
 uses a UUID-scoped library and history store. Search, deletion and play-usage checks generate
-their own packs; import checks generate a silent archive in the isolated Documents/ReleaseTestImports folder and select
+their own packs; import checks generate a silent archive in the isolated Documents/00-ReleaseTestImports folder and select
 it through the system picker. Counts and recent packs are prepared through UI
 playback. A deletion-error check protects the generated pack and unlocks it in
 teardown. Loading-layout checks explicitly pause an isolated pack load for five

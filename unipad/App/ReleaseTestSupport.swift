@@ -80,7 +80,7 @@ nonisolated enum ReleaseTestSupport {
     private static func exposePickerArchive(in root: URL) throws {
         guard UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token else { return }
         let fm = FileManager.default
-        let folder = WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseTestImports")
+        let folder = WorkspaceManager.documentsDirectory.appendingPathComponent("00-ReleaseTestImports")
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         let destination = folder.appendingPathComponent("ReleaseFixture-\(token).zip")
         for previous in try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {

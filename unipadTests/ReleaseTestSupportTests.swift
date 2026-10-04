@@ -157,7 +157,7 @@ final class ReleaseTestSupportTests: XCTestCase {
         defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
         let fm = FileManager.default
         let documents = WorkspaceManager.documentsDirectory
-        let picker = documents.appendingPathComponent("ReleaseTestImports")
+        let picker = documents.appendingPathComponent("00-ReleaseTestImports")
         let firstToken = UUID().uuidString
         let secondToken = UUID().uuidString
         let untouched = documents.appendingPathComponent("PickerUser-\(UUID().uuidString).zip")
@@ -179,8 +179,10 @@ final class ReleaseTestSupportTests: XCTestCase {
             XCTAssertTrue(fm.fileExists(atPath: exposed.path), "picker fixture must use its isolated folder")
             if fm.fileExists(atPath: picker.path) {
                 XCTAssertEqual(try fm.contentsOfDirectory(atPath: picker.path), [exposed.lastPathComponent])
-                XCTAssertEqual(try Data(contentsOf: exposed),
-                               try Data(contentsOf: documents.appendingPathComponent("ReleaseTests/\(token)/ReleaseFixture.zip")))
+                if fm.fileExists(atPath: exposed.path) {
+                    XCTAssertEqual(try Data(contentsOf: exposed),
+                                   try Data(contentsOf: documents.appendingPathComponent("ReleaseTests/\(token)/ReleaseFixture.zip")))
+                }
             }
             XCTAssertFalse(fm.fileExists(atPath: documents.appendingPathComponent(exposed.lastPathComponent).path))
             XCTAssertEqual(try Data(contentsOf: untouched), Data("user archive".utf8))
