@@ -108,6 +108,38 @@ enum UITestSupport {
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed ? cancel : nil
     }
 
+    /// XCUITest can report offscreen rows as hittable in landscapeRight. Use
+    /// the window and scroll viewport instead, and require the whole row so
+    /// its activation point cannot still sit below the fold.
+    static func isFullyVisible(_ element: XCUIElement, in app: XCUIApplication,
+                               within scrollView: XCUIElement? = nil) -> Bool {
+        guard element.exists else { return false }
+        var viewport = app.windows.firstMatch.frame
+        if let scrollView {
+            guard scrollView.exists else { return false }
+            viewport = viewport.intersection(scrollView.frame)
+        }
+        let frame = element.frame
+        return !viewport.isEmpty && !frame.isEmpty && viewport.contains(frame)
+    }
+
+    @discardableResult
+    static func scrollIntoView(_ element: XCUIElement, in scrollView: XCUIElement,
+                               app: XCUIApplication, maxSwipes: Int = 6) -> Bool {
+        for _ in 0..<maxSwipes {
+            if isFullyVisible(element, in: app, within: scrollView) { return true }
+            guard scrollView.exists, element.exists else { return false }
+            let viewport = scrollView.frame.intersection(app.windows.firstMatch.frame)
+            guard !viewport.isEmpty else { return false }
+            if element.frame.midY < viewport.midY {
+                scrollView.swipeDown(velocity: .slow)
+            } else {
+                scrollView.swipeUp(velocity: .slow)
+            }
+        }
+        return isFullyVisible(element, in: app, within: scrollView)
+    }
+
     /// The home screen's download and import cards. They sit in the middle of an
     /// empty list and after the last pack of a full one, so a long list has to be
     /// scrolled before the card can be tapped. Packs load after home appears, so
@@ -122,7 +154,7 @@ enum UITestSupport {
         let list = app.scrollViews["main.packList"]
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if element.exists && element.isHittable { break }
+            if isFullyVisible(element, in: app, within: list) { break }
             if list.exists {
                 list.swipeUp()
             } else {
