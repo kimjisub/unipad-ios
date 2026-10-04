@@ -60,6 +60,31 @@ Build logs and the test result bundle are available in the run's
 `ios-check-results` artifact for seven days. This workflow does not upload to
 a store or change required checks.
 
+## App Store destination check
+
+The separate **App Store link** workflow checks the update URL from
+`MainView.swift` daily, on demand, and on pull requests changing the URL or its
+checker. It is not a required check. Run it locally from the repository root:
+
+```bash
+python3 ci/app_store_link.py --out app-store-link.json
+python3 -m unittest discover -s ci -v
+```
+
+Exit codes are `0` for a verified UniPad destination, `1` for an invalid link,
+and `2` for unavailable network or Apple service (a workflow warning).
+The JSON records the original and final URLs, HTTP status, Apple lookup app ID
+and name, verdict, and UTC check time. Download the latest
+`app-store-link-results` artifact for release checks; it is kept for 90 days.
+Offline unit tests run in the existing iOS checks. Live unit tests run only with
+`UNIPAD_LIVE_STORE_CHECK=1`.
+
+This verdict concerns the web URL. Simulator opening failures do not indicate
+an invalid link: simulators lack the App Store app and may open Safari instead.
+`--simulator <udid>` records `simctl openurl` diagnostics separately without
+changing the verdict. `--source <file>` and `--expected-id <number>` allow
+checking a different source or expected app ID.
+
 ## Connecting a Launchpad
 
 1. Connect your Launchpad to your device using a USB adapter or USB-C cable.
