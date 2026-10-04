@@ -48,6 +48,7 @@ final class SoundEngine {
     private let repeatScheduler = FiniteRepeatScheduler()
     var repeatedBuffersScheduled: Int { repeatScheduler.buffersScheduled }
     var activeVoiceCount: Int { nodePlayID.filter { $0 != 0 }.count }
+    var activePlayIDs: Set<Int> { Set(nodePlayID.filter { $0 != 0 }) }
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)

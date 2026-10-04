@@ -545,7 +545,7 @@ final class PlayViewModel {
 
     private static let pressedVelocity = 3 // LED_RED
 
-    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger = .pad) {
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger = .pad, inputID: UUID? = nil) {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
