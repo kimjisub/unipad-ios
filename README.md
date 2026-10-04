@@ -87,6 +87,10 @@ the saved UI log as they occur. Each host response records success or failure
 and the HID output in the test result bundle; a failed send cannot be accepted
 as a completed key press. The app's dismissal and focus assertions still check
 that the delivered input had its intended effect.
+On Xcode 27, the new HID service can exit while idle with legacy keyboard input
+still disabled. Before each request the responder reads this device's input
+activation state and wakes its existing service when active, so AXe selects the
+working transport. It sends each key once and does not change simulator settings.
 
 For a local run, use the same `ci/host-keys.sh` command in the workflow with a
 harness-leased iPhone 17 Pro on iOS 27 and export

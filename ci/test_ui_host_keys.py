@@ -9,7 +9,7 @@ import unittest
 
 
 class UIHostKeysTests(unittest.TestCase):
-    def key_delivery(self, exit_code):
+    def key_delivery(self, exit_code, state=0, wake_exit=0):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR")) as directory:
             folder = Path(directory)
@@ -17,6 +17,10 @@ class UIHostKeysTests(unittest.TestCase):
             fake.mkdir()
             programs = {
                 "axe": f"#!/bin/sh\necho 'HID delivery result' >&2\nexit {exit_code}\n",
+                "xcrun": "#!/bin/sh\n" +
+                    f"if [ \"$4\" = notifyutil ]; then echo 'com.apple.coredevice.dtuhidd.active {state}'; exit 0; fi\n" +
+                    f"if [ \"$4\" = launchctl ]; then echo 'Waking HID for device='\"$3\"' target='\"$7\"; exit {wake_exit}; fi\n" +
+                    "exit 99\n",
                 "xcodebuild": "#!/usr/bin/env python3\n" + textwrap.dedent('''\
                     import os, pathlib, time
                     keys = pathlib.Path(os.environ['TEST_RUNNER_HOST_KEYS_DIR'])
@@ -49,6 +53,25 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('HOST_RESPONSE=successful', result.stdout)
         self.assertIn('HID delivery result', result.stdout + result.stderr)
+
+    def test_active_new_input_service_is_woken_on_the_same_device_before_delivery(self):
+        result = self.key_delivery(0, state=1)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOST_RESPONSE=successful', result.stdout)
+        self.assertIn('Waking HID for device=leased-device target=user/', result.stdout)
+        self.assertLess(result.stdout.index('Waking HID'), result.stdout.index('HID delivery result'))
+
+    def test_failed_service_wake_never_sends_a_key_or_reports_success(self):
+        result = self.key_delivery(0, state=1, wake_exit=7)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOST_RESPONSE=failed', result.stdout)
+        self.assertNotIn('HID delivery result', result.stdout)
+
+    def test_unknown_input_state_is_rejected_without_sending_a_key(self):
+        result = self.key_delivery(0, state=2)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOST_RESPONSE=failed', result.stdout)
+        self.assertNotIn('HID delivery result', result.stdout)
 
     def run_step(self, exit_code=0):
         root = Path(__file__).resolve().parents[1]
