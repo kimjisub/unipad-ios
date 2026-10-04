@@ -6,14 +6,6 @@ import AppKit
 typealias PlatformImage = NSImage
 #endif
 
-#if canImport(AppKit) && !canImport(UIKit)
-extension NSImage {
-    convenience init?(named name: String) {
-        self.init(named: NSImage.Name(name))
-    }
-}
-#endif
-
 import SwiftUI
 
 extension Image {

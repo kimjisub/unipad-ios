@@ -91,13 +91,12 @@ final class AppRouter {
         let importer = UniPackImporter()
 
         do {
-            let importedFolder = try await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
+            try await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
             UsageAnalytics.shared.packImportSucceeded(source: .openIn)
 
             NotificationCenter.default.post(
                 name: NSNotification.Name("UniPadExternalFileImported"),
-                object: nil,
-                userInfo: ["importedFolder": importedFolder]
+                object: nil
             )
         } catch {
             UsageAnalytics.shared.packImportFailed(source: .openIn, error: error)

@@ -10,10 +10,23 @@ The old test searches for ` - ` in a title. AP-001's actual title is `Conformanc
 The overlay requires exactly one matching title within `main.packList`, taps it,
 then taps **Play**. Scoping to the list avoids the duplicate title in the recent
 pack card after a previous run.
-This route requires the existing shared UniPack library. Title navigation tries
-one upward swipe; a fixture outside that reach fails rather than being reported
-as played. Empty-library setup and general long-list navigation are outside this
-AP-001 route.
+This route requires the existing shared UniPack library. Starting at the top,
+title navigation checks the exact-title count at each step and swipes upward until
+the title is hittable. Reaching 40 swipes fails even if the title is then visible.
+Two or more matches at any
+step fail immediately. Unchanged visible labels after a swipe mean the end of
+the list; a missing title or exhausted swipe limit fails. Immediately before
+selection the count must still be exactly one and the title must be hittable.
+One `CONFORMANCE title-search swipes=<n> counts=<...>` line records the search.
+Empty-library setup remains outside this AP-001 route.
+
+This is a **different tool** from original tool commit
+`e7192306099da3d7dee5a0c675921f477ccce9c4`: the original asserted count one before
+scrolling and tried at most one swipe. The new ordering supports long lists
+whose off-screen cards are not yet created. Preparation now reads each immediate
+pack folder's title before staging and checks again after staging; this catches
+duplicate titles even when their cards cannot appear on the same screen.
+Selection through Quit is unchanged.
 It does not use a URL or bypass the system confirmation dialog. Stage one fixture
 at a time because the sample packs share titles. Direct file staging tests the
 player entry path; it does **not** verify ZIP import.
@@ -64,7 +77,7 @@ Replace `<lent-udid>` with the printed identifier:
 ```
 
 Run the regression with `<original-AP-001.zip>` set to the existing evidence
-file. The legacy run **must fail**; the exact-title run must pass:
+file. The legacy run **must fail**; the exact-title and ordering-model run must pass:
 
 ```sh
 . /Users/kimjisub/GitHub/unipad/project/paperclip/env.sh && python3 meta/ios-conformance-ui/check_selection.py '<original-AP-001.zip>' --legacy
@@ -100,6 +113,20 @@ records the app and runner SHA-256 values, installs without opening the app,
 preserves the existing library by path and hash, stages the unchanged fixture,
 records video, and executes only the new test with parallel testing disabled, code coverage disabled, and verbose failure
 diagnostics disabled. The UI command has a three-minute timeout.
+Before staging, titles are read from every immediate directory under
+`Documents/UniPack` with the baseline's metadata rules: case-insensitive `info`
+filenames, UTF-8 (optional BOM), BOM-marked UTF-16, EUC-KR or CP949, trimmed
+lines/keys/values, and the product's line-splitting rule: leading empty `=`
+components do not count toward the one-split limit, further `=` characters stay
+in the value, and an empty trailing value is ignored. The last valid `title`
+value wins.
+When no `info` file exists, `info.json` supplies its string `title`. An unreadable
+metadata file stops preparation rather than guessing. An existing exact
+`Conformance` title stops before the fixture is created. This exact product-title
+check replaces the original raw `title=Conformance` substring refusal. Other titles
+such as `Conformance 2` and `ConformanceX`, or an earlier `title=Conformance` line
+overridden by a later `title=Other` line, are allowed. After extraction, exactly
+one product-parsed `Conformance` title is required before recording or UI tests.
 Its cleanup terminates the app, removes only its successfully created fixture,
 resolves the current app data container again (Xcode can relocate it),
 compares all pre-existing library hashes, and calls `devices.py down` even when
@@ -114,6 +141,15 @@ with the same harness command. Never overwrite an existing Conformance fixture.
 If output-directory setup itself fails, the tool still attempts app termination
 and device return but cannot save a receipt there; read its nonzero exit and error.
 
+The normal `check_selection.py` run models a list that creates only the current
+screen's labels. It covers the original pre-scroll failure, the new order,
+35 swipes, success at 39 swipes and rejection at 40, duplicate titles on the first
+or a later screen, a missing title at
+the list end, and the 40-swipe limit. `--overlay <path>` checks the ordering guards
+against a different Swift overlay, including the original for a failing base
+check. These are **ordering-model checks, not device evidence**; they do not
+execute XCTest or prove accessibility visibility or hittability.
+
 Run the device-free regression checks before borrowing a device:
 
 ```sh
@@ -126,6 +162,13 @@ source/theme additions, deletions and changes, project/overlay changes, symbolic
 links, exact-overlay reruns, empty baseline lists, folder collisions, missing packs, fixture extraction
 and UI command failure, recorder launch/exit/timeout/missing-video failures,
 container lookup failure and device-return failure. They do not launch an app.
+They also check duplicate titles in differently named folders, spaced keys,
+uppercase metadata filenames, JSON titles, BOMs and legacy encodings,
+unreadable metadata, and a wrong title after extraction. The three other-title
+cases above must reach UI execution and preserve the library after cleanup.
+Each rejection verifies
+preserved existing files, no UI execution, and device return. `--runner <path>`
+runs the same checks against an archived runner for a failing base check.
 
 Export readable XCTest attachments before the run scratch directory expires:
 
