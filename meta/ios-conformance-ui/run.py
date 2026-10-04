@@ -84,8 +84,10 @@ def folder_title(folder):
     title = ''
     if info is not None:
         for raw_line in read_info(info).splitlines():
-            parts = raw_line.strip().split('=', 1)
-            # Swift split omits empty components before key/value trimming.
+            # Swift split skips leading empty components without using maxSplits.
+            # Keep any further '=' in the value after the first nonempty key.
+            parts = raw_line.strip().lstrip('=').split('=', 1)
+            # Empty trailing components are omitted before key/value trimming.
             if len(parts) == 2 and all(parts):
                 key, value = (part.strip() for part in parts)
                 if key == 'title':

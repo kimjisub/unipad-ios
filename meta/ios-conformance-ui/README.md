@@ -116,7 +116,10 @@ diagnostics disabled. The UI command has a three-minute timeout.
 Before staging, titles are read from every immediate directory under
 `Documents/UniPack` with the baseline's metadata rules: case-insensitive `info`
 filenames, UTF-8 (optional BOM), BOM-marked UTF-16, EUC-KR or CP949, trimmed
-lines/keys/values, the first `=` separator, and the last `title` value.
+lines/keys/values, and the product's line-splitting rule: leading empty `=`
+components do not count toward the one-split limit, further `=` characters stay
+in the value, and an empty trailing value is ignored. The last valid `title`
+value wins.
 When no `info` file exists, `info.json` supplies its string `title`. An unreadable
 metadata file stops preparation rather than guessing. An existing exact
 `Conformance` title stops before the fixture is created. This exact product-title

@@ -182,6 +182,18 @@ class RunnerChecks(unittest.TestCase):
     def test_duplicate_title_with_spaces(self):
         self.assert_title_rejected_before_staging('info', b'  title = Conformance  \n')
 
+    def test_duplicate_title_after_leading_separator(self):
+        self.assert_title_rejected_before_staging('info', b'=title=Conformance\n')
+
+    def test_duplicate_title_after_multiple_leading_separators(self):
+        self.assert_title_rejected_before_staging('info', b'==title=Conformance\n')
+
+    def test_title_with_leading_value_separator_allowed(self):
+        self.assert_other_title_allowed(b'title==Conformance\n')
+
+    def test_empty_title_line_does_not_override_duplicate(self):
+        self.assert_title_rejected_before_staging('info', b'title=Conformance\ntitle=\n')
+
     def test_duplicate_title_in_uppercase_info(self):
         self.assert_title_rejected_before_staging('INFO', b'title=Conformance\n')
 
