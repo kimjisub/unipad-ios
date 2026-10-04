@@ -59,6 +59,23 @@ enum UITestSupport {
             let found = row.waitForExistence(timeout: 10)
             if !found { attachPickerDiagnostics(in: app, details: "missing row: \(names)") }
             XCTAssertTrue(found, "missing file picker row: \(names)")
+            let window = app.windows.firstMatch.frame
+            let viewport = window.insetBy(dx: 0, dy: 24)
+            let deadline = Date().addingTimeInterval(20)
+            while row.exists && !viewport.contains(row.frame) && Date() < deadline {
+                // Locations may restore its scroll offset after a previous import.
+                // isHittable also accepts a row clipped by the home indicator.
+                if row.frame.midY > viewport.midY {
+                    app.swipeUp(velocity: .slow)
+                } else {
+                    app.swipeDown(velocity: .slow)
+                }
+            }
+            let settled = waitForSettledFrame(timeout: 10,
+                waitForArrival: { row.waitForExistence(timeout: $0) },
+                frame: { row.exists && viewport.contains(row.frame) ? row.frame : nil })
+            if !settled { attachPickerDiagnostics(in: app, details: "row \(row.frame), viewport \(viewport)") }
+            XCTAssertTrue(settled, "the file picker row must be fully visible and stable")
             XCTAssertTrue(waitUntilHittable(row, timeout: 5))
             row.tap()
         }
