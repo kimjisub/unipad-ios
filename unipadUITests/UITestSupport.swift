@@ -151,12 +151,22 @@ enum UITestSupport {
 
     static func revealHomeCard(_ card: HomeCard, in app: XCUIApplication, timeout: TimeInterval = 60) -> XCUIElement {
         let element = app.buttons[card.rawValue].firstMatch
+        // A short empty-library screen scrolls too, but has no pack-list ID.
+        // Choose the card's enclosing scroll view rather than the left panel's.
         let list = app.scrollViews["main.packList"]
+        let cardScrollView = app.scrollViews.containing(.button, identifier: card.rawValue).firstMatch
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if isFullyVisible(element, in: app, within: list) { break }
-            if list.exists {
-                list.swipeUp()
+            // Lazy stacks do not expose the card until the list is scrolled.
+            let scrollView = list.exists ? list : cardScrollView
+            let viewport = scrollView.exists ? scrollView : nil
+            if isFullyVisible(element, in: app, within: viewport) { break }
+            if let viewport {
+                if element.exists {
+                    _ = scrollIntoView(element, in: viewport, app: app, maxSwipes: 1)
+                } else {
+                    viewport.swipeUp(velocity: .slow)
+                }
             } else {
                 _ = element.waitForExistence(timeout: 1)
             }
