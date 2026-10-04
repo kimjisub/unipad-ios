@@ -134,8 +134,7 @@ final class MidiConnectionHelpTests: XCTestCase {
         app.buttons["midi.help.close"].tap()
         let longModel = app.buttons["Launchpad Pro (mat1jaczyyy CFW)"].firstMatch
         let models = app.scrollViews["midi.models"]
-        for _ in 0..<3 where !longModel.isHittable { models.swipeUp() }
-        XCTAssertTrue(longModel.isHittable)
+        XCTAssertTrue(UITestSupport.scrollIntoView(longModel, in: models, app: app, maxSwipes: 3))
         longModel.tap()
         help.tap()
         let close = app.buttons["midi.help.close"]
