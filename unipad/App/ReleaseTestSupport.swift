@@ -12,12 +12,6 @@ nonisolated enum ReleaseTestSupport {
     }
     static var storeURL: URL? { root?.appendingPathComponent("history.sqlite") }
 
-    /// Tiny packs finish before a UI test can sample the loading background.
-    /// Only the explicit layout check in an isolated library requests this pause.
-    static var holdPlayLoading: Bool {
-        root != nil && UserDefaults.standard.bool(forKey: "UniPadUITestHoldPlayLoading")
-    }
-
     static func configure(_ configuration: URLSessionConfiguration) {
         guard root != nil else { return }
         configuration.protocolClasses = [ReleaseURLProtocol.self]
@@ -63,7 +57,10 @@ nonisolated enum ReleaseTestSupport {
                     let needsLongVoice = folder == "PlaybackStop" ||
                         (folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat"))
                     let repeats = needsLongVoice ? 10_000 : 0
-                    try makePack(at: library.appendingPathComponent(folder), title: title, firstPadRepeats: repeats)
+                    let loadingLEDLines = folder == "Faded" &&
+                        UserDefaults.standard.bool(forKey: "UniPadReleaseThemeLoading") ? 1_000_000 : 0
+                    try makePack(at: library.appendingPathComponent(folder), title: title,
+                                 firstPadRepeats: repeats, loadingLEDLines: loadingLEDLines)
                 }
             }
         }
@@ -107,7 +104,7 @@ nonisolated enum ReleaseTestSupport {
         }
     }
 
-    static func makePack(at root: URL, title: String, producer: String = "Tests", firstPadRepeats: Int = 0) throws {
+    static func makePack(at root: URL, title: String, producer: String = "Tests", firstPadRepeats: Int = 0, loadingLEDLines: Int = 0) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: root.appendingPathComponent("sounds"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
@@ -115,7 +112,10 @@ nonisolated enum ReleaseTestSupport {
             .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
         try "1 1 1 silence.wav \(firstPadRepeats)\n1 1 2 silence.wav 0\n2 1 1 silence.wav 0\n"
             .write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
-        try "on 1 1 a 5\ndelay 1000\noff 1 1\n"
+        // Real parser work keeps the loading screen observable without sleeping in app code.
+        // Only the two theme-opening checks request this larger, silent fixture.
+        let loadingLED = String(repeating: "delay 1\n", count: loadingLEDLines)
+        try (loadingLED + "on 1 1 a 5\ndelay 1000\noff 1 1\n")
             .write(to: root.appendingPathComponent("keyLed/1 1 1 1"), atomically: true, encoding: .utf8)
         try "on 1 1\non 1 2\ndelay 60000\noff 1 1\noff 1 2\nchain 2\non 1 1\ndelay 60000\noff 1 1\n"
             .write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)

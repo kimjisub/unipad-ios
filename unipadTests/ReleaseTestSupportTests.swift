@@ -89,23 +89,6 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
     }
 
-    func testPlayLoadingPauseRequiresBothIsolatedLibraryAndExplicitRequest() {
-        let defaults = UserDefaults.standard
-        let keys = ["UniPadReleaseTest", "UniPadUITestHoldPlayLoading"]
-        let previous = keys.map { defaults.object(forKey: $0) }
-        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
-        defaults.set(true, forKey: keys[1])
-        for token in [nil, "not-a-uuid"] as [String?] {
-            defaults.set(token, forKey: keys[0])
-            XCTAssertFalse(ReleaseTestSupport.holdPlayLoading)
-        }
-        defaults.set(UUID().uuidString, forKey: keys[0])
-        defaults.set(false, forKey: keys[1])
-        XCTAssertFalse(ReleaseTestSupport.holdPlayLoading)
-        defaults.set(true, forKey: keys[1])
-        XCTAssertTrue(ReleaseTestSupport.holdPlayLoading)
-    }
-
     func testWorkspaceSelectsSeparateLibraryForValidToken() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "UniPadReleaseTest")
@@ -193,9 +176,35 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: picker.path), ["ReleaseFixture-\(firstToken).zip"])
     }
 
+    func testThemeLoadingFixtureIsOptInAndOnlyEnlargesFaded() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseThemeLoading"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(false, forKey: "UniPadReleaseEmpty")
+        for enabled in [false, true] {
+            defaults.set(UUID().uuidString, forKey: "UniPadReleaseTest")
+            defaults.set(enabled, forKey: "UniPadReleaseThemeLoading")
+            let root = try XCTUnwrap(ReleaseTestSupport.root)
+            defer { try? FileManager.default.removeItem(at: root) }
+            try ReleaseTestSupport.prepare()
+            for folder in ["Release", "PlaybackStop", "Faded"] {
+                let path = root.appendingPathComponent("UniPack/\(folder)")
+                let pack = UniPackFolder(rootFolder: path)
+                pack.load()
+                pack.loadDetail()
+                XCTAssertFalse(pack.criticalError)
+                XCTAssertNil(pack.errorDetail)
+                let events = try XCTUnwrap(pack.ledAnimationTable?[0][0][0]?.first).ledEvents
+                XCTAssertEqual(events.count, enabled && folder == "Faded" ? 1_000_003 : 3)
+                XCTAssertEqual(pack.soundCount, 3)
+            }
+        }
+    }
+
     func testPreparationAndDownloadKeepUserLibraryUntouched() async throws {
         let defaults = UserDefaults.standard
-        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile", "UniPadReleaseRepeat"]
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile", "UniPadReleaseRepeat", "UniPadReleaseThemeLoading"]
         let previous = keys.map { defaults.object(forKey: $0) }
         defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
         defaults.set(UUID().uuidString, forKey: keys[0])

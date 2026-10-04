@@ -185,12 +185,6 @@ final class PlayViewModel {
 
         loadingPhase = "detail"
         loadingPhaseIndex = 1
-#if DEBUG || UNIPAD_RELEASE_TESTS
-        if ReleaseTestSupport.holdPlayLoading {
-            // Suspend without blocking the main actor, so the layout check can observe loading.
-            try await Task.sleep(for: .seconds(5))
-        }
-#endif
         // Phase updates are queued to main in read order.
         _ = await Task.detached(priority: .userInitiated) { [weak self] in
             pack.loadDetailWithProgress { phase, index, total in

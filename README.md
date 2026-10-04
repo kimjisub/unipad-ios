@@ -67,8 +67,8 @@ uses a UUID-scoped library and history store. Search, deletion and play-usage ch
 their own packs; import checks generate a silent archive in the isolated Documents/00-ReleaseTestImports folder and select
 it through the system picker. Counts and recent packs are prepared through UI
 playback. A deletion-error check protects the generated pack and unlocks it in
-teardown. Loading-layout checks explicitly pause an isolated pack load for five
-seconds so the unchanged frame assertions observe both loading and playback.
+teardown. Loading-layout checks explicitly request the larger silent fixture from main so
+the unchanged frame assertions observe both loading and playback without an app delay.
 Picker control arrival and frame stabilization have separate bounded waits; a
 host test executes the actual Swift wait for late, missing and moving controls.
 File-picker checks also start from Recents and scroll inside the unobscured file viewport.
