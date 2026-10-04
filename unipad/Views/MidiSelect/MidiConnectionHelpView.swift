@@ -165,10 +165,10 @@ struct MidiConnectionHelpView: View {
     }
 
     private var manufacturerGuideOpener: OpenURLAction {
-        #if DEBUG
-        // Exercise SwiftUI's rejected-open completion in local UI tests only.
-        // Release builds always use the system opener; a failed web request is
-        // deliberately not treated as a rejected external open.
+        #if DEBUG || UNIPAD_RELEASE_TESTS
+        // Exercise SwiftUI's rejected-open completion in local and release-check
+        // UI tests only. Store builds always use the system opener; a failed web
+        // request is deliberately not treated as a rejected external open.
         if UserDefaults.standard.bool(forKey: "UniPadFirebaseLocalOnly"),
            ProcessInfo.processInfo.arguments.contains("-UniPadHelpRejectExternalURL") {
             return OpenURLAction { _ in .discarded }
