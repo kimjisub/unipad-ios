@@ -27,6 +27,7 @@ nonisolated enum ReleaseTestSupport {
         guard let root else { return }
         let fm = FileManager.default
         guard !fm.fileExists(atPath: root.path) else {
+            try exposePickerArchive(in: root)
             try updateDeleteProtection(in: root)
             return
         }
@@ -70,11 +71,24 @@ nonisolated enum ReleaseTestSupport {
         try makePack(at: download, title: "Downloaded Fixture")
         let archive = root.appendingPathComponent("ReleaseFixture.zip")
         try ZipHelper.zipDirectory(source: download, destination: archive)
-        // The system file picker exposes Documents, not the test's private workspace.
-        if UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token {
-            try fm.copyItem(at: archive, to: WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseFixture-\(token).zip"))
-        }
+        try exposePickerArchive(in: root)
         try updateDeleteProtection(in: root)
+    }
+
+    /// Keep picker contents independent of earlier tests on a reused simulator.
+    /// Only this explicit test namespace is cleared; user archives stay untouched.
+    private static func exposePickerArchive(in root: URL) throws {
+        guard UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token else { return }
+        let fm = FileManager.default
+        let folder = WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseTestImports")
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let destination = folder.appendingPathComponent("ReleaseFixture-\(token).zip")
+        for previous in try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {
+            if previous != destination { try fm.removeItem(at: previous) }
+        }
+        if !fm.fileExists(atPath: destination.path) {
+            try fm.copyItem(at: root.appendingPathComponent("ReleaseFixture.zip"), to: destination)
+        }
     }
 
     /// Protect the complete isolated deletion fixture, as the old host's recursive lock did.

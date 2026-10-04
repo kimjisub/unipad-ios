@@ -110,6 +110,7 @@ enum UITestSupport {
         }
         tapRow(localNames)
         tapRow(["UniPad", "unipad"])
+        tapRow(["ReleaseTestImports"])
         let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
         let icon = cell.images.firstMatch
         let list = app.collectionViews.firstMatch

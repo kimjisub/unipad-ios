@@ -150,6 +150,47 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertEqual(pack.soundCount, 3)
     }
 
+    func testPickerFilesAreIsolatedFromPreviousLaunches() async throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let fm = FileManager.default
+        let documents = WorkspaceManager.documentsDirectory
+        let picker = documents.appendingPathComponent("ReleaseTestImports")
+        let firstToken = UUID().uuidString
+        let secondToken = UUID().uuidString
+        let untouched = documents.appendingPathComponent("PickerUser-\(UUID().uuidString).zip")
+        try Data("user archive".utf8).write(to: untouched)
+        defer {
+            try? fm.removeItem(at: untouched)
+            for token in [firstToken, secondToken] {
+                try? fm.removeItem(at: documents.appendingPathComponent("ReleaseTests/\(token)"))
+                try? fm.removeItem(at: documents.appendingPathComponent("ReleaseFixture-\(token).zip"))
+                try? fm.removeItem(at: picker.appendingPathComponent("ReleaseFixture-\(token).zip"))
+            }
+        }
+        defaults.set(true, forKey: "UniPadReleaseEmpty")
+        defaults.set(true, forKey: "UniPadReleaseFile")
+        for token in [firstToken, secondToken] {
+            defaults.set(token, forKey: "UniPadReleaseTest")
+            try ReleaseTestSupport.prepare()
+            let exposed = picker.appendingPathComponent("ReleaseFixture-\(token).zip")
+            XCTAssertTrue(fm.fileExists(atPath: exposed.path), "picker fixture must use its isolated folder")
+            if fm.fileExists(atPath: picker.path) {
+                XCTAssertEqual(try fm.contentsOfDirectory(atPath: picker.path), [exposed.lastPathComponent])
+                XCTAssertEqual(try Data(contentsOf: exposed),
+                               try Data(contentsOf: documents.appendingPathComponent("ReleaseTests/\(token)/ReleaseFixture.zip")))
+            }
+            XCTAssertFalse(fm.fileExists(atPath: documents.appendingPathComponent(exposed.lastPathComponent).path))
+            XCTAssertEqual(try Data(contentsOf: untouched), Data("user archive".utf8))
+        }
+        // Returning to the first library must expose its own archive again.
+        defaults.set(firstToken, forKey: "UniPadReleaseTest")
+        try ReleaseTestSupport.prepare()
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: picker.path), ["ReleaseFixture-\(firstToken).zip"])
+    }
+
     func testPreparationAndDownloadKeepUserLibraryUntouched() async throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile", "UniPadReleaseRepeat"]
