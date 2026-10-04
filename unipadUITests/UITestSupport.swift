@@ -109,24 +109,30 @@ enum UITestSupport {
         XCTAssertTrue(list.waitForExistence(timeout: 10))
         let search = app.searchFields.firstMatch
         let tabs = app.tabBars.firstMatch
-        // The previous folder's collection view remains in the accessibility tree
-        // during navigation. Wait for the destination's controls before measuring
-        // its unobscured file area; its tab bar can arrive after the folder cells.
+        // A folder can keep its search field and file grid while iOS hides the
+        // floating tabs. Reserve their entire 64-point bottom area in either
+        // layout, so a late tab bar cannot cover the icon or the drag path.
+        // Any visible tabs must still fit on screen and stay below the search.
+        var viewport = CGRect.null
         let controlsSettled = waitForSettledFrame(timeout: 20,
-            waitForArrival: { tabs.waitForExistence(timeout: $0) && search.waitForExistence(timeout: $0) },
+            waitForArrival: { search.waitForExistence(timeout: $0) },
             frame: {
                 let screen = app.windows.firstMatch.frame
-                guard search.exists, tabs.exists, screen.contains(search.frame), screen.contains(tabs.frame),
-                      tabs.frame.minY > search.frame.maxY + 8 else { return nil }
-                return search.frame.union(tabs.frame)
+                guard search.exists, screen.contains(search.frame) else { return nil }
+                var bottom = screen.maxY - 68
+                if tabs.exists {
+                    guard screen.contains(tabs.frame), tabs.frame.minY > search.frame.maxY + 8 else { return nil }
+                    bottom = min(bottom, tabs.frame.minY - 4)
+                }
+                guard bottom > search.frame.maxY + 4 else { return nil }
+                viewport = CGRect(x: screen.minX, y: search.frame.maxY + 4, width: screen.width,
+                                  height: bottom - search.frame.maxY - 4)
+                return viewport
             })
         if !controlsSettled {
             attachPickerDiagnostics(in: app, details: "folder controls: search exists \(search.exists), tabs exist \(tabs.exists)")
         }
-        XCTAssertTrue(controlsSettled, "the folder search and tabs must be present, visible and stable")
-        let window = app.windows.firstMatch.frame
-        let viewport = CGRect(x: window.minX, y: search.frame.maxY + 4, width: window.width,
-                              height: tabs.frame.minY - search.frame.maxY - 8)
+        XCTAssertTrue(controlsSettled, "the unobscured file area must be visible and stable")
         func visible() -> Bool { icon.exists && viewport.contains(icon.frame) && icon.isHittable }
         let deadline = Date().addingTimeInterval(60)
         while !visible() && Date() < deadline {
@@ -153,6 +159,15 @@ enum UITestSupport {
         }
         XCTAssertTrue(cell.waitForExistence(timeout: 5))
         XCTAssertTrue(visible(), "the archive icon must be visible before selecting it")
+        XCTContext.runActivity(named: "Select the fully visible prepared archive") { activity in
+            let state = XCTAttachment(string: "tabs present: \(tabs.exists), icon: \(icon.frame), viewport: \(viewport)\n" + app.debugDescription)
+            state.name = "prepared-archive-selection"
+            state.lifetime = .keepAlways
+            activity.add(state)
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.lifetime = .keepAlways
+            activity.add(screenshot)
+        }
         icon.tap()
     }
 

@@ -1,4 +1,4 @@
-"""Run the actual picker viewport check while the folder's tabs arrive late."""
+"""Run the actual picker viewport check with both native folder layouts."""
 import os
 from pathlib import Path
 import subprocess
@@ -38,9 +38,9 @@ final class App {
     let searchFields: Query
     let tabBars: Query
     let windows = Query(firstMatch: Element(frame: CGRect(x: 0, y: 0, width: 874, height: 402), arrivesAt: Date()))
-    init(lateTabs: Bool, missingTabs: Bool = false) {
-        searchFields = Query(firstMatch: Element(frame: CGRect(x: 78, y: 78, width: 718, height: 44), arrivesAt: Date()))
-        tabBars = Query(firstMatch: Element(frame: CGRect(x: 280, y: 338, width: 314, height: 44),
+    init(lateTabs: Bool = false, missingTabs: Bool = false, missingSearch: Bool = false, tabY: Double = 338) {
+        searchFields = Query(firstMatch: Element(frame: CGRect(x: 78, y: 78, width: 718, height: 44), arrivesAt: missingSearch ? nil : Date()))
+        tabBars = Query(firstMatch: Element(frame: CGRect(x: 280, y: tabY, width: 314, height: 44),
             arrivesAt: missingTabs ? nil : Date().addingTimeInterval(lateTabs ? 0.5 : 0)))
     }
 }
@@ -51,19 +51,23 @@ struct Support {
     }
 }
 var passed = true
-for late in [false, true] {
+for (name, app) in [("immediate tabs", App()), ("late tabs", App(lateTabs: true)),
+                    ("native folder without tabs", App(missingTabs: true))] {
     assertionFailures = 0
-    let app = App(lateTabs: late)
     let rect = Support.viewport(in: app)
-    let ok = assertionFailures == 0 && app.tabBars.firstMatch.exists &&
-        rect == CGRect(x: 0, y: 126, width: 874, height: 208)
-    print(late ? "late tabs" : "immediate tabs", ok ? "passed" : "failed")
+    let ok = assertionFailures == 0 && rect == CGRect(x: 0, y: 126, width: 874, height: 208)
+    print(name, ok ? "passed" : "failed")
     passed = passed && ok
 }
-assertionFailures = 0
-_ = Support.viewport(in: App(lateTabs: false, missingTabs: true))
-print("missing tabs rejected:", assertionFailures > 0)
-passed = passed && assertionFailures > 0
+for (name, app) in [("missing search", App(missingSearch: true)),
+                    ("tabs outside window", App(tabY: 390)),
+                    ("tabs overlap search", App(tabY: 100))] {
+    assertionFailures = 0
+    _ = Support.viewport(in: app)
+    let rejected = assertionFailures > 0
+    print(name, "rejected:", rejected)
+    passed = passed && rejected
+}
 exit(passed ? 0 : 1)
 """
         developer = subprocess.check_output(["xcode-select", "-p"], text=True).strip()
