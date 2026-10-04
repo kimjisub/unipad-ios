@@ -81,7 +81,14 @@ enum UITestSupport {
             }
             let settled = waitForSettledFrame(timeout: 10,
                 waitForArrival: { row.waitForExistence(timeout: $0) },
-                frame: { row.exists && viewport.contains(row.frame) ? row.frame : nil })
+                frame: {
+                    guard row.exists else { return nil }
+                    // Each frame read requests another accessibility snapshot.
+                    // Reuse this sample for visibility and stability so a slow
+                    // picker does not spend the bounded wait reading it twice.
+                    let current = row.frame
+                    return viewport.contains(current) ? current : nil
+                })
             if !settled { attachPickerDiagnostics(in: app, details: "row \(row.frame), viewport \(viewport)") }
             XCTAssertTrue(settled, "the file picker row must be fully visible and stable")
             XCTAssertTrue(waitUntilHittable(row, timeout: 5))

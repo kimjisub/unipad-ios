@@ -14,7 +14,8 @@ final class MidiConnectionHelpTests: XCTestCase {
         app.launchArguments += ["-LaunchpadConnectMethod", "0"]
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 5))
+        UITestSupport.tapOnScreen(app.buttons["gearshape"], in: app)
         let reconnect = app.buttons["Reconnect Launchpad"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
         reconnect.tap()
@@ -116,7 +117,8 @@ final class MidiConnectionHelpTests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 5))
+        UITestSupport.tapOnScreen(app.buttons["gearshape"], in: app)
         let reconnect = app.buttons["런치패드 다시 연결하기"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
         reconnect.tap()
@@ -165,7 +167,8 @@ final class MidiConnectionHelpTests: XCTestCase {
         if rejectLink { app.launchArguments += ["-UniPadHelpRejectExternalURL"] }
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 5))
+        UITestSupport.tapOnScreen(app.buttons["gearshape"], in: app)
         let reconnect = app.buttons[language == "ko" ? "런치패드 다시 연결하기" : "Reconnect Launchpad"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
         reconnect.tap()

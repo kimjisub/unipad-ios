@@ -24,13 +24,23 @@ func XCTAssertTrue(_ expression: Bool, _ message: String = "") {
 }
 enum Match { case any }
 final class Element {
-    var frame: CGRect
+    var storedFrame: CGRect
+    var frameDelay: TimeInterval = 0
+    var frameReads = 0
+    var frame: CGRect {
+        get { frameReads += 1; Thread.sleep(forTimeInterval: frameDelay); return storedFrame }
+        set { storedFrame = newValue }
+    }
     var exists = true
     let isHittable = true
     var taps = 0
     var accepted = false
-    init(_ frame: CGRect) { self.frame = frame }
-    func waitForExistence(timeout: TimeInterval) -> Bool { exists }
+    init(_ frame: CGRect) { self.storedFrame = frame }
+    func waitForExistence(timeout: TimeInterval) -> Bool {
+        if delayedStabilization { frameDelay = 3 }
+        return exists
+    }
+    var delayedStabilization = false
     func tap() {
         taps += 1
         accepted = CGRect(x: 0, y: 24, width: 874, height: 354).contains(frame)
@@ -89,6 +99,14 @@ for (name, frame, expectedScrolls) in [
     print(name, "accepted:", app.row.accepted, "taps:", app.row.taps, "scrolls:", app.scrolls)
     passed = passed && ok
 }
+// The recorded failure had frame snapshots taking about three seconds.
+// Reading the same frame twice per sample exhausts the unchanged ten-second
+// stabilization wait even when the row has already stopped moving.
+let slow = App(CGRect(x: 78, y: 180, width: 718, height: 44))
+slow.row.delayedStabilization = true
+Support.select(in: slow)
+print("slow stable row accepted:", slow.row.accepted, "frame reads:", slow.row.frameReads)
+passed = passed && slow.row.accepted && slow.row.taps == 1
 exit(passed && assertionFailures == 0 ? 0 : 1)
 """
         developer = subprocess.check_output(["xcode-select", "-p"], text=True).strip()
