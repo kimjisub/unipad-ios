@@ -153,6 +153,29 @@ class RunnerChecks(unittest.TestCase):
         self.assertFalse(any('test-without-building' in c for c in self.commands))
         self.assertFalse(any('recordVideo' in c for c in self.commands))
 
+    def assert_other_title_allowed(self, content):
+        folder = self.library / 'another-folder-name'
+        folder.mkdir()
+        (folder / 'info').write_bytes(content)
+        before = runner.hashes(self.library)
+        self.run_tool()
+        self.assert_cleaned()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['existingConformanceCount'], 0)
+        self.assertEqual(self.receipt()['stagedConformanceCount'], 1)
+        self.assertEqual(runner.hashes(self.library), before)
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertTrue(any('test-without-building' in c for c in self.commands))
+
+    def test_conformance_number_suffix_allowed(self):
+        self.assert_other_title_allowed(b'title=Conformance 2\n')
+
+    def test_conformance_letter_suffix_allowed(self):
+        self.assert_other_title_allowed(b'title=ConformanceX\n')
+
+    def test_overridden_conformance_title_allowed(self):
+        self.assert_other_title_allowed(b'title=Conformance\ntitle=Other\n')
+
     def test_duplicate_title_in_differently_named_folder(self):
         self.assert_title_rejected_before_staging('info', b'title=Conformance\n')
 

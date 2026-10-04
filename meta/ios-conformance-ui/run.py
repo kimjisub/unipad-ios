@@ -217,11 +217,7 @@ def main():
         # Duplicate exact titles must never be resolved by choosing the first match.
         existing = conformance_folders(library)
         receipt['existingConformanceCount'] = len(existing)
-        # Keep the original refusal boundary until its conflicting prefix-title
-        # requirement is resolved; product title parsing also catches whitespace,
-        # case-insensitive filenames, JSON titles and off-screen duplicates.
-        legacy_existing = [p for p in library.glob('*/info') if 'title=Conformance' in read_info(p)]
-        if existing or legacy_existing:
+        if existing:
             raise RuntimeError('A Conformance fixture is already installed; preserve it and stop')
         candidate = library / ('JIS-70-' + os.environ['PAPERCLIP_RUN_ID'])
         candidate.mkdir()  # No overwrite or deletion of existing content.

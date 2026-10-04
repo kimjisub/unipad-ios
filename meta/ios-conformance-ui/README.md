@@ -118,8 +118,10 @@ filenames, UTF-8 (optional BOM), BOM-marked UTF-16, EUC-KR or CP949, trimmed
 lines/keys/values, the first `=` separator, and the last `title` value.
 When no `info` file exists, `info.json` supplies its string `title`. An unreadable
 metadata file stops preparation rather than guessing. An existing exact
-`Conformance` title stops before the fixture is created. The original raw
-`title=Conformance` substring refusal also remains. After extraction, exactly
+`Conformance` title stops before the fixture is created. This exact product-title
+check replaces the original raw `title=Conformance` substring refusal. Other titles
+such as `Conformance 2` and `ConformanceX`, or an earlier `title=Conformance` line
+overridden by a later `title=Other` line, are allowed. After extraction, exactly
 one product-parsed `Conformance` title is required before recording or UI tests.
 Its cleanup terminates the app, removes only its successfully created fixture,
 resolves the current app data container again (Xcode can relocate it),
@@ -157,7 +159,9 @@ and UI command failure, recorder launch/exit/timeout/missing-video failures,
 container lookup failure and device-return failure. They do not launch an app.
 They also check duplicate titles in differently named folders, spaced keys,
 uppercase metadata filenames, JSON titles, BOMs and legacy encodings,
-unreadable metadata, and a wrong title after extraction. Each rejection verifies
+unreadable metadata, and a wrong title after extraction. The three other-title
+cases above must reach UI execution and preserve the library after cleanup.
+Each rejection verifies
 preserved existing files, no UI execution, and device return. `--runner <path>`
 runs the same checks against an archived runner for a failing base check.
 
