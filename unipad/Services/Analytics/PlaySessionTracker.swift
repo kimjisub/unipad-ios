@@ -4,8 +4,7 @@ import Foundation
 ///
 /// - `pack_load`: when the pack and its sounds are ready (success), when loading fails, or when the
 ///   screen is left before loading finished (cancelled).
-/// - `play_start`: on the first accepted human or automatic pad press after a successful load.
-/// - `play_first_input`: on the first human pad press, including after autoplay started.
+/// - `play_start`: on the first pad press or autoplay start after a successful load.
 /// - `play_end`: when the screen is left after `play_start`, with the time spent playing.
 final class PlaySessionTracker {
     private enum State {
@@ -17,7 +16,6 @@ final class PlaySessionTracker {
     }
 
     private var state: State = .idle
-    private var humanInputRecorded = false
     private let now: () -> TimeInterval
     private let log: (String, [String: String]) -> Void
 
@@ -50,19 +48,9 @@ final class PlaySessionTracker {
     }
 
     func playTriggered(_ trigger: PlayTrigger) {
-        switch state {
-        case .loaded:
-            state = .playing(startedAt: now())
-            log(UsageEvent.playStart, [UsageParam.trigger: trigger.rawValue])
-        case .playing:
-            break
-        case .idle, .loading, .finished:
-            return
-        }
-        if trigger == .pad && !humanInputRecorded {
-            humanInputRecorded = true
-            log(UsageEvent.playFirstInput, [UsageParam.trigger: trigger.rawValue])
-        }
+        guard case .loaded = state else { return }
+        state = .playing(startedAt: now())
+        log(UsageEvent.playStart, [UsageParam.trigger: trigger.rawValue])
     }
 
     func ended() {

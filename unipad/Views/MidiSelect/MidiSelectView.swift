@@ -7,12 +7,9 @@ enum DeviceIcon {
 
 struct MidiSelectView: View {
     @Environment(AppRouter.self) private var router
-    @State private var selection = MidiSelectState()
-    @AccessibilityFocusState private var helpButtonFocused: Bool
-
-    private var selectedIndex: Int { selection.selectedIndex }
-    private var remainingSeconds: Int? { selection.remainingSeconds }
+    @State private var selectedIndex = 0
     @State private var isConnected = false
+    @State private var remainingSeconds: Int?
     @State private var midiListener = MidiSelectListener()
 
     private let midiDevices: [MidiDevice] = [
@@ -33,49 +30,27 @@ struct MidiSelectView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                HStack(spacing: 0) {
-                    leftPanel
-                        .frame(width: geometry.size.width * 0.35)
-                    deviceGrid
-                        .frame(width: geometry.size.width * 0.65)
-                }
-                .disabled(selection.isHelpPresented)
-                .accessibilityHidden(selection.isHelpPresented)
+            HStack(spacing: 0) {
+                leftPanel
+                    .frame(width: geometry.size.width * 0.35)
 
-                if selection.isHelpPresented {
-                    Color.black.opacity(0.55)
-                        .ignoresSafeArea()
-                    MidiConnectionHelpView(
-                        modelName: midiDevices.first(where: { $0.id == selectedIndex })?.name ?? "",
-                        supplement: selection.helpSupplement
-                    ) {
-                        selection.isHelpPresented = false
-                        // Restore focus after the selection controls are visible
-                        // in the accessibility tree again.
-                        DispatchQueue.main.async {
-                            helpButtonFocused = true
-                        }
-                    }
-                }
+                deviceGrid
+                    .frame(width: geometry.size.width * 0.65)
             }
         }
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
         .onAppear {
-            if !selection.hasStartedAutorun {
-                if let activeDevice = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: MidiManager.shared.driver) }) {
-                    selection.detectedModel(activeDevice.id)
-                } else {
-                    selection.restoreModel(min(max(PreferenceManager.shared.launchpadConnectMethod, 0), midiDevices.count - 1))
-                }
+            if let activeDevice = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: MidiManager.shared.driver) }) {
+                selectedIndex = activeDevice.id
+            } else {
+                selectedIndex = min(max(PreferenceManager.shared.launchpadConnectMethod, 0), midiDevices.count - 1)
             }
             bindMidiListener()
             isConnected = MidiManager.shared.isConnected
             startAutorunTimer()
         }
         .onDisappear {
-            cancelAutorun()
             if MidiManager.shared.listener === midiListener {
                 MidiManager.shared.listener = nil
             }
@@ -85,54 +60,6 @@ struct MidiSelectView: View {
     // MARK: - Left Panel
 
     private var leftPanel: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                devicePreview
-            }
-            .frame(maxHeight: .infinity)
-
-            VStack(spacing: 8) {
-                Button {
-                    helpButtonFocused = false
-                    selection.openHelp()
-                } label: {
-                    Text(MidiHelpText.text("midi_help_title"))
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityIdentifier("midi.help.open")
-                .accessibilityFocused($helpButtonFocused)
-
-                Button {
-                    cancelAutorun()
-                    applySelection()
-                    router.pop()
-                } label: {
-                    HStack {
-                        Text(String(localized: "settings_ok"))
-                        if let seconds = remainingSeconds {
-                            Text("(\(seconds))")
-                                .font(.caption)
-                        }
-                    }
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(AppColors.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .accessibilityIdentifier("midi.confirm")
-            }
-            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-    }
-
-    private var devicePreview: some View {
         VStack(spacing: 0) {
             Text(isConnected
                  ? String(localized: "launchpadConnecting")
@@ -179,6 +106,29 @@ struct MidiSelectView: View {
                 .fill(AppColors.divider)
                 .frame(height: 1)
                 .padding(.horizontal, 20)
+
+            Spacer()
+
+            Button {
+                cancelAutorun()
+                applySelection()
+                router.pop()
+            } label: {
+                HStack {
+                    Text("OK")
+                    if let seconds = remainingSeconds {
+                        Text("(\(seconds))")
+                            .font(.system(size: 12))
+                    }
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(AppColors.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(20)
         }
     }
 
@@ -195,13 +145,13 @@ struct MidiSelectView: View {
                         device: device,
                         isSelected: device.id == selectedIndex
                     ) {
-                        selection.selectModel(device.id)
+                        cancelAutorun()
+                        selectedIndex = device.id
                     }
                 }
             }
             .padding(16)
         }
-        .accessibilityIdentifier("midi.models")
     }
 
     // MARK: - Actions & Autorun Timer
@@ -214,20 +164,22 @@ struct MidiSelectView: View {
     }
 
     private func startAutorunTimer() {
-        guard selection.startAutorun() else { return }
+        remainingSeconds = 5
         Task {
             while let seconds = remainingSeconds, seconds > 0 {
                 try? await Task.sleep(for: .seconds(1))
-                if selection.tickAutorun() {
-                    applySelection()
-                    router.pop()
-                }
+                guard remainingSeconds != nil else { break }
+                remainingSeconds = (remainingSeconds ?? 0) - 1
+            }
+            if remainingSeconds == 0 {
+                applySelection()
+                router.pop()
             }
         }
     }
 
     private func cancelAutorun() {
-        selection.cancelAutorun()
+        remainingSeconds = nil
     }
 
     private func bindMidiListener() {
@@ -238,8 +190,9 @@ struct MidiSelectView: View {
             isConnected = false
         }
         midiListener.driverChangeHandler = { driver in
-            let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) })
-            selection.detectedModel(device?.id)
+            if let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) }) {
+                selectedIndex = device.id
+            }
         }
         MidiManager.shared.listener = midiListener
     }

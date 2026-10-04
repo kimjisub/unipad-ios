@@ -291,20 +291,3 @@
 /* Temporary store notice */
 "temporary_store_notice" = "Bookmarks and play counts can't be loaded or saved right now. Changes you make will be lost when UniPad closes.";
 "temporary_store_notice_dismiss" = "Dismiss";
-
-// Device connection help
-"midi_help_title" = "Connection and light help";
-"midi_help_selected_model" = "Selected model: %@";
-"midi_help_common" = "The selected model does not confirm the actual device. Lights being off alone do not tell you whether the connection succeeded or failed.";
-"midi_help_not_listed_title" = "My device is not listed";
-"midi_help_not_listed_body" = "Check the cable and connection. Compare the name on your device with the selected model.";
-"midi_help_no_lights_title" = "Connected, but no lights";
-"midi_help_no_lights_body" = "Check whether the on-screen pads and sound respond, and whether the pack contains light data. You can use a pack you already have.";
-"midi_help_crash_title" = "The app closes unexpectedly";
-"midi_help_crash_body" = "Disconnect the device and note the app version, phone or computer model, operating system, and the step where it closed. You do not need to repeat the crash.";
-"midi_help_mini_mk3" = "In Programmer mode, the lights may initially be off. Check with a pack that includes lights.";
-"midi_help_pro" = "Launchpad Pro and Launchpad Pro MK3 are different models.";
-"midi_help_other" = "If the same model is not listed, do not choose a different model as a substitute. This guide does not confirm compatibility with new models.";
-"midi_help_manufacturer" = "Read the manufacturer's guide";
-"midi_help_link_failed" = "Could not open the manufacturer's guide. You can continue reading this help.";
-"midi_help_close" = "Close help";
