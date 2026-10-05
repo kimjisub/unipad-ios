@@ -27,7 +27,11 @@ the list in a later run, so the loss is intermittent.) Immediately before
 selection the count must still be exactly one and the title must be hittable.
 One `CONFORMANCE title-search swipes=<n> stalls=<n> counts=<...>` line records the
 search; `stalls` counts drags after which the list's first label and its position
-were unchanged.
+were unchanged. The line is printed before selection and before each failure
+(duplicate titles, 40-swipe limit, end of list). It is not printed from `defer`:
+with `continueAfterFailure` off, `XCTFail` stops the test and skips `defer`, so
+failed runs lost the line. At the end of the list, a single title that is present
+but not hittable fails as "not hittable" rather than "missing".
 Empty-library setup remains outside this AP-001 route.
 
 This is a **different tool** from original tool commit
@@ -161,7 +165,8 @@ not move): with the JIS-424 screens and the first swipe lost, the previous
 unchanged-labels rule fails with "end of pack list" while the new order retries and
 selects; a list where every swipe is lost stops at the 40-swipe limit. The previous
 model let every swipe move the list until its last screen, so it could not express
-the JIS-424 failure. `--overlay <path>` checks the ordering guards
+the JIS-424 failure. Source guards also require the search record before every failure and before the
+selection-time recheck, and reject a record printed from `defer`. `--overlay <path>` checks the ordering guards
 against a different Swift overlay, including the original for a failing base
 check. These are **ordering-model checks, not device evidence**; they do not
 execute XCTest or prove accessibility visibility or hittability.

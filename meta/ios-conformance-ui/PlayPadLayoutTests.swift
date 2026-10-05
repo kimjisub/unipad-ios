@@ -33,29 +33,36 @@ final class PlayPadLayoutTests: XCTestCase {
         var stalls = 0
         var counts: [Int] = []
         var previousPosition: String?
-        defer {
+        // Printed before every exit: with continueAfterFailure off, a failed
+        // assertion stops the test and skips `defer`, losing the record.
+        func record() {
             print("CONFORMANCE title-search swipes=\(swipes) stalls=\(stalls) counts=\(counts.map(String.init).joined(separator: ","))")
+        }
+        func fail(_ message: String) -> XCUIElement? {
+            record()
+            XCTFail(message)
+            return nil
         }
         while true {
             let count = matches.count
             counts.append(count)
             if count >= 2 {
-                XCTFail("Multiple exact fixture titles in main.packList")
-                return nil
+                return fail("Multiple exact fixture titles in main.packList")
             }
             if swipes >= 40 {
-                XCTFail("Exact fixture title missing: 40-swipe limit")
-                return nil
+                return fail("Exact fixture title missing: 40-swipe limit")
             }
             if count == 1 && matches.firstMatch.isHittable {
+                record()
                 // Recheck immediately before returning the element for selection.
                 XCTAssertEqual(matches.count, 1, "Stage one unchanged fixture at a time; titles are shared")
                 XCTAssertTrue(matches.firstMatch.isHittable, "Exact fixture title not reachable")
                 return matches.firstMatch
             }
             if listEnd.isHittable {
-                XCTFail("Exact fixture title missing: end of pack list")
-                return nil
+                return fail(count == 1
+                    ? "Exact fixture title not hittable: end of pack list"
+                    : "Exact fixture title missing: end of pack list")
             }
             // A drag that did not move the list is retried; it still counts toward the limit.
             let first = list.staticTexts.element(boundBy: 0)

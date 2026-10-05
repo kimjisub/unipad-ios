@@ -141,7 +141,20 @@ def check_model(overlay):
     assert 'XCTFail' not in stall, 'An unmoved list must be retried, not taken as the end'
     assert 'swipeUp()' not in search
     assert 'withVelocity: .slow, thenHoldForDuration:' in search
-    assert 'CONFORMANCE title-search swipes=' in search
+    # continueAfterFailure is off, so XCTFail stops the test and skips `defer`:
+    # the search record must be printed before every exit, failures included.
+    assert 'defer {' not in search, 'Search record in defer is lost when XCTFail stops the test'
+    record = search[search.index('func record()'):search.index('func fail(')]
+    assert 'CONFORMANCE title-search swipes=' in record
+    fail = search[search.index('func fail('):search.index('while true')]
+    assert fail.index('record()') < fail.index('XCTFail('), 'Search record must precede XCTFail'
+    loop = search[search.index('while true'):]
+    assert 'XCTFail(' not in loop, 'Every loop failure must go through fail(), which records first'
+    assert 'return nil' not in loop, 'Every loop failure must go through fail(), which records first'
+    assert loop.count('return fail(') == 3
+    selected = loop[loop.index('if count == 1 && matches.firstMatch.isHittable'):]
+    assert selected.index('record()') < selected.index('XCTAssertEqual(matches.count, 1'), \
+        'Search record must precede the selection-time recheck'
     assert 'XCTAssertEqual(matches.count, 1' in search
     assert 'XCTAssertTrue(matches.firstMatch.isHittable' in search
     assert 'guard let title = exactFixtureTitle(in: list) else { return }' in swift
