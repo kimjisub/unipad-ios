@@ -38,6 +38,7 @@ nonisolated class UniPack: Equatable, Hashable {
     func lastModified() -> TimeInterval { fatalError("Subclasses must override") }
 
     var detailLoaded = false
+    @discardableResult
     func loadInfo() -> UniPack { fatalError("Subclasses must override") }
     func loadDetail() -> UniPack { fatalError("Subclasses must override") }
 

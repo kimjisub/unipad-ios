@@ -413,7 +413,7 @@ struct MainListReadTests {
         try await waitUntil { probe.listingCount >= 1 }
         #expect(vm.importResult == nil, "the import result was decided before the reload found the pack")
         probe.release()
-        await showing.value
+        _ = await showing.value
 
         guard case .success(let pack) = vm.importResult else {
             Issue.record("expected the import result of the new pack, got \(String(describing: vm.importResult))")
@@ -670,7 +670,7 @@ struct MainListReadTests {
         await vm.showImportResult(forImportedFolder: newer)
         #expect(importedPack()?.title == "B")
         probe.releaseDetail(of: "a")
-        await showingOlder.value
+        _ = await showingOlder.value
 
         #expect(importedPack()?.title == "B", "the older import result replaced the newer one")
     }
@@ -780,7 +780,7 @@ struct MainListReadTests {
         let item = try #require(vm.unipackItems.first)
         vm.toggleSelection(item)
         probe.releaseDetail(of: "b")
-        await showing.value
+        _ = await showing.value
         try await waitUntil { vm.selectedItem?.unipack.detailLoaded == true }
 
         #expect(probe.detailReadCount == 1)

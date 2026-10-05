@@ -571,57 +571,71 @@ final class MidiManager: ObservableObject {
         let destination = connectedDawDestination != 0 ? connectedDawDestination : connectedDestination
         guard destination != 0 else { return }
 
-        // One message per hop, the next one 50 ms later via asyncAfter: a Thread.sleep on the
-        // shared serial sendQueue froze every pad-LED message for the whole burst (~150 ms at
-        // connect on a Pro), and a failed MIDISendSysex never ran the completion, leaking the
-        // request and its buffer.
-        func sendMessage(at index: Int) {
-            guard index < messages.count else { return }
-            let message = messages[index]
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
-            buffer.initialize(from: message, count: message.count)
-
-            // MIDISysexSendRequest must remain valid until completion callback fires.
-            // CoreMIDI advances `data` and decrements `bytesToSend` during send,
-            // so store the original buffer pointer in completionRefCon for deallocation.
-            let context = Unmanaged.passRetained(
-                SysExContext(buffer: buffer, count: message.count)
-            ).toOpaque()
-
-            let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
-            requestPtr.initialize(to: MIDISysexSendRequest(
-                destination: destination,
-                data: UnsafePointer(buffer),
-                bytesToSend: UInt32(message.count),
-                complete: false,
-                reserved: (0, 0, 0),
-                completionProc: { completedPtr in
-                    if let refCon = completedPtr.pointee.completionRefCon {
-                        let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
-                        ctx.buffer.deinitialize(count: ctx.count)
-                        ctx.buffer.deallocate()
-                    }
-                    completedPtr.deinitialize(count: 1)
-                    completedPtr.deallocate()
-                },
-                completionRefCon: context
-            ))
-            let status = MIDISendSysex(requestPtr)
-            if status != noErr {
-                // The completion will not run; release what it would have released.
-                let ctx = Unmanaged<SysExContext>.fromOpaque(context).takeRetainedValue()
-                ctx.buffer.deinitialize(count: ctx.count)
-                ctx.buffer.deallocate()
-                requestPtr.deinitialize(count: 1)
-                requestPtr.deallocate()
+        let queue = sendQueue
+        queue.async {
+            Self.sendSysExMessage(messages, at: 0, to: destination, on: queue) { status in
                 Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
-                return
-            }
-            if index + 1 < messages.count {
-                sendQueue.asyncAfter(deadline: .now() + 0.05) { sendMessage(at: index + 1) }
             }
         }
-        sendQueue.async { sendMessage(at: 0) }
+    }
+
+    // One message per hop, the next one 50 ms later via asyncAfter: a Thread.sleep on the
+    // shared serial sendQueue froze every pad-LED message for the whole burst (~150 ms at
+    // connect on a Pro), and a failed MIDISendSysex never ran the completion, leaking the
+    // request and its buffer.
+    private nonisolated static func sendSysExMessage(
+        _ messages: [[UInt8]],
+        at index: Int,
+        to destination: MIDIEndpointRef,
+        on queue: DispatchQueue,
+        onFailure: @escaping @Sendable (OSStatus) -> Void
+    ) {
+        guard index < messages.count else { return }
+        let message = messages[index]
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
+        buffer.initialize(from: message, count: message.count)
+
+        // MIDISysexSendRequest must remain valid until completion callback fires.
+        // CoreMIDI advances `data` and decrements `bytesToSend` during send,
+        // so store the original buffer pointer in completionRefCon for deallocation.
+        let context = Unmanaged.passRetained(
+            SysExContext(buffer: buffer, count: message.count)
+        ).toOpaque()
+
+        let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
+        requestPtr.initialize(to: MIDISysexSendRequest(
+            destination: destination,
+            data: UnsafePointer(buffer),
+            bytesToSend: UInt32(message.count),
+            complete: false,
+            reserved: (0, 0, 0),
+            completionProc: { completedPtr in
+                if let refCon = completedPtr.pointee.completionRefCon {
+                    let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
+                    ctx.buffer.deinitialize(count: ctx.count)
+                    ctx.buffer.deallocate()
+                }
+                completedPtr.deinitialize(count: 1)
+                completedPtr.deallocate()
+            },
+            completionRefCon: context
+        ))
+        let status = MIDISendSysex(requestPtr)
+        if status != noErr {
+            // The completion will not run; release what it would have released.
+            let ctx = Unmanaged<SysExContext>.fromOpaque(context).takeRetainedValue()
+            ctx.buffer.deinitialize(count: ctx.count)
+            ctx.buffer.deallocate()
+            requestPtr.deinitialize(count: 1)
+            requestPtr.deallocate()
+            onFailure(status)
+            return
+        }
+        if index + 1 < messages.count {
+            queue.asyncAfter(deadline: .now() + 0.05) {
+                sendSysExMessage(messages, at: index + 1, to: destination, on: queue, onFailure: onFailure)
+            }
+        }
     }
 
     // MARK: - Driver Listener Setup
@@ -662,7 +676,7 @@ final class MidiManager: ObservableObject {
 
 }
 
-private final class SysExContext {
+nonisolated private final class SysExContext {
     let buffer: UnsafeMutablePointer<UInt8>
     let count: Int
     init(buffer: UnsafeMutablePointer<UInt8>, count: Int) {

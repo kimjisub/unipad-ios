@@ -382,6 +382,9 @@ final class PlayViewModel {
     // MARK: - Auto Mapping
 
     private var autoMapper: UniPackAutoMapper?
+    /// The mapper holds its listener weakly; without this the adapter was released at once and
+    /// auto mapping never reported progress or finished.
+    private var autoMappingListenerAdapter: AutoMappingListenerAdapter?
 
     func autoMapping() {
         guard let pack = unipack as? UniPackFolder else { return }
@@ -397,7 +400,9 @@ final class PlayViewModel {
         autoPlayRunner = nil
         autoPlayListenerAdapter = nil
 
-        let mapper = UniPackAutoMapper(unipack: pack, listener: AutoMappingListenerAdapter(viewModel: self))
+        let adapter = AutoMappingListenerAdapter(viewModel: self)
+        autoMappingListenerAdapter = adapter
+        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter)
         autoMapper = mapper
         mapper.start()
     }
@@ -405,6 +410,7 @@ final class PlayViewModel {
     fileprivate func onAutoMappingDone() {
         autoMappingActive = false
         autoMapper = nil
+        autoMappingListenerAdapter = nil
 
         guard let pack = unipack as? UniPackFolder else { return }
         if pack.autoPlayExist {

@@ -78,7 +78,7 @@ struct FirebaseMessagingRegistrationClient: MessagingRegistrationClient {
 
     func registrationToken() async throws -> String? {
         try await withCheckedThrowingContinuation { continuation in
-            Messaging.messaging().token { token, error in
+            (Messaging.messaging() as LegacyRegistrationTokenSource).token { token, error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
@@ -104,4 +104,14 @@ struct FirebaseMessagingRegistrationClient: MessagingRegistrationClient {
         try await Installations.installations().installationID()
     }
 }
+
+/// Firebase marks the registration token deprecated in favour of the installation-ID model, but
+/// delivery still targets registration tokens until `FirebaseMessagingInstallationIdEnabled` is
+/// switched on. Calling it through this requirement keeps the legacy path without a deprecation
+/// warning; delete it together with the legacy model.
+private protocol LegacyRegistrationTokenSource {
+    func token(completion: @escaping (String?, (any Error)?) -> Void)
+}
+
+extension Messaging: LegacyRegistrationTokenSource {}
 #endif

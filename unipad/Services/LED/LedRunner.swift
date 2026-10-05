@@ -4,7 +4,9 @@ import os
 
 private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "LedRunner")
 
-final class LedRunner {
+/// The LED tables are touched under `lock` from the main actor and from the loop task; `loopTask`
+/// is only started and stopped on the main actor.
+nonisolated final class LedRunner: @unchecked Sendable {
     static let circularLedCount = 36
 
     private let unipack: UniPack
@@ -28,6 +30,7 @@ final class LedRunner {
         case chainOff(c: Int)
     }
 
+    /// Called on the loop task.
     protocol Listener: AnyObject {
         func onLedBatch(_ events: [LedEvent])
     }
@@ -262,6 +265,7 @@ final class LedRunner {
         return ledAnimationStates.contains { $0.buttonX == x && $0.buttonY == y }
     }
 
+    @MainActor
     func eventOn(x: Int, y: Int) {
         guard active else {
             logger.debug("eventOn(\(x),\(y)): not active")
@@ -278,7 +282,7 @@ final class LedRunner {
             buttonX: x,
             buttonY: y,
             unipack: unipack,
-            chain: chain
+            chain: chain.value
         )
         if state.noError {
             ledAnimationStatesAdd.append(state)
@@ -288,6 +292,7 @@ final class LedRunner {
         }
     }
 
+    @MainActor
     func eventOff(x: Int, y: Int) {
         guard active else { return }
         lock.lockWithDeadlockDetection()
@@ -348,12 +353,12 @@ final class LedRunner {
             buttonX == bx && buttonY == by && chainAtCreation == chain
         }
 
-        init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: ChainObserver) {
+        init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: Int) {
             self.buttonX = buttonX
             self.buttonY = buttonY
-            self.chainAtCreation = chain.value
-            self.ledAnimation = unipack.ledGet(c: chain.value, x: buttonX, y: buttonY)
-            unipack.ledPush(c: chain.value, x: buttonX, y: buttonY)
+            self.chainAtCreation = chain
+            self.ledAnimation = unipack.ledGet(c: chain, x: buttonX, y: buttonY)
+            unipack.ledPush(c: chain, x: buttonX, y: buttonY)
         }
     }
 

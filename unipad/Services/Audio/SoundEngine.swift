@@ -531,13 +531,14 @@ final class SoundEngine {
 /// repeat scheduling and stopping, so stop() cannot wait for a callback that waits for our queue.
 /// A bounded lookahead shares the decoded buffer; even an enormous loop count cannot flood memory
 /// or hold the screen while all repeats are scheduled. Supply does not depend on the main actor.
-nonisolated final class FiniteRepeatScheduler {
+/// `voices`, `scheduled` and each voice's `remaining` are only touched on `queue`.
+nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
     private let queue = DispatchQueue(label: "UniPad.finiteRepeats", qos: .userInteractive)
     private var voices: [ObjectIdentifier: Voice] = [:]
     private var scheduled = 0
     var buffersScheduled: Int { queue.sync { scheduled } }
 
-    private final class Voice {
+    private final class Voice: @unchecked Sendable {
         let node: AVAudioPlayerNode
         let buffer: AVAudioPCMBuffer
         var remaining: Int

@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-enum FileManagerExtensions {
+nonisolated enum FileManagerExtensions {
     private static let logger = Logger(subsystem: "com.kimjisub.unipad", category: "FileManager")
     private static let copyBufferSize = 4096
     private static let bytesPerMB: Double = 1024.0 * 1024.0

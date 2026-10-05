@@ -70,6 +70,7 @@ jobs:
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES GCC_TREAT_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee "$RUNNER_TEMP/build.log"
 
       - name: Run unit tests without UI tests
@@ -78,13 +79,14 @@ jobs:
         run: |
           xcodebuild test -quiet \
             -project unipad.xcodeproj -scheme unipad -configuration Debug \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
             -only-testing:unipadTests -parallel-testing-enabled NO \
             -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES GCC_TREAT_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
 
       - name: Summarize unit test results

@@ -11,7 +11,7 @@ import Testing
 /// xcodebuild test -only-testing:unipadTests/UniPackDownloadBenchmarkTests`.
 @MainActor
 struct UniPackDownloadBenchmarkTests {
-    private static let benchURL = ProcessInfo.processInfo.environment["UNIPAD_DOWNLOAD_BENCH_URL"]
+    private nonisolated static let benchURL = ProcessInfo.processInfo.environment["UNIPAD_DOWNLOAD_BENCH_URL"]
 
     @Test(.enabled(if: benchURL != nil))
     func measureLargePackDownload() async throws {
