@@ -225,6 +225,18 @@ enum UITestSupport {
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
     }
 
+    /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
+    /// Documents/UniPack first; a missing fixture fails the check.
+    static func openPlaybackStopFixture(in app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
+        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
+    }
+
     static func attachScreenshot(_ name: String, to testCase: XCTestCase) {
         let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         a.name = name
