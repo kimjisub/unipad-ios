@@ -1,0 +1,46 @@
+name: App Store link
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+  pull_request:
+    paths:
+      - 'unipad/Views/Main/MainView.swift'
+      - 'ci/app_store_link.py'
+      - 'ci/test_app_store_link.py'
+      - '.github/workflows/app-store-link.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check-link:
+    name: Check Apple web destination
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check App Store link
+        shell: bash
+        run: |
+          status=0
+          python3 ci/app_store_link.py --out app-store-link.json || status=$?
+          if [[ "$status" -eq 2 ]]; then
+            echo '::warning::스토어 접속 불가, 주소 오류 아님'
+          else
+            exit "$status"
+          fi
+
+      - name: Save destination evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: app-store-link-results
+          path: app-store-link.json
+          retention-days: 90
+          if-no-files-found: error

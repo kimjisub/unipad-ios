@@ -16,6 +16,7 @@
 //
 
 import XCTest
+import Vision
 
 final class FirstPackGuideTests: XCTestCase {
 
@@ -118,15 +119,71 @@ final class FirstPackGuideTests: XCTestCase {
         guideLink.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20), "the guide link did not open Safari")
-        sleep(3)
-        UITestSupport.attachScreenshot("en-02-guide-link-safari", to: self)
         let address = safari.descendants(matching: .any)
             .matching(NSPredicate(format: "value CONTAINS[c] 'unipad.io' OR label CONTAINS[c] 'unipad.io'"))
             .firstMatch
         XCTAssertTrue(address.waitForExistence(timeout: 10), "Safari does not show unipad.io")
+        checkBrowserGuideText(in: safari)
         app.activate()
         XCTAssertTrue(home.waitForExistence(timeout: 10), "coming back from Safari never reached home")
         XCTAssertTrue(text(Self.english.title).exists, "the guide went away after coming back from Safari")
+    }
+
+    /// Safari follows the device language, independently of our English app launch arguments.
+    /// Accessibility can expose the correct title even when WebKit draws missing-glyph boxes.
+    private func checkBrowserGuideText(in safari: XCUIApplication) {
+        let diagnostic = "Safari가 이 시뮬레이터에서 웹 한글을 그리지 못할 수 있음: 같은 Safari로 다른 한글 사이트를 열어 비교"
+        let title = safari.webViews.staticTexts
+            .matching(NSPredicate(format: "label IN %@", ["Getting started", "시작하기"]))
+            .firstMatch
+        guard title.waitForExistence(timeout: 30) else {
+            UITestSupport.attachScreenshot("02-guide-body-missing", to: self)
+            XCTFail("Safari guide body did not load a supported title. \(diagnostic)")
+            return
+        }
+        guard UITestSupport.waitUntilHittable(title, timeout: 10) else {
+            UITestSupport.attachScreenshot("02-guide-title-not-visible", to: self)
+            XCTFail("Safari guide title is not visible. \(diagnostic)")
+            return
+        }
+
+        let expected = title.label
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["ko-KR", "en-US"]
+        request.usesLanguageCorrection = false
+        let deadline = Date().addingTimeInterval(10)
+        var recognized = ""
+        var readable = false
+        var titleScreenshot = title.screenshot()
+        do {
+            repeat {
+                // Restrict OCR to the body title so browser chrome or a menu cannot satisfy it.
+                titleScreenshot = title.screenshot()
+                try VNImageRequestHandler(data: titleScreenshot.pngRepresentation, options: [:]).perform([request])
+                recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+                    .joined(separator: "\n")
+                let compact = { (value: String) in
+                    value.components(separatedBy: .whitespacesAndNewlines).joined().lowercased()
+                }
+                readable = compact(recognized).contains(compact(expected))
+                if readable { break }
+                Thread.sleep(forTimeInterval: 0.5)
+            } while Date() < deadline
+        } catch {
+            XCTFail("Safari guide title text recognition failed: \(error). \(diagnostic)")
+        }
+
+        UITestSupport.attachScreenshot("02-guide-link-safari", to: self)
+        let image = XCTAttachment(screenshot: titleScreenshot)
+        image.name = "02-guide-title-rendered"
+        image.lifetime = .keepAlways
+        add(image)
+        let result = XCTAttachment(string: "Expected: \(expected)\nRecognized: \(recognized)")
+        result.name = "02-guide-title-recognition"
+        result.lifetime = .keepAlways
+        add(result)
+        XCTAssertTrue(readable, "Safari guide title is not readable in the rendered screenshot; expected \(expected), recognized \(recognized). \(diagnostic)")
     }
 
     /// Opens a picker row, trying each label in turn, because the picker follows the app language.

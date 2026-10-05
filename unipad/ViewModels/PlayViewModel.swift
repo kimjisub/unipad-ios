@@ -140,7 +140,11 @@ final class PlayViewModel {
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
 
-    @ObservationIgnored private let usageSession = UsageAnalytics.shared.makePlaySession()
+    @ObservationIgnored private let usageSession: PlaySessionTracker
+
+    init(usageAnalytics: UsageAnalytics = .shared) {
+        usageSession = usageAnalytics.makePlaySession()
+    }
 
     /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
     @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
@@ -503,6 +507,10 @@ final class PlayViewModel {
     /// Clear all pad states by simulating release on every pad
     func padInit() {
         guard let unipack else { return }
+        let inputs = activePadInputs
+        for (id, pad) in inputs {
+            padTouch(x: pad.x, y: pad.y, isDown: false, inputID: id)
+        }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
                 padTouch(x: i, y: j, isDown: false)
@@ -540,19 +548,21 @@ final class PlayViewModel {
     // MARK: - Pad Touch
 
     private static let pressedVelocity = 3 // LED_RED
+    private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
 
-    func padTouch(x: Int, y: Int, isDown: Bool) {
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger = .pad, inputID: UUID? = nil) {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
-            usageSession.playTriggered(.pad)
+            if let inputID { activePadInputs[inputID] = (x, y) }
+            usageSession.playTriggered(trigger)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
             if autoPlayRunner?.stepMode == true {
                 autoPlayRunner?.stepPadPressed(x: x, y: y)
             }
 
-            soundEngine?.soundOn(x: x, y: y)
+            soundEngine?.soundOn(x: x, y: y, inputID: inputID)
 
             if scbRecord.checked {
                 let currTime = Self.currentTimeMs()
@@ -574,7 +584,10 @@ final class PlayViewModel {
             }
             ledRunner?.eventOn(x: x, y: y)
         } else {
-            soundEngine?.soundOff(x: x, y: y)
+            // An ended touch can be reported again after a fresh press. Ignore the
+            // duplicate for both sound and pressed light, without clearing other pads.
+            if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
+            soundEngine?.soundOff(x: x, y: y, inputID: inputID)
             if let cm = channelManager {
                 cm.remove(x: x, y: y, channel: .pressed)
                 refreshPadFromChannel(x: x, y: y)
@@ -807,7 +820,6 @@ final class PlayViewModel {
         }
 
         if currentMode == .none {
-            usageSession.playTriggered(.autoplay)
             applyModeFlags(runner, mode)
             scbAutoPlay.setCheckedSilently(true)
             if let unipack {
@@ -1042,6 +1054,7 @@ final class PlayViewModel {
     // MARK: - Cleanup
 
     func cleanup() {
+        activePadInputs.removeAll()
         usageSession.ended()
         enable = false
         stopVolumeObserver()
@@ -1203,11 +1216,11 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     }
 
     func onPadTouchOn(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: true)
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay)
     }
 
     func onPadTouchOff(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: false)
+        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay)
     }
 
     func onChainChange(c: Int) {
