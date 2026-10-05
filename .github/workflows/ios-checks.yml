@@ -112,7 +112,8 @@ jobs:
   ui-tests:
     name: UI tests
     runs-on: xcode-27
-    timeout-minutes: 60
+    # The complete 86-test suite took 59 minutes locally before hosted setup.
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
