@@ -47,19 +47,9 @@ final class ExternalFileImportTests: XCTestCase {
 
     private func importWithPicker() throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let file = app.cells
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "ReleaseFixture-")).firstMatch
-        if !file.waitForExistence(timeout: 3) {
-            for label in ["Browse", "On My iPhone", "UniPad"] {
-                let item = app.descendants(matching: .any)
-                    .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
-                if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
-            }
-        }
-        // Every launch generates this same silent picker fixture. Its UUID is
-        // for filename isolation; the imported title below validates its content.
-        XCTAssertTrue(file.waitForExistence(timeout: 10), "generated picker fixture is missing")
-        file.tap()
+        // Every launch generates this same silent picker fixture in its isolated import folder.
+        // The imported title below validates its content.
+        try UITestSupport.selectPreparedArchive(token: token, in: app)
         XCTAssertTrue(title.waitForExistence(timeout: 30))
         XCTAssertEqual(title.label, "Pack imported!")
         XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "Downloaded Fixture")
