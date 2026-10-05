@@ -197,7 +197,9 @@ struct PlayView: View {
             traceLogSequence: vm.scbTraceLog.checked && vm.chain.value >= 0 && vm.chain.value < vm.traceLogSequence.count ? vm.traceLogSequence[vm.chain.value] : nil,
             traceLogColor: theme.traceLogColor,
             traceLogClassic: traceLogClassic,
-            onPadTouch: { (x: Int, y: Int, isDown: Bool) in vm.padTouch(x: x, y: y, isDown: isDown) }
+            onPadTouch: { x, y, isDown, inputID in
+                vm.padTouch(x: x, y: y, isDown: isDown, inputID: inputID)
+            }
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)
         .accessibilityIdentifier("playPadGrid")
