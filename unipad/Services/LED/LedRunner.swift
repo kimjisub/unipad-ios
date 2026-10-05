@@ -2,7 +2,7 @@ import Foundation
 import QuartzCore
 import os
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "LedRunner")
+nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "LedRunner")
 
 /// The LED tables are touched under `lock` from the main actor and from the loop task; `loopTask`
 /// is only started and stopped on the main actor.
@@ -238,8 +238,9 @@ nonisolated final class LedRunner: @unchecked Sendable {
         // run on the main thread, not on the LED queue (same hop the AutoPlay adapter does).
         if !pendingChainSets.isEmpty {
             let chain = self.chain
+            let chainSets = pendingChainSets
             Task { @MainActor in
-                for c in pendingChainSets {
+                for c in chainSets {
                     chain.setValue(c)
                 }
             }

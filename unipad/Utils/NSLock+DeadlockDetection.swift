@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "DeadlockDetection")
+nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "DeadlockDetection")
 
 nonisolated extension NSLock {
     /// Debug builds trap when a lock takes longer than `timeout`, which is how deadlocks in the

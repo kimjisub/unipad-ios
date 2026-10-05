@@ -572,10 +572,11 @@ final class MidiManager: ObservableObject {
         guard destination != 0 else { return }
 
         let queue = sendQueue
+        let onFailure: @Sendable (OSStatus) -> Void = { [weak self] status in
+            Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
+        }
         queue.async {
-            Self.sendSysExMessage(messages, at: 0, to: destination, on: queue) { status in
-                Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
-            }
+            Self.sendSysExMessage(messages, at: 0, to: destination, on: queue, onFailure: onFailure)
         }
     }
 
