@@ -1,0 +1,110 @@
+name: iOS checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-unit-tests:
+    name: Build and unit tests
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Prepare fake test configuration
+        run: |
+          python3 -m unittest discover -s ci -v
+          python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
+
+      - name: Select an available iPhone simulator
+        id: simulator
+        run: |
+          xcodebuild -version
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          devices = json.loads(subprocess.check_output(
+              ['xcrun', 'simctl', 'list', 'devices', 'available', '--json']
+          ))['devices']
+          iphones = [device for runtime, items in sorted(devices.items(), reverse=True)
+                     if '.iOS-' in runtime for device in items
+                     if device['name'].startswith('iPhone') and device['isAvailable']]
+          if not iphones:
+              raise SystemExit('No available iPhone simulator')
+          device = iphones[0]
+          print(f"Using {device['name']} ({device['udid']})")
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"udid={device['udid']}\n")
+          PY
+
+      - name: Resolve pinned dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project unipad.xcodeproj -scheme unipad \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile
+
+      - name: Build Release for iOS Simulator without signing
+        run: |
+          xcodebuild build -quiet \
+            -project unipad.xcodeproj -scheme unipad -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -disableAutomaticPackageResolution \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Run unit tests without UI tests
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcodebuild test -quiet \
+            -project unipad.xcodeproj -scheme unipad -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -disableAutomaticPackageResolution \
+            -only-testing:unipadTests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
+
+      - name: Summarize unit test results
+        if: always()
+        run: |
+          if [[ -d "$RUNNER_TEMP/UnitTests.xcresult" ]]; then
+            xcrun xcresulttool get test-results summary \
+              --path "$RUNNER_TEMP/UnitTests.xcresult" --compact \
+              | tee "$RUNNER_TEMP/test-summary.json"
+          fi
+
+      - name: Save build and test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-check-results
+          path: |
+            ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/unit-tests.log
+            ${{ runner.temp }}/test-summary.json
+            ${{ runner.temp }}/UnitTests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
