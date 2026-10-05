@@ -7,6 +7,8 @@ import XCTest
 /// pack parser, and SoundEngine. These are playback IDs and pressed-light observations, not
 /// physical fingers or a claim that the samples were heard. Only asynchronous checkpoints wait:
 /// the simulator's real audio clock cannot provide the corpus's exact virtual millisecond clock.
+/// Real finite-completion callbacks are held until their corpus checkpoint: a slow observation
+/// must not consume a later checkpoint's completion. Playback timing is not measured here.
 @MainActor
 final class ChainReleaseTests: XCTestCase {
     private struct Corpus: Decodable { let cases: [Case] }
@@ -89,9 +91,12 @@ final class ChainReleaseTests: XCTestCase {
     func testCR003ReleasingOnePadPreservesOtherSoundAndLight() async throws { try await replay("CR-003") }
     func testCR004CancelDuplicateReleaseAndRepress() async throws { try await replay("CR-004") }
     func testCR005FinitePlaybackAndSoundSequence() async throws { try await replay("CR-005") }
+    func testCR005FinitePlaybackWithDelayedObservation() async throws {
+        try await replay("CR-005", observationDelay: .milliseconds(400))
+    }
     func testCR006UnchangedChainPressAndRelease() async throws { try await replay("CR-006") }
 
-    private func replay(_ id: String) async throws {
+    private func replay(_ id: String, observationDelay: Duration = .zero) async throws {
         let scenario = try XCTUnwrap(corpus().cases.first { $0.id == id })
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ChainRelease-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -104,6 +109,12 @@ final class ChainReleaseTests: XCTestCase {
         try await wait("pack load", until: { vm.startReady || vm.unipackLoadError != nil || vm.quitRequested })
         XCTAssertTrue(vm.startReady, vm.unipackLoadError ?? "pack did not become ready")
         let engine = try XCTUnwrap(vm.soundEngine)
+        var completions: [Int: () -> Void] = [:]
+        engine.playbackCompletionDelivery = { playID, failure, complete in
+            XCTAssertNil(failure, "finite playback failed instead of completing")
+            completions[playID] = complete
+        }
+        defer { engine.playbackCompletionDelivery = nil }
         var inputs: [String: (x: Int, y: Int, id: UUID)] = [:]
         var playIDs: [String: Int] = [:]
         for step in scenario.steps {
@@ -122,12 +133,17 @@ final class ChainReleaseTests: XCTestCase {
                 let input = try XCTUnwrap(inputs[try XCTUnwrap(step.input.inputId)])
                 vm.padTouch(x: input.x, y: input.y, isDown: false, inputID: input.id)
             case "checkpoint":
+                if observationDelay != .zero { try await Task.sleep(for: observationDelay) }
                 if scenario.pack == "delayed", step.atMs >= 100 {
                     try await wait("100 ms pack chain change", until: { vm.chain.value == step.expected.chain - 1 })
                 }
                 let endingIDs = Set(step.expected.naturalEnds.compactMap { playIDs[$0] })
                 if !endingIDs.isEmpty {
-                    try await wait("finite playback completion", until: { engine.activePlayIDs.isDisjoint(with: endingIDs) })
+                    try await wait("finite playback completion", until: { endingIDs.allSatisfy { completions[$0] != nil } })
+                    for playID in endingIDs {
+                        let complete = try XCTUnwrap(completions.removeValue(forKey: playID))
+                        complete()
+                    }
                 }
             default: XCTFail("unsupported input \(step.input.kind)")
             }

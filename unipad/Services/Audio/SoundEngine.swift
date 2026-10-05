@@ -65,6 +65,10 @@ final class SoundEngine {
     var activeVoiceCount: Int { nodePlayID.filter { $0 != 0 }.count }
     var activePlayIDs: Set<Int> { Set(nodePlayID.filter { $0 != 0 }) }
 
+    /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
+    /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
+    var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
         func onProgressTick()
@@ -427,10 +431,19 @@ final class SoundEngine {
         nodeStartOrder[nodeIndex] = startCounter
         // Frees the node for reuse when a one-shot finishes, so stealing only happens when every
         // node is really busy.
-        let release: () -> Void = { [weak self] in
+        let release: (String?) -> Void = { [weak self] failure in
             DispatchQueue.main.async {
-                guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
-                self.nodePlayID[nodeIndex] = 0
+                guard let self else { return }
+                let complete = { [weak self] in
+                    guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
+                    self.nodePlayID[nodeIndex] = 0
+                    if let failure { self.gate.playbackFailed(reason: failure) }
+                }
+                if let delivery = self.playbackCompletionDelivery {
+                    delivery(playID, failure, complete)
+                    return
+                }
+                complete()
             }
         }
 
@@ -450,15 +463,9 @@ final class SoundEngine {
             if sound.loop == -1 {
                 node.scheduleBuffer(buffer, at: nil, options: .loops)
             } else if sound.loop > 0 {
-                repeatFailure = repeatScheduler.start(buffer, node: node, totalPlays: sound.loop + 1) { [weak self] failure in
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
-                        self.nodePlayID[nodeIndex] = 0
-                        if let failure { self.gate.playbackFailed(reason: failure) }
-                    }
-                }
+                repeatFailure = repeatScheduler.start(buffer, node: node, totalPlays: sound.loop + 1, completion: release)
             } else {
-                node.scheduleBuffer(buffer, at: nil, options: []) { release() }
+                node.scheduleBuffer(buffer, at: nil, options: []) { release(nil) }
             }
             if sound.loop <= 0 { node.play() }
         }
