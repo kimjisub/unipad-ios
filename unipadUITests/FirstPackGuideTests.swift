@@ -125,11 +125,12 @@ final class FirstPackGuideTests: XCTestCase {
     }
 
     /// Safari follows the device language, independently of our English app launch arguments.
+    /// The titles are unipad.io's `docs.getStarted.title` in English and Korean.
     /// Accessibility can expose the correct title even when WebKit draws missing-glyph boxes.
     private func checkBrowserGuideText(in safari: XCUIApplication) {
         let diagnostic = "Safari가 이 시뮬레이터에서 웹 한글을 그리지 못할 수 있음: 같은 Safari로 다른 한글 사이트를 열어 비교"
         let title = safari.webViews.staticTexts
-            .matching(NSPredicate(format: "label IN %@", ["Getting started", "시작하기"]))
+            .matching(NSPredicate(format: "label IN %@", ["Get Started", "시작하기"]))
             .firstMatch
         guard title.waitForExistence(timeout: 30) else {
             UITestSupport.attachScreenshot("02-guide-body-missing", to: self)
