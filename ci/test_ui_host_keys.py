@@ -1,10 +1,12 @@
 """Execute the UI workflow command and require a working host-key bridge."""
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import tempfile
 import textwrap
+import time
 import unittest
 
 
@@ -72,6 +74,39 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('HOST_RESPONSE=failed', result.stdout)
         self.assertNotIn('HID delivery result', result.stdout)
+
+    def test_responder_stops_when_the_runner_is_killed(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(dir=os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR")) as directory:
+            folder = Path(directory)
+            fake = folder / "bin"
+            fake.mkdir()
+            xcodebuild = fake / "xcodebuild"
+            xcodebuild.write_text("#!/bin/sh\nexec sleep 30\n")
+            xcodebuild.chmod(0o755)
+            env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
+                       PAPERCLIP_RUN_SCRATCH_DIR=str(folder))
+            runner = subprocess.Popen(["ci/host-keys.sh", "leased-device", str(folder / "DD"), "test"],
+                                      cwd=root, env=env, start_new_session=True,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            marker = f"ci/host-keys.sh leased-device {folder}"
+            try:
+                deadline = time.monotonic() + 5
+                while not list(folder.glob("unipad-host-keys.*")):
+                    self.assertLess(time.monotonic(), deadline, "the responder directory was never created")
+                    time.sleep(0.05)
+                runner.kill()
+                runner.wait()
+                deadline = time.monotonic() + 3
+                while subprocess.run(["pgrep", "-f", marker], capture_output=True).returncode == 0:
+                    self.assertLess(time.monotonic(), deadline, "the key responder outlived its killed runner")
+                    time.sleep(0.1)
+                self.assertEqual(list(folder.glob("unipad-host-keys.*")), [])
+            finally:
+                try:
+                    os.killpg(runner.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     def run_step(self, exit_code=0):
         root = Path(__file__).resolve().parents[1]

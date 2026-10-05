@@ -56,8 +56,10 @@ deliver() {
   $axe batch --udid $udid --file $request --verbose
 }
 
+# The responder ends with this script even when the script is killed without
+# running its EXIT trap; $$ stays this script's pid inside the subshell.
 {
-  while true; do
+  while kill -0 $$ 2>/dev/null; do
     for request in $keys/request-*; do
       id=${request:t}; id=${id#request-}
       steps=$(<$request)
@@ -74,6 +76,7 @@ deliver() {
     done
     sleep 0.2
   done
+  rm -rf $keys
 } &
 responder=$!
 
