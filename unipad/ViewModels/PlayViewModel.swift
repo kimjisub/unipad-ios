@@ -382,8 +382,7 @@ final class PlayViewModel {
     // MARK: - Auto Mapping
 
     private var autoMapper: UniPackAutoMapper?
-    /// The mapper holds its listener weakly; without this the adapter was released at once and
-    /// auto mapping never reported progress or finished.
+    /// The mapper holds its listener weakly, so the adapter is kept alive here for the mapping's lifetime.
     private var autoMappingListenerAdapter: AutoMappingListenerAdapter?
 
     func autoMapping() {
@@ -396,6 +395,7 @@ final class PlayViewModel {
 
         // The mapper replaces autoPlayTable when it finishes; a runner still iterating the old
         // elements on its own thread would race that swap, so it is stopped before the mapper starts.
+        if playMode != .none { switchPlayMode(.none) }
         autoPlayRunner?.stop()
         autoPlayRunner = nil
         autoPlayListenerAdapter = nil
@@ -407,15 +407,20 @@ final class PlayViewModel {
         mapper.start()
     }
 
-    fileprivate func onAutoMappingDone() {
-        autoMappingActive = false
-        autoMapper = nil
-        autoMappingListenerAdapter = nil
+    fileprivate func finishAutoMapping() {
+        releaseAutoMapper()
 
         guard let pack = unipack as? UniPackFolder else { return }
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+    }
+
+    private func releaseAutoMapper() {
+        autoMapper?.cancel()
+        autoMapper = nil
+        autoMappingListenerAdapter = nil
+        autoMappingActive = false
     }
 
     // MARK: - Trace Log
@@ -1068,6 +1073,7 @@ final class PlayViewModel {
             MidiManager.shared.removeController(adapter)
             midiControllerAdapter = nil
         }
+        releaseAutoMapper()
         autoPlayRunner?.stop()
         ledRunner?.stop()
         soundEngine?.destroy()
@@ -1168,7 +1174,7 @@ private final class LedListenerAdapter: LedRunner.Listener {
         self.viewModel = viewModel
     }
 
-    func onLedBatch(_ events: [LedRunner.LedEvent]) {
+    nonisolated func onLedBatch(_ events: [LedRunner.LedEvent]) {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
             for event in events {
@@ -1380,14 +1386,14 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
 
     func onDone() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.onAutoMappingDone()
+            self?.viewModel?.finishAutoMapping()
         }
     }
 
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = false
             self?.viewModel?.toastMessage = error.localizedDescription
+            self?.viewModel?.finishAutoMapping()
         }
     }
 }

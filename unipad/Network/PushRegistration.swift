@@ -110,7 +110,7 @@ struct FirebaseMessagingRegistrationClient: MessagingRegistrationClient {
 /// switched on. Calling it through this requirement keeps the legacy path without a deprecation
 /// warning; delete it together with the legacy model.
 private protocol LegacyRegistrationTokenSource {
-    func token(completion: @escaping (String?, (any Error)?) -> Void)
+    func token(completion: @escaping @Sendable (String?, (any Error)?) -> Void)
 }
 
 extension Messaging: LegacyRegistrationTokenSource {}
