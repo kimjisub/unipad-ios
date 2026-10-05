@@ -142,72 +142,57 @@ struct ImportByUrlView: View {
         let title = unishare.title ?? code
         infoText = ""
 
-        do {
-            let downloadURL = "https://api.unipad.io/unishare/\(unishareId)/download"
-            let workspace = workspaceManager.downloadWorkspace.url
+        let downloadURL = "https://api.unipad.io/unishare/\(unishareId)/download"
+        let workspace = workspaceManager.downloadWorkspace.url
 
-            titleText = String(localized: "downloading")
-            messageText = "0%"
-            log("Downloading from: \(downloadURL)")
+        titleText = String(localized: "downloading")
+        messageText = "0%"
+        log("Downloading from: \(downloadURL)")
 
-            let downloader = UniPackDownloader()
+        let downloader = UniPackDownloader()
 
-            await downloader.download(
-                title: title,
-                url: downloadURL,
-                workspace: workspace,
-                folderName: title,
-                preKnownFileSize: unishare.fileSize,
-                delegate: ImportDelegate(
-                    onProgress: { percent, dlMB, totalMB in
-                        Task { @MainActor in
-                            messageText = "\(percent)%\n\(dlMB) / \(totalMB) MB"
-                        }
-                    },
-                    onImportStart: {
-                        Task { @MainActor in
-                            titleText = String(localized: "importing")
-                            messageText = "#\(code) \(unishare.title ?? "") \(unishare.producer ?? "")"
-                        }
-                    },
-                    onComplete: { folder in
-                        Task { @MainActor in
-                            UsageAnalytics.shared.packImportSucceeded(source: .code)
-                            titleText = String(localized: "success")
-                            let pack = UniPackFolder(rootFolder: folder)
-                            pack.load()
-                            messageText = pack.infoString()
-                            log("Installed to: \(folder.path)")
-                            try? await Task.sleep(for: .seconds(3))
-                            router.pop()
-                        }
-                    },
-                    onError: { error in
-                        Task { @MainActor in
-                            UsageAnalytics.shared.packImportFailed(source: .code, error: error)
-                            titleText = String(localized: "errOccur")
-                            messageText = error.localizedDescription
-                            log("Error: \(error.localizedDescription)")
-                            try? await Task.sleep(for: .seconds(3))
-                            router.pop()
-                        }
+        await downloader.download(
+            title: title,
+            url: downloadURL,
+            workspace: workspace,
+            folderName: title,
+            preKnownFileSize: unishare.fileSize,
+            delegate: ImportDelegate(
+                onProgress: { percent, dlMB, totalMB in
+                    Task { @MainActor in
+                        messageText = "\(percent)%\n\(dlMB) / \(totalMB) MB"
                     }
-                )
+                },
+                onImportStart: {
+                    Task { @MainActor in
+                        titleText = String(localized: "importing")
+                        messageText = "#\(code) \(unishare.title ?? "") \(unishare.producer ?? "")"
+                    }
+                },
+                onComplete: { folder in
+                    Task { @MainActor in
+                        UsageAnalytics.shared.packImportSucceeded(source: .code)
+                        titleText = String(localized: "success")
+                        let pack = UniPackFolder(rootFolder: folder)
+                        pack.load()
+                        messageText = pack.infoString()
+                        log("Installed to: \(folder.path)")
+                        try? await Task.sleep(for: .seconds(3))
+                        router.pop()
+                    }
+                },
+                onError: { error in
+                    Task { @MainActor in
+                        UsageAnalytics.shared.packImportFailed(source: .code, error: error)
+                        titleText = String(localized: "errOccur")
+                        messageText = error.localizedDescription
+                        log("Error: \(error.localizedDescription)")
+                        try? await Task.sleep(for: .seconds(3))
+                        router.pop()
+                    }
+                }
             )
-
-        } catch let apiError as APIError where apiError.isNotFound {
-            titleText = String(localized: "unipackNotFound")
-            messageText = "#\(code)"
-            log("404 Not Found")
-            try? await Task.sleep(for: .seconds(3))
-            router.pop()
-        } catch {
-            titleText = String(localized: "errOccur")
-            messageText = error.localizedDescription
-            log("Error: \(error.localizedDescription)")
-            try? await Task.sleep(for: .seconds(3))
-            router.pop()
-        }
+        )
     }
 
     private func log(_ msg: String) {

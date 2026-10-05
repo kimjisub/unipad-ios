@@ -61,6 +61,9 @@ jobs:
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -onlyUsePackageVersionsFromResolvedFile
 
+      # UNIPAD_WARNINGS_AS_ERRORS turns warnings into errors for UniPad's own targets only.
+      # Passing SWIFT_TREAT_WARNINGS_AS_ERRORS here would also reach the Swift packages, which
+      # build with -suppress-warnings, and the compiler rejects the two options together.
       - name: Build Release for iOS Simulator without signing
         run: |
           xcodebuild build -quiet \
@@ -70,6 +73,7 @@ jobs:
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            UNIPAD_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee "$RUNNER_TEMP/build.log"
 
       - name: Run unit tests without UI tests
@@ -78,13 +82,14 @@ jobs:
         run: |
           xcodebuild test -quiet \
             -project unipad.xcodeproj -scheme unipad -configuration Debug \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
             -only-testing:unipadTests -parallel-testing-enabled NO \
             -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            UNIPAD_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
 
       - name: Summarize unit test results

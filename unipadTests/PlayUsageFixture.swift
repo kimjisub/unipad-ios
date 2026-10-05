@@ -27,8 +27,7 @@ final class PlayUsageScenario {
     func load() async throws { try await vm.loadUnipack(path: packFolder.path) }
 
     func ready() async throws {
-        let deadline = Date().addingTimeInterval(15)
-        while !vm.startReady && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitWhile(timeout: 15) { !vm.startReady }
         try #require(vm.startReady, "pack never became ready")
         let loaded = try #require(sink.events(named: "pack_load").first, "load event missing")
         #expect(loaded.parameters["result"] == "success")
@@ -37,10 +36,16 @@ final class PlayUsageScenario {
     func loadReady() async throws { try await load(); try await ready() }
 
     func autoplayEnded() async throws {
-        let deadline = Date().addingTimeInterval(10)
-        while vm.isAutoPlayPlaying && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitWhile { vm.isAutoPlayPlaying }
         try #require(!vm.isAutoPlayPlaying, "autoplay never ended")
     }
+
+    func waitWhile(timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while condition() && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    func removePackFile(_ name: String) throws { try FileManager.default.removeItem(at: packFolder.appending(path: name)) }
 
     func press(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: true) }
     func release(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: false) }

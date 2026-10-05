@@ -115,7 +115,7 @@ actor UniPackImporter {
 
 // MARK: - FileManager ZIP Extension
 
-extension FileManager {
+nonisolated extension FileManager {
     /// ZIP extraction using zlib (available on all Apple platforms).
     /// Parses central directory entries first (like zip tools) to support data-descriptor ZIPs.
     func unzipItem(at sourceURL: URL, to destinationURL: URL) throws {
