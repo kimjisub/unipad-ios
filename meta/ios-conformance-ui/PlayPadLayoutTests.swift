@@ -27,11 +27,14 @@ final class PlayPadLayoutTests: XCTestCase {
     @MainActor
     private func exactFixtureTitle(in list: XCUIElement) -> XCUIElement? {
         let matches = list.staticTexts.matching(NSPredicate(format: "label == %@", "Conformance"))
+        // The guiding actions row is the list's last row, after every pack card.
+        let listEnd = list.descendants(matching: .any).matching(identifier: "main.guide.download").firstMatch
         var swipes = 0
+        var stalls = 0
         var counts: [Int] = []
-        var previousTitles: [String]?
+        var previousPosition: String?
         defer {
-            print("CONFORMANCE title-search swipes=\(swipes) counts=\(counts.map(String.init).joined(separator: ","))")
+            print("CONFORMANCE title-search swipes=\(swipes) stalls=\(stalls) counts=\(counts.map(String.init).joined(separator: ","))")
         }
         while true {
             let count = matches.count
@@ -50,16 +53,30 @@ final class PlayPadLayoutTests: XCTestCase {
                 XCTAssertTrue(matches.firstMatch.isHittable, "Exact fixture title not reachable")
                 return matches.firstMatch
             }
-            let visibleTitles = list.staticTexts.allElementsBoundByIndex
-                .filter { $0.isHittable }.map { $0.label }
-            if previousTitles == visibleTitles {
+            if listEnd.isHittable {
                 XCTFail("Exact fixture title missing: end of pack list")
                 return nil
             }
-            previousTitles = visibleTitles
-            list.swipeUp()
+            // A drag that did not move the list is retried; it still counts toward the limit.
+            let first = list.staticTexts.element(boundBy: 0)
+            let position = "\(first.label)@\(first.frame.minY)"
+            if previousPosition == position {
+                stalls += 1
+            }
+            previousPosition = position
+            scrollOneStep(list)
             swipes += 1
         }
+    }
+
+    /// Drags a little over half the list height and holds before lifting, so the
+    /// list stops where the finger stops: consecutive screens overlap and no card
+    /// is flung past unseen. A quick swipe without the hold was lost on iOS 26.3.
+    @MainActor
+    private func scrollOneStep(_ list: XCUIElement) {
+        let from = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        let to = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
     }
 
     @MainActor

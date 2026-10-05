@@ -11,13 +11,23 @@ The overlay requires exactly one matching title within `main.packList`, taps it,
 then taps **Play**. Scoping to the list avoids the duplicate title in the recent
 pack card after a previous run.
 This route requires the existing shared UniPack library. Starting at the top,
-title navigation checks the exact-title count at each step and swipes upward until
+title navigation checks the exact-title count at each step and scrolls upward until
 the title is hittable. Reaching 40 swipes fails even if the title is then visible.
 Two or more matches at any
-step fail immediately. Unchanged visible labels after a swipe mean the end of
-the list; a missing title or exhausted swipe limit fails. Immediately before
+step fail immediately. Each step drags from 80% to 25% of the list height and holds
+0.3 s before lifting, so the list stops under the finger: consecutive screens
+overlap and no card is flung past between checks. The end of the list is the
+guiding actions row (`main.guide.download`), which follows the last pack card;
+when it is hittable and the title is not, the title is missing. A drag that leaves
+the list where it was is retried and still counts toward the 40-swipe limit; it is
+never taken as the end. (JIS-424: on iOS 26.3.1 in landscape, one quick
+`swipeUp()` left a seven-pack list unmoved and the previous rule, unchanged
+visible labels after a swipe, reported the end of the list. The same swipe moved
+the list in a later run, so the loss is intermittent.) Immediately before
 selection the count must still be exactly one and the title must be hittable.
-One `CONFORMANCE title-search swipes=<n> counts=<...>` line records the search.
+One `CONFORMANCE title-search swipes=<n> stalls=<n> counts=<...>` line records the
+search; `stalls` counts drags after which the list's first label and its position
+were unchanged.
 Empty-library setup remains outside this AP-001 route.
 
 This is a **different tool** from original tool commit
@@ -142,10 +152,16 @@ If output-directory setup itself fails, the tool still attempts app termination
 and device return but cannot save a receipt there; read its nonzero exit and error.
 
 The normal `check_selection.py` run models a list that creates only the current
-screen's labels. It covers the original pre-scroll failure, the new order,
+screen's labels and shows the guiding row only on its last screen. It covers the
+original pre-scroll failure, the new order,
 35 swipes, success at 39 swipes and rejection at 40, duplicate titles on the first
 or a later screen, a missing title at
-the list end, and the 40-swipe limit. `--overlay <path>` checks the ordering guards
+the list end, and the 40-swipe limit. A swipe can be marked as lost (the list does
+not move): with the JIS-424 screens and the first swipe lost, the previous
+unchanged-labels rule fails with "end of pack list" while the new order retries and
+selects; a list where every swipe is lost stops at the 40-swipe limit. The previous
+model let every swipe move the list until its last screen, so it could not express
+the JIS-424 failure. `--overlay <path>` checks the ordering guards
 against a different Swift overlay, including the original for a failing base
 check. These are **ordering-model checks, not device evidence**; they do not
 execute XCTest or prove accessibility visibility or hittability.
