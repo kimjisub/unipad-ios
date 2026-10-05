@@ -56,6 +56,46 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertTrue(packs.first { $0.title == "Alan Walker - Faded" }?.producerName.contains("김지섭") == true)
     }
 
+    func testChainReleaseLibraryStagesTheGivenArchiveUnchanged() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadReleaseArchive"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let archive = try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(forResource: "delayed", withExtension: "uni")))
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("chain-release", forKey: keys[2])
+        defaults.set(archive.base64EncodedString(), forKey: keys[3])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let folders = WorkspaceManager.unipackFolders(in: workspace)
+        XCTAssertEqual(folders.count, 1)
+        let folder = try XCTUnwrap(folders.first)
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertEqual(pack.title, "Chain Release v1 delayed")
+        XCTAssertEqual(pack.chain, 2)
+        XCTAssertEqual(pack.soundCount, 9)
+    }
+
+    func testChainReleaseLibraryWithoutAnArchiveFailsInsteadOfStagingNothing() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadReleaseArchive"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("chain-release", forKey: keys[2])
+        defaults.removeObject(forKey: keys[3])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertThrowsError(try ReleaseTestSupport.prepare())
+    }
+
     func testDeletionFixtureIsProtectedUntilNextLaunchUnlocksIt() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadUITestDeleteFailure"]

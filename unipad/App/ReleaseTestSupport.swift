@@ -50,6 +50,16 @@ nonisolated enum ReleaseTestSupport {
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed/1 1 1 1"))
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
+            case "chain-release":
+                // The screen check passes the approved archive's exact bytes; staging it is the
+                // direct extraction its fixture README requires, not a ZIP import.
+                guard let encoded = UserDefaults.standard.string(forKey: "UniPadReleaseArchive"),
+                      let archive = Data(base64Encoded: encoded) else {
+                    throw CocoaError(.fileReadNoSuchFile)
+                }
+                let file = root.appendingPathComponent("chain-release.uni")
+                try archive.write(to: file)
+                try fm.unzipItem(at: file, to: library.appendingPathComponent("ChainRelease"))
             default:
                 for (folder, title) in [("Release", "Release Fixture - Tests"),
                                         ("PlaybackStop", "Playback Stop Fixture"),

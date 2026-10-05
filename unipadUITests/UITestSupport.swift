@@ -11,22 +11,26 @@ enum UITestSupport {
     /// ("Information", "Theme", "Play", option names). The app follows the
     /// simulator's language, so these pin it to English to make the result the
     /// same whatever language the simulator was left in.
+    static var isReleaseSuite: Bool { ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" }
+
     static func englishLaunchArguments(library: String = "standard", token: String = UUID().uuidString,
-                                       file: Bool = false) -> [String] {
-        launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file)
+                                       file: Bool = false, archive: Data? = nil) -> [String] {
+        launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file, archive: archive)
     }
 
     static func launchArguments(language: String, locale: String, library: String = "standard",
-                                token: String = UUID().uuidString, file: Bool = false) -> [String] {
+                                token: String = UUID().uuidString, file: Bool = false,
+                                archive: Data? = nil) -> [String] {
         var arguments = [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
         ]
-        if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
+        if isReleaseSuite {
             arguments += ["-UniPadReleaseTest", token, "-UniPadUITestLibrary", library,
                           "-UniPadReleaseEmpty", library == "empty" ? "YES" : "NO",
                           "-UniPadReleaseFile", file ? "YES" : "NO"]
+            if let archive { arguments += ["-UniPadReleaseArchive", archive.base64EncodedString()] }
         }
         return arguments
     }
