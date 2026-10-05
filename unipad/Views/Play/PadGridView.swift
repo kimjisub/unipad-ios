@@ -362,7 +362,7 @@ class MultiTouchUIView: UIView {
     var columns: Int = 0
     var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
-    private var activeTouches: [UITouch: (row: Int, col: Int, id: UUID)] = [:]
+    private var activeFingers: [AnyHashable: (row: Int, col: Int, id: UUID)] = [:]
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let col = Int((point.x - gridOrigin.x) / cellWidth)
@@ -372,51 +372,60 @@ class MultiTouchUIView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            let point = touch.location(in: self)
-            guard let (row, col) = padAt(point) else { continue }
+        for touch in touches { fingerDown(touch, at: touch.location(in: self)) }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { fingerMoved(touch, to: touch.location(in: self)) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches { fingerUp(touch) }
+    }
+
+    /// The system cancels every touch on this view when it takes the screen over (an alert,
+    /// Notification Center, the app leaving the foreground); each is released like a lifted finger.
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touchesEnded(touches, with: event)
+    }
+
+    // A finger is any value that stays the same from its press to its release: the `UITouch`
+    // itself on screen, so tests can drive several fingers without constructing touches.
+
+    func fingerDown(_ finger: AnyHashable, at point: CGPoint) {
+        guard let (row, col) = padAt(point) else { return }
+        let id = UUID()
+        activeFingers[finger] = (row, col, id)
+        onPadTouch?(row, col, true, id)
+    }
+
+    func fingerMoved(_ finger: AnyHashable, to point: CGPoint) {
+        let next = padAt(point)
+        let prev = activeFingers[finger]
+
+        if let prev, next == nil {
+            onPadTouch?(prev.row, prev.col, false, prev.id)
+            activeFingers.removeValue(forKey: finger)
+            return
+        }
+
+        guard let (row, col) = next else { return }
+        if let prev, (prev.row, prev.col) != (row, col) {
+            onPadTouch?(prev.row, prev.col, false, prev.id)
             let id = UUID()
-            activeTouches[touch] = (row, col, id)
+            activeFingers[finger] = (row, col, id)
+            onPadTouch?(row, col, true, id)
+        } else if prev == nil {
+            let id = UUID()
+            activeFingers[finger] = (row, col, id)
             onPadTouch?(row, col, true, id)
         }
     }
 
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            let point = touch.location(in: self)
-            let next = padAt(point)
-            let prev = activeTouches[touch]
-
-            if let prev, next == nil {
-                onPadTouch?(prev.row, prev.col, false, prev.id)
-                activeTouches.removeValue(forKey: touch)
-                continue
-            }
-
-            guard let (row, col) = next else { continue }
-            if let prev, (prev.row, prev.col) != (row, col) {
-                onPadTouch?(prev.row, prev.col, false, prev.id)
-                let id = UUID()
-                activeTouches[touch] = (row, col, id)
-                onPadTouch?(row, col, true, id)
-            } else if prev == nil {
-                let id = UUID()
-                activeTouches[touch] = (row, col, id)
-                onPadTouch?(row, col, true, id)
-            }
+    func fingerUp(_ finger: AnyHashable) {
+        if let input = activeFingers.removeValue(forKey: finger) {
+            onPadTouch?(input.row, input.col, false, input.id)
         }
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            if let input = activeTouches.removeValue(forKey: touch) {
-                onPadTouch?(input.row, input.col, false, input.id)
-            }
-        }
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        touchesEnded(touches, with: event)
     }
 }
 
