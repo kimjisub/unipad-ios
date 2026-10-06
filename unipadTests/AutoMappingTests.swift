@@ -119,6 +119,7 @@ private final class RecordingListener: UniPackAutoMapperListener {
 }
 
 /// The scenario's pack, loaded for the mapper alone.
+@MainActor
 private struct MapperPack {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("AutoMapping-\(UUID().uuidString)")
     let unipack: UniPackFolder
