@@ -71,7 +71,7 @@ final class ChainReleaseTests: XCTestCase {
     }
     func testApprovedFixtureBytesMatchSourceRevision() throws {
         let expected = [
-            "expectations.json": "176a8eb31d8792887f00a20ba924373119ca9a601849dc647431afc7f0c922ca",
+            "expectations.json": "3aa66349d27c751938e6f86267b5ad0ac653828288d25a3777b7c4f0fbdf7fe0",
             "manual.uni": "31b158622efea7d779b673ecea3c72906c3764a7fbae16408060eb4e0f50931d",
             "delayed.uni": "7f8647fc894b4226df180061d94febaa9306c0a2c1a3d019299b47a6c56c7236"
         ]

@@ -221,7 +221,7 @@ def main():
         receipt['existingConformanceCount'] = len(existing)
         if existing:
             raise RuntimeError('A Conformance fixture is already installed; preserve it and stop')
-        candidate = library / ('JIS-70-' + os.environ['PAPERCLIP_RUN_ID'])
+        candidate = library / ('conformance-run-' + os.environ['PAPERCLIP_RUN_ID'])
         candidate.mkdir()  # No overwrite or deletion of existing content.
         staged = candidate  # Register cleanup ownership only after successful creation.
         with zipfile.ZipFile(args.pack) as archive:

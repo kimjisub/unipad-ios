@@ -43,7 +43,7 @@ class RunnerChecks(unittest.TestCase):
         self.library = self.container / 'Documents/UniPack'
         self.library.mkdir(parents=True)
         (self.library / 'existing').write_bytes(b'preserve me')
-        self.staged = self.library / 'JIS-70-regression'
+        self.staged = self.library / 'conformance-run-regression'
         self.pack = self.root / 'pack.zip'
         with zipfile.ZipFile(self.pack, 'w') as z:
             z.writestr('info', 'title=Conformance\n')
