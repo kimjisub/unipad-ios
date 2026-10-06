@@ -5,7 +5,7 @@ third-party audio is included. This directory stays outside Xcode's synchronized
 its `info`, `keySound`, `autoPlay` and `a.wav` names cannot collide with other fixtures.
 
 For `PlayUsageRecordUITests`, install the built app on the simulator leased by `devices.py`, then
-copy this directory to that app's `Documents/unipack/JIS20FirstInputFixture`. Do not replace an existing
+copy this directory to that app's `Documents/unipack/FirstInputFixture`. Do not replace an existing
 folder. Remove only this copied fixture after the test. The UI test fails if it is missing.
 
 Run `xcodebuild test` with `-only-testing:unipadUITests/PlayUsageRecordUITests`, the leased device
