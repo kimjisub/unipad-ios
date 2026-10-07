@@ -68,7 +68,7 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
-    private static func writePack(to folder: URL) throws {
+    static func writePack(to folder: URL) throws {
         let files: [(String, Data)] = [
             ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n".utf8)),
             ("keySound", Data("1 1 1 a.wav\n1 1 2 a.wav\n1 1 3 a.wav\n".utf8)),
