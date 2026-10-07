@@ -133,7 +133,7 @@ final class ThemeViewModel {
             if url.pathExtension.lowercased() == "zip" {
                 try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
                 try fm.unzipItem(at: url, to: destDir)
-                FileManagerExtensions.removeDoubleFolder(at: destDir)
+                try FileManagerExtensions.removeDoubleFolder(at: destDir)
                 try normalizeThemeResources(at: destDir)
                 _ = try FolderThemeResources(themeDir: destDir, fullLoad: false)
             } else {
