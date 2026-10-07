@@ -51,8 +51,10 @@ struct UniPackInterruptedInstallTests {
 
         let imported = try await UniPackImporter(stagingRoot: stagingRoot)
             .importPack(from: try source(TestZip.stored(Self.packFiles)), to: workspace, delegate: nil)
+        let sawPublishedPack = await watcher.waitUntilFinishedSeen(imported.lastPathComponent)
         watcher.stop()
 
+        #expect(sawPublishedPack, "the watcher never looked at the library after the pack was added, so it proves nothing")
         #expect(watcher.unfinishedSeen.isEmpty, "a kill at that moment leaves \(watcher.unfinishedSeen) in the library")
         #expect(WorkspaceManager.unipackFolders(in: .init(name: "test", url: workspace)).map(\.lastPathComponent) == [imported.lastPathComponent])
         #expect(stagingContents().isEmpty)
@@ -111,13 +113,25 @@ struct UniPackInterruptedInstallTests {
 }
 
 /// Every time an entry is added to or removed from the workspace, checks each folder the library
-/// would list and records those that are not finished packs.
+/// would list and records which of them are finished packs and which are not.
 private final class LibraryWatcher: @unchecked Sendable {
     private let source: DispatchSourceFileSystemObject
     private let lock = NSLock()
-    private var seen: [String] = []
+    private var unfinished: [String] = []
+    private var finished: Set<String> = []
 
-    var unfinishedSeen: [String] { lock.withLock { seen } }
+    var unfinishedSeen: [String] { lock.withLock { unfinished } }
+
+    /// Change notifications arrive after the change, so the import can return before the watcher
+    /// has looked at the pack it added.
+    func waitUntilFinishedSeen(_ name: String, timeout: Duration = .seconds(10)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if lock.withLock({ finished.contains(name) }) { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return false
+    }
 
     init(workspace: URL, isFinished: @escaping @Sendable (URL) -> Bool) throws {
         let descriptor = open(workspace.path, O_EVTONLY)
@@ -126,10 +140,12 @@ private final class LibraryWatcher: @unchecked Sendable {
             fileDescriptor: descriptor, eventMask: .write, queue: DispatchQueue(label: "LibraryWatcher")
         )
         source.setEventHandler { [lock, weak self] in
-            let unfinished = WorkspaceManager.unipackFolders(in: .init(name: "test", url: workspace))
-                .filter { !isFinished($0) }
-                .map(\.lastPathComponent)
-            lock.withLock { self?.seen.append(contentsOf: unfinished) }
+            let checked = WorkspaceManager.unipackFolders(in: .init(name: "test", url: workspace))
+                .map { ($0.lastPathComponent, isFinished($0)) }
+            lock.withLock {
+                self?.finished.formUnion(checked.filter(\.1).map(\.0))
+                self?.unfinished.append(contentsOf: checked.filter { !$0.1 }.map(\.0))
+            }
         }
         source.setCancelHandler { close(descriptor) }
         source.resume()
