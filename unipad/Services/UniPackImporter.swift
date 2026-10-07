@@ -31,42 +31,47 @@ actor UniPackImporter {
     }
 
     private let logger = Logger(subsystem: "com.kimjisub.unipad", category: "Importer")
+    private let stagingRoot: URL
+
+    init(stagingRoot: URL = UniPackStaging.defaultRoot) {
+        self.stagingRoot = stagingRoot
+    }
 
     /// Import a UniPack from a local file URL (ZIP). Errors reach the delegate and are rethrown, so
     /// a caller that has no delegate (TransferView) can still tell a failure from a success.
+    /// The pack is built in a staging folder and enters the library only once it is complete.
     @discardableResult
     func importPack(from sourceURL: URL, to workspace: URL, delegate: Delegate?) async throws -> URL {
         let fileName = sourceURL.deletingPathExtension().lastPathComponent
 
         await delegate?.onImportStart()
 
-        // A download or another import of the same name may run at the same time, so only the
-        // folder claimed here is written to or deleted.
-        var claimedFolder: URL?
+        var staging: UniPackStaging?
+        defer { staging?.discard() }
 
         do {
-            let fm = FileManager.default
-            let targetFolder = try FileManagerExtensions.claimNextPath(dir: workspace, name: fileName, extension: "", isDirectory: true)
-            claimedFolder = targetFolder
+            let staged = try UniPackStaging(root: stagingRoot)
+            staging = staged
 
-            // Copy source to temp location for extraction
-            let tempZip = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
-            defer { try? fm.removeItem(at: tempZip) }
+            let archive = staged.file(named: "import.zip")
+            try FileManager.default.copyItem(at: sourceURL, to: archive)
 
-            try fm.copyItem(at: sourceURL, to: tempZip)
+            try extractZip(at: archive, to: staged.packFolder)
 
-            try extractZip(at: tempZip, to: targetFolder)
-
-            FileManagerExtensions.removeDoubleFolder(at: targetFolder)
+            try FileManagerExtensions.removeDoubleFolder(at: staged.packFolder)
 
             // Validate the extracted unipack. load() runs checkFile + parseInfo; without it
             // loadDetail parsed nothing and criticalError was never set, so any ZIP passed.
-            let unipack = UniPackFolder(rootFolder: targetFolder)
+            let unipack = UniPackFolder(rootFolder: staged.packFolder)
             unipack.load()
             unipack.loadDetail()
             if unipack.criticalError {
                 throw ImportError.criticalError(unipack.errorDetail ?? "Invalid unipack structure")
             }
+
+            // A download or another import of the same name may finish meanwhile; publishing takes
+            // the next free name instead of replacing it.
+            let targetFolder = try staged.publish(to: workspace, name: fileName)
 
             await delegate?.onImportComplete(folder: targetFolder)
             logger.info("Import completed: \(targetFolder.lastPathComponent)")
@@ -74,9 +79,6 @@ actor UniPackImporter {
 
         } catch {
             logger.error("Import failed: \(error.localizedDescription)")
-            if let claimedFolder {
-                FileManagerExtensions.deleteDirectory(at: claimedFolder)
-            }
             await delegate?.onImportError(error)
             throw error
         }
@@ -85,18 +87,21 @@ actor UniPackImporter {
     /// Import from Data (e.g., from share sheet or document picker)
     @discardableResult
     func importPack(data: Data, fileName: String, to workspace: URL, delegate: Delegate?) async throws -> URL {
-        let fm = FileManager.default
-        let tempZip = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
-        defer { try? fm.removeItem(at: tempZip) }
+        var staging: UniPackStaging?
+        defer { staging?.discard() }
 
+        let archive: URL
         do {
-            try data.write(to: tempZip)
+            let staged = try UniPackStaging(root: stagingRoot)
+            staging = staged
+            archive = staged.file(named: UUID().uuidString + ".zip")
+            try data.write(to: archive)
         } catch {
             logger.error("Failed to write temp ZIP: \(error.localizedDescription)")
             await delegate?.onImportError(error)
             throw error
         }
-        return try await importPack(from: tempZip, to: workspace, delegate: delegate)
+        return try await importPack(from: archive, to: workspace, delegate: delegate)
     }
 
     /// Extract a ZIP file without import validation (used by UniPackDownloader)

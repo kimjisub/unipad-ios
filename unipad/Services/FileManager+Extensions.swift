@@ -7,8 +7,10 @@ enum FileManagerExtensions {
     private static let bytesPerMB: Double = 1024.0 * 1024.0
     private static let filenameFilterRegex = try! NSRegularExpression(pattern: #"[|\\?*<":>/]+"#)
 
-    /// Removes a redundant nested folder (e.g., extracted ZIP that wraps content in a single subfolder)
-    static func removeDoubleFolder(at path: URL) {
+    /// Removes a redundant nested folder (e.g., extracted ZIP that wraps content in a single subfolder).
+    /// Throws when an item cannot be moved up: the folder is then only partly unwrapped, and a pack
+    /// accepted in that state is missing whatever stayed behind.
+    static func removeDoubleFolder(at path: URL) throws {
         let fm = FileManager.default
         var current = path
         while true {
@@ -19,7 +21,7 @@ enum FileManagerExtensions {
             guard nonHidden.count == 1,
                   let single = nonHidden.first,
                   (try? single.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { break }
-            moveDirectory(from: single, to: current)
+            try moveDirectory(from: single, to: current)
             current = path
         }
     }
@@ -41,16 +43,36 @@ enum FileManagerExtensions {
     /// The caller owns the returned path and is the only one that may delete it.
     static func claimNextPath(dir: URL, name: String, extension ext: String, isDirectory: Bool) throws -> URL {
         let fm = FileManager.default
+        return try firstFreePath(dir: dir, name: name, extension: ext) { candidate in
+            if isDirectory {
+                try fm.createDirectory(at: candidate, withIntermediateDirectories: false)
+            } else {
+                try Data().write(to: candidate, options: .withoutOverwriting)
+            }
+        }
+    }
+
+    /// Moves `item` to the first free numbered name in `dir` with a single rename that refuses to
+    /// replace anything already there, so the destination never holds a partly moved item and a
+    /// concurrent caller's claim is never taken over. `item` must be on the same volume as `dir`.
+    static func moveToNextFreePath(_ item: URL, dir: URL, name: String, extension ext: String = "") throws -> URL {
+        try firstFreePath(dir: dir, name: name, extension: ext) { candidate in
+            guard renamex_np(item.path, candidate.path, UInt32(RENAME_EXCL)) == 0 else {
+                let code = errno
+                if code == EEXIST { throw CocoaError(.fileWriteFileExists) }
+                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+            }
+        }
+    }
+
+    /// Runs `take` on `name`, `name (2)`, `name (3)`, ... until it does not fail with "file exists".
+    private static func firstFreePath(dir: URL, name: String, extension ext: String, take: (URL) throws -> Void) throws -> URL {
         let filtered = filterFilename(name)
         var i = 1
         while true {
             let candidate = numberedPath(dir: dir, filteredName: filtered, extension: ext, index: i)
             do {
-                if isDirectory {
-                    try fm.createDirectory(at: candidate, withIntermediateDirectories: false)
-                } else {
-                    try Data().write(to: candidate, options: .withoutOverwriting)
-                }
+                try take(candidate)
                 return candidate
             } catch CocoaError.fileWriteFileExists {
                 i += 1
@@ -73,12 +95,12 @@ enum FileManagerExtensions {
     /// destination is `source` itself (zip layout Pack/Pack/info) is parked beside the tree and
     /// moved in after `source` is gone. The old version deleted the destination first, which for
     /// that layout deleted the source subtree and destroyed the pack being imported.
-    static func moveDirectory(from source: URL, to target: URL) {
+    static func moveDirectory(from source: URL, to target: URL) throws {
         let fm = FileManager.default
         let sourcePath = source.standardizedFileURL.path
         guard sourcePath != target.standardizedFileURL.path else { return }
         do {
-            guard let sourceContents = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+            let sourceContents = try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey])
 
             var deferred: [(parked: URL, dest: URL)] = []
             for item in sourceContents {
@@ -93,7 +115,7 @@ enum FileManagerExtensions {
                 let destExists = fm.fileExists(atPath: dest.path, isDirectory: &destIsDir)
                 let itemIsDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 if destExists && destIsDir.boolValue && itemIsDir {
-                    moveDirectory(from: item, to: dest)
+                    try moveDirectory(from: item, to: dest)
                     continue
                 }
                 if destExists {
@@ -108,11 +130,8 @@ enum FileManagerExtensions {
             }
         } catch {
             logger.error("moveDirectory failed: \(error.localizedDescription)")
+            throw error
         }
-    }
-
-    static func deleteDirectory(at url: URL) {
-        try? FileManager.default.removeItem(at: url)
     }
 
     static func copyDirectory(from source: URL, to target: URL) throws {
