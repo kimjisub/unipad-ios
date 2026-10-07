@@ -130,6 +130,33 @@ records the app and runner SHA-256 values, installs without opening the app,
 preserves the existing library by path and hash, stages the unchanged fixture,
 records video, and executes only the new test with parallel testing disabled, code coverage disabled, and verbose failure
 diagnostics disabled. The UI command has a three-minute timeout.
+
+The UI test runs from a copy of the built `.xctestrun`, not from the scheme. On
+this baseline every test target there has `PreferredScreenCaptureFormat =
+screenRecording`: XCTest records the screen itself, and when it stops that
+recording twice the Mac's `SimRenderServer` crashes and CoreSimulator shuts the
+simulator down. A run on iOS 26.3.1 passed its test, then lost the device: the
+UI command hit its timeout, the walkthrough was empty and the fixture stayed in
+the library. `-collect-test-diagnostics never` does not stop that recording.
+After the overlay build, `run.py` requires exactly one built `.xctestrun` in
+`<derived-data>/Build/Products`, writes `conformance-screenshots.xctestrun`
+beside it (`__TESTROOT__` is that folder) with every test target set to
+`screenshots`, and runs:
+
+```sh
+xcodebuild test-without-building \
+  -xctestrun '<derived-data>/Build/Products/conformance-screenshots.xctestrun' \
+  -destination 'platform=iOS Simulator,id=<lent-udid>' -derivedDataPath '<derived-data>' \
+  -parallel-testing-enabled NO -enableCodeCoverage NO -collect-test-diagnostics never \
+  -only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit \
+  -resultBundlePath '<out>/result.xcresult' CODE_SIGNING_ALLOWED=NO
+```
+
+The built `.xctestrun`, product files, app and runner are not changed; failure
+screenshots remain XCTest attachments, and the walkthrough still comes from
+`simctl io recordVideo`. The receipt records the built file's name and SHA-256,
+its capture formats before the change, and the copy's SHA-256. A missing,
+second or target-less `.xctestrun` stops before recording and UI execution.
 Before staging, titles are read from every immediate directory under
 `Documents/UniPack` with the baseline's metadata rules: case-insensitive `info`
 filenames, UTF-8 (optional BOM), BOM-marked UTF-16, EUC-KR or CP949, trimmed
@@ -189,7 +216,9 @@ Xcode-generated files after a baseline build and on overlay reruns,
 source/theme additions, deletions and changes, project/overlay changes, symbolic
 links, exact-overlay reruns, empty baseline lists, folder collisions, missing packs, fixture extraction
 and UI command failure, recorder launch/exit/timeout/missing-video failures,
-container lookup failure and device-return failure. They do not launch an app.
+container lookup failure and device-return failure, and the screenshots
+`.xctestrun` copy (command, unchanged original, reruns, missing/second/empty
+file). They do not launch an app.
 They also check duplicate titles in differently named folders, spaced keys,
 uppercase metadata filenames, JSON titles, BOMs and legacy encodings,
 unreadable metadata, and a wrong title after extraction. The three other-title

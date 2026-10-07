@@ -20,6 +20,8 @@ BASELINE = '5dd4cac10f3ede280c9f5207e949a46b624c297f'
 BUNDLE = 'kim.jisub.unipad'
 AP001_SHA256 = 'fecc1cd0f58e0153751dd58574bc39b98b6e0f4e4fad86ca617ca24cf71f16b5'
 TOOLS = Path(__file__).resolve().parent
+# Written beside the built xctestrun because its __TESTROOT__ is that folder.
+SCREENSHOTS_XCTESTRUN = 'conformance-screenshots.xctestrun'
 # Xcode writes these workspace artifacts even with derived data kept elsewhere.
 # Only untracked regular files at these exact paths are exempt; tracked inputs
 # still undergo byte comparison, and other files in these directories fail.
@@ -141,6 +143,34 @@ def check_product(source):
     return len(baseline_files)
 
 
+def screenshots_xctestrun(products, receipt):
+    """Copy the built xctestrun with XCTest's own screen recording turned off.
+
+    When the test runner stops its recording twice, the host's SimRenderServer
+    crashes and CoreSimulator shuts the simulator down right after a passing
+    test. Screenshots keep XCTest's failure evidence without that recording;
+    the walkthrough video comes from simctl. Product files stay unchanged.
+    """
+    built = sorted(p for p in products.glob('*.xctestrun') if p.name != SCREENSHOTS_XCTESTRUN)
+    if len(built) != 1:
+        raise RuntimeError(f'Expected one built xctestrun in {products}; found {[p.name for p in built]}')
+    plist = plistlib.loads(built[0].read_bytes())
+    targets = [target for configuration in plist.get('TestConfigurations', [])
+               for target in configuration.get('TestTargets', [])]
+    if plist.get('__xctestrun_metadata__', {}).get('FormatVersion') != 2 or not targets:
+        raise RuntimeError(f'Unsupported xctestrun layout: {built[0].name}')
+    receipt['xctestrun'] = built[0].name
+    receipt['xctestrunSha256'] = hashlib.sha256(built[0].read_bytes()).hexdigest()
+    receipt['screenCaptureFormatsBefore'] = sorted({target.get('PreferredScreenCaptureFormat', '')
+                                                    for target in targets})
+    for target in targets:
+        target['PreferredScreenCaptureFormat'] = 'screenshots'
+    copy = products / SCREENSHOTS_XCTESTRUN
+    copy.write_bytes(plistlib.dumps(plist))
+    receipt['screenshotsXctestrunSha256'] = hashlib.sha256(copy.read_bytes()).hexdigest()
+    return copy
+
+
 def finish_recording(video, path, receipt):
     try:
         if video.poll() is None:
@@ -200,6 +230,7 @@ def main():
                    '-derivedDataPath', str(args.derived_data), 'CODE_SIGNING_ALLOWED=NO']
         receipt['commands'].append(command)
         invoke(command, args.out / 'overlay-build.log')
+        xctestrun = screenshots_xctestrun(args.derived_data / 'Build/Products', receipt)
         receipt['appAfterOverlay'] = hashes(build / 'unipad.app')
         receipt['runner'] = hashes(build / 'unipadUITests-Runner.app')
         info = plistlib.loads((build / 'unipad.app/Info.plist').read_bytes())
@@ -241,8 +272,8 @@ def main():
         time.sleep(0.5)
         if video.poll() is not None:
             raise RuntimeError('Screen recording exited before UI execution; see recording.log')
-        command = ['xcodebuild', 'test-without-building', '-project', str(args.source / 'unipad.xcodeproj'),
-                   '-scheme', 'unipad', '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={args.udid}',
+        command = ['xcodebuild', 'test-without-building', '-xctestrun', str(xctestrun),
+                   '-destination', f'platform=iOS Simulator,id={args.udid}',
                    '-derivedDataPath', str(args.derived_data), '-parallel-testing-enabled', 'NO', '-enableCodeCoverage', 'NO',
                    '-collect-test-diagnostics', 'never',
                    '-only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit',

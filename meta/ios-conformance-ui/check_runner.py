@@ -39,6 +39,11 @@ class RunnerChecks(unittest.TestCase):
         (products / 'unipad.app/Info.plist').write_bytes(plistlib.dumps({
             'CFBundleShortVersionString': 'test', 'CFBundleVersion': 'test'}))
         (products / 'unipadUITests-Runner.app').mkdir()
+        self.xctestrun = self.build / 'Build/Products/unipad_unipad_iphonesimulator27.0-arm64-x86_64.xctestrun'
+        self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': [{
+            'Name': 'Test Scheme Action', 'TestTargets': [
+                {'BlueprintName': 'unipadTests', 'PreferredScreenCaptureFormat': 'screenRecording'},
+                {'BlueprintName': 'unipadUITests', 'PreferredScreenCaptureFormat': 'screenRecording'}]}]}))
         self.container = self.root / 'container'
         self.library = self.container / 'Documents/UniPack'
         self.library.mkdir(parents=True)
@@ -460,6 +465,50 @@ class RunnerChecks(unittest.TestCase):
                 self.run_tool()
         self.assert_cleaned()
         self.assert_failed()
+
+    def test_ui_runs_from_screenshots_xctestrun_copy(self):
+        original = self.xctestrun.read_bytes()
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        targets = plistlib.loads(copy.read_bytes())['TestConfigurations'][0]['TestTargets']
+        self.assertEqual([t['PreferredScreenCaptureFormat'] for t in targets], ['screenshots'] * 2)
+        self.assertEqual(self.xctestrun.read_bytes(), original, 'The built xctestrun must stay unchanged')
+        self.assertEqual(self.receipt()['screenCaptureFormatsBefore'], ['screenRecording'])
+        ui = next(c for c in self.commands if 'test-without-building' in c)
+        self.assertEqual(ui[ui.index('-xctestrun') + 1], str(copy))
+        self.assertNotIn('-scheme', ui)
+        self.assertNotIn('-project', ui)
+        for option in ['-collect-test-diagnostics', '-parallel-testing-enabled', '-enableCodeCoverage']:
+            self.assertIn(option, ui)
+        self.assertIn('-only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit', ui)
+
+    def test_rerun_ignores_previous_screenshots_copy(self):
+        self.run_tool()
+        self.commands.clear()
+        self.out = self.root / 'out-2'
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+
+    def assert_xctestrun_rejected_before_ui(self):
+        with self.assertRaisesRegex(RuntimeError, 'xctestrun'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse(any('recordVideo' in c for c in self.commands))
+
+    def test_missing_xctestrun_stops_before_ui(self):
+        self.xctestrun.unlink()
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_two_xctestruns_stop_before_ui(self):
+        self.xctestrun.with_name('other.xctestrun').write_bytes(self.xctestrun.read_bytes())
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_xctestrun_without_test_targets_stops_before_ui(self):
+        self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': []}))
+        self.assert_xctestrun_rejected_before_ui()
 
     def test_success_counts_product_files_and_preserves_library(self):
         self.run_tool()
