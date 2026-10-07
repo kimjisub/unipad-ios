@@ -9,13 +9,15 @@ import Testing
 /// it is given with the TEST_RUNNER_ prefix (`TEST_RUNNER_UNIPACK_CONFORMANCE_OUT=/path xcodebuild test …`):
 /// - UNIPACK_CONFORMANCE_OUT: the directory ios.json is written to. Without it, the simulator's
 ///   temporary directory; the path is printed as UNIPACK-CONFORMANCE-OUT.
-/// - UNIPACK_CONFORMANCE_ONLY: run only the cases whose id starts with this.
+/// - UNIPACK_CONFORMANCE_ONLY: run only the cases whose id starts with this (a partial run, see
+///   ConformanceReport.onlyPrefix).
 /// - UNIPACK_CONFORMANCE_DUMP: exactly `1` makes a record-only run (see ConformanceReport.recordOnly).
 /// - UNIPACK_CONFORMANCE_REPRO_DESTROY: exactly `1` enables `destroyWhileARepeatedSoundIsCycling`.
 @MainActor
 @Suite(.serialized)
 struct UniPackConformanceTests {
-    nonisolated static let caseIDs: [String] = (try? ConformanceCorpus.load())?.cases.map(\.id) ?? []
+    nonisolated static let caseIDs: [String] = ((try? ConformanceCorpus.load())?.cases.map(\.id) ?? [])
+        .filter { id in ConformanceReport.onlyPrefix.map(id.hasPrefix) ?? true }
 
     private func loadCorpus() throws -> ConformanceCorpus {
         try ConformanceCorpus.load()
@@ -46,7 +48,6 @@ struct UniPackConformanceTests {
 
     @Test(arguments: caseIDs)
     func conformanceCase(id: String) async throws {
-        if let only = ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ONLY"], !id.hasPrefix(only) { return }
         let corpus = try loadCorpus()
         let conformanceCase = try find(id, in: corpus)
         try corpus.verifyFingerprint(of: conformanceCase)
@@ -69,6 +70,7 @@ struct UniPackConformanceTests {
 
     @Test func thisRunAssertedEveryCase() {
         #expect(!ConformanceReport.recordOnly, "\(ConformanceReport.recordOnlyNotice)")
+        #expect(ConformanceReport.onlyPrefix == nil, "\(ConformanceReport.partialNotice)")
     }
 
     /// Reproduces unipad.io meta/unipack-conformance/RESULTS.md, "iOS: destroy() while a repeated sound
@@ -162,15 +164,41 @@ struct UniPackConformanceTests {
         #expect(open.classify(["loaded": true]).status == "unverified")
     }
 
-    @Test func aCaseTheCorpusSaysIOSCannotObserveIsUnverifiedAndNotRun() async throws {
+    @Test(arguments: ["KS-001", "PAL-001"])
+    func aCaseTheCorpusSaysIOSCannotObserveIsUnverifiedAndNotRun(id: String) async throws {
         let corpus = try loadCorpus()
-        let original = try find("KS-001", in: corpus)
+        let original = try find(id, in: corpus)
         let marked = ConformanceCase.replacing(original, unobserved: [ConformanceCorpus.platform: "not observable here"])
         guard case .unverified(let reason) = try await ConformanceHarness.actual(for: marked, corpus: corpus) else {
-            Issue.record("the case was run")
+            Issue.record("\(id) was run")
             return
         }
         #expect(reason == "not observable here")
+    }
+
+    @Test func soundsThatCannotBeDecodedFailARunCaseInsteadOfLeavingItUnverified() async throws {
+        let corpus = try loadCorpus()
+        let original = try find("RUN-S-001", in: corpus)
+        let undecodable = ConformanceCase.replacing(original, files: original.files.map {
+            $0.path.hasPrefix("sounds/") ? ConformanceFile(path: $0.path, text: "not a wav file", base64: nil, asset: nil) : $0
+        })
+        await #expect(throws: ConformanceHarness.ConformanceError.self) {
+            try await ConformanceHarness.actual(for: undecodable, corpus: corpus)
+        }
+    }
+
+    @Test(arguments: [#""expectation": "determind","#, ""])
+    func aCaseWithoutAKnownExpectationIsRefused(expectation: String) throws {
+        func corpus(_ expectation: String) -> Data {
+            Data(#"{"assets": {}, "cases": [{"id": "X-001", "layer": "parse", "title": "t", "fingerprint": "f", \#(expectation) "files": []}]}"#.utf8)
+        }
+        #expect(try ConformanceCorpus.parse(corpus(#""expectation": "undetermined","#), source: "test").cases.first?.determined == false)
+        #expect(throws: ConformanceCorpus.LoadError.self) { try ConformanceCorpus.parse(corpus(expectation), source: "test") }
+    }
+
+    @Test func anUnpairedSurrogateIsAParseError() throws {
+        #expect(try JSONValue(data: Data(#""\uD83D\uDE00""#.utf8)) == .string("\u{1F600}"))
+        #expect(throws: JSONValue.ParseError.self) { try JSONValue(data: Data(#""\uD800\u0041""#.utf8)) }
     }
 }
 

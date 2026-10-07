@@ -85,6 +85,13 @@ struct ConformanceCorpus {
             guard let id = value["id"]?.string, let layer = value["layer"]?.string, let title = value["title"]?.string,
                   let fingerprint = value["fingerprint"]?.string, let files = value["files"]?.array
             else { throw LoadError.invalid("a case lacks id, layer, title, fingerprint or files") }
+            // A misspelt or missing expectation must not quietly make a case undetermined, which never fails.
+            let determined: Bool
+            switch value["expectation"]?.string {
+            case "determined": determined = true
+            case "undetermined": determined = false
+            case let other: throw LoadError.invalid("\(id): expectation is \(other.map { "\"\($0)\"" } ?? "missing"), not determined or undetermined")
+            }
             let known = (value["known"]?.object ?? [:]).compactMapValues { pin -> ConformanceKnown? in
                 guard let status = pin["status"]?.string, let actual = pin["actual"], let note = pin["note"]?.string else { return nil }
                 return ConformanceKnown(status: status, actual: actual, note: note)
@@ -96,7 +103,7 @@ struct ConformanceCorpus {
                     return ConformanceFile(path: path, text: file["text"]?.string, base64: file["base64"]?.string, asset: file["asset"]?.string)
                 },
                 fingerprint: fingerprint,
-                determined: value["expectation"]?.string == "determined",
+                determined: determined,
                 expected: value["expected"],
                 question: value["question"]?.string,
                 scenario: value["scenario"]?.array ?? [],
