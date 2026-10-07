@@ -173,7 +173,7 @@ def check_model(overlay):
         'Overlay searches before the first load fills the list'
     assert 'return fail("Pack list shows no pack cards' in fail, \
         'A list without cards must fail through fail(), which records first'
-    loop = search[search.index('while true'):]
+    loop = search[search.index('while true'):search.index('/// While')]
     assert 'XCTFail(' not in loop, 'Every loop failure must go through fail(), which records first'
     assert 'return nil' not in loop, 'Every loop failure must go through fail(), which records first'
     assert loop.count('return fail(') == 3

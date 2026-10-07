@@ -3,6 +3,9 @@ import XCTest
 
 final class PlayPadLayoutTests: XCTestCase {
     private var app: XCUIApplication!
+    private var fixtureTitle: String { ProcessInfo.processInfo.environment["CONFORMANCE_TITLE"] ?? "Conformance" }
+    private var sample: String { ProcessInfo.processInfo.environment["CONFORMANCE_SAMPLE"] ?? "AP-001" }
+
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -26,7 +29,8 @@ final class PlayPadLayoutTests: XCTestCase {
 
     @MainActor
     private func exactFixtureTitle(in list: XCUIElement) -> XCUIElement? {
-        let matches = list.staticTexts.matching(NSPredicate(format: "label == %@", "Conformance"))
+        if fixtureTitle.isEmpty { return blankFixtureCard(in: list) }
+        let matches = list.staticTexts.matching(NSPredicate(format: "label == %@", fixtureTitle))
         // The guiding actions row is the list's last row, after every pack card.
         let listEnd = list.descendants(matching: .any).matching(identifier: "main.guide.download").firstMatch
         var swipes = 0
@@ -105,6 +109,71 @@ final class PlayPadLayoutTests: XCTestCase {
         from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
     }
 
+    // Empty Text is omitted from accessibility. A blank-title/producer card
+    // has only the two indicator labels. Preparation rejects a second blank title.
+    @MainActor
+    private func blankFixtureCard(in list: XCUIElement) -> XCUIElement? {
+        let listEnd = list.descendants(matching: .any).matching(identifier: "main.guide.download").firstMatch
+        XCTAssertTrue(waitForPackCards(in: list, listEnd: listEnd))
+        for _ in 0..<40 {
+            let labels = list.staticTexts.allElementsBoundByIndex.filter { $0.exists }
+            let candidates = labels.filter { indicator in
+                guard indicator.label == "LED ●", indicator.isHittable else { return false }
+                return !labels.contains { text in
+                    !text.label.isEmpty && text.label != "LED ●" && text.label != "AUTOPLAY ●"
+                        && abs(text.frame.midY - indicator.frame.midY) < 30
+                }
+            }
+            XCTAssertLessThanOrEqual(candidates.count, 1, "Ambiguous blank fixture card")
+            if let card = candidates.first { return card }
+            if listEnd.isHittable { break }
+            scrollOneStep(list)
+        }
+        XCTFail("Blank fixture card missing")
+        return nil
+    }
+
+    @MainActor
+    private func acceptPackWarning() {
+        let alert = app.alerts.firstMatch
+        if alert.waitForExistence(timeout: 2) {
+            evidence("02-warning")
+            let accept = alert.buttons.firstMatch
+            XCTAssertTrue(accept.exists)
+            accept.tap()
+        } else {
+            print("CONFORMANCE warning absent sample=\(sample)")
+        }
+    }
+
+    @MainActor
+    private func inspectChains(_ grid: XCUIElement) {
+        let frame = grid.frame
+        let cell = min(frame.width / 3, frame.height / 4)
+        let screen = app.windows.firstMatch.frame
+        // Chain bars contain eight square buttons centred on the 4x3 grid.
+        // Record points outside the screen; never tap another control there.
+        for chain in 1...24 {
+            let point: CGPoint
+            if chain <= 8 {
+                point = CGPoint(x: frame.maxX + cell / 2,
+                                y: frame.midY - cell * 4 + cell * (CGFloat(chain - 1) + 0.5))
+            } else if chain <= 16 {
+                point = CGPoint(x: frame.midX - cell * 4 + cell * (CGFloat(16 - chain) + 0.5),
+                                y: frame.maxY + cell / 2)
+            } else {
+                point = CGPoint(x: frame.minX - cell / 2,
+                                y: frame.midY - cell * 4 + cell * (CGFloat(24 - chain) + 0.5))
+            }
+            let reachable = screen.contains(point)
+            print("CONFORMANCE chain=\(chain) point=\(point) onScreen=\(reachable)")
+            if reachable {
+                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: point.x, dy: point.y)).tap()
+                evidence("chain-\(chain)")
+            }
+        }
+    }
+
     @MainActor
     func testSyntheticPackInputAutoplayAndExit() throws {
         let list = app.scrollViews["main.packList"]
@@ -116,6 +185,7 @@ final class PlayPadLayoutTests: XCTestCase {
         XCTAssertTrue(play.waitForExistence(timeout: 5), "Pack selection did not expose Play")
         evidence("02-selected")
         play.tap()
+        acceptPackWarning()
 
         let grid = app.otherElements["playPadGrid"]
         XCTAssertTrue(grid.waitForExistence(timeout: 30), "Player missing")
@@ -141,19 +211,32 @@ final class PlayPadLayoutTests: XCTestCase {
         firstPad.press(forDuration: 2)
         print("CONFORMANCE release-end \(Date().timeIntervalSince1970)")
         evidence("04-input-released")
+        if sample == "KS-004" || sample == "KL-004" {
+            for index in 2...3 {
+                firstPad.press(forDuration: 1)
+                evidence("04-input-\(index)")
+            }
+        }
+        if sample == "INF-002" { inspectChains(grid) }
+
 
         menu.tap()
         let auto = app.buttons["Autoplay"]
-        XCTAssertTrue(auto.waitForExistence(timeout: 5), "Fixture must have autoplay")
-        evidence("05-autoplay-option")
-        print("CONFORMANCE autoplay-start \(Date().timeIntervalSince1970)")
-        auto.tap()
-        // AP-001 ends in 900 ms and removes transport in onEnd(). XCTest
-        // waits for app idle, so inspect the video for the transient transport.
-        XCTAssertTrue(grid.exists, "Player disappeared after Autoplay")
-        evidence("06-autoplay-returned-player")
-        sleep(2)
-        evidence("07-autoplay-after-sequence")
+        if auto.waitForExistence(timeout: 2) {
+            evidence("05-autoplay-option")
+            print("CONFORMANCE autoplay-start \(Date().timeIntervalSince1970)")
+            auto.tap()
+            XCTAssertTrue(grid.exists, "Player disappeared after Autoplay")
+            evidence("06-autoplay-returned-player")
+            sleep(2)
+            evidence("07-autoplay-after-sequence")
+        } else {
+            XCTAssertNotEqual(ProcessInfo.processInfo.environment["CONFORMANCE_HAS_AUTOPLAY"], "YES",
+                              "Autoplay file exists but menu item is missing")
+            evidence("05-no-autoplay-option")
+            print("CONFORMANCE autoplay skipped sample=\(sample)")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        }
 
         menu.tap()
         let quit = app.buttons["Quit"]
