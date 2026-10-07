@@ -72,7 +72,7 @@ struct UniPackConformanceTests {
     /// is cycling": the engine is destroyed 0 to 29 ms after a press whose sound repeats. Loop 3 is the
     /// corpus value (RUN-S-005: two repeats of 10 ms); loop 50 keeps the sound cycling for half a
     /// second. A destroy() that does not return ends the process after 20 s.
-    @Test
+    @Test(.enabled("Requires a usable audio engine") { try await ConformanceHarness.audioEngineIsUsable() })
     func destroyWhileARepeatedSoundIsCycling() async throws {
         let corpus = try loadCorpus()
         for round in 0..<30 {
