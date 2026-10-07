@@ -44,12 +44,15 @@ enables Feedback light and Trace Log. All approved samples use four rows and
 three columns, so pad input uses the product's square-cell centering calculation.
 The first pad is held for two seconds and released. KS-004 and KL-004 receive
 three presses. The video preserves the held state and transient LED changes.
-INF-002 additionally records and taps each of the 24 chain centres that lies
-on screen, with screenshots for review. Coordinates outside the window are
-recorded without tapping; a tap alone does not prove chain selection.
+INF-002 additionally records all 24 chain positions and taps each visible button,
+preferring its centre or the midpoint of its visible rectangle when clipped.
+Areas smaller than one point in either dimension are recorded without tapping
+to exclude floating-point slivers at the window edge. Screenshots require
+review: a tap alone does not prove chain selection or an unobstructed target.
 
 If the menu offers Autoplay, the test starts it and captures the player before
-and after the short sequence. If it is absent and the ZIP has no autoplay file,
+and two seconds later. AP-001 also captures ten seconds later to distinguish
+completion from a transient or stale screenshot. If it is absent and the ZIP has no autoplay file,
 the step is recorded as skipped. A missing item for a ZIP with an autoplay file
 fails. Menu → Quit must return to `main.packList` and remove `playPadGrid`.
 Screenshots and accessibility trees are retained XCTest attachments.

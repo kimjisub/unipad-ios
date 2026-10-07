@@ -152,7 +152,7 @@ final class PlayPadLayoutTests: XCTestCase {
         let cell = min(frame.width / 3, frame.height / 4)
         let screen = app.windows.firstMatch.frame
         // Chain bars contain eight square buttons centred on the 4x3 grid.
-        // Record points outside the screen; never tap another control there.
+        // Prefer centres, but also inspect the visible part of clipped buttons.
         for chain in 1...24 {
             let point: CGPoint
             if chain <= 8 {
@@ -165,10 +165,15 @@ final class PlayPadLayoutTests: XCTestCase {
                 point = CGPoint(x: frame.minX - cell / 2,
                                 y: frame.midY - cell * 4 + cell * (CGFloat(24 - chain) + 0.5))
             }
-            let reachable = screen.contains(point)
-            print("CONFORMANCE chain=\(chain) point=\(point) onScreen=\(reachable)")
+            let centreOnScreen = screen.contains(point)
+            let visible = CGRect(x: point.x - cell / 2, y: point.y - cell / 2,
+                                 width: cell, height: cell).intersection(screen)
+            // Floating-point rounding can leave a subpixel sliver at an edge.
+            let reachable = !visible.isNull && visible.width >= 1 && visible.height >= 1
+            let tapPoint = centreOnScreen ? point : CGPoint(x: visible.midX, y: visible.midY)
+            print("CONFORMANCE chain=\(chain) point=\(point) centreOnScreen=\(centreOnScreen) visible=\(visible) reachable=\(reachable) tapPoint=\(tapPoint)")
             if reachable {
-                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: point.x, dy: point.y)).tap()
+                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: tapPoint.x, dy: tapPoint.y)).tap()
                 evidence("chain-\(chain)")
             }
         }
@@ -199,7 +204,7 @@ final class PlayPadLayoutTests: XCTestCase {
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         evidence("03-player-idle")
 
-        // AP-001 is 4 rows x 3 columns, square pads. Match PadGridView's
+        // The approved samples have 4 rows x 3 columns, square pads. Match PadGridView's
         // centering calculation instead of assuming the legacy 8 x 8 layout.
         let frame = grid.frame
         let cell = min(frame.width / 3, frame.height / 4)
@@ -230,6 +235,12 @@ final class PlayPadLayoutTests: XCTestCase {
             evidence("06-autoplay-returned-player")
             sleep(2)
             evidence("07-autoplay-after-sequence")
+            if sample == "AP-001" {
+                // A later capture distinguishes completion from a transient or
+                // stale screenshot without changing the fixture's timing.
+                sleep(8)
+                evidence("07-autoplay-after-ten-seconds")
+            }
         } else {
             XCTAssertNotEqual(ProcessInfo.processInfo.environment["CONFORMANCE_HAS_AUTOPLAY"], "YES",
                               "Autoplay file exists but menu item is missing")
