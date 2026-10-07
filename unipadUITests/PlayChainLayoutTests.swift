@@ -37,7 +37,8 @@ final class PlayChainLayoutTests: XCTestCase {
         switch "\(Int(window.width))x\(Int(window.height))" {
         case "874x402": return window.insetBy(dx: 62, dy: 0).divided(atDistance: window.height - 20, from: .minYEdge).slice
         case "844x390": return window.insetBy(dx: 47, dy: 0).divided(atDistance: window.height - 21, from: .minYEdge).slice
-        case "1194x834": return window.divided(atDistance: window.height - 20, from: .minYEdge).slice
+        // iPad Pro 11-inch (M4), measured in a separate fullscreen UIKit window.
+        case "1210x834": return window.divided(atDistance: window.height - 25, from: .minYEdge).slice
         default: throw XCTSkip("no independent safe-area reference for \(window)")
         }
     }
