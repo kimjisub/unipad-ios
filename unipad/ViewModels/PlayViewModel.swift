@@ -139,6 +139,7 @@ final class PlayViewModel {
     private var ledListenerAdapter: LedListenerAdapter?
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
+    @ObservationIgnored private var autoPlayInterruption = AutoPlayInterruptionPolicy()
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
 
@@ -216,6 +217,7 @@ final class PlayViewModel {
             chain: chain,
             loadingListener: SoundLoadingAdapter(viewModel: self)
         )
+        soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {
             let adapter = LedListenerAdapter(viewModel: self)
@@ -800,6 +802,7 @@ final class PlayViewModel {
 
     func switchPlayMode(_ mode: PlayMode) {
         guard let runner = autoPlayRunner else { return }
+        autoPlayInterruption.userTookControl()
         let currentMode = playMode
 
         if mode == currentMode {
@@ -884,6 +887,16 @@ final class PlayViewModel {
     }
 
     func autoPlayResume() {
+        autoPlayInterruption.userTookControl()
+        resumeAutoPlay()
+    }
+
+    func autoPlayPause() {
+        autoPlayInterruption.userTookControl()
+        pauseAutoPlay()
+    }
+
+    private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
         runner.resetStepState()
@@ -901,7 +914,7 @@ final class PlayViewModel {
         runner.beforeStartPlaying = true
     }
 
-    func autoPlayPause() {
+    private func pauseAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
         padInit()
@@ -909,6 +922,19 @@ final class PlayViewModel {
         isAutoPlayPlaying = false
         if playMode == .stepPractice {
             runner.stepMode = true
+        }
+    }
+
+    private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
+        let playing = playMode != .none && autoPlayRunner?.playmode == true
+        switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
+        case .pause:
+            pauseAutoPlay()
+        case .resume:
+            // Autoplay may have been turned off while the session was away.
+            if playMode != .none { resumeAutoPlay() }
+        case nil:
+            break
         }
     }
 
@@ -1056,6 +1082,7 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        soundEngine?.appBecameActive()
         guard uiLoaded else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()
