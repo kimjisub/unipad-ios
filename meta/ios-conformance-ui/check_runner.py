@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import struct
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,19 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
+def box(kind, body):
+    return struct.pack('>I4s', 8 + len(body), kind) + body
+
+
+def movie(seconds=38, version=0):
+    """A minimal finalized movie: ftyp, moov/mvhd and mdat to the end of file."""
+    if version == 1:
+        mvhd = bytes([1, 0, 0, 0]) + bytes(16) + struct.pack('>IQ', 600, 600 * seconds)
+    else:
+        mvhd = bytes(4) + bytes(8) + struct.pack('>II', 600, 600 * seconds)
+    return box(b'ftyp', b'qt  ') + box(b'moov', box(b'mvhd', mvhd + bytes(80))) + box(b'mdat', b'frames' * 10)
+
+
 class RunnerChecks(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(dir=os.environ['PAPERCLIP_RUN_SCRATCH_DIR'])
@@ -39,6 +53,13 @@ class RunnerChecks(unittest.TestCase):
         (products / 'unipad.app/Info.plist').write_bytes(plistlib.dumps({
             'CFBundleShortVersionString': 'test', 'CFBundleVersion': 'test'}))
         (products / 'unipadUITests-Runner.app').mkdir()
+        self.xctestrun = self.build / 'Build/Products/unipad_unipad_iphonesimulator27.0-arm64.xctestrun'
+        self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': [{
+            'Name': 'Test Scheme Action', 'TestTargets': [
+                {'BlueprintName': 'unipadTests', 'PreferredScreenCaptureFormat': 'screenRecording'},
+                {'BlueprintName': 'unipadUITests', 'PreferredScreenCaptureFormat': 'screenRecording'}]}]}))
+        os.utime(self.xctestrun, (0, 0))
+        self.built_xctestruns = [self.xctestrun]
         self.container = self.root / 'container'
         self.library = self.container / 'Documents/UniPack'
         self.library.mkdir(parents=True)
@@ -76,6 +97,10 @@ class RunnerChecks(unittest.TestCase):
             log.write_text('fake command: ' + repr(command))
         if self.fail_command and self.fail_command(command):
             raise RuntimeError('injected command failure')
+        if 'build-for-testing' in command:
+            for xctestrun in self.built_xctestruns:
+                if xctestrun.exists():
+                    os.utime(xctestrun)
         output = str(self.container) if 'get_app_container' in command else ''
         return subprocess.CompletedProcess(command, 0, output, '')
 
@@ -94,13 +119,22 @@ class RunnerChecks(unittest.TestCase):
                 pass
 
             def wait(self, timeout=None):
-                if owner.recording_mode == 'timeout' and self.returncode is None:
+                mode = owner.recording_mode
+                video = Path(command[-1])
+                if mode.startswith('hung') and self.returncode is None:
+                    # simctl finalizes (or not) the file, then never exits.
+                    video.write_bytes(movie() if mode == 'hung-finalized' else movie()[:-5])
+                if mode == 'frozen' or (mode in ('timeout', 'hung-finalized', 'hung-cut-off')
+                                        and self.returncode is None):
+                    # 'frozen' ignores even SIGKILL, so every wait times out.
                     raise subprocess.TimeoutExpired(command, timeout)
-                self.returncode = 1 if owner.recording_mode == 'early-exit' else (self.returncode or 0)
-                if owner.recording_mode == 'ok':
-                    Path(command[-1]).write_bytes(b'fake video')
-                elif owner.recording_mode == 'empty':
-                    Path(command[-1]).touch()
+                if mode in ('ok', 'version-1', 'cut-off', 'nonzero') and self.returncode is None:
+                    data = movie(version=1 if mode == 'version-1' else 0)
+                    video.write_bytes(data[:-5] if mode == 'cut-off' else data)
+                elif mode == 'empty':
+                    video.touch()
+                if self.returncode is None:
+                    self.returncode = 1 if mode in ('early-exit', 'nonzero') else 0
                 return self.returncode
 
             def kill(self):
@@ -392,12 +426,65 @@ class RunnerChecks(unittest.TestCase):
         self.assert_failed()
         self.assertEqual(self.receipt()['cleanupErrors'][0]['step'], 'recording')
 
+    def test_recorder_frozen_through_kill_still_cleans_and_records_failure(self):
+        self.recording_mode = 'frozen'
+        with self.assertRaises(Exception):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        receipt = self.receipt()
+        self.assertEqual(receipt['cleanupErrors'][0]['step'], 'recording')
+        self.assertIn('TimeoutExpired', receipt['cleanupErrors'][0]['error'])
+
     def test_recording_early_failure_rejected(self):
         self.recording_mode = 'early-exit'
         with self.assertRaisesRegex(RuntimeError, 'recording'):
             self.run_tool()
         self.assert_cleaned()
         self.assert_failed()
+
+    def test_recorder_hung_after_finalized_movie_accepted(self):
+        self.recording_mode = 'hung-finalized'
+        self.run_tool()
+        self.assert_cleaned()
+        receipt = self.receipt()
+        self.assertTrue(receipt['success'])
+        self.assertTrue(receipt['recordingHungAfterStop'])
+        self.assertEqual(receipt['recordingExitCode'], -9)
+        self.assertEqual(receipt['recordingSeconds'], 38)
+
+    def test_recorder_hung_with_cut_off_movie_rejected(self):
+        self.recording_mode = 'hung-cut-off'
+        with self.assertRaisesRegex(RuntimeError, 'recording'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertIsNone(self.receipt()['recordingSeconds'])
+
+    def test_cut_off_movie_rejected(self):
+        self.recording_mode = 'cut-off'
+        with self.assertRaisesRegex(RuntimeError, 'recording'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+
+    def test_finalized_movie_with_nonzero_exit_rejected(self):
+        self.recording_mode = 'nonzero'
+        with self.assertRaisesRegex(RuntimeError, 'recording'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+
+    def test_version_1_movie_header_read(self):
+        self.recording_mode = 'version-1'
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['recordingSeconds'], 38)
+
+    def test_movie_without_header_has_no_duration(self):
+        path = self.root / 'frames-only.mp4'
+        path.write_bytes(box(b'ftyp', b'qt  ') + box(b'mdat', b'frames'))
+        self.assertIsNone(runner.movie_seconds(path))
 
     def test_missing_video_rejected(self):
         self.recording_mode = 'missing'
@@ -460,6 +547,65 @@ class RunnerChecks(unittest.TestCase):
                 self.run_tool()
         self.assert_cleaned()
         self.assert_failed()
+
+    def test_ui_runs_from_screenshots_xctestrun_copy(self):
+        original = self.xctestrun.read_bytes()
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        targets = plistlib.loads(copy.read_bytes())['TestConfigurations'][0]['TestTargets']
+        self.assertEqual([t['PreferredScreenCaptureFormat'] for t in targets], ['screenshots'] * 2)
+        self.assertEqual(self.xctestrun.read_bytes(), original, 'The built xctestrun must stay unchanged')
+        self.assertEqual(self.receipt()['screenCaptureFormatsBefore'], ['screenRecording'])
+        ui = next(c for c in self.commands if 'test-without-building' in c)
+        self.assertEqual(ui[ui.index('-xctestrun') + 1], str(copy))
+        self.assertNotIn('-scheme', ui)
+        self.assertNotIn('-project', ui)
+        for option in ['-collect-test-diagnostics', '-parallel-testing-enabled', '-enableCodeCoverage']:
+            self.assertIn(option, ui)
+        self.assertIn('-only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit', ui)
+
+    def test_rerun_ignores_previous_screenshots_copy(self):
+        self.run_tool()
+        self.commands.clear()
+        self.out = self.root / 'out-2'
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+
+    def assert_xctestrun_rejected_before_ui(self):
+        with self.assertRaisesRegex(RuntimeError, 'xctestrun'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse(any('recordVideo' in c for c in self.commands))
+
+    def test_missing_xctestrun_stops_before_ui(self):
+        self.xctestrun.unlink()
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_two_xctestruns_from_overlay_build_stop_before_ui(self):
+        other = self.xctestrun.with_name('other.xctestrun')
+        other.write_bytes(self.xctestrun.read_bytes())
+        self.built_xctestruns.append(other)
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_xctestrun_from_earlier_build_ignored(self):
+        # A generic-destination build leaves an arm64-x86_64 file in the same folder.
+        earlier = self.xctestrun.with_name('unipad_unipad_iphonesimulator27.0-arm64-x86_64.xctestrun')
+        earlier.write_bytes(self.xctestrun.read_bytes())
+        os.utime(earlier, (0, 0))
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['xctestrun'], self.xctestrun.name)
+
+    def test_xctestrun_not_written_by_overlay_build_stops_before_ui(self):
+        self.built_xctestruns = []
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_xctestrun_without_test_targets_stops_before_ui(self):
+        self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': []}))
+        self.assert_xctestrun_rejected_before_ui()
 
     def test_success_counts_product_files_and_preserves_library(self):
         self.run_tool()
