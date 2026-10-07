@@ -12,6 +12,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import signal
+import struct
 import subprocess
 import time
 import zipfile
@@ -143,17 +144,21 @@ def check_product(source):
     return len(baseline_files)
 
 
-def screenshots_xctestrun(products, receipt):
+def screenshots_xctestrun(products, built_since, receipt):
     """Copy the built xctestrun with XCTest's own screen recording turned off.
 
     When the test runner stops its recording twice, the host's SimRenderServer
     crashes and CoreSimulator shuts the simulator down right after a passing
     test. Screenshots keep XCTest's failure evidence without that recording;
     the walkthrough video comes from simctl. Product files stay unchanged.
+    Every build-for-testing rewrites its xctestrun; files left by builds for
+    other destinations in the same derived data are older and ignored.
     """
-    built = sorted(p for p in products.glob('*.xctestrun') if p.name != SCREENSHOTS_XCTESTRUN)
+    built = sorted(p for p in products.glob('*.xctestrun')
+                   if p.name != SCREENSHOTS_XCTESTRUN and p.stat().st_mtime >= built_since)
     if len(built) != 1:
-        raise RuntimeError(f'Expected one built xctestrun in {products}; found {[p.name for p in built]}')
+        raise RuntimeError(f'Expected one xctestrun written by the overlay build in {products}; '
+                           f'found {[p.name for p in built]}')
     plist = plistlib.loads(built[0].read_bytes())
     targets = [target for configuration in plist.get('TestConfigurations', [])
                for target in configuration.get('TestTargets', [])]
@@ -171,19 +176,70 @@ def screenshots_xctestrun(products, receipt):
     return copy
 
 
+def movie_seconds(path):
+    """Duration from a finalized QuickTime/MP4 movie header, or None.
+
+    A finalized file is a chain of top-level boxes that ends exactly at the
+    end of the file and holds both the frames (`mdat`) and the movie header
+    (`moov/mvhd`); an interrupted or cut-off recording fails one of these.
+    """
+    data = path.read_bytes()
+
+    def boxes(start, end):
+        while start + 8 <= end:
+            size, kind = struct.unpack('>I4s', data[start:start + 8])
+            header = 8
+            if size == 1 and start + 16 <= end:
+                size, header = struct.unpack('>Q', data[start + 8:start + 16])[0], 16
+            elif size == 0:
+                size = end - start
+            if size < header or start + size > end:
+                return
+            yield kind, start + header, start + size
+            start += size
+
+    top = list(boxes(0, len(data)))
+    kinds = {kind for kind, _, _ in top}
+    if not top or top[-1][2] != len(data) or not {b'moov', b'mdat'} <= kinds:
+        return None
+    for kind, body, end in top:
+        if kind != b'moov':
+            continue
+        for inner, header, _ in boxes(body, end):
+            if inner == b'mvhd':
+                if data[header] == 1:
+                    timescale, duration = struct.unpack('>IQ', data[header + 20:header + 32])
+                else:
+                    timescale, duration = struct.unpack('>II', data[header + 12:header + 20])
+                return duration / timescale if timescale else None
+    return None
+
+
 def finish_recording(video, path, receipt):
+    hung = False
     try:
         if video.poll() is None:
             video.send_signal(signal.SIGINT)
-        code = video.wait(timeout=30)
+        try:
+            code = video.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            # simctl can finalize the movie and then never exit (seen 2026-10-07);
+            # the file below decides whether the recording is usable.
+            hung = True
+            video.kill()
+            code = video.wait(timeout=10)
     except Exception:
         # A hung recorder must not block library cleanup or device return.
         video.kill()
         video.wait(timeout=10)
         raise
     receipt['recordingExitCode'] = code
-    if code != 0 or not path.is_file() or path.stat().st_size == 0:
-        raise RuntimeError(f'Screen recording failed or missing: exit={code}; {path}')
+    receipt['recordingHungAfterStop'] = hung
+    seconds = movie_seconds(path) if path.is_file() else None
+    receipt['recordingSeconds'] = seconds
+    if (code != 0 and not hung) or not seconds:
+        raise RuntimeError(f'Screen recording failed, missing or not finalized: exit={code}; '
+                           f'hung={hung}; seconds={seconds}; {path}')
     receipt['recordingSha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
     receipt['recordingBytes'] = path.stat().st_size
 
@@ -229,8 +285,9 @@ def main():
                    '-destination', f'platform=iOS Simulator,id={args.udid}',
                    '-derivedDataPath', str(args.derived_data), 'CODE_SIGNING_ALLOWED=NO']
         receipt['commands'].append(command)
+        build_started = time.time()
         invoke(command, args.out / 'overlay-build.log')
-        xctestrun = screenshots_xctestrun(args.derived_data / 'Build/Products', receipt)
+        xctestrun = screenshots_xctestrun(args.derived_data / 'Build/Products', build_started, receipt)
         receipt['appAfterOverlay'] = hashes(build / 'unipad.app')
         receipt['runner'] = hashes(build / 'unipadUITests-Runner.app')
         info = plistlib.loads((build / 'unipad.app/Info.plist').read_bytes())

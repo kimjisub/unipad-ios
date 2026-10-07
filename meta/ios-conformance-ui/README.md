@@ -138,8 +138,10 @@ recording twice the Mac's `SimRenderServer` crashes and CoreSimulator shuts the
 simulator down. A run on iOS 26.3.1 passed its test, then lost the device: the
 UI command hit its timeout, the walkthrough was empty and the fixture stayed in
 the library. `-collect-test-diagnostics never` does not stop that recording.
-After the overlay build, `run.py` requires exactly one built `.xctestrun` in
-`<derived-data>/Build/Products`, writes `conformance-screenshots.xctestrun`
+After the overlay build, `run.py` requires exactly one `.xctestrun` in
+`<derived-data>/Build/Products` written by that build (every build-for-testing
+rewrites its file; one left by an earlier build for another destination, such as
+`generic/platform=iOS Simulator`, is older and ignored), writes `conformance-screenshots.xctestrun`
 beside it (`__TESTROOT__` is that folder) with every test target set to
 `screenshots`, and runs:
 
@@ -156,7 +158,8 @@ The built `.xctestrun`, product files, app and runner are not changed; failure
 screenshots remain XCTest attachments, and the walkthrough still comes from
 `simctl io recordVideo`. The receipt records the built file's name and SHA-256,
 its capture formats before the change, and the copy's SHA-256. A missing,
-second or target-less `.xctestrun` stops before recording and UI execution.
+second or target-less `.xctestrun` from the overlay build stops before recording
+and UI execution.
 Before staging, titles are read from every immediate directory under
 `Documents/UniPack` with the baseline's metadata rules: case-insensitive `info`
 filenames, UTF-8 (optional BOM), BOM-marked UTF-16, EUC-KR or CP949, trimmed
@@ -176,8 +179,18 @@ resolves the current app data container again (Xcode can relocate it),
 compares all pre-existing library hashes, and calls `devices.py down` even when
 pack validation, UI execution or recording fails. Recording finalization has a
 30-second timeout followed by forced recorder termination; the remaining cleanup
-steps and receipt save are attempted independently. Missing/empty video or a
-nonzero recorder exit is a failure. `receipt.json` records execution and cleanup
+steps and receipt save are attempted independently. The video must be a
+finalized movie: top-level boxes that end exactly at the end of the file, frames
+(`mdat`) and a movie header (`moov/mvhd`) with a positive duration, which the
+receipt records as `recordingSeconds`. A missing, empty, cut-off or unfinalized
+video, or a nonzero recorder exit, is a failure. On 2026-10-07 `simctl io
+recordVideo` (CoreSimulator 1174.9.2) wrote a finalized movie on SIGINT and then
+never exited, in this tool and on its own with no test running; on 2026-10-02 it
+exited 0. When the recorder is still running 30 seconds after SIGINT it is
+killed, `recordingHungAfterStop` is true, `recordingExitCode` is -9, and the run
+passes only if the finalized-movie check passes. The killed recorder can leave a
+`walkthrough.mp4.sb-*` temporary file beside the video; review `walkthrough.mp4`.
+`receipt.json` records execution and cleanup
 errors and device return after those steps finish. If the current app container
 cannot be resolved, the fixture is preserved for inspection and the run fails;
 it never guesses a deletion path. If a failure occurs before starting `run.py`, return the device
@@ -215,10 +228,12 @@ These checks use fake external commands and run-owned temporary files to cover
 Xcode-generated files after a baseline build and on overlay reruns,
 source/theme additions, deletions and changes, project/overlay changes, symbolic
 links, exact-overlay reruns, empty baseline lists, folder collisions, missing packs, fixture extraction
-and UI command failure, recorder launch/exit/timeout/missing-video failures,
+and UI command failure, recorder launch/exit/timeout/missing-video failures, a recorder that hangs
+after a finalized movie (accepted) or a cut-off one (rejected), cut-off movies,
+version-1 movie headers,
 container lookup failure and device-return failure, and the screenshots
-`.xctestrun` copy (command, unchanged original, reruns, missing/second/empty
-file). They do not launch an app.
+`.xctestrun` copy (command, unchanged original, reruns, an older file from another
+destination, and a missing, second or empty file from the overlay build). They do not launch an app.
 They also check duplicate titles in differently named folders, spaced keys,
 uppercase metadata filenames, JSON titles, BOMs and legacy encodings,
 unreadable metadata, and a wrong title after extraction. The three other-title
