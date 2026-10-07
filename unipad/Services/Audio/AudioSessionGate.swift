@@ -137,7 +137,10 @@ final class AudioSessionGate {
             return .stillSuppressed
         case .ready:
             return .recovered
-        case .interrupted, .needsRecovery:
+        case .interrupted:
+            lastInterruptedAttempt = hooks.now()
+            return attemptRecovery()
+        case .needsRecovery:
             return attemptRecovery()
         }
     }

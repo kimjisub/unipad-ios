@@ -59,7 +59,8 @@ final class SoundEngine {
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
 
     enum Interruption: Equatable {
-        case began
+        /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
+        case began(whileInterrupted: Bool)
         case ended(shouldResume: Bool)
     }
     /// Told after the engine has handled an interruption, so the screen can pause what it drives.
@@ -372,25 +373,19 @@ final class SoundEngine {
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
-        let interruption: Interruption
         switch type {
-        case .began:
-            interruption = .began
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            interruption = .ended(shouldResume: options.contains(.shouldResume))
-        @unknown default:
-            interruption = .began
-        }
-        switch interruption {
-        case .began:
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            gate.interruptionEnded(shouldResume: shouldResume)
+            onInterruption?(.ended(shouldResume: shouldResume))
+        default:
+            // `.began`, and any type a later SDK adds: suppressing is the safe side.
+            let whileInterrupted = gate.state == .interrupted
             gate.interruptionBegan()
             releaseAllVoices()
-        case .ended(let shouldResume):
-            gate.interruptionEnded(shouldResume: shouldResume)
+            onInterruption?(.began(whileInterrupted: whileInterrupted))
         }
-        onInterruption?(interruption)
     }
 
     func handleMediaServicesReset() {
