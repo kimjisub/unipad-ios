@@ -1367,33 +1367,23 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
     }
 
     func onStart() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = true
-        }
+        viewModel?.autoMappingActive = true
     }
 
     func onGetWorkSize(_ size: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingMax = size
-        }
+        viewModel?.autoMappingMax = size
     }
 
     func onProgress(_ progress: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingProgress = progress
-        }
+        viewModel?.autoMappingProgress = progress
     }
 
     func onDone() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.finishAutoMapping()
-        }
+        viewModel?.finishAutoMapping()
     }
 
     func onException(_ error: Error) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.toastMessage = error.localizedDescription
-            self?.viewModel?.finishAutoMapping()
-        }
+        viewModel?.toastMessage = error.localizedDescription
+        viewModel?.finishAutoMapping()
     }
 }
