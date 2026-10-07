@@ -7,6 +7,7 @@ struct ChainBarView: View {
     let chainItems: [ChannelManager.Item?]
     let visibleChainIndices: Set<Int>
     let cellSize: CGFloat
+    let selectedChain: Int
     let theme: ThemeResourcesProtocol
     let onChainTap: (Int) -> Void
 
@@ -22,6 +23,14 @@ struct ChainBarView: View {
                     onTap: { if index >= PlayViewModel.chainIndexOffset { onChainTap(index - PlayViewModel.chainIndexOffset) } }
                 )
                 .frame(width: cellSize, height: cellSize)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier(index < PlayViewModel.chainIndexOffset
+                    ? "playFunction.\(index + 1)" : "playChain.\(index - PlayViewModel.chainIndexOffset + 1)")
+                .accessibilityLabel(Text("\(index < PlayViewModel.chainIndexOffset ? index + 1 : index - PlayViewModel.chainIndexOffset + 1)"))
+                // Read the current model value, including MIDI/autoplay changes, rather than
+                // remembering which button was last tapped.
+                .accessibilityValue(index == selectedChain + PlayViewModel.chainIndexOffset ? "selected" : "unselected")
+                .accessibilityAddTraits(.isButton)
             } else {
                 Color.clear
                     .frame(width: cellSize, height: cellSize)
@@ -30,27 +39,11 @@ struct ChainBarView: View {
 
         switch axis {
         case .vertical:
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                VStack(spacing: 0) { buttons }
-                    .frame(
-                        width: cellSize,
-                        height: cellSize * CGFloat(chainIndices.count),
-                        alignment: .center
-                    )
-                Spacer(minLength: 0)
-            }
+            VStack(spacing: 0) { buttons }
+                .frame(width: cellSize, height: cellSize * CGFloat(chainIndices.count))
         case .horizontal:
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                HStack(spacing: 0) { buttons }
-                    .frame(
-                        width: cellSize * CGFloat(chainIndices.count),
-                        height: cellSize,
-                        alignment: .center
-                    )
-                Spacer(minLength: 0)
-            }
+            HStack(spacing: 0) { buttons }
+                .frame(width: cellSize * CGFloat(chainIndices.count), height: cellSize)
         }
     }
 }
