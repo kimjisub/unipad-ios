@@ -53,7 +53,7 @@ class RunnerChecks(unittest.TestCase):
         (products / 'unipad.app/Info.plist').write_bytes(plistlib.dumps({
             'CFBundleShortVersionString': 'test', 'CFBundleVersion': 'test'}))
         (products / 'unipadUITests-Runner.app').mkdir()
-        self.xctestrun = self.build / 'Build/Products/unipad_unipad_iphonesimulator27.0-arm64-x86_64.xctestrun'
+        self.xctestrun = self.build / 'Build/Products/unipad_unipad_iphonesimulator27.0-arm64.xctestrun'
         self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': [{
             'Name': 'Test Scheme Action', 'TestTargets': [
                 {'BlueprintName': 'unipadTests', 'PreferredScreenCaptureFormat': 'screenRecording'},
@@ -124,7 +124,9 @@ class RunnerChecks(unittest.TestCase):
                 if mode.startswith('hung') and self.returncode is None:
                     # simctl finalizes (or not) the file, then never exits.
                     video.write_bytes(movie() if mode == 'hung-finalized' else movie()[:-5])
-                if mode in ('timeout', 'hung-finalized', 'hung-cut-off') and self.returncode is None:
+                if mode == 'frozen' or (mode in ('timeout', 'hung-finalized', 'hung-cut-off')
+                                        and self.returncode is None):
+                    # 'frozen' ignores even SIGKILL, so every wait times out.
                     raise subprocess.TimeoutExpired(command, timeout)
                 if mode in ('ok', 'version-1', 'cut-off', 'nonzero') and self.returncode is None:
                     data = movie(version=1 if mode == 'version-1' else 0)
@@ -423,6 +425,16 @@ class RunnerChecks(unittest.TestCase):
         self.assert_cleaned()
         self.assert_failed()
         self.assertEqual(self.receipt()['cleanupErrors'][0]['step'], 'recording')
+
+    def test_recorder_frozen_through_kill_still_cleans_and_records_failure(self):
+        self.recording_mode = 'frozen'
+        with self.assertRaises(Exception):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        receipt = self.receipt()
+        self.assertEqual(receipt['cleanupErrors'][0]['step'], 'recording')
+        self.assertIn('TimeoutExpired', receipt['cleanupErrors'][0]['error'])
 
     def test_recording_early_failure_rejected(self):
         self.recording_mode = 'early-exit'
