@@ -238,6 +238,24 @@ struct AudioSessionGateTests {
         #expect(!gate.isPlaybackSuppressed)
     }
 
+    /// A failed try on coming back counts as the latest try, so the pad pressed right after it does
+    /// not call into the audio server again.
+    @Test func aFailedTryOnComingBackHoldsOffThePadRightAfterIt() {
+        let (audio, gate) = began()
+        audio.canActivate = false
+        audio.clock = AudioSessionGate.interruptedRetryInterval * 5
+
+        #expect(gate.appBecameActive() == .stillSuppressed)
+        #expect(audio.activateCount == 1)
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1, "the pad right after coming back tried again")
+
+        audio.clock += AudioSessionGate.interruptedRetryInterval
+        audio.canActivate = true
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+    }
+
     @Test func comingBackAfterAnEndWithoutShouldResumeRecovers() {
         let (audio, gate) = began()
         gate.interruptionEnded(shouldResume: false)

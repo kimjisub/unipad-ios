@@ -117,6 +117,63 @@ extension PlayUsageRecordTests {
             }
         }
 
+        /// A call that was answered pauses autoplay and never sends its end; the app takes the session
+        /// back when it returns and the user leaves autoplay paused. A later short interruption (Siri,
+        /// an alarm) that ends with `.shouldResume` is a new one and must not start autoplay again.
+        @Test func aLaterShortInterruptionDoesNotRestartAutoplayPausedByACallThatNeverEnded() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                s.vm.onResume()
+                #expect(!engine.isPlaybackSuppressed)
+                #expect(!s.vm.isAutoPlayPlaying)
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                let pausedAt = runner.progress
+                try await Task.sleep(for: .milliseconds(500))
+
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay the user left paused started by itself")
+                #expect(runner.progress == pausedAt)
+            }
+        }
+
+        /// The user played and paused autoplay again while the call was on; their last choice stands.
+        @Test func autoplayTheUserPausedDuringTheInterruptionStaysPaused() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                s.vm.autoPlayResume()
+                s.vm.autoPlayPause()
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+
+                #expect(!s.vm.isAutoPlayPlaying, "the end of the interruption overrode the user's pause")
+            }
+        }
+
+        /// The user switched to step practice while the call was on; the end must not turn it back
+        /// into a playing autoplay.
+        @Test func aModeChosenDuringTheInterruptionIsKept() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                s.vm.switchPlayMode(.stepPractice)
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+
+                #expect(s.vm.playMode == .stepPractice)
+                #expect(!s.vm.isAutoPlayPlaying, "step practice was turned into a playing autoplay")
+            }
+        }
+
         @Test func anInterruptionReleasesALoopingPad() async throws {
             try await Self.run { s in
                 try await s.loadReady()
