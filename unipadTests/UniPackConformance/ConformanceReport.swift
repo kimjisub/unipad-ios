@@ -24,17 +24,40 @@ final class ConformanceReport: @unchecked Sendable {
 
     /// UNIPACK_CONFORMANCE_ONLY: only the cases whose id starts with it run; the others are left out of
     /// ios.json (unverified in the report). Such a run is never a pass either.
-    static var onlyPrefix: String? { ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ONLY"] }
+    static var onlyPrefix: String? { onlyPrefix(in: ProcessInfo.processInfo.environment) }
+    static func onlyPrefix(in environment: [String: String]) -> String? {
+        environment["UNIPACK_CONFORMANCE_ONLY"].flatMap { $0.isEmpty ? nil : $0 }
+    }
     static var partialNotice: String { "UNIPACK_CONFORMANCE_ONLY=\(onlyPrefix ?? ""): partial run, only cases starting with it were run" }
 
     /// What ios.json says about this run: "checked" only when every case ran and was asserted.
     static var assertions: String { recordOnly ? "skipped" : onlyPrefix != nil ? "partial" : "checked" }
 
+    private let outputDirectory: URL?
+    init(directory: URL? = nil) { outputDirectory = directory }
+
     private var directory: URL {
+        if let outputDirectory { return outputDirectory }
         if let configured = ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_OUT"] {
             return URL(fileURLWithPath: configured, isDirectory: true)
         }
         return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("unipack-conformance", isDirectory: true)
+    }
+
+    /// A corpus error replaces an earlier report, so readers cannot mistake stale cases for this run.
+    func loadCorpus(using load: () throws -> ConformanceCorpus = { try ConformanceCorpus.load() }) throws -> ConformanceCorpus {
+        do { return try load() }
+        catch {
+            lock.lock()
+            entries.removeAll()
+            write(.object([
+                "platform": .string(ConformanceCorpus.platform), "assertions": "failed",
+                "generatedAt": .string(ISO8601DateFormatter().string(from: Date())),
+                "error": .string(String(describing: error)), "cases": [],
+            ]))
+            lock.unlock()
+            throw error
+        }
     }
 
     func record(_ conformanceCase: ConformanceCase, outcome: ConformanceOutcome, actual: JSONValue, corpus: ConformanceCorpus) {
@@ -62,6 +85,10 @@ final class ConformanceReport: @unchecked Sendable {
             "generatedAt": .string(ISO8601DateFormatter().string(from: Date())), "assertions": .string(Self.assertions),
             "cases": .array(cases),
         ])
+        write(report)
+    }
+
+    private func write(_ report: JSONValue) {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try Data((report.serialized() + "\n").utf8).write(to: directory.appendingPathComponent("\(ConformanceCorpus.platform).json"), options: .atomic)
