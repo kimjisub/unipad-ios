@@ -60,36 +60,11 @@ struct LedRunnerTests {
         }
     }
 
-    final class ManualClock: @unchecked Sendable {
-        private let lock = NSLock()
-        private var now: Int64 = 1000
-        private var reads = 0
-
-        func read() -> Int64 {
-            lock.lock()
-            defer { lock.unlock() }
-            reads += 1
-            return now
-        }
-
-        var wasRead: Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            return reads > 0
-        }
-
-        func advance(_ ms: Int64) {
-            lock.lock()
-            now += ms
-            lock.unlock()
-        }
-    }
-
     @MainActor
     struct Harness {
         let runner: LedRunner
         let recorder: Recorder
-        let clock: ManualClock
+        let clock: TestManualClock
         let chain: ChainObserver
 
         func tick(_ ms: Int64 = 4) {
@@ -119,7 +94,7 @@ struct LedRunnerTests {
     )
 
     private func start(_ leds: [Int: LedAnimation]) async throws -> Harness {
-        let clock = ManualClock()
+        let clock = TestManualClock()
         let recorder = Recorder()
         let chain = ChainObserver()
         chain.range = 0...1

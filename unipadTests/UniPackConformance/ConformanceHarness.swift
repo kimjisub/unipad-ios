@@ -5,6 +5,18 @@ import Foundation
 enum ConformanceActual {
     case value(JSONValue)
     case unverified(String)
+    case failed(String)
+
+    func classified(for conformanceCase: ConformanceCase) -> (outcome: ConformanceOutcome, actual: JSONValue) {
+        switch self {
+        case .failed(let reason):
+            return (ConformanceOutcome(status: "fail", unexpected: true, detail: reason), .null)
+        case .unverified(let reason):
+            return (ConformanceOutcome(status: "unverified", unexpected: false, detail: reason), .null)
+        case .value(let actual):
+            return (conformanceCase.classify(actual), actual)
+        }
+    }
 }
 
 /// The calls under test. The self-checks replace one of them to prove a case fails without it.
@@ -15,6 +27,7 @@ struct ConformanceDeps {
         if !pack.criticalError { pack.loadDetailWithProgress { _, _, _ in } }
         return pack
     }
+    var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
 }
 
@@ -128,6 +141,22 @@ enum ConformanceHarness {
         return try await runScenario(conformanceCase, pack: pack, root: root, deps: deps)
     }
 
+    /// Conditions are evaluated before the self-checks, so an unavailable engine is a skipped test.
+    @MainActor
+    static func audioEngineIsUsable() async throws -> Bool {
+        let corpus = try ConformanceCorpus.load()
+        guard let sample = corpus.cases.first(where: { $0.id == "RUN-S-001" }) else {
+            throw ConformanceError.harness("RUN-S-001 is not in the corpus")
+        }
+        switch try await actual(for: sample, corpus: corpus) {
+        case .unverified(let reason):
+            print("UNIPACK-CONFORMANCE-SELF-CHECK-SKIPPED \(reason)")
+            return false
+        case .failed(let reason): throw ConformanceError.harness(reason)
+        case .value: return true
+        }
+    }
+
     private static func write(_ files: [ConformanceFile], to root: URL, corpus: ConformanceCorpus) throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         for file in files {
@@ -174,56 +203,6 @@ enum ConformanceHarness {
         }
     }
 
-    /// SoundEngine reports an engine it cannot start (session or AVAudioEngine) before `onStart`, and a
-    /// pack none of whose sounds decode after it; only the first is this platform's limit.
-    private final class LoadListener: SoundEngine.LoadingListener {
-        private(set) var finished = false
-        private(set) var engineFailure: Error?
-        private(set) var loadFailure: Error?
-        private var started = false
-        func onStart(soundCount: Int) { started = true }
-        func onProgressTick() {}
-        func onEnd() { finished = true }
-        func onException(_ error: Error) {
-            if started { loadFailure = error } else { engineFailure = error }
-            finished = true
-        }
-    }
-
-    private final class ManualClock: @unchecked Sendable {
-        private let lock = NSLock()
-        private var now: Int64 = 1000
-        private var reads = 0
-
-        func read() -> Int64 {
-            lock.lock()
-            defer { lock.unlock() }
-            reads += 1
-            return now
-        }
-
-        var wasRead: Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            return reads > 0
-        }
-
-        func advance(_ ms: Int64) {
-            lock.lock()
-            now += ms
-            lock.unlock()
-        }
-    }
-
-    /// How long a scenario's sounds are given to end before the engine is destroyed. destroy() called
-    /// while a repeated sound (keySound loop above 1) is still cycling does not return in the simulator:
-    /// AVAudioPlayerNode.stop() and the completion handler SoundEngine.soundOn schedules wait for each
-    /// other. The corpus sounds last 10 ms and repeat at most twice, so this outlasts them; it keeps the
-    /// hang out of the cases, it does not fix it. Input, stacks and retries: unipad.io
-    /// meta/unipack-conformance/RESULTS.md, "iOS: destroy() while a repeated sound is cycling", and
-    /// `destroyWhileARepeatedSoundIsCycling` in the tests.
-    static let soundSettleNanoseconds: UInt64 = 300_000_000
-
     /// The sound engine is the real AVAudioEngine-backed one: it has no seam to observe which sound it
     /// started, so a started sound is the queue head the engine reads (`soundGet`) at a press that
     /// bumped `playsStarted`, and the queue rotation and wormhole switch are the engine's own.
@@ -236,7 +215,7 @@ enum ConformanceHarness {
             if log.recordsChain { log.add(["chain", .int(current)]) }
         }
 
-        let clock = ManualClock()
+        let clock = TestManualClock()
         // LedRunner keeps its listener weakly, so the recorder must be held here.
         let recorder = LedRecorder(log: log)
         let led = LedRunner(unipack: pack, listener: recorder, chain: chain, loopDelay: 3600, clock: { clock.read() })
@@ -247,24 +226,23 @@ enum ConformanceHarness {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
 
-        let loading = LoadListener()
+        let loading = TestSoundLoadListener()
         let engine = SoundEngine(unipack: pack, chain: chain, loadingListener: loading)
         var engineDestroyed = false
-        /// Leaves the scenario: the LED loop is cancelled and the engine destroyed once its sounds ended.
+        /// Cancels the LED loop and destroys the engine, including sounds still repeating.
         func shutDown() async {
             led.stop()
             guard !engineDestroyed else { return }
             engineDestroyed = true
-            try? await Task.sleep(nanoseconds: soundSettleNanoseconds)
             engine.destroy()
         }
 
         func play() async throws -> ConformanceActual {
-            let loadDeadline = Date().addingTimeInterval(20)
+            let loadDeadline = Date().addingTimeInterval(deps.soundLoadTimeout)
             while !loading.finished, Date() < loadDeadline { try await Task.sleep(nanoseconds: 10_000_000) }
             if let failure = loading.engineFailure { return .unverified("the audio engine is not usable here: \(failure.localizedDescription)") }
-            if let failure = loading.loadFailure { throw ConformanceError.harness("\(conformanceCase.id): no sound of the pack could be loaded: \(failure)") }
-            guard loading.finished else { throw ConformanceError.harness("sounds did not finish loading within 20 s") }
+            if let failure = loading.loadFailure { return .failed("\(conformanceCase.id): no sound of the pack could be loaded: \(failure)") }
+            guard loading.finished else { return .failed("sounds did not finish loading within \(deps.soundLoadTimeout) s") }
 
             let hasWormhole = (0..<pack.chain).contains { c in
                 (0..<pack.buttonX).contains { x in (0..<pack.buttonY).contains { y in pack.soundTable?[c][x][y]?.contains { $0.wormhole != Sound.noWormhole } == true } }
@@ -358,7 +336,7 @@ enum ConformanceHarness {
         let pack = ConformanceDeps().load(root)
         let chain = ChainObserver()
         chain.range = 0...max(pack.chain - 1, 0)
-        let loading = LoadListener()
+        let loading = TestSoundLoadListener()
         let engine = SoundEngine(unipack: pack, chain: chain, loadingListener: loading)
         let loadDeadline = Date().addingTimeInterval(20)
         while !loading.finished, Date() < loadDeadline { try await Task.sleep(nanoseconds: 10_000_000) }
