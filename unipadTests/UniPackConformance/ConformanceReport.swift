@@ -22,6 +22,14 @@ final class ConformanceReport: @unchecked Sendable {
     static var recordOnly: Bool { ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_DUMP"] == "1" }
     static let recordOnlyNotice = "UNIPACK_CONFORMANCE_DUMP=1: record-only run, no case was asserted"
 
+    /// UNIPACK_CONFORMANCE_ONLY: only the cases whose id starts with it run; the others are left out of
+    /// ios.json (unverified in the report). Such a run is never a pass either.
+    static var onlyPrefix: String? { ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ONLY"] }
+    static var partialNotice: String { "UNIPACK_CONFORMANCE_ONLY=\(onlyPrefix ?? ""): partial run, only cases starting with it were run" }
+
+    /// What ios.json says about this run: "checked" only when every case ran and was asserted.
+    static var assertions: String { recordOnly ? "skipped" : onlyPrefix != nil ? "partial" : "checked" }
+
     private var directory: URL {
         if let configured = ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_OUT"] {
             return URL(fileURLWithPath: configured, isDirectory: true)
@@ -38,6 +46,7 @@ final class ConformanceReport: @unchecked Sendable {
             print("UNIPACK-CONFORMANCE-CORPUS \(JSONValue.object(["platform": .string(ConformanceCorpus.platform), "corpusSha256": .string(corpus.sha256), "cases": .int(corpus.cases.count), "source": .string(corpus.source)]).serialized())")
             print("UNIPACK-CONFORMANCE-OUT \(directory.path)")
             if Self.recordOnly { print("UNIPACK-CONFORMANCE-RECORD-ONLY \(Self.recordOnlyNotice)") }
+            if Self.onlyPrefix != nil { print("UNIPACK-CONFORMANCE-PARTIAL \(Self.partialNotice)") }
         }
         print("UNIPACK-CONFORMANCE \(JSONValue.object(["platform": .string(ConformanceCorpus.platform), "id": .string(conformanceCase.id), "fingerprint": .string(conformanceCase.fingerprint), "status": .string(outcome.status)]).serialized())")
         flush(corpus: corpus)
@@ -50,7 +59,7 @@ final class ConformanceReport: @unchecked Sendable {
         }
         let report = JSONValue.object([
             "platform": .string(ConformanceCorpus.platform), "corpusSha256": .string(corpus.sha256),
-            "generatedAt": .string(ISO8601DateFormatter().string(from: Date())), "assertions": .string(Self.recordOnly ? "skipped" : "checked"),
+            "generatedAt": .string(ISO8601DateFormatter().string(from: Date())), "assertions": .string(Self.assertions),
             "cases": .array(cases),
         ])
         do {

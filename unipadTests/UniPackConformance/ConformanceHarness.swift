@@ -110,10 +110,10 @@ enum ConformanceHarness {
 
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
+        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
         if conformanceCase.layer == "palette" {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
         }
-        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
 
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("unipad-conformance-\(UUID().uuidString)", isDirectory: true)
@@ -174,14 +174,18 @@ enum ConformanceHarness {
         }
     }
 
+    /// SoundEngine reports an engine it cannot start (session or AVAudioEngine) before `onStart`, and a
+    /// pack none of whose sounds decode after it; only the first is this platform's limit.
     private final class LoadListener: SoundEngine.LoadingListener {
         private(set) var finished = false
-        private(set) var failure: Error?
-        func onStart(soundCount: Int) {}
+        private(set) var engineFailure: Error?
+        private(set) var loadFailure: Error?
+        private var started = false
+        func onStart(soundCount: Int) { started = true }
         func onProgressTick() {}
         func onEnd() { finished = true }
         func onException(_ error: Error) {
-            failure = error
+            if started { loadFailure = error } else { engineFailure = error }
             finished = true
         }
     }
@@ -258,7 +262,8 @@ enum ConformanceHarness {
         func play() async throws -> ConformanceActual {
             let loadDeadline = Date().addingTimeInterval(20)
             while !loading.finished, Date() < loadDeadline { try await Task.sleep(nanoseconds: 10_000_000) }
-            if let failure = loading.failure { return .unverified("the audio engine is not usable here: \(failure.localizedDescription)") }
+            if let failure = loading.engineFailure { return .unverified("the audio engine is not usable here: \(failure.localizedDescription)") }
+            if let failure = loading.loadFailure { throw ConformanceError.harness("\(conformanceCase.id): no sound of the pack could be loaded: \(failure)") }
             guard loading.finished else { throw ConformanceError.harness("sounds did not finish loading within 20 s") }
 
             let hasWormhole = (0..<pack.chain).contains { c in
@@ -359,7 +364,7 @@ enum ConformanceHarness {
         while !loading.finished, Date() < loadDeadline { try await Task.sleep(nanoseconds: 10_000_000) }
 
         let before = engine.playsStarted
-        if loading.finished, loading.failure == nil { engine.soundOn(x: 0, y: 0) }
+        if loading.finished, loading.engineFailure == nil, loading.loadFailure == nil { engine.soundOn(x: 0, y: 0) }
         let started = engine.playsStarted > before
         if started { try await Task.sleep(nanoseconds: delayNanoseconds) }
 

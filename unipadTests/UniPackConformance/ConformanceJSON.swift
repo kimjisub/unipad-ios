@@ -137,6 +137,7 @@ enum JSONValue: Equatable {
                     if (0xD800..<0xDC00).contains(code), position + 1 < bytes.count, bytes[position] == UInt8(ascii: "\\"), bytes[position + 1] == UInt8(ascii: "u") {
                         position += 2
                         let low = try hex4()
+                        guard (0xDC00..<0xE000).contains(low) else { throw ParseError.unexpected(position) }
                         code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
                     }
                     guard let scalar = Unicode.Scalar(code) else { throw ParseError.unexpected(position) }
