@@ -16,8 +16,11 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad",
 /// The state machine:
 ///
 /// - `.ready`: normal. `ensureEngineRunning()` costs one enum check plus `isEngineRunning()`.
-/// - `.interrupted`: another app holds the session (a call came in). Nothing is attempted, because
-///   nothing can succeed; `ensureEngineRunning()` returns false straight away.
+/// - `.interrupted`: another app holds the session (a call came in). An interruption does not always
+///   end with a notification (after an answered call the app is suspended and may never hear it), so
+///   the app coming back (`appBecameActive()`) and a pad press, at most once per
+///   `interruptedRetryInterval`, try to take the session back. Activation fails while the other app
+///   still holds it, and the state stays `.interrupted` for the next try.
 /// - `.needsRecovery`: the session is ours again but the engine is not known to render yet. The next
 ///   `ensureEngineRunning()` re-activates the session and restarts the engine, and only a verified
 ///   running engine clears the state.
@@ -49,7 +52,14 @@ final class AudioSessionGate {
         var activateSession: () throws -> Void
         /// `AVAudioEngine.start()`.
         var startEngine: () throws -> Void
+        /// A monotonic clock in seconds, for spacing the retries of an interrupted session.
+        var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     }
+
+    /// How long pads stay ignored after an interruption began or after a pad's failed try to take the
+    /// session back. Activation is a synchronous call into the audio server that fails while a call
+    /// is on; this keeps it off most pad presses.
+    static let interruptedRetryInterval: TimeInterval = 1
 
     private let hooks: Hooks
     private(set) var state: State = .ready
@@ -58,6 +68,7 @@ final class AudioSessionGate {
     private(set) var suppressionLogCount = 0
     /// How often `mediaServicesWereReset` has been seen. Read by tests and by the PR description.
     private(set) var mediaServicesResetCount = 0
+    private var lastInterruptedAttempt: TimeInterval = 0
 
     var isPlaybackSuppressed: Bool { state != .ready }
 
@@ -71,6 +82,7 @@ final class AudioSessionGate {
     func interruptionBegan() {
         guard state != .shutDown else { return }
         state = .interrupted
+        lastInterruptedAttempt = hooks.now()
         suppressionLogCount = 0
         logSuppressionOnce("audio session interrupted; playback suppressed")
     }
@@ -116,6 +128,20 @@ final class AudioSessionGate {
         }
     }
 
+    /// The app is in front again (`UIApplication.didBecomeActiveNotification`). Apple's guidance:
+    /// the end of an interruption is not guaranteed, so re-activate when the app comes back.
+    @discardableResult
+    func appBecameActive() -> Recovery {
+        switch state {
+        case .shutDown:
+            return .stillSuppressed
+        case .ready:
+            return .recovered
+        case .interrupted, .needsRecovery:
+            return attemptRecovery()
+        }
+    }
+
     /// The owner is tearing down. Terminal: a notification that arrives afterwards must not restart a
     /// destroyed engine.
     func shutDown() {
@@ -136,8 +162,13 @@ final class AudioSessionGate {
             state = .needsRecovery
             return attemptRecovery() == .recovered
         case .interrupted:
-            logSuppressionOnce("pad ignored: the audio session is interrupted")
-            return false
+            let now = hooks.now()
+            guard now - lastInterruptedAttempt >= Self.interruptedRetryInterval else {
+                logSuppressionOnce("pad ignored: the audio session is interrupted")
+                return false
+            }
+            lastInterruptedAttempt = now
+            return attemptRecovery() == .recovered
         case .needsRecovery:
             return attemptRecovery() == .recovered
         case .shutDown:

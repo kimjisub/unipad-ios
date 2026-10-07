@@ -139,6 +139,7 @@ final class PlayViewModel {
     private var ledListenerAdapter: LedListenerAdapter?
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
+    @ObservationIgnored private var autoPlayInterruption = AutoPlayInterruptionPolicy()
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
 
@@ -216,6 +217,7 @@ final class PlayViewModel {
             chain: chain,
             loadingListener: SoundLoadingAdapter(viewModel: self)
         )
+        soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {
             let adapter = LedListenerAdapter(viewModel: self)
@@ -912,6 +914,19 @@ final class PlayViewModel {
         }
     }
 
+    private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
+        let playing = playMode != .none && autoPlayRunner?.playmode == true
+        switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
+        case .pause:
+            autoPlayPause()
+        case .resume:
+            // The user may have turned autoplay off while the session was away.
+            if playMode != .none { autoPlayResume() }
+        case nil:
+            break
+        }
+    }
+
     func autoPlayPrev() {
         padInit()
         ledInit()
@@ -1056,6 +1071,7 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        soundEngine?.appBecameActive()
         guard uiLoaded else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()

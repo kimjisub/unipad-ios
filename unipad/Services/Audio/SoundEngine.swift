@@ -57,6 +57,13 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+
+    enum Interruption: Equatable {
+        case began
+        case ended(shouldResume: Bool)
+    }
+    /// Told after the engine has handled an interruption, so the screen can pause what it drives.
+    var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
     /// Test observations for finite-loop completion and stale callback cancellation.
@@ -365,18 +372,25 @@ final class SoundEngine {
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
+        let interruption: Interruption
         switch type {
         case .began:
-            gate.interruptionBegan()
-            releaseAllVoices()
+            interruption = .began
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            gate.interruptionEnded(shouldResume: options.contains(.shouldResume))
+            interruption = .ended(shouldResume: options.contains(.shouldResume))
         @unknown default:
+            interruption = .began
+        }
+        switch interruption {
+        case .began:
             gate.interruptionBegan()
             releaseAllVoices()
+        case .ended(let shouldResume):
+            gate.interruptionEnded(shouldResume: shouldResume)
         }
+        onInterruption?(interruption)
     }
 
     func handleMediaServicesReset() {
@@ -384,6 +398,12 @@ final class SoundEngine {
         gate.mediaServicesWereReset()
     }
     #endif
+
+    /// The app is in front again. A call that was answered may never send the end of its
+    /// interruption, so this is where the session is taken back in that case.
+    func appBecameActive() {
+        gate.appBecameActive()
+    }
 
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
     /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
