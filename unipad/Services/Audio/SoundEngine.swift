@@ -76,6 +76,12 @@ final class SoundEngine {
     /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
     /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
     var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+    /// Takes the session back when playback recovers. A test seam: a simulator always hands the
+    /// session back, so tests replace this to make it refuse as another app holding it would.
+    var activateSessionForRecovery: () throws -> Void {
+        get { gate.hooks.activateSession }
+        set { gate.hooks.activateSession = newValue }
+    }
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)

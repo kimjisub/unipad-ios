@@ -301,6 +301,51 @@ struct AudioSessionGateTests {
         #expect(!gate.isPlaybackSuppressed)
     }
 
+    /// After a pad's failed try to bring the engine back (a session that cannot be activated after an
+    /// interruption ended, a play() that raised, a route change the engine did not survive), autoplay
+    /// and fast pad presses must not call into the audio server on every pad.
+    @Test func aFailedRecoveryIsRetriedAtMostOncePerInterval() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        audio.canActivate = false
+        let interval = AudioSessionGate.interruptedRetryInterval
+        audio.clock = 100
+        gate.playbackFailed(reason: "player did not see an IO cycle")
+
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1, "the first pad after the failure did not try at once")
+        for _ in 0..<32 {
+            audio.clock += interval / 64
+            _ = gate.ensureEngineRunning()
+        }
+        #expect(audio.activateCount == 1, "every pad press called into the audio server")
+        #expect(gate.state == .needsRecovery)
+        #expect(gate.suppressionLogCount == 1)
+
+        audio.clock = 100 + interval
+        audio.canActivate = true
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+        #expect(!gate.isPlaybackSuppressed)
+    }
+
+    /// The spacing only follows a failed try: once something changed (here the route), the next pad
+    /// tries again at once instead of waiting out the interval.
+    @Test func aNewProblemAfterAFailedRecoveryIsTriedAtOnce() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        audio.canActivate = false
+        gate.playbackFailed(reason: "player did not see an IO cycle")
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1)
+
+        audio.canActivate = true
+        audio.engineRunning = false
+        gate.playbackFailed(reason: "player did not see an IO cycle")
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+    }
+
     @Test func comingBackAfterShutDownStartsNothing() {
         let audio = FakeAudio()
         let gate = AudioSessionGate(hooks: audio.hooks)

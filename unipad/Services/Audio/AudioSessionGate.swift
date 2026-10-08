@@ -61,7 +61,8 @@ final class AudioSessionGate {
     /// is on; this keeps it off most pad presses.
     static let interruptedRetryInterval: TimeInterval = 1
 
-    private let hooks: Hooks
+    /// Settable so the owner's tests can make the session refuse, which a simulator never does.
+    var hooks: Hooks
     private(set) var state: State = .ready
     /// Counts the log lines the gate has written about the current suppression, so a stuck session
     /// does not write one line per pad press.
