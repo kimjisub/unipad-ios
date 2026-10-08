@@ -164,7 +164,9 @@ struct AudioSessionGateTests {
         #expect(gate.isPlaybackSuppressed)
         #expect(!gate.ensureEngineRunning())
 
-        // The audio server comes back: the session is configured again and the engine restarted.
+        // The audio server comes back: a pad after the retry interval configures the session again
+        // and restarts the engine.
+        audio.clock += AudioSessionGate.interruptedRetryInterval
         audio.canActivate = true
         #expect(gate.ensureEngineRunning())
         #expect(audio.startCount == 1)

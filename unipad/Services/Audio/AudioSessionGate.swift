@@ -23,7 +23,9 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad",
 ///   still holds it, and the state stays `.interrupted` for the next try.
 /// - `.needsRecovery`: the session is ours again but the engine is not known to render yet. The next
 ///   `ensureEngineRunning()` re-activates the session and restarts the engine, and only a verified
-///   running engine clears the state.
+///   running engine clears the state. After a pad's try fails, the next pads wait
+///   `interruptedRetryInterval` before trying again (autoplay presses pads many times a second); a
+///   notification lets the next pad try at once.
 /// - `.shutDown`: the owner called `destroy()`. Terminal; a late notification cannot resurrect it.
 final class AudioSessionGate {
     // SoundEngine releases this gate during its main-actor teardown. Destruction only releases
@@ -70,6 +72,8 @@ final class AudioSessionGate {
     /// How often `mediaServicesWereReset` has been seen. Read by tests and by the PR description.
     private(set) var mediaServicesResetCount = 0
     private var lastInterruptedAttempt: TimeInterval = 0
+    /// When a pad's try to recover from `.needsRecovery` last failed; nil once something changed.
+    private var lastFailedPadRecovery: TimeInterval?
 
     var isPlaybackSuppressed: Bool { state != .ready }
 
@@ -96,7 +100,7 @@ final class AudioSessionGate {
     @discardableResult
     func interruptionEnded(shouldResume: Bool) -> Recovery {
         guard state != .shutDown else { return .stillSuppressed }
-        state = .needsRecovery
+        enterNeedsRecovery()
         guard shouldResume else { return .stillSuppressed }
         return attemptRecovery()
     }
@@ -108,7 +112,7 @@ final class AudioSessionGate {
     func mediaServicesWereReset() -> Recovery {
         guard state != .shutDown else { return .stillSuppressed }
         mediaServicesResetCount += 1
-        state = .needsRecovery
+        enterNeedsRecovery()
         suppressionLogCount = 0
         logSuppressionOnce("media services were reset; rebuilding the audio session before playing")
         return attemptRecovery()
@@ -122,9 +126,10 @@ final class AudioSessionGate {
             return .stillSuppressed
         case .ready:
             if hooks.isEngineRunning() { return .recovered }
-            state = .needsRecovery
+            enterNeedsRecovery()
             return attemptRecovery()
         case .needsRecovery:
+            enterNeedsRecovery()
             return attemptRecovery()
         }
     }
@@ -142,6 +147,7 @@ final class AudioSessionGate {
             lastInterruptedAttempt = hooks.now()
             return attemptRecovery()
         case .needsRecovery:
+            enterNeedsRecovery()
             return attemptRecovery()
         }
     }
@@ -163,8 +169,8 @@ final class AudioSessionGate {
         case .ready:
             if hooks.isEngineRunning() { return true }
             // The engine stopped without a notification we saw.
-            state = .needsRecovery
-            return attemptRecovery() == .recovered
+            enterNeedsRecovery()
+            return padRecovery()
         case .interrupted:
             let now = hooks.now()
             guard now - lastInterruptedAttempt >= Self.interruptedRetryInterval else {
@@ -174,7 +180,12 @@ final class AudioSessionGate {
             lastInterruptedAttempt = now
             return attemptRecovery() == .recovered
         case .needsRecovery:
-            return attemptRecovery() == .recovered
+            if let lastFailed = lastFailedPadRecovery,
+               hooks.now() - lastFailed < Self.interruptedRetryInterval {
+                logSuppressionOnce("pad ignored: the last try to restart the audio engine failed")
+                return false
+            }
+            return padRecovery()
         case .shutDown:
             return false
         }
@@ -184,12 +195,24 @@ final class AudioSessionGate {
     /// re-activate before the next pad.
     func playbackFailed(reason: String) {
         guard state != .shutDown else { return }
-        state = .needsRecovery
+        enterNeedsRecovery()
         suppressionLogCount = 0
         logSuppressionOnce("play() failed (\(reason)); the engine will be restarted before the next pad")
     }
 
     // MARK: - Recovery
+
+    /// Something changed, so the next pad may try to recover at once.
+    private func enterNeedsRecovery() {
+        state = .needsRecovery
+        lastFailedPadRecovery = nil
+    }
+
+    private func padRecovery() -> Bool {
+        let recovered = attemptRecovery() == .recovered
+        lastFailedPadRecovery = recovered ? nil : hooks.now()
+        return recovered
+    }
 
     private func attemptRecovery() -> Recovery {
         do {
