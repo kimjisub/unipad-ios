@@ -248,6 +248,16 @@ class RunnerChecks(unittest.TestCase):
             self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_TITLE'], 'Conformance')
             self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_HAS_AUTOPLAY'], 'NO')
 
+    def test_autoplay_file_parameter_reaches_every_target(self):
+        with zipfile.ZipFile(self.pack, 'a') as archive:
+            archive.writestr('AutoPlay', 'c 1\n')
+        self.run_tool()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        for configuration in plistlib.loads(copy.read_bytes())['TestConfigurations']:
+            for target in configuration['TestTargets']:
+                self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_HAS_AUTOPLAY'], 'YES')
+        self.assertTrue(self.receipt()['hasAutoplayFile'])
+
     def test_conformance_number_suffix_allowed(self):
         self.assert_other_title_allowed(b'title=Conformance 2\n')
 
@@ -611,6 +621,37 @@ class RunnerChecks(unittest.TestCase):
         for option in ['-collect-test-diagnostics', '-parallel-testing-enabled', '-enableCodeCoverage']:
             self.assertIn(option, ui)
         self.assertIn('-only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit', ui)
+
+    def test_xctestrun_parameters_written_once(self):
+        original = plistlib.loads(self.xctestrun.read_bytes())
+        original['TestConfigurations'].append({
+            'TestTargets': [{'EnvironmentVariables': {'EXISTING': 'preserve'}}]})
+        self.xctestrun.write_bytes(plistlib.dumps(original))
+        original_bytes = self.xctestrun.read_bytes()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        writes = []
+        write_bytes = Path.write_bytes
+
+        def record_write(path, data):
+            if path == copy:
+                writes.append(data)
+            return write_bytes(path, data)
+
+        with patch.object(Path, 'write_bytes', record_write):
+            self.run_tool()
+        self.assertEqual(len(writes), 1, 'Configure capture and fixture parameters in one write')
+        configurations = plistlib.loads(writes[0])['TestConfigurations']
+        for configuration in configurations:
+            for target in configuration['TestTargets']:
+                expected = {'CONFORMANCE_TITLE': 'Conformance', 'CONFORMANCE_SAMPLE': 'TEST',
+                            'CONFORMANCE_HAS_AUTOPLAY': 'NO'}
+                if configuration == configurations[1]:
+                    expected['EXISTING'] = 'preserve'
+                self.assertEqual(target['EnvironmentVariables'], expected)
+                self.assertEqual(target['PreferredScreenCaptureFormat'], 'screenshots')
+        self.assertEqual(self.xctestrun.read_bytes(), original_bytes)
+        self.assertEqual(self.receipt()['screenshotsXctestrunSha256'],
+                         hashlib.sha256(writes[0]).hexdigest())
 
     def test_rerun_ignores_previous_screenshots_copy(self):
         self.run_tool()

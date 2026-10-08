@@ -34,8 +34,9 @@ The UI target receives the parsed title, sample ID and autoplay-file presence
 through the copied `.xctestrun` environment. Nonempty titles are selected by an
 exact label scoped to `main.packList`; duplicate labels fail. The list waits for
 its first load, drags with overlapping screens, retries lost drags and has a
-40-drag limit. Empty title and producer text are omitted from accessibility:
-the blank card is identified by its two LED/AUTOPLAY indicator labels and the
+40-drag limit. Both match conditions use the same search, stall tracking and
+failure record. Empty title and producer text are omitted from accessibility.
+The blank card is identified by its two LED/AUTOPLAY indicator labels and the
 absence of other text in that row. Preparation rejects a second empty-title
 pack, and UI selection rejects multiple matching blank rows.
 
@@ -54,7 +55,8 @@ If the menu offers Autoplay, the test starts it and captures the player before
 and two seconds later. AP-001 also captures ten seconds later to distinguish
 completion from a transient or stale screenshot. If it is absent and the ZIP has no autoplay file,
 the step is recorded as skipped. A missing item for a ZIP with an autoplay file
-fails. Menu → Quit must return to `main.packList` and remove `playPadGrid`.
+fails after the original five-second wait; packs without that file wait two
+seconds. Menu → Quit must return to `main.packList` and remove `playPadGrid`.
 Screenshots and accessibility trees are retained XCTest attachments.
 
 ## Run

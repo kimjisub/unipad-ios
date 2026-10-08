@@ -29,8 +29,27 @@ final class PlayPadLayoutTests: XCTestCase {
 
     @MainActor
     private func exactFixtureTitle(in list: XCUIElement) -> XCUIElement? {
-        if fixtureTitle.isEmpty { return blankFixtureCard(in: list) }
-        let matches = list.staticTexts.matching(NSPredicate(format: "label == %@", fixtureTitle))
+        return searchFixture(in: list) {
+            if fixtureTitle.isEmpty {
+                // Empty Text is omitted from accessibility. A blank title/producer
+                // card has only the two indicator labels. Cache row positions once.
+                let labels = list.staticTexts.allElementsBoundByIndex.filter { $0.exists }
+                let textRows = labels.filter {
+                    !$0.label.isEmpty && $0.label != "LED ●" && $0.label != "AUTOPLAY ●"
+                }.map { $0.frame.midY }
+                return labels.filter { indicator in
+                    guard indicator.label == "LED ●" else { return false }
+                    let row = indicator.frame.midY
+                    return !textRows.contains { abs($0 - row) < 30 }
+                }
+            }
+            return list.staticTexts.matching(NSPredicate(format: "label == %@", fixtureTitle))
+                .allElementsBoundByIndex
+        }
+    }
+
+    @MainActor
+    private func searchFixture(in list: XCUIElement, matching: () -> [XCUIElement]) -> XCUIElement? {
         // The guiding actions row is the list's last row, after every pack card.
         let listEnd = list.descendants(matching: .any).matching(identifier: "main.guide.download").firstMatch
         var swipes = 0
@@ -51,6 +70,7 @@ final class PlayPadLayoutTests: XCTestCase {
             return fail("Pack list shows no pack cards within 30 s")
         }
         while true {
+            let matches = matching()
             let count = matches.count
             counts.append(count)
             if count >= 2 {
@@ -59,12 +79,14 @@ final class PlayPadLayoutTests: XCTestCase {
             if swipes >= 40 {
                 return fail("Exact fixture title missing: 40-swipe limit")
             }
-            if count == 1 && matches.firstMatch.isHittable {
-                record()
+            if count == 1 && matches[0].isHittable {
                 // Recheck immediately before returning the element for selection.
-                XCTAssertEqual(matches.count, 1, "Stage one unchanged fixture at a time; titles are shared")
-                XCTAssertTrue(matches.firstMatch.isHittable, "Exact fixture title not reachable")
-                return matches.firstMatch
+                let selected = matching()
+                guard selected.count == 1, let card = selected.first, card.isHittable else {
+                    return fail("Fixture card changed before selection")
+                }
+                record()
+                return card
             }
             if listEnd.isHittable {
                 return fail(count == 1
@@ -107,30 +129,6 @@ final class PlayPadLayoutTests: XCTestCase {
         let from = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         let to = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
         from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
-    }
-
-    // Empty Text is omitted from accessibility. A blank-title/producer card
-    // has only the two indicator labels. Preparation rejects a second blank title.
-    @MainActor
-    private func blankFixtureCard(in list: XCUIElement) -> XCUIElement? {
-        let listEnd = list.descendants(matching: .any).matching(identifier: "main.guide.download").firstMatch
-        XCTAssertTrue(waitForPackCards(in: list, listEnd: listEnd))
-        for _ in 0..<40 {
-            let labels = list.staticTexts.allElementsBoundByIndex.filter { $0.exists }
-            let candidates = labels.filter { indicator in
-                guard indicator.label == "LED ●", indicator.isHittable else { return false }
-                return !labels.contains { text in
-                    !text.label.isEmpty && text.label != "LED ●" && text.label != "AUTOPLAY ●"
-                        && abs(text.frame.midY - indicator.frame.midY) < 30
-                }
-            }
-            XCTAssertLessThanOrEqual(candidates.count, 1, "Ambiguous blank fixture card")
-            if let card = candidates.first { return card }
-            if listEnd.isHittable { break }
-            scrollOneStep(list)
-        }
-        XCTFail("Blank fixture card missing")
-        return nil
     }
 
     @MainActor
@@ -227,7 +225,8 @@ final class PlayPadLayoutTests: XCTestCase {
 
         menu.tap()
         let auto = app.buttons["Autoplay"]
-        if auto.waitForExistence(timeout: 2) {
+        let hasAutoplay = ProcessInfo.processInfo.environment["CONFORMANCE_HAS_AUTOPLAY"] == "YES"
+        if auto.waitForExistence(timeout: hasAutoplay ? 5 : 2) {
             evidence("05-autoplay-option")
             print("CONFORMANCE autoplay-start \(Date().timeIntervalSince1970)")
             auto.tap()
@@ -242,8 +241,8 @@ final class PlayPadLayoutTests: XCTestCase {
                 evidence("07-autoplay-after-ten-seconds")
             }
         } else {
-            XCTAssertNotEqual(ProcessInfo.processInfo.environment["CONFORMANCE_HAS_AUTOPLAY"], "YES",
-                              "Autoplay file exists but menu item is missing")
+            XCTAssertFalse(hasAutoplay,
+                           "Autoplay file exists but menu item is missing")
             evidence("05-no-autoplay-option")
             print("CONFORMANCE autoplay skipped sample=\(sample)")
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()

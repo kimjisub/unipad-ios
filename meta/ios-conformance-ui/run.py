@@ -167,7 +167,7 @@ def check_product(source):
     return len(baseline_files)
 
 
-def screenshots_xctestrun(products, built_since, receipt):
+def screenshots_xctestrun(products, built_since, receipt, environment):
     """Copy the built xctestrun with XCTest's own screen recording turned off.
 
     When the test runner stops its recording twice, the host's SimRenderServer
@@ -193,6 +193,7 @@ def screenshots_xctestrun(products, built_since, receipt):
                                                     for target in targets})
     for target in targets:
         target['PreferredScreenCaptureFormat'] = 'screenshots'
+        target.setdefault('EnvironmentVariables', {}).update(environment)
     copy = products / SCREENSHOTS_XCTESTRUN
     copy.write_bytes(plistlib.dumps(plist))
     receipt['screenshotsXctestrunSha256'] = hashlib.sha256(copy.read_bytes()).hexdigest()
@@ -296,6 +297,9 @@ def main():
         evidence_out = args.out
         receipt['sample'], receipt['packSha256'] = approved_pack(args.pack)
         receipt['fixtureTitle'] = fixture_title(args.pack)
+        with zipfile.ZipFile(args.pack) as archive:
+            has_autoplay = any(n.lower() == 'autoplay' for n in archive.namelist())
+        receipt['hasAutoplayFile'] = has_autoplay
         staged_name = 'Conformance-' + os.environ['PAPERCLIP_RUN_ID']
         receipt['selectionTitle'] = receipt['fixtureTitle']
         # Check all product source/resource bytes before any build or launch.
@@ -312,7 +316,10 @@ def main():
         receipt['commands'].append(command)
         build_started = time.time()
         invoke(command, args.out / 'overlay-build.log')
-        xctestrun = screenshots_xctestrun(args.derived_data / 'Build/Products', build_started, receipt)
+        xctestrun = screenshots_xctestrun(args.derived_data / 'Build/Products', build_started, receipt, {
+            'CONFORMANCE_TITLE': receipt['selectionTitle'],
+            'CONFORMANCE_SAMPLE': receipt['sample'],
+            'CONFORMANCE_HAS_AUTOPLAY': 'YES' if has_autoplay else 'NO'})
         receipt['appAfterOverlay'] = hashes(build / 'unipad.app')
         receipt['runner'] = hashes(build / 'unipadUITests-Runner.app')
         info = plistlib.loads((build / 'unipad.app/Info.plist').read_bytes())
@@ -347,18 +354,6 @@ def main():
         receipt['stagedConformanceCount'] = len(conformance_folders(library, receipt['selectionTitle']))
         if receipt['stagedConformanceCount'] != 1:
             raise RuntimeError(f"Expected exactly one {receipt['selectionTitle']} title after staging; stop before UI execution")
-        with zipfile.ZipFile(args.pack) as archive:
-            has_autoplay = any(n.lower() == 'autoplay' for n in archive.namelist())
-        receipt['hasAutoplayFile'] = has_autoplay
-        plist = plistlib.loads(xctestrun.read_bytes())
-        for configuration in plist['TestConfigurations']:
-            for target in configuration['TestTargets']:
-                target.setdefault('EnvironmentVariables', {}).update({
-                    'CONFORMANCE_TITLE': receipt['selectionTitle'],
-                    'CONFORMANCE_SAMPLE': receipt['sample'],
-                    'CONFORMANCE_HAS_AUTOPLAY': 'YES' if has_autoplay else 'NO'})
-        xctestrun.write_bytes(plistlib.dumps(plist))
-        receipt['screenshotsXctestrunSha256'] = hashlib.sha256(xctestrun.read_bytes()).hexdigest()
         receipt['recordingStartedAt'] = time.time()
         with (args.out / 'recording.log').open('w') as recording_log:
             video = subprocess.Popen(['xcrun', 'simctl', 'io', args.udid, 'recordVideo', '--codec=h264',
