@@ -171,6 +171,10 @@ def check_model(overlay):
     assert 'if fixtureTitle.isEmpty {' in selection and 'label == %@' in selection
     assert selection.count('while true') == 1 and 'for _ in 0..<40' not in selection, \
         'Both title matchers must share one bounded search loop'
+    matchers = selection[:selection.index('private func searchFixture(')]
+    assert 'scrollOneStep(' not in matchers, 'Matchers must use the shared search for scrolling'
+    assert 'XCTFail(' not in matchers and 'XCTAssert' not in matchers, \
+        'Neither title matcher may bypass the shared failure record'
     start = swift.find('private func searchFixture(')
     assert start >= 0, 'Overlay still uses the original pre-scroll title assertion'
     search = swift[start:swift.index('func testSyntheticPackInputAutoplayAndExit', start)]
