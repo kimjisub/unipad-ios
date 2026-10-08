@@ -27,10 +27,13 @@ struct ChainBarView: View {
                 .accessibilityIdentifier(index < PlayViewModel.chainIndexOffset
                     ? "playFunction.\(index + 1)" : "playChain.\(index - PlayViewModel.chainIndexOffset + 1)")
                 .accessibilityLabel(Text("\(index < PlayViewModel.chainIndexOffset ? index + 1 : index - PlayViewModel.chainIndexOffset + 1)"))
-                // Read the current model value, including MIDI/autoplay changes, rather than
-                // remembering which button was last tapped.
-                .accessibilityValue(index == selectedChain + PlayViewModel.chainIndexOffset ? "selected" : "unselected")
-                .accessibilityAddTraits(.isButton)
+                // Selection follows the model when chain colors refresh the view.
+                .accessibilityAddTraits(index >= PlayViewModel.chainIndexOffset
+                    && index == selectedChain + PlayViewModel.chainIndexOffset ? .isSelected : [])
+                .accessibilityAddTraits(index >= PlayViewModel.chainIndexOffset ? .isButton : [])
+                // Function lights are not actionable chain buttons. Keep their identifiers
+                // available for layout checks without announcing a button action.
+                .accessibilityRemoveTraits(index < PlayViewModel.chainIndexOffset ? .isButton : [])
             } else {
                 Color.clear
                     .frame(width: cellSize, height: cellSize)

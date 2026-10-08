@@ -1,7 +1,11 @@
 import XCTest
 
-/// Install the unchanged 4x3, 24-chain Conformance pack and the bundled 8x8 Faded pack
-/// in Documents/UniPack before running. Missing fixtures fail this required regression check.
+/// Install only INF-002 (4x3, 24 chains, title Conformance) from the public corpus at
+/// https://github.com/kimjisub/unipad.io/tree/main/meta/unipack-conformance
+/// ZIP SHA-256: 55d178d318096b02e3f3642703fa1fdf2754bcad2a26221a5ab2dbf410bf4c3a.
+/// Also install the bundled 8x8 Faded pack in Documents/UniPack. Other corpus cases
+/// share the Conformance title: do not install them alongside INF-002. Missing or
+/// ambiguous fixtures fail this required regression check.
 final class PlayChainLayoutTests: XCTestCase {
     private let app = XCUIApplication()
 
@@ -54,9 +58,11 @@ final class PlayChainLayoutTests: XCTestCase {
         let bounds = safe.insetBy(dx: -1, dy: -1)
         let chains = (1...count).map { app.buttons["playChain.\($0)"] }
         let visibleChains = pro ? (1...24).map { app.buttons["playChain.\($0)"] } : chains
-        let functions = pro ? (1...8).map { app.buttons["playFunction.\($0)"] } : []
+        let functions = pro ? (1...8).map { app.descendants(matching: .any)["playFunction.\($0)"] } : []
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "playChain.")).count, pro ? 24 : count)
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "playFunction.")).count, pro ? 8 : 0)
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "playFunction.")).count, pro ? 8 : 0)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "playFunction.")).count, 0,
+                       "function lights must not be announced as chain buttons")
         XCTAssertTrue(bounds.contains(grid.frame), "pads leave the safe area")
         XCTAssertEqual(grid.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 1)
         XCTAssertEqual(grid.frame.width / CGFloat(columns), grid.frame.height / CGFloat(rows), accuracy: 0.01)
@@ -76,17 +82,17 @@ final class PlayChainLayoutTests: XCTestCase {
         for number in 1...count {
             let reference = number == 4 ? min(5, count) : 4
             chains[reference - 1].tap()
-            XCTAssertEqual(chains[reference - 1].value as? String, "selected")
+            XCTAssertTrue(chains[reference - 1].isSelected)
             chains[number - 1].tap()
-            XCTAssertEqual(chains[number - 1].value as? String, "selected", "tap \(number) selected another chain")
-            XCTAssertEqual(chains.filter { ($0.value as? String) == "selected" }.count, 1)
+            XCTAssertTrue(chains[number - 1].isSelected, "tap \(number) selected another chain")
+            XCTAssertEqual(chains.filter { $0.isSelected }.count, 1)
             print("CHAIN \(name) requested=\(number) selected=\(number) frame=\(chains[number - 1].frame)")
             UITestSupport.attachScreenshot("\(name)-chain-\(number)", to: self)
         }
         if pro {
             // Function keys may light up, but must never select a chain.
             for function in functions { function.tap() }
-            XCTAssertEqual(chains[count - 1].value as? String, "selected")
+            XCTAssertTrue(chains[count - 1].isSelected)
         }
         grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5 / CGFloat(columns), dy: 0.5 / CGFloat(rows))).tap()
         XCTAssertTrue(menu.isHittable)
