@@ -139,6 +139,7 @@ final class PlayViewModel {
     private var ledListenerAdapter: LedListenerAdapter?
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
+    @ObservationIgnored private var autoPlayInterruption = AutoPlayInterruptionPolicy()
 
     @ObservationIgnored private let usageSession = UsageAnalytics.shared.makePlaySession()
 
@@ -212,6 +213,7 @@ final class PlayViewModel {
             chain: chain,
             loadingListener: SoundLoadingAdapter(viewModel: self)
         )
+        soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {
             let adapter = LedListenerAdapter(viewModel: self)
@@ -503,6 +505,10 @@ final class PlayViewModel {
     /// Clear all pad states by simulating release on every pad
     func padInit() {
         guard let unipack else { return }
+        let inputs = activePadInputs
+        for (id, pad) in inputs {
+            padTouch(x: pad.x, y: pad.y, isDown: false, inputID: id)
+        }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
                 padTouch(x: i, y: j, isDown: false)
@@ -540,11 +546,13 @@ final class PlayViewModel {
     // MARK: - Pad Touch
 
     private static let pressedVelocity = 3 // LED_RED
+    private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
 
-    func padTouch(x: Int, y: Int, isDown: Bool) {
+    func padTouch(x: Int, y: Int, isDown: Bool, inputID: UUID? = nil) {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
+            if let inputID { activePadInputs[inputID] = (x, y) }
             usageSession.playTriggered(.pad)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
@@ -552,7 +560,7 @@ final class PlayViewModel {
                 autoPlayRunner?.stepPadPressed(x: x, y: y)
             }
 
-            soundEngine?.soundOn(x: x, y: y)
+            soundEngine?.soundOn(x: x, y: y, inputID: inputID)
 
             if scbRecord.checked {
                 let currTime = Self.currentTimeMs()
@@ -574,7 +582,10 @@ final class PlayViewModel {
             }
             ledRunner?.eventOn(x: x, y: y)
         } else {
-            soundEngine?.soundOff(x: x, y: y)
+            // An ended touch can be reported again after a fresh press. Ignore the
+            // duplicate for both sound and pressed light, without clearing other pads.
+            if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
+            soundEngine?.soundOff(x: x, y: y, inputID: inputID)
             if let cm = channelManager {
                 cm.remove(x: x, y: y, channel: .pressed)
                 refreshPadFromChannel(x: x, y: y)
@@ -776,6 +787,7 @@ final class PlayViewModel {
 
     func switchPlayMode(_ mode: PlayMode) {
         guard let runner = autoPlayRunner else { return }
+        autoPlayInterruption.userTookControl()
         let currentMode = playMode
 
         if mode == currentMode {
@@ -861,6 +873,16 @@ final class PlayViewModel {
     }
 
     func autoPlayResume() {
+        autoPlayInterruption.userTookControl()
+        resumeAutoPlay()
+    }
+
+    func autoPlayPause() {
+        autoPlayInterruption.userTookControl()
+        pauseAutoPlay()
+    }
+
+    private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
         runner.resetStepState()
@@ -878,7 +900,7 @@ final class PlayViewModel {
         runner.beforeStartPlaying = true
     }
 
-    func autoPlayPause() {
+    private func pauseAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
         padInit()
@@ -886,6 +908,19 @@ final class PlayViewModel {
         isAutoPlayPlaying = false
         if playMode == .stepPractice {
             runner.stepMode = true
+        }
+    }
+
+    private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
+        let playing = playMode != .none && autoPlayRunner?.playmode == true
+        switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
+        case .pause:
+            pauseAutoPlay()
+        case .resume:
+            // Autoplay may have been turned off while the session was away.
+            if playMode != .none { resumeAutoPlay() }
+        case nil:
+            break
         }
     }
 
@@ -1033,6 +1068,7 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        soundEngine?.appBecameActive()
         guard uiLoaded else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()
@@ -1042,6 +1078,7 @@ final class PlayViewModel {
     // MARK: - Cleanup
 
     func cleanup() {
+        activePadInputs.removeAll()
         usageSession.ended()
         enable = false
         stopVolumeObserver()

@@ -33,6 +33,21 @@ final class SoundEngine {
     private var nodePlayID: [Int]
     private var nextPlayID = 1
 
+    private enum Input: Hashable {
+        case identified(UUID)
+        // MIDI and autoplay have paired pad events, without a touch identity.
+        case pad(Int, Int)
+    }
+    private struct StartedPlayback {
+        let playID: Int
+        let isInfinite: Bool
+    }
+    private var inputPlayback: [Input: StartedPlayback] = [:]
+
+    private func input(x: Int, y: Int, id: UUID?) -> Input {
+        id.map(Input.identified) ?? .pad(x, y)
+    }
+
     private let unipack: UniPack
     private let chain: ChainObserver
     private var loadingListener: LoadingListener?
@@ -42,12 +57,25 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+
+    enum Interruption: Equatable {
+        /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
+        case began(whileInterrupted: Bool)
+        case ended(shouldResume: Bool)
+    }
+    /// Told after the engine has handled an interruption, so the screen can pause what it drives.
+    var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
     /// Test observations for finite-loop completion and stale callback cancellation.
     private let repeatScheduler = FiniteRepeatScheduler()
     var repeatedBuffersScheduled: Int { repeatScheduler.buffersScheduled }
     var activeVoiceCount: Int { nodePlayID.filter { $0 != 0 }.count }
+    var activePlayIDs: Set<Int> { Set(nodePlayID.filter { $0 != 0 }) }
+
+    /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
+    /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
+    var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -346,16 +374,17 @@ final class SoundEngine {
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
         switch type {
-        case .began:
-            gate.interruptionBegan()
-            releaseAllVoices()
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            gate.interruptionEnded(shouldResume: options.contains(.shouldResume))
-        @unknown default:
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            gate.interruptionEnded(shouldResume: shouldResume)
+            onInterruption?(.ended(shouldResume: shouldResume))
+        default:
+            // `.began`, and any type a later SDK adds: suppressing is the safe side.
+            let whileInterrupted = gate.state == .interrupted
             gate.interruptionBegan()
             releaseAllVoices()
+            onInterruption?(.began(whileInterrupted: whileInterrupted))
         }
     }
 
@@ -365,9 +394,16 @@ final class SoundEngine {
     }
     #endif
 
+    /// The app is in front again. A call that was answered may never send the end of its
+    /// interruption, so this is where the session is taken back in that case.
+    func appBecameActive() {
+        gate.appBecameActive()
+    }
+
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
     /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
     private func releaseAllVoices() {
+        inputPlayback.removeAll()
         let nodes = playerNodes
         _ = runCatchingObjCException {
             for node in nodes { repeatScheduler.stop(node) }
@@ -378,7 +414,9 @@ final class SoundEngine {
         }
     }
 
-    func soundOn(x: Int, y: Int) {
+    func soundOn(x: Int, y: Int, inputID: UUID? = nil) {
+        let input = input(x: x, y: y, id: inputID)
+        inputPlayback.removeValue(forKey: input)
         guard isUsable else { return }
         let c = chain.value
         guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
@@ -408,10 +446,19 @@ final class SoundEngine {
         nodeStartOrder[nodeIndex] = startCounter
         // Frees the node for reuse when a one-shot finishes, so stealing only happens when every
         // node is really busy.
-        let release: () -> Void = { [weak self] in
+        let release: (String?) -> Void = { [weak self] failure in
             DispatchQueue.main.async {
-                guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
-                self.nodePlayID[nodeIndex] = 0
+                guard let self else { return }
+                let complete = { [weak self] in
+                    guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
+                    self.nodePlayID[nodeIndex] = 0
+                    if let failure { self.gate.playbackFailed(reason: failure) }
+                }
+                if let delivery = self.playbackCompletionDelivery {
+                    delivery(playID, failure, complete)
+                    return
+                }
+                complete()
             }
         }
 
@@ -431,15 +478,9 @@ final class SoundEngine {
             if sound.loop == -1 {
                 node.scheduleBuffer(buffer, at: nil, options: .loops)
             } else if sound.loop > 0 {
-                repeatFailure = repeatScheduler.start(buffer, node: node, totalPlays: sound.loop + 1) { [weak self] failure in
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, self.nodePlayID.indices.contains(nodeIndex), self.nodePlayID[nodeIndex] == playID else { return }
-                        self.nodePlayID[nodeIndex] = 0
-                        if let failure { self.gate.playbackFailed(reason: failure) }
-                    }
-                }
+                repeatFailure = repeatScheduler.start(buffer, node: node, totalPlays: sound.loop + 1, completion: release)
             } else {
-                node.scheduleBuffer(buffer, at: nil, options: []) { release() }
+                node.scheduleBuffer(buffer, at: nil, options: []) { release(nil) }
             }
             if sound.loop <= 0 { node.play() }
         }
@@ -452,6 +493,7 @@ final class SoundEngine {
             return
         }
         playsStarted += 1
+        inputPlayback[input] = StartedPlayback(playID: playID, isInfinite: sound.loop == -1)
 
         unipack.soundPush(c: c, x: x, y: y)
 
@@ -464,17 +506,16 @@ final class SoundEngine {
         }
     }
 
-    func soundOff(x: Int, y: Int) {
-        guard isUsable else { return }
-        let c = chain.value
-        guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
-        guard let sound = unipack.soundGet(c: c, x: x, y: y) else { return }
-        if sound.loop == -1 {
-            stopByPlayID(stopID[c][x][y])
-        }
+    func soundOff(x: Int, y: Int, inputID: UUID? = nil) {
+        // Consume once. Neither a new chain nor the next sound in a pad's sequence can
+        // change which voice this input started; a stolen/finished play ID is harmless.
+        guard let started = inputPlayback.removeValue(forKey: input(x: x, y: y, id: inputID)),
+              started.isInfinite else { return }
+        stopByPlayID(started.playID)
     }
 
     func destroy() {
+        inputPlayback.removeAll()
         // Terminal: a notification that lands after this must not restart the engine we just stopped.
         gate.shutDown()
         for i in nodePlayID.indices { nodePlayID[i] = 0 }

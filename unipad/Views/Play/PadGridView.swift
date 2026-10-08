@@ -18,7 +18,7 @@ struct PadGridView: View {
     var traceLogColor: Color = .white
     /// Classic trace log: the tap order printed on each pad instead of the line-and-dot path.
     var traceLogClassic: Bool = false
-    var onPadTouch: (Int, Int, Bool) -> Void
+    var onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     private var hasActiveGuide: Bool {
         padGuideTargets.contains { row in row.contains { $0 > 0 } }
@@ -283,7 +283,7 @@ private struct MultiTouchModifier: ViewModifier {
     let cellHeight: CGFloat
     let rows: Int
     let columns: Int
-    let onPadTouch: (Int, Int, Bool) -> Void
+    let onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -307,7 +307,7 @@ extension View {
         cellHeight: CGFloat,
         rows: Int,
         columns: Int,
-        onPadTouch: @escaping (Int, Int, Bool) -> Void
+        onPadTouch: @escaping (Int, Int, Bool, UUID) -> Void
     ) -> some View {
         modifier(MultiTouchModifier(
             gridOrigin: gridOrigin,
@@ -329,7 +329,7 @@ struct MultiTouchView: UIViewRepresentable {
     let cellHeight: CGFloat
     let rows: Int
     let columns: Int
-    let onPadTouch: (Int, Int, Bool) -> Void
+    let onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     func makeUIView(context: Context) -> MultiTouchUIView {
         let view = MultiTouchUIView()
@@ -360,9 +360,9 @@ class MultiTouchUIView: UIView {
     var cellHeight: CGFloat = 0
     var rows: Int = 0
     var columns: Int = 0
-    var onPadTouch: ((Int, Int, Bool) -> Void)?
+    var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
-    private var activeTouches: [UITouch: (Int, Int)] = [:]
+    private var activeTouches: [UITouch: (row: Int, col: Int, id: UUID)] = [:]
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let col = Int((point.x - gridOrigin.x) / cellWidth)
@@ -375,8 +375,9 @@ class MultiTouchUIView: UIView {
         for touch in touches {
             let point = touch.location(in: self)
             guard let (row, col) = padAt(point) else { continue }
-            activeTouches[touch] = (row, col)
-            onPadTouch?(row, col, true)
+            let id = UUID()
+            activeTouches[touch] = (row, col, id)
+            onPadTouch?(row, col, true, id)
         }
     }
 
@@ -387,27 +388,29 @@ class MultiTouchUIView: UIView {
             let prev = activeTouches[touch]
 
             if let prev, next == nil {
-                onPadTouch?(prev.0, prev.1, false)
+                onPadTouch?(prev.row, prev.col, false, prev.id)
                 activeTouches.removeValue(forKey: touch)
                 continue
             }
 
             guard let (row, col) = next else { continue }
-            if let prev, prev != (row, col) {
-                onPadTouch?(prev.0, prev.1, false)
-                activeTouches[touch] = (row, col)
-                onPadTouch?(row, col, true)
+            if let prev, (prev.row, prev.col) != (row, col) {
+                onPadTouch?(prev.row, prev.col, false, prev.id)
+                let id = UUID()
+                activeTouches[touch] = (row, col, id)
+                onPadTouch?(row, col, true, id)
             } else if prev == nil {
-                activeTouches[touch] = (row, col)
-                onPadTouch?(row, col, true)
+                let id = UUID()
+                activeTouches[touch] = (row, col, id)
+                onPadTouch?(row, col, true, id)
             }
         }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            if let (row, col) = activeTouches.removeValue(forKey: touch) {
-                onPadTouch?(row, col, false)
+            if let input = activeTouches.removeValue(forKey: touch) {
+                onPadTouch?(input.row, input.col, false, input.id)
             }
         }
     }
@@ -426,7 +429,7 @@ struct MultiTouchView: NSViewRepresentable {
     let cellHeight: CGFloat
     let rows: Int
     let columns: Int
-    let onPadTouch: (Int, Int, Bool) -> Void
+    let onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     func makeNSView(context: Context) -> MultiTouchNSView {
         let view = MultiTouchNSView()
@@ -455,9 +458,9 @@ class MultiTouchNSView: NSView {
     var cellHeight: CGFloat = 0
     var rows: Int = 0
     var columns: Int = 0
-    var onPadTouch: ((Int, Int, Bool) -> Void)?
+    var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
-    private var activeCell: (Int, Int)?
+    private var activeCell: (row: Int, col: Int, id: UUID)?
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let flippedY = bounds.height - point.y
@@ -470,8 +473,9 @@ class MultiTouchNSView: NSView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         guard let (row, col) = padAt(point) else { return }
-        activeCell = (row, col)
-        onPadTouch?(row, col, true)
+        let id = UUID()
+        activeCell = (row, col, id)
+        onPadTouch?(row, col, true, id)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -479,27 +483,29 @@ class MultiTouchNSView: NSView {
         let next = padAt(point)
 
         if activeCell != nil, next == nil {
-            if let (row, col) = activeCell {
-                onPadTouch?(row, col, false)
+            if let input = activeCell {
+                onPadTouch?(input.row, input.col, false, input.id)
             }
             activeCell = nil
             return
         }
 
         guard let (row, col) = next else { return }
-        if let prev = activeCell, prev != (row, col) {
-            onPadTouch?(prev.0, prev.1, false)
-            activeCell = (row, col)
-            onPadTouch?(row, col, true)
+        if let prev = activeCell, (prev.row, prev.col) != (row, col) {
+            onPadTouch?(prev.row, prev.col, false, prev.id)
+            let id = UUID()
+            activeCell = (row, col, id)
+            onPadTouch?(row, col, true, id)
         } else if activeCell == nil {
-            activeCell = (row, col)
-            onPadTouch?(row, col, true)
+            let id = UUID()
+            activeCell = (row, col, id)
+            onPadTouch?(row, col, true, id)
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        if let (row, col) = activeCell {
-            onPadTouch?(row, col, false)
+        if let input = activeCell {
+            onPadTouch?(input.row, input.col, false, input.id)
             activeCell = nil
         }
     }

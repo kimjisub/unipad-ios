@@ -86,6 +86,7 @@ struct unipadApp: App {
 #endif
         sharedModelContainer = opened.container
         _modelStoreStatus = State(initialValue: ModelStoreStatus(openError: opened.persistentStoreError))
+        UniPackStaging.removeLeftovers()
     }
 
     var body: some Scene {
