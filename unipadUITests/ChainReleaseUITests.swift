@@ -13,8 +13,16 @@ final class ChainReleaseUITests: XCTestCase {
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
-        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Chain Release v1 delayed")).firstMatch
-        guard title.waitForExistence(timeout: 10) else {
+        let list = app.scrollViews["main.packList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        let title = list.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Chain Release v1 delayed")).firstMatch
+        // Lazy rows outside the viewport do not exist in the accessibility tree yet.
+        // Search the library itself so a recent-pack card cannot select another route.
+        for _ in 0..<10 {
+            if title.exists && title.isHittable { break }
+            list.swipeUp()
+        }
+        guard title.exists && title.isHittable else {
             throw XCTSkip("Chain Release v1 delayed is not installed in Documents/UniPack; chain release UI was not checked")
         }
         title.tap()
