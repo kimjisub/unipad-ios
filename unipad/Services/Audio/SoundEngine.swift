@@ -57,6 +57,15 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+
+    enum Interruption: Equatable {
+        /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
+        case began(whileInterrupted: Bool)
+        /// `shouldResume`: the system allows playback to resume and the session is ours again.
+        case ended(shouldResume: Bool)
+    }
+    /// Told after the engine has handled an interruption, so the screen can pause what it drives.
+    var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
     /// Test observations for finite-loop completion and stale callback cancellation.
@@ -68,6 +77,12 @@ final class SoundEngine {
     /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
     /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
     var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+    /// Takes the session back when playback recovers. A test seam: a simulator always hands the
+    /// session back, so tests replace this to make it refuse as another app holding it would.
+    var activateSessionForRecovery: () throws -> Void {
+        get { gate.hooks.activateSession }
+        set { gate.hooks.activateSession = newValue }
+    }
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -366,16 +381,18 @@ final class SoundEngine {
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
         switch type {
-        case .began:
-            gate.interruptionBegan()
-            releaseAllVoices()
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            gate.interruptionEnded(shouldResume: options.contains(.shouldResume))
-        @unknown default:
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            // Resuming autoplay on a session we could not take back would run it without sound.
+            let recovered = gate.interruptionEnded(shouldResume: shouldResume) == .recovered
+            onInterruption?(.ended(shouldResume: recovered))
+        default:
+            // `.began`, and any type a later SDK adds: suppressing is the safe side.
+            let whileInterrupted = gate.state == .interrupted
             gate.interruptionBegan()
             releaseAllVoices()
+            onInterruption?(.began(whileInterrupted: whileInterrupted))
         }
     }
 
@@ -384,6 +401,12 @@ final class SoundEngine {
         gate.mediaServicesWereReset()
     }
     #endif
+
+    /// The app is in front again. A call that was answered may never send the end of its
+    /// interruption, so this is where the session is taken back in that case.
+    func appBecameActive() {
+        gate.appBecameActive()
+    }
 
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
     /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
@@ -531,13 +554,14 @@ final class SoundEngine {
 /// repeat scheduling and stopping, so stop() cannot wait for a callback that waits for our queue.
 /// A bounded lookahead shares the decoded buffer; even an enormous loop count cannot flood memory
 /// or hold the screen while all repeats are scheduled. Supply does not depend on the main actor.
-nonisolated final class FiniteRepeatScheduler {
+/// `voices`, `scheduled` and each voice's `remaining` are only touched on `queue`.
+nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
     private let queue = DispatchQueue(label: "UniPad.finiteRepeats", qos: .userInteractive)
     private var voices: [ObjectIdentifier: Voice] = [:]
     private var scheduled = 0
     var buffersScheduled: Int { queue.sync { scheduled } }
 
-    private final class Voice {
+    private final class Voice: @unchecked Sendable {
         let node: AVAudioPlayerNode
         let buffer: AVAudioPCMBuffer
         var remaining: Int

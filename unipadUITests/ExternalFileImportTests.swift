@@ -50,6 +50,7 @@ final class ExternalFileImportTests: XCTestCase {
         // Every launch generates this same silent picker fixture in its isolated import folder.
         // The imported title below validates its content.
         try UITestSupport.selectPreparedArchive(token: token, in: app)
+
         XCTAssertTrue(title.waitForExistence(timeout: 30))
         XCTAssertEqual(title.label, "Pack imported!")
         XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "Downloaded Fixture")

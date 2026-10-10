@@ -35,7 +35,7 @@ if [[ -z $axe ]]; then
   fi
 fi
 
-keys=$(mktemp -d "${PAPERCLIP_RUN_SCRATCH_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/unipad-host-keys.XXXXXX")
+keys=$(mktemp -d "${UNIPAD_TEST_TMPDIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/unipad-host-keys.XXXXXX")
 trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
 
 deliver() {

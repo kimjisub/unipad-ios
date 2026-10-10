@@ -1,9 +1,9 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "DeadlockDetection")
+nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "DeadlockDetection")
 
-extension NSLock {
+nonisolated extension NSLock {
     /// Debug builds trap when a lock takes longer than `timeout`, which is how deadlocks in the
     /// runners were found. Release builds log the fault and keep waiting: a 5 s stall under thermal
     /// throttling, a priority inversion, or an app suspended mid-lock is not a deadlock, and

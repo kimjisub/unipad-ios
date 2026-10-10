@@ -5,6 +5,7 @@ import Testing
 /// The store asks for notification permission only while the user has not answered yet.
 @MainActor
 struct DownloadNotificationPermissionTests {
+    @MainActor
     final class FakeCenter: NotificationAuthorizationCenter {
         private let undetermined: Bool
         private(set) var requestCount = 0
@@ -21,6 +22,7 @@ struct DownloadNotificationPermissionTests {
     }
 
     /// Right after the system starts, the settings query can stay unanswered for minutes.
+    @MainActor
     final class FirstQueryHangsCenter: NotificationAuthorizationCenter {
         private var queryCount = 0
         private var hungQuery: CheckedContinuation<Bool, Never>?

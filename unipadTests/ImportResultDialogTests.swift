@@ -88,7 +88,7 @@ struct ImportResultDialogTests {
         var testDescription: String { name }
     }
 
-    static let screens = [
+    nonisolated static let screens = [
         Screen(name: "iPhoneSE-667x375", size: CGSize(width: 667, height: 375), safeArea: (0, 0, 0)),
         Screen(name: "iPhone17Pro-874x402", size: CGSize(width: 874, height: 402), safeArea: (62, 62, 21)),
     ]

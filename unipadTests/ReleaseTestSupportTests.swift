@@ -34,6 +34,35 @@ final class ReleaseTestSupportTests: XCTestCase {
                        "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n")
     }
 
+    func testWarningLibrariesKeepTheOriginalWarningAndGridScenarios() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        for kind in ["sound", "info", "none"] {
+            defaults.set(UUID().uuidString, forKey: keys[0])
+            defaults.set(false, forKey: keys[1])
+            defaults.set("warning-\(kind)", forKey: keys[2])
+            let root = try XCTUnwrap(ReleaseTestSupport.root)
+            defer { try? FileManager.default.removeItem(at: root) }
+            try ReleaseTestSupport.prepare()
+            let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+            let folders = WorkspaceManager.unipackFolders(in: workspace)
+            XCTAssertEqual(folders.count, 1)
+            let pack = UniPackFolder(rootFolder: try XCTUnwrap(folders.first))
+            pack.load()
+            pack.loadDetail()
+            XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+            XCTAssertEqual(pack.buttonX, 3)
+            XCTAssertEqual(pack.buttonY, 4)
+            XCTAssertTrue(pack.squareButton)
+            let expected: String? = kind == "sound"
+                ? "keySound : [1 1 1 nope.wav] sound was not found"
+                : kind == "info" ? "info : title was missing\ninfo : producerName was missing" : nil
+            XCTAssertEqual(pack.errorDetail, expected)
+        }
+    }
+
     func testSearchLibraryHasTitlesAndProducersUsedByScreenChecks() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]

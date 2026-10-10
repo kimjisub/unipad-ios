@@ -93,7 +93,7 @@ activation state and wakes its existing service when active, so AXe selects the
 working transport. It sends each key once and does not change simulator settings.
 
 For a local run, use the same `ci/host-keys.sh` command in the workflow with a
-harness-leased iPhone 17 Pro on iOS 27 and export
+local iPhone 17 Pro on iOS 27 and export
 `TEST_RUNNER_UNIPAD_RELEASE_SUITE=1` first. The wrapper disables automatic test
 diagnostic collection: on the local iOS 27 runtime, crash-reporter synchronization
 can otherwise wait 300 seconds after each test. Assertions and result checks

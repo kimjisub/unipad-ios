@@ -111,7 +111,7 @@ exit(passed && assertionFailures == 0 ? 0 : 1)
 """
         developer = subprocess.check_output(["xcode-select", "-p"], text=True).strip()
         frameworks = str(Path(developer) / "Platforms/MacOSX.platform/Developer/Library/Frameworks")
-        scratch = os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR") or os.environ.get("RUNNER_TEMP")
+        scratch = os.environ.get("UNIPAD_TEST_TMPDIR") or os.environ.get("RUNNER_TEMP")
         with tempfile.TemporaryDirectory(dir=scratch) as directory:
             path = Path(directory)
             (path / "probe.swift").write_text(program)

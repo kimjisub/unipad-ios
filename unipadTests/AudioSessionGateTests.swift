@@ -14,6 +14,8 @@ struct AudioSessionGateTests {
         var canStart = true
         /// The case the crash is about: start() succeeds but the engine never renders.
         var startLeavesEngineStopped = false
+        /// Seconds on the gate's clock; only moves when a test moves it.
+        var clock: TimeInterval = 0
         private(set) var activateCount = 0
         private(set) var startCount = 0
 
@@ -28,7 +30,9 @@ struct AudioSessionGateTests {
                     self.startCount += 1
                     guard self.canStart else { throw Failure.denied }
                     if !self.startLeavesEngineStopped { self.engineRunning = true }
-                }
+                },
+                // Some tests drop the fake after began(); the clock then stays at 0.
+                now: { [weak self] in self?.clock ?? 0 }
             )
         }
     }
@@ -160,7 +164,9 @@ struct AudioSessionGateTests {
         #expect(gate.isPlaybackSuppressed)
         #expect(!gate.ensureEngineRunning())
 
-        // The audio server comes back: the session is configured again and the engine restarted.
+        // The audio server comes back: a pad after the retry interval configures the session again
+        // and restarts the engine.
+        audio.clock += AudioSessionGate.interruptedRetryInterval
         audio.canActivate = true
         #expect(gate.ensureEngineRunning())
         #expect(audio.startCount == 1)
@@ -207,6 +213,151 @@ struct AudioSessionGateTests {
         // The next pad re-activates the session before it plays.
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 1)
+    }
+
+    /// Apple: a began interruption is not always followed by an ended one (an answered call suspends
+    /// the app). Coming back to the app takes the session back.
+    @Test func anInterruptionThatNeverEndsIsRecoveredWhenTheAppComesBack() {
+        let (audio, gate) = began()
+
+        #expect(gate.appBecameActive() == .recovered)
+        #expect(gate.state == .ready)
+        #expect(audio.activateCount == 1)
+        #expect(audio.startCount == 1)
+        #expect(gate.ensureEngineRunning())
+    }
+
+    @Test func comingBackWhileTheCallIsStillOnStaysInterruptedAndTriesAgainNextTime() {
+        let (audio, gate) = began()
+        audio.canActivate = false
+
+        #expect(gate.appBecameActive() == .stillSuppressed)
+        #expect(gate.state == .interrupted)
+        #expect(audio.startCount == 0, "the engine was started on a session we do not hold")
+
+        audio.canActivate = true
+        #expect(gate.appBecameActive() == .recovered)
+        #expect(!gate.isPlaybackSuppressed)
+    }
+
+    /// A failed try on coming back counts as the latest try, so the pad pressed right after it does
+    /// not call into the audio server again.
+    @Test func aFailedTryOnComingBackHoldsOffThePadRightAfterIt() {
+        let (audio, gate) = began()
+        audio.canActivate = false
+        audio.clock = AudioSessionGate.interruptedRetryInterval * 5
+
+        #expect(gate.appBecameActive() == .stillSuppressed)
+        #expect(audio.activateCount == 1)
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1, "the pad right after coming back tried again")
+
+        audio.clock += AudioSessionGate.interruptedRetryInterval
+        audio.canActivate = true
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+    }
+
+    @Test func comingBackAfterAnEndWithoutShouldResumeRecovers() {
+        let (audio, gate) = began()
+        gate.interruptionEnded(shouldResume: false)
+
+        #expect(gate.appBecameActive() == .recovered)
+        #expect(audio.activateCount == 1)
+        #expect(!gate.isPlaybackSuppressed)
+    }
+
+    @Test func comingBackWithNothingInterruptedTouchesNothing() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+
+        #expect(gate.appBecameActive() == .recovered)
+        #expect(audio.activateCount == 0)
+        #expect(audio.startCount == 0)
+    }
+
+    /// A pad is the user asking for sound, so it also tries to take an interrupted session back, but
+    /// at most once per interval: activation is a synchronous call that fails while a call is on.
+    @Test func aPadTriesToTakeAnInterruptedSessionBackAtMostOncePerInterval() {
+        let (audio, gate) = began()
+        audio.canActivate = false
+        let interval = AudioSessionGate.interruptedRetryInterval
+
+        audio.clock = interval / 2
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 0)
+
+        audio.clock = interval
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1)
+        for _ in 0..<16 { _ = gate.ensureEngineRunning() }
+        #expect(audio.activateCount == 1, "every pad press called into the audio server")
+        #expect(gate.state == .interrupted)
+        #expect(gate.suppressionLogCount == 1)
+
+        audio.clock = interval * 2
+        audio.canActivate = true
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+        #expect(audio.startCount == 1)
+        #expect(!gate.isPlaybackSuppressed)
+    }
+
+    /// After a pad's failed try to bring the engine back (a session that cannot be activated after an
+    /// interruption ended, a play() that raised, a route change the engine did not survive), autoplay
+    /// and fast pad presses must not call into the audio server on every pad.
+    @Test func aFailedRecoveryIsRetriedAtMostOncePerInterval() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        audio.canActivate = false
+        let interval = AudioSessionGate.interruptedRetryInterval
+        audio.clock = 100
+        gate.playbackFailed(reason: "player did not see an IO cycle")
+
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1, "the first pad after the failure did not try at once")
+        for _ in 0..<32 {
+            audio.clock += interval / 64
+            _ = gate.ensureEngineRunning()
+        }
+        #expect(audio.activateCount == 1, "every pad press called into the audio server")
+        #expect(gate.state == .needsRecovery)
+        #expect(gate.suppressionLogCount == 1)
+
+        audio.clock = 100 + interval
+        audio.canActivate = true
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+        #expect(!gate.isPlaybackSuppressed)
+    }
+
+    /// The spacing only follows a failed try: once something changed (here the route), the next pad
+    /// tries again at once instead of waiting out the interval.
+    @Test func aNewProblemAfterAFailedRecoveryIsTriedAtOnce() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        audio.canActivate = false
+        gate.playbackFailed(reason: "player did not see an IO cycle")
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 1)
+
+        audio.canActivate = true
+        audio.engineRunning = false
+        gate.playbackFailed(reason: "player did not see an IO cycle")
+        #expect(gate.ensureEngineRunning())
+        #expect(audio.activateCount == 2)
+    }
+
+    @Test func comingBackAfterShutDownStartsNothing() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        gate.interruptionBegan()
+        gate.shutDown()
+        audio.clock = AudioSessionGate.interruptedRetryInterval * 10
+
+        #expect(gate.appBecameActive() == .stillSuppressed)
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 0)
     }
 
     @Test func shutDownIsTerminal() {

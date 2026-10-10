@@ -139,6 +139,7 @@ final class PlayViewModel {
     private var ledListenerAdapter: LedListenerAdapter?
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
+    @ObservationIgnored private var autoPlayInterruption = AutoPlayInterruptionPolicy()
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
 
@@ -177,10 +178,6 @@ final class PlayViewModel {
             return
         }
 
-        if let warning = pack.errorDetail {
-            unipackWarning = warning
-        }
-
         logger.info("loadUnipack: info loaded - title=\(pack.title), buttonX=\(pack.buttonX), buttonY=\(pack.buttonY), chain=\(pack.chain)")
 
         loadingPhase = "detail"
@@ -196,6 +193,8 @@ final class PlayViewModel {
             }
         }.value
         if Task.isCancelled { return }
+
+        unipackWarning = pack.errorDetail
 
         logger.info("loadUnipack: detail loaded - soundCount=\(pack.soundCount), ledCount=\(pack.ledTableCount), keyLedExist=\(pack.keyLedExist), autoPlayExist=\(pack.autoPlayExist)")
 
@@ -216,6 +215,7 @@ final class PlayViewModel {
             chain: chain,
             loadingListener: SoundLoadingAdapter(viewModel: self)
         )
+        soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {
             let adapter = LedListenerAdapter(viewModel: self)
@@ -382,6 +382,8 @@ final class PlayViewModel {
     // MARK: - Auto Mapping
 
     private var autoMapper: UniPackAutoMapper?
+    /// The mapper holds its listener weakly, so the adapter is kept alive here for the mapping's lifetime.
+    private var autoMappingListenerAdapter: AutoMappingListenerAdapter?
 
     func autoMapping() {
         guard let pack = unipack as? UniPackFolder else { return }
@@ -393,23 +395,32 @@ final class PlayViewModel {
 
         // The mapper replaces autoPlayTable when it finishes; a runner still iterating the old
         // elements on its own thread would race that swap, so it is stopped before the mapper starts.
+        if playMode != .none { switchPlayMode(.none) }
         autoPlayRunner?.stop()
         autoPlayRunner = nil
         autoPlayListenerAdapter = nil
 
-        let mapper = UniPackAutoMapper(unipack: pack, listener: AutoMappingListenerAdapter(viewModel: self))
+        let adapter = AutoMappingListenerAdapter(viewModel: self)
+        autoMappingListenerAdapter = adapter
+        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter)
         autoMapper = mapper
         mapper.start()
     }
 
-    fileprivate func onAutoMappingDone() {
-        autoMappingActive = false
-        autoMapper = nil
+    fileprivate func finishAutoMapping() {
+        releaseAutoMapper()
 
         guard let pack = unipack as? UniPackFolder else { return }
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+    }
+
+    private func releaseAutoMapper() {
+        autoMapper?.cancel()
+        autoMapper = nil
+        autoMappingListenerAdapter = nil
+        autoMappingActive = false
     }
 
     // MARK: - Trace Log
@@ -789,6 +800,7 @@ final class PlayViewModel {
 
     func switchPlayMode(_ mode: PlayMode) {
         guard let runner = autoPlayRunner else { return }
+        autoPlayInterruption.userTookControl()
         let currentMode = playMode
 
         if mode == currentMode {
@@ -873,6 +885,16 @@ final class PlayViewModel {
     }
 
     func autoPlayResume() {
+        autoPlayInterruption.userTookControl()
+        resumeAutoPlay()
+    }
+
+    func autoPlayPause() {
+        autoPlayInterruption.userTookControl()
+        pauseAutoPlay()
+    }
+
+    private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
         runner.resetStepState()
@@ -890,7 +912,7 @@ final class PlayViewModel {
         runner.beforeStartPlaying = true
     }
 
-    func autoPlayPause() {
+    private func pauseAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
         padInit()
@@ -898,6 +920,19 @@ final class PlayViewModel {
         isAutoPlayPlaying = false
         if playMode == .stepPractice {
             runner.stepMode = true
+        }
+    }
+
+    private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
+        let playing = playMode != .none && autoPlayRunner?.playmode == true
+        switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
+        case .pause:
+            pauseAutoPlay()
+        case .resume:
+            // Autoplay may have been turned off while the session was away.
+            if playMode != .none { resumeAutoPlay() }
+        case nil:
+            break
         }
     }
 
@@ -1045,6 +1080,7 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        soundEngine?.appBecameActive()
         guard uiLoaded else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()
@@ -1062,6 +1098,7 @@ final class PlayViewModel {
             MidiManager.shared.removeController(adapter)
             midiControllerAdapter = nil
         }
+        releaseAutoMapper()
         autoPlayRunner?.stop()
         ledRunner?.stop()
         soundEngine?.destroy()
@@ -1162,7 +1199,7 @@ private final class LedListenerAdapter: LedRunner.Listener {
         self.viewModel = viewModel
     }
 
-    func onLedBatch(_ events: [LedRunner.LedEvent]) {
+    nonisolated func onLedBatch(_ events: [LedRunner.LedEvent]) {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
             for event in events {
@@ -1374,14 +1411,14 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
 
     func onDone() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.onAutoMappingDone()
+            self?.viewModel?.finishAutoMapping()
         }
     }
 
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = false
             self?.viewModel?.toastMessage = error.localizedDescription
+            self?.viewModel?.finishAutoMapping()
         }
     }
 }

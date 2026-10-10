@@ -8,6 +8,7 @@ import Testing
 @MainActor
 struct UniPackDownloaderTests {
     private let workspace: URL
+    private let stagingRoot: URL
     private let session: URLSession
     private let host = "stub-\(UUID().uuidString.lowercased()).test"
     private let otherHost = "stub-\(UUID().uuidString.lowercased()).test"
@@ -15,6 +16,7 @@ struct UniPackDownloaderTests {
     init() throws {
         workspace = FileManager.default.temporaryDirectory
             .appending(path: "UniPackDownloaderTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        stagingRoot = workspace.appendingPathExtension("staging")
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -26,6 +28,7 @@ struct UniPackDownloaderTests {
         StubURLProtocol.remove(host: otherHost)
         session.invalidateAndCancel()
         try? FileManager.default.removeItem(at: workspace)
+        try? FileManager.default.removeItem(at: stagingRoot)
     }
 
     private func workspaceContents() throws -> [String] {
@@ -33,7 +36,7 @@ struct UniPackDownloaderTests {
     }
 
     private func download(_ recorder: RecordingDelegate, from host: String? = nil, preKnownFileSize: Int64 = 0) async {
-        await UniPackDownloader(session: session).download(
+        await UniPackDownloader(session: session, stagingRoot: stagingRoot).download(
             title: "pack",
             url: "https://\(host ?? self.host)/pack.zip",
             workspace: workspace,
@@ -48,7 +51,7 @@ struct UniPackDownloaderTests {
         let chunks = (0..<40).map { i in Data(repeating: UInt8(i), count: 64 * 1024 + i) }
         let body = chunks.reduce(Data(), +)
         StubURLProtocol.register(host: host, .init(status: 200, chunks: chunks, contentLength: body.count))
-        let recorder = RecordingDelegate(zipURL: workspace.appending(path: "pack.zip"))
+        let recorder = RecordingDelegate(stagingRoot: stagingRoot)
 
         await download(recorder)
 
@@ -64,7 +67,7 @@ struct UniPackDownloaderTests {
     @Test func httpErrorIsReportedAndLeavesNothing() async throws {
         defer { cleanUp() }
         StubURLProtocol.register(host: host, .init(status: 404, chunks: [Data("missing".utf8)]))
-        let recorder = RecordingDelegate(zipURL: workspace.appending(path: "pack.zip"))
+        let recorder = RecordingDelegate()
 
         await download(recorder)
 
@@ -87,7 +90,7 @@ struct UniPackDownloaderTests {
             contentLength: 1_000_000,
             failure: URLError(.networkConnectionLost)
         ))
-        let recorder = RecordingDelegate(zipURL: workspace.appending(path: "pack.zip"))
+        let recorder = RecordingDelegate()
 
         await download(recorder)
 
@@ -105,7 +108,7 @@ struct UniPackDownloaderTests {
             contentLength: 10_000_000,
             stallsAfterChunks: true
         ))
-        let recorder = RecordingDelegate(zipURL: workspace.appending(path: "pack.zip"))
+        let recorder = RecordingDelegate()
 
         let task = Task { await download(recorder) }
         let deadline = ContinuousClock.now + .seconds(10)
@@ -119,6 +122,7 @@ struct UniPackDownloaderTests {
         #expect(recorder.error?.isUsageCancellation == true)
         #expect(!recorder.importStarted)
         #expect(try workspaceContents().isEmpty)
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: stagingRoot.path)) ?? []).isEmpty)
     }
 
     // MARK: - Two downloads of the same name
@@ -170,8 +174,8 @@ struct UniPackDownloaderTests {
         let existing = workspace.appending(path: "pack", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: existing, withIntermediateDirectories: true)
         try Data("title=Installed\n".utf8).write(to: existing.appending(path: "info"))
-        let cancelled = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
-        let succeeded = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
+        let cancelled = RecordingDelegate()
+        let succeeded = RecordingDelegate()
 
         let other = try await startStalledDownload(cancelled)
         await installPack(title: "Succeeded", succeeded)
@@ -187,8 +191,8 @@ struct UniPackDownloaderTests {
 
     @Test func failingOneOfTwoKeepsTheOtherResult() async throws {
         defer { cleanUp() }
-        let failed = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
-        let succeeded = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
+        let failed = RecordingDelegate()
+        let succeeded = RecordingDelegate()
 
         let other = try await startStalledDownload(failed)
         await installPack(title: "Succeeded", succeeded)
@@ -203,8 +207,8 @@ struct UniPackDownloaderTests {
 
     @Test func twoOverlappingSuccessesInstallSeparately() async throws {
         defer { cleanUp() }
-        let second = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
-        let first = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
+        let second = RecordingDelegate()
+        let first = RecordingDelegate()
 
         let secondZip = Self.packZip(title: "Second")
         let other = try await startStalledDownload(second, body: secondZip)
@@ -225,12 +229,12 @@ struct UniPackDownloaderTests {
     @Test func retryAfterFailureInstallsUnderTheOriginalName() async throws {
         defer { cleanUp() }
         StubURLProtocol.register(host: host, .init(status: 500, chunks: [Data("down".utf8)]))
-        let failed = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
+        let failed = RecordingDelegate()
         await download(failed)
         #expect(failed.error != nil)
         #expect(try workspaceContents().isEmpty)
 
-        let retried = RecordingDelegate(zipURL: workspace.appending(path: "unused.zip"))
+        let retried = RecordingDelegate()
         await installPack(title: "Retried", retried)
 
         #expect(retried.error == nil)
@@ -242,7 +246,7 @@ struct UniPackDownloaderTests {
 
 @MainActor
 private final class RecordingDelegate: UniPackDownloader.Delegate, @unchecked Sendable {
-    private let zipURL: URL
+    private let stagingRoot: URL?
     var percents: [Int] = []
     var lastDownloadedSize: Int64 = 0
     var importStarted = false
@@ -250,8 +254,10 @@ private final class RecordingDelegate: UniPackDownloader.Delegate, @unchecked Se
     var installedFolder: URL?
     var error: Error?
 
-    init(zipURL: URL) {
-        self.zipURL = zipURL
+    /// `stagingRoot` is where the downloader under test stages its archive; give it to read the
+    /// archive as it stands when unpacking starts.
+    init(stagingRoot: URL? = nil) {
+        self.stagingRoot = stagingRoot
     }
 
     func onInstallStart() {}
@@ -264,7 +270,10 @@ private final class RecordingDelegate: UniPackDownloader.Delegate, @unchecked Se
 
     func onImportStart() {
         importStarted = true
-        zipAtImportStart = try? Data(contentsOf: zipURL)
+        guard let stagingRoot,
+              let staged = try? FileManager.default.contentsOfDirectory(at: stagingRoot, includingPropertiesForKeys: nil),
+              staged.count == 1 else { return }
+        zipAtImportStart = try? Data(contentsOf: staged[0].appending(path: "download.zip"))
     }
 
     func onInstallComplete(folder: URL) { installedFolder = folder }

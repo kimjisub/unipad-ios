@@ -13,7 +13,7 @@ import unittest
 class UIHostKeysTests(unittest.TestCase):
     def key_delivery(self, exit_code, state=0, wake_exit=0):
         root = Path(__file__).resolve().parents[1]
-        with tempfile.TemporaryDirectory(dir=os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR")) as directory:
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
             fake = folder / "bin"
             fake.mkdir()
@@ -39,7 +39,7 @@ class UIHostKeysTests(unittest.TestCase):
                 path.write_text(content)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ['PATH'],
-                       PAPERCLIP_RUN_SCRATCH_DIR=str(folder))
+                       UNIPAD_TEST_TMPDIR=str(folder))
             result = subprocess.run(['ci/host-keys.sh', 'leased-device', str(folder / 'DD'), 'test'],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=10)
             return result
@@ -77,7 +77,7 @@ class UIHostKeysTests(unittest.TestCase):
 
     def test_responder_stops_when_the_runner_is_killed(self):
         root = Path(__file__).resolve().parents[1]
-        with tempfile.TemporaryDirectory(dir=os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR")) as directory:
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
             fake = folder / "bin"
             fake.mkdir()
@@ -85,7 +85,7 @@ class UIHostKeysTests(unittest.TestCase):
             xcodebuild.write_text("#!/bin/sh\nexec sleep 30\n")
             xcodebuild.chmod(0o755)
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
-                       PAPERCLIP_RUN_SCRATCH_DIR=str(folder))
+                       UNIPAD_TEST_TMPDIR=str(folder))
             runner = subprocess.Popen(["ci/host-keys.sh", "leased-device", str(folder / "DD"), "test"],
                                       cwd=root, env=env, start_new_session=True,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -113,7 +113,7 @@ class UIHostKeysTests(unittest.TestCase):
         workflow = (root / ".github/workflows/ios-checks.yml").read_text()
         step = workflow.split("      - name: Run all UI tests\n", 1)[1]
         script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - name:", 1)[0])
-        scratch = os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR") or os.environ.get("RUNNER_TEMP")
+        scratch = os.environ.get("UNIPAD_TEST_TMPDIR") or os.environ.get("RUNNER_TEMP")
         with tempfile.TemporaryDirectory(dir=scratch) as directory:
             folder = Path(directory)
             fake = folder / "bin"
@@ -131,7 +131,7 @@ class UIHostKeysTests(unittest.TestCase):
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
                        SIMULATOR_UDID="leased-device", RUNNER_TEMP=str(folder),
-                       PAPERCLIP_RUN_SCRATCH_DIR=str(folder), TEST_RUNNER_UNIPAD_RELEASE_SUITE="1")
+                       UNIPAD_TEST_TMPDIR=str(folder), TEST_RUNNER_UNIPAD_RELEASE_SUITE="1")
             result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=15)
             probe = next(json.loads(line) for line in result.stdout.splitlines() if line.startswith("{"))
@@ -144,6 +144,7 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertTrue(probe["keysUnderScratch"])
         self.assertEqual(probe["fixtures"], "1")
         self.assertIn("-only-testing:unipadUITests", probe["args"])
+        self.assertIn("UNIPAD_WARNINGS_AS_ERRORS=YES", probe["args"])
         self.assertFalse(any(arg.startswith("-skip-testing:") for arg in probe["args"]))
         self.assertIn("id=leased-device", probe["args"])
 

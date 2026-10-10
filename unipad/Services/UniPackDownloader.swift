@@ -33,6 +33,7 @@ actor UniPackDownloader {
 
     private let importer = UniPackImporter()
     private let session: URLSession
+    private let stagingRoot: URL
 
     /// Chunks are written to disk on the session's delegate queue, so downloads get their own
     /// session instead of occupying the queue that `URLSession.shared` callbacks share.
@@ -44,8 +45,9 @@ actor UniPackDownloader {
         return URLSession(configuration: configuration)
     }()
 
-    init(session: URLSession = downloadSession) {
+    init(session: URLSession = downloadSession, stagingRoot: URL = UniPackStaging.defaultRoot) {
         self.session = session
+        self.stagingRoot = stagingRoot
     }
 
     func download(
@@ -58,23 +60,23 @@ actor UniPackDownloader {
     ) async {
         await delegate?.onInstallStart()
 
-        // Another download of the same name may run at the same time, so only paths claimed here
-        // are written to or deleted.
-        var zipFile: URL?
-        var folder: URL?
+        // The archive and the unpacked pack stay in a staging folder until the pack is complete, so
+        // neither a failure nor the app being killed leaves a partial pack in the library.
+        var staging: UniPackStaging?
 
         do {
             guard let requestURL = URL(string: url) else {
                 throw DownloadError.emptyResponse
             }
 
-            let claimedZip = try FileManagerExtensions.claimNextPath(dir: workspace, name: folderName, extension: ".zip", isDirectory: false)
-            zipFile = claimedZip
+            let staged = try UniPackStaging(root: stagingRoot)
+            staging = staged
+            let archive = staged.file(named: "download.zip")
 
             // Download with progress reporting
-            let (tempURL, response) = try await downloadWithProgress(
+            let response = try await downloadWithProgress(
                 from: requestURL,
-                to: claimedZip,
+                to: archive,
                 preKnownFileSize: preKnownFileSize,
                 delegate: delegate
             )
@@ -85,46 +87,31 @@ actor UniPackDownloader {
 
             await delegate?.onImportStart()
 
-            // Extract ZIP
-            let fm = FileManager.default
-            let claimedFolder = try FileManagerExtensions.claimNextPath(dir: workspace, name: folderName, extension: "", isDirectory: true)
-            folder = claimedFolder
-
-            // Move downloaded file to expected location if needed
-            if tempURL != claimedZip {
-                if fm.fileExists(atPath: claimedZip.path) {
-                    try fm.removeItem(at: claimedZip)
-                }
-                try fm.moveItem(at: tempURL, to: claimedZip)
-            }
-
-            try await importer.extractOnly(at: claimedZip, to: claimedFolder)
-            FileManagerExtensions.removeDoubleFolder(at: claimedFolder)
+            try await importer.extractOnly(at: archive, to: staged.packFolder)
+            try FileManagerExtensions.removeDoubleFolder(at: staged.packFolder)
 
             // Validate extracted pack. load() runs the case-insensitive checkFile; the exact-case
             // `info` pre-check that used to sit here rejected a pack named `Info` that imports fine.
-            let unipack = UniPackFolder(rootFolder: claimedFolder)
+            let unipack = UniPackFolder(rootFolder: staged.packFolder)
             unipack.load()
             unipack.loadDetail()
             if unipack.criticalError {
                 throw DownloadError.criticalError(unipack.errorDetail ?? "Invalid unipack structure")
             }
 
-            await delegate?.onInstallComplete(folder: claimedFolder)
-            logger.info("Download + install complete: \(claimedFolder.lastPathComponent)")
+            // Another download of the same name may finish meanwhile; publishing takes the next
+            // free name instead of replacing it.
+            let folder = try staged.publish(to: workspace, name: folderName)
+
+            await delegate?.onInstallComplete(folder: folder)
+            logger.info("Download + install complete: \(folder.lastPathComponent)")
 
         } catch {
             logger.error("Download failed: \(error.localizedDescription)")
-            if let folder {
-                FileManagerExtensions.deleteDirectory(at: folder)
-            }
             await delegate?.onError(error)
         }
 
-        // Cleanup ZIP
-        if let zipFile {
-            FileManagerExtensions.deleteDirectory(at: zipFile)
-        }
+        staging?.discard()
     }
 
     // MARK: - Download with Progress
@@ -134,7 +121,7 @@ actor UniPackDownloader {
         to destination: URL,
         preKnownFileSize: Int64,
         delegate: Delegate?
-    ) async throws -> (URL, URLResponse) {
+    ) async throws -> URLResponse {
         let writer = DownloadFileWriter(destination: destination)
         let task = session.dataTask(with: url)
         task.delegate = writer
@@ -161,7 +148,7 @@ actor UniPackDownloader {
         }
 
         guard let response = writer.response else { throw DownloadError.emptyResponse }
-        return (destination, response)
+        return response
     }
 }
 

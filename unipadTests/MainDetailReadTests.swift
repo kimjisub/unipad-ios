@@ -259,7 +259,7 @@ struct MainDetailReadTests {
         try await letReadsStart()
         #expect(vm.importResult == nil, "the import result was shown before the pack was read")
         probe.release()
-        await showing.value
+        _ = await showing.value
         let wrong = try await wrongPanelReads(of: [(item, probe, 1024)])
 
         expectReadOnce(item, probe)
