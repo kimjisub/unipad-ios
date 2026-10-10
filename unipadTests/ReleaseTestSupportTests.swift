@@ -24,7 +24,7 @@ final class ReleaseTestSupportTests: XCTestCase {
         pack.load()
         pack.loadDetail()
         XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
-        XCTAssertEqual(pack.title, "JIS20 First Input Fixture")
+        XCTAssertEqual(pack.title, "First Input Fixture")
         XCTAssertEqual(pack.buttonX, 8)
         XCTAssertEqual(pack.buttonY, 8)
         XCTAssertEqual(pack.chain, 1)
