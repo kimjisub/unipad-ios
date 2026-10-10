@@ -3,7 +3,8 @@ import XCTest
 /// Install only INF-002 (4x3, 24 chains, title Conformance) from the public corpus at
 /// https://github.com/kimjisub/unipad.io/tree/main/meta/unipack-conformance
 /// ZIP SHA-256: 55d178d318096b02e3f3642703fa1fdf2754bcad2a26221a5ab2dbf410bf4c3a.
-/// Also install the bundled 8x8 Faded pack in Documents/UniPack. Other corpus cases
+/// Also install the bundled 8x8 Faded pack and test-fixtures/TallChainLayout
+/// in Documents/UniPack. Other corpus cases
 /// share the Conformance title: do not install them alongside INF-002. Missing or
 /// ambiguous fixtures fail this required regression check.
 final class PlayChainLayoutTests: XCTestCase {
@@ -12,6 +13,7 @@ final class PlayChainLayoutTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += ["-SelectedTheme", "bundled://midifighter"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -131,4 +133,47 @@ final class PlayChainLayoutTests: XCTestCase {
         openPack(title: "Alan Walker - Faded")
         try assertChains(rows: 8, columns: 8, count: 6, pro: true, name: "eight-pro")
     }
+    private func assertLogoLayout(title: String, pro: Bool, name: String) throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        openPack(title: title)
+        let menu = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        UITestSupport.setPlayOption("Pro Light Mode", on: pro, in: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let logo = app.images["playLogo"]
+        XCTAssertTrue(logo.waitForExistence(timeout: 5), "the bundled theme must show its logo")
+        let grid = app.otherElements["playPadGrid"]
+        UITestSupport.attachScreenshot(name, to: self)
+        print("LOGO \(name) logo=\(logo.frame) grid=\(grid.frame) menu=\(menu.frame)")
+        XCTAssertTrue(try safeArea(app.windows.firstMatch.frame).contains(logo.frame))
+        XCTAssertFalse(logo.frame.intersects(grid.frame), "logo covers the pads")
+        XCTAssertFalse(logo.frame.intersects(menu.frame), "logo covers the menu")
+        let controls = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@", "playChain.", "playFunction."))
+        XCTAssertGreaterThan(controls.count, 0)
+        for control in controls.allElementsBoundByIndex {
+            XCTAssertFalse(logo.frame.intersects(control.frame), "logo covers \(control.identifier): \(control.frame)")
+        }
+    }
+
+    @MainActor func testTallPackLogoInNormalMode() throws {
+        try assertLogoLayout(title: "Tall chain layout", pro: false, name: "logo-tall-normal")
+    }
+    @MainActor func testTallPackLogoInProLightMode() throws {
+        try assertLogoLayout(title: "Tall chain layout", pro: true, name: "logo-tall-pro")
+    }
+    @MainActor func testSquarePackLogoInNormalMode() throws {
+        try assertLogoLayout(title: "Alan Walker - Faded", pro: false, name: "logo-square-normal")
+    }
+    @MainActor func testSquarePackLogoInProLightMode() throws {
+        try assertLogoLayout(title: "Alan Walker - Faded", pro: true, name: "logo-square-pro")
+    }
+    @MainActor func testSmallPackLogoInNormalMode() throws {
+        try assertLogoLayout(title: "Conformance", pro: false, name: "logo-small-normal")
+    }
+    @MainActor func testSmallPackLogoInProLightMode() throws {
+        try assertLogoLayout(title: "Conformance", pro: true, name: "logo-small-pro")
+    }
+
 }
