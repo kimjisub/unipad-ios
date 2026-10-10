@@ -12,15 +12,13 @@ import Testing
 /// - UNIPACK_CONFORMANCE_ONLY: run only the cases whose id starts with this (a partial run, see
 ///   ConformanceReport.onlyPrefix).
 /// - UNIPACK_CONFORMANCE_DUMP: exactly `1` makes a record-only run (see ConformanceReport.recordOnly).
-/// - UNIPACK_CONFORMANCE_REPRO_DESTROY: exactly `1` enables `destroyWhileARepeatedSoundIsCycling`.
 @MainActor
 @Suite(.serialized)
 struct UniPackConformanceTests {
-    nonisolated static let caseIDs: [String] = ((try? ConformanceCorpus.load())?.cases.map(\.id) ?? [])
-        .filter { id in ConformanceReport.onlyPrefix.map(id.hasPrefix) ?? true }
+    nonisolated static let caseIDs = ConformanceCorpus.caseIDs(onlyPrefix: ConformanceReport.onlyPrefix)
 
     private func loadCorpus() throws -> ConformanceCorpus {
-        try ConformanceCorpus.load()
+        try ConformanceReport.shared.loadCorpus()
     }
 
     private func find(_ id: String, in corpus: ConformanceCorpus) throws -> ConformanceCase {
@@ -50,18 +48,15 @@ struct UniPackConformanceTests {
     func conformanceCase(id: String) async throws {
         let corpus = try loadCorpus()
         let conformanceCase = try find(id, in: corpus)
-        try corpus.verifyFingerprint(of: conformanceCase)
-
-        let outcome: ConformanceOutcome
-        let recorded: JSONValue
-        switch try await ConformanceHarness.actual(for: conformanceCase, corpus: corpus) {
-        case .unverified(let reason):
-            outcome = ConformanceOutcome(status: ConformanceStatus.unverified.rawValue, unexpected: false, detail: reason)
-            recorded = .null
-        case .value(let actual):
-            outcome = conformanceCase.classify(actual)
-            recorded = actual
+        let observed: ConformanceActual
+        do {
+            try corpus.verifyFingerprint(of: conformanceCase)
+            observed = try await ConformanceHarness.actual(for: conformanceCase, corpus: corpus)
+        } catch {
+            observed = .failed(String(describing: error))
         }
+
+        let (outcome, recorded) = observed.classified(for: conformanceCase)
         ConformanceReport.shared.record(conformanceCase, outcome: outcome, actual: recorded, corpus: corpus)
 
         if ConformanceReport.recordOnly { return }
@@ -76,9 +71,8 @@ struct UniPackConformanceTests {
     /// Reproduces unipad.io meta/unipack-conformance/RESULTS.md, "iOS: destroy() while a repeated sound
     /// is cycling": the engine is destroyed 0 to 29 ms after a press whose sound repeats. Loop 3 is the
     /// corpus value (RUN-S-005: two repeats of 10 ms); loop 50 keeps the sound cycling for half a
-    /// second. A destroy() that does not return ends the process after 20 s. Off by default because it
-    /// fails until SoundEngine is fixed.
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_REPRO_DESTROY"] == "1"))
+    /// second. A destroy() that does not return ends the process after 20 s.
+    @Test(.enabled("Requires a usable audio engine") { try await ConformanceHarness.audioEngineIsUsable() })
     func destroyWhileARepeatedSoundIsCycling() async throws {
         let corpus = try loadCorpus()
         for round in 0..<30 {
@@ -176,15 +170,19 @@ struct UniPackConformanceTests {
         #expect(reason == "not observable here")
     }
 
-    @Test func soundsThatCannotBeDecodedFailARunCaseInsteadOfLeavingItUnverified() async throws {
+    @Test(.enabled("Requires a usable audio engine") { try await ConformanceHarness.audioEngineIsUsable() })
+    func soundsThatCannotBeDecodedFailARunCaseInsteadOfLeavingItUnverified() async throws {
         let corpus = try loadCorpus()
         let original = try find("RUN-S-001", in: corpus)
         let undecodable = ConformanceCase.replacing(original, files: original.files.map {
             $0.path.hasPrefix("sounds/") ? ConformanceFile(path: $0.path, text: "not a wav file", base64: nil, asset: nil) : $0
         })
-        await #expect(throws: ConformanceHarness.ConformanceError.self) {
-            try await ConformanceHarness.actual(for: undecodable, corpus: corpus)
+        let actual = try await ConformanceHarness.actual(for: undecodable, corpus: corpus)
+        guard case .failed(let reason) = actual else {
+            Issue.record("undecodable sounds did not fail: \(actual)")
+            return
         }
+        #expect(reason.hasPrefix("RUN-S-001: no sound of the pack could be loaded:"))
     }
 
     @Test(arguments: [#""expectation": "determind","#, ""])

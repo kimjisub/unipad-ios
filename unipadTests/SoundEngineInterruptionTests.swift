@@ -36,19 +36,6 @@ struct SoundEngineInterruptionTests {
         override func getByteSize() -> Int64 { 0 }
     }
 
-    final class Listener: SoundEngine.LoadingListener {
-        private(set) var finished = false
-        private(set) var failure: Error?
-
-        func onStart(soundCount: Int) {}
-        func onProgressTick() {}
-        func onEnd() { finished = true }
-        func onException(_ error: Error) {
-            failure = error
-            finished = true
-        }
-    }
-
     /// 100 ms of silence: the engine only has to be able to decode and schedule it.
     private func writeSilentSound() throws -> URL {
         let url = FileManager.default.temporaryDirectory
@@ -61,10 +48,10 @@ struct SoundEngineInterruptionTests {
         return url
     }
 
-    private func makeLoadedEngine() async throws -> (SoundEngine, Listener, StubPack) {
+    private func makeLoadedEngine() async throws -> (SoundEngine, TestSoundLoadListener, StubPack) {
         let url = try writeSilentSound()
         let pack = StubPack(soundFile: url)
-        let listener = Listener()
+        let listener = TestSoundLoadListener()
         let engine = SoundEngine(unipack: pack, chain: ChainObserver(), loadingListener: listener)
 
         // The loader runs on a utility queue and reports back on the main queue. Bounded wait.

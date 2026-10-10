@@ -61,6 +61,7 @@ final class SoundEngine {
     enum Interruption: Equatable {
         /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
         case began(whileInterrupted: Bool)
+        /// `shouldResume`: the system allows playback to resume and the session is ours again.
         case ended(shouldResume: Bool)
     }
     /// Told after the engine has handled an interruption, so the screen can pause what it drives.
@@ -76,6 +77,12 @@ final class SoundEngine {
     /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
     /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
     var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+    /// Takes the session back when playback recovers. A test seam: a simulator always hands the
+    /// session back, so tests replace this to make it refuse as another app holding it would.
+    var activateSessionForRecovery: () throws -> Void {
+        get { gate.hooks.activateSession }
+        set { gate.hooks.activateSession = newValue }
+    }
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -377,8 +384,9 @@ final class SoundEngine {
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
             let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
-            gate.interruptionEnded(shouldResume: shouldResume)
-            onInterruption?(.ended(shouldResume: shouldResume))
+            // Resuming autoplay on a session we could not take back would run it without sound.
+            let recovered = gate.interruptionEnded(shouldResume: shouldResume) == .recovered
+            onInterruption?(.ended(shouldResume: recovered))
         default:
             // `.began`, and any type a later SDK adds: suppressing is the safe side.
             let whileInterrupted = gate.state == .interrupted

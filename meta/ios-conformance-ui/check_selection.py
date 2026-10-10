@@ -13,7 +13,8 @@ class LazyList:
     polls the first load has not finished: no cards, only the guiding row.
     """
 
-    def __init__(self, screens, lost=(), loading=0):
+    def __init__(self, screens, lost=(), loading=0, title='Conformance'):
+        self.title = title
         self.screens = screens
         self.lost = set(lost)
         self.loading = loading
@@ -26,7 +27,7 @@ class LazyList:
 
     @property
     def count(self):
-        return self.titles.count('Conformance')
+        return self.titles.count(self.title)
 
     @property
     def end_visible(self):
@@ -146,16 +147,41 @@ def check_model(overlay):
     expect_failure('cards never arrive', lambda: search_order(
         LazyList(landscape, loading=1000)), 'no pack cards')
 
+    # The shared search has the same limits and lost-drag behavior for blank cards.
+    blank_screens = [['Pack A'], ['Pack B'], ['']]
+    assert search_order(LazyList(blank_screens, lost={0}, loading=3, title='')) == (3, [0, 0, 0, 1], 1)
+    expect_failure('duplicate blank cards', lambda: search_order(
+        LazyList([['Pack A'], ['', '']], title='')), 'Duplicate')
+    expect_failure('blank card missing', lambda: search_order(
+        LazyList([['Pack A'], ['Pack B']], title='')), 'end of pack list')
+    expect_failure('blank card swipe limit', lambda: search_order(
+        LazyList(blank_screens, lost=range(40), title='')), '40-swipe limit')
+    print('PASS blank-card shared search model (device-free only)')
+
     # Narrow source guards tie the model's ordering to the overlay. They are
     # not an execution of XCTest, accessibility queries, or hittability.
     swift = overlay.read_text()
-    start = swift.find('private func exactFixtureTitle(')
+    assert 'return blankFixtureCard(in: list)' not in swift, \
+        'Blank title must use the same search, failure record and stall tracking as exact titles'
+    assert 'auto.waitForExistence(timeout: hasAutoplay ? 5 : 2)' in swift, \
+        'Packs with autoplay must keep the five-second menu wait'
+    selection = swift[swift.index('private func exactFixtureTitle('):
+                      swift.index('func testSyntheticPackInputAutoplayAndExit')]
+    assert 'return searchFixture(in: list) {' in selection
+    assert 'if fixtureTitle.isEmpty {' in selection and 'label == %@' in selection
+    assert selection.count('while true') == 1 and 'for _ in 0..<40' not in selection, \
+        'Both title matchers must share one bounded search loop'
+    matchers = selection[:selection.index('private func searchFixture(')]
+    assert 'scrollOneStep(' not in matchers, 'Matchers must use the shared search for scrolling'
+    assert 'XCTFail(' not in matchers and 'XCTAssert' not in matchers, \
+        'Neither title matcher may bypass the shared failure record'
+    start = swift.find('private func searchFixture(')
     assert start >= 0, 'Overlay still uses the original pre-scroll title assertion'
     search = swift[start:swift.index('func testSyntheticPackInputAutoplayAndExit', start)]
     assert 'if listEnd.isHittable' in search, 'Overlay takes one unmoved screen as the end of the list'
-    assert search.index('if count >= 2') < search.index('if count == 1 && matches.firstMatch.isHittable')
-    assert search.index('swipes >= 40') < search.index('if count == 1 && matches.firstMatch.isHittable')
-    assert search.index('if count == 1 && matches.firstMatch.isHittable') < search.index('if listEnd.isHittable')
+    assert search.index('if count >= 2') < search.index('if count == 1 && matches[0].isHittable')
+    assert search.index('swipes >= 40') < search.index('if count == 1 && matches[0].isHittable')
+    assert search.index('if count == 1 && matches[0].isHittable') < search.index('if listEnd.isHittable')
     assert search.index('if listEnd.isHittable') < search.index('scrollOneStep(list)\n')
     assert '"main.guide.download"' in search
     stall = search[search.index('if previousPosition == position'):search.index('scrollOneStep(list)\n')]
@@ -173,16 +199,16 @@ def check_model(overlay):
         'Overlay searches before the first load fills the list'
     assert 'return fail("Pack list shows no pack cards' in fail, \
         'A list without cards must fail through fail(), which records first'
-    loop = search[search.index('while true'):]
+    loop = search[search.index('while true'):search.index('private func waitForPackCards(')]
     assert 'XCTFail(' not in loop, 'Every loop failure must go through fail(), which records first'
     assert 'return nil' not in loop, 'Every loop failure must go through fail(), which records first'
-    assert loop.count('return fail(') == 3
+    assert loop.count('return fail(') == 4
     assert 'let position = first.exists ? ' in loop, 'Reading a missing first label stops the test without the record'
-    selected = loop[loop.index('if count == 1 && matches.firstMatch.isHittable'):]
-    assert selected.index('record()') < selected.index('XCTAssertEqual(matches.count, 1'), \
-        'Search record must precede the selection-time recheck'
-    assert 'XCTAssertEqual(matches.count, 1' in search
-    assert 'XCTAssertTrue(matches.firstMatch.isHittable' in search
+    selected = loop[loop.index('if count == 1 && matches[0].isHittable'):]
+    assert selected.index('let selected = matching()') < selected.index('record()')
+    assert 'guard selected.count == 1, let card = selected.first, card.isHittable' in selected
+    assert selected.index('record()') < selected.index('return card'), \
+        'Search record must precede selection after the matching-time recheck'
     assert 'guard let title = exactFixtureTitle(in: list) else { return }' in swift
     print('PASS overlay source ordering guards (device-free model only)')
 
