@@ -84,6 +84,28 @@ extension PlayUsageRecordTests {
             }
         }
 
+        /// The end says playback may resume, but the app cannot take the session back (another app
+        /// still holds it). Resuming would run autoplay with its lights and no sound, so it stays
+        /// paused for the user, as on Android when audio focus is lost for good.
+        @Test func autoplayStaysPausedWhenTheSessionCannotBeTakenBackAfterAResumableEnd() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                let pausedAt = runner.progress
+                try await Task.sleep(for: .milliseconds(500))
+
+                #expect(engine.isPlaybackSuppressed)
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
+                #expect(runner.progress == pausedAt)
+                #expect(s.vm.playMode == .autoPlay, "the user's choice of autoplay is kept for them to resume")
+            }
+        }
+
         @Test func autoplayStaysPausedWhenTheEndDoesNotSayResume() async throws {
             try await Self.run { s in
                 try await s.loadReady()
