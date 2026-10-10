@@ -1,20 +1,35 @@
 import XCTest
 
-/// Stage one original pack in the existing isolated test library before running this check.
+/// The complete suite prepares each warning scenario in its own isolated library.
+/// For a manually staged pack, provide the existing isolated test library token.
 /// UNIPAD_WARNING_TOKEN identifies that library; UNIPAD_WARNING_KIND is sound, info or none.
 final class PackWarningUITests: XCTestCase {
     @MainActor
     func testStagedPackWarningInputAndExit() throws {
-        let environment = ProcessInfo.processInfo.environment
-        guard let token = environment["UNIPAD_WARNING_TOKEN"], UUID(uuidString: token) != nil,
-              let kind = environment["UNIPAD_WARNING_KIND"] else {
-            throw XCTSkip("stage a pack and provide its isolated library token and warning kind")
+        if UITestSupport.isReleaseSuite {
+            for kind in ["sound", "info", "none"] {
+                checkPack(kind: kind, token: UUID().uuidString, preparedBySuite: true)
+            }
+        } else {
+            let environment = ProcessInfo.processInfo.environment
+            guard let token = environment["UNIPAD_WARNING_TOKEN"], UUID(uuidString: token) != nil,
+                  let kind = environment["UNIPAD_WARNING_KIND"] else {
+                throw XCTSkip("stage a pack and provide its isolated library token and warning kind")
+            }
+            checkPack(kind: kind, token: token, preparedBySuite: false)
         }
+    }
+
+    @MainActor
+    private func checkPack(kind: String, token: String, preparedBySuite: Bool) {
+        print("PACK_WARNING scenario \(kind)")
         XCTAssertTrue(["sound", "info", "none"].contains(kind))
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
-        app.launchArguments += ["-UniPadReleaseTest", token]
+        app.launchArguments = preparedBySuite
+            ? UITestSupport.englishLaunchArguments(library: "warning-\(kind)", token: token)
+            : UITestSupport.englishLaunchArguments()
+        if !preparedBySuite { app.launchArguments += ["-UniPadReleaseTest", token] }
         app.launch()
         defer { app.terminate() }
 

@@ -67,7 +67,9 @@ uses a UUID-scoped library and history store. Search, deletion and play-usage ch
 their own packs; import checks generate a silent archive in the isolated Documents/00-ReleaseTestImports folder and select
 it through the system picker. Counts and recent packs are prepared through UI
 playback. A deletion-error check protects the generated pack and unlocks it in
-teardown. Loading-layout checks explicitly request the larger silent fixture from main so
+teardown. Warning checks prepare the missing-sound, missing-metadata and valid
+pack scenarios independently, retaining their warning text, grid and input checks.
+Loading-layout checks explicitly request the larger silent fixture from main so
 the unchanged frame assertions observe both loading and playback without an app delay.
 Picker control arrival and frame stabilization have separate bounded waits; a
 host test executes the actual Swift wait for late, missing and moving controls.
@@ -97,8 +99,8 @@ local iPhone 17 Pro on iOS 27 and export
 `TEST_RUNNER_UNIPAD_RELEASE_SUITE=1` first. The wrapper disables automatic test
 diagnostic collection: on the local iOS 27 runtime, crash-reporter synchronization
 can otherwise wait 300 seconds after each test. Assertions and result checks
-still run; the `.xcresult` bundle and screenshots remain saved. This work does not add SwiftLint; warning
-policy and any new lint tool are a separate technical-owner decision.
+still run; the `.xcresult` bundle and screenshots remain saved. Both build and test jobs set `UNIPAD_WARNINGS_AS_ERRORS=YES` for UniPad targets.
+This does not add SwiftLint or pass incompatible warning flags to Swift packages.
 
 Both jobs need no repository secrets or signing credentials. They replace the
 Firebase plist only in its disposable checkout with clearly fake values from

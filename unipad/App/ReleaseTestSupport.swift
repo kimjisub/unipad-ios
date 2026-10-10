@@ -50,6 +50,16 @@ nonisolated enum ReleaseTestSupport {
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed/1 1 1 1"))
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
+            case "warning-sound", "warning-info", "warning-none":
+                let kind = UserDefaults.standard.string(forKey: "UniPadUITestLibrary")
+                let pack = library.appendingPathComponent("Warning")
+                try makePack(at: pack, title: "Warning Test", producer: "Tester")
+                let metadata = kind == "warning-info" ? "" : "title=Warning Test\nproducerName=Tester\n"
+                try (metadata + "buttonX=3\nbuttonY=4\nchain=1\nsquareButton=true\n")
+                    .write(to: pack.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+                try fm.removeItem(at: pack.appendingPathComponent("autoPlay"))
+                try (kind == "warning-sound" ? "1 1 1 nope.wav\n" : "1 1 1 silence.wav\n")
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
             case "chain-release":
                 // The screen check passes the approved archive's exact bytes; staging it is the
                 // direct extraction its fixture README requires, not a ZIP import.
