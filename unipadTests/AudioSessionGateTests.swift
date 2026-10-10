@@ -4,6 +4,7 @@ import Testing
 
 /// The state machine that keeps a pad from starting a node on an engine that is not rendering.
 /// Everything AVFoundation would do is faked, so an interruption can be exercised without a device.
+/// The worker is faked too: what the gate hands it waits until a test calls `finishRecoveries()`.
 @MainActor
 struct AudioSessionGateTests {
     final class FakeAudio {
@@ -18,6 +19,15 @@ struct AudioSessionGateTests {
         var clock: TimeInterval = 0
         private(set) var activateCount = 0
         private(set) var startCount = 0
+        private var handedToWorker: [() -> Void] = []
+        var pendingRecoveries: Int { handedToWorker.count }
+
+        /// Runs, in order, what the gate handed to the worker and hands the results back.
+        func finishRecoveries() {
+            let work = handedToWorker
+            handedToWorker.removeAll()
+            work.forEach { $0() }
+        }
 
         var hooks: AudioSessionGate.Hooks {
             AudioSessionGate.Hooks(
@@ -31,10 +41,19 @@ struct AudioSessionGateTests {
                     guard self.canStart else { throw Failure.denied }
                     if !self.startLeavesEngineStopped { self.engineRunning = true }
                 },
+                runOffMain: { [unowned self] work, completion in
+                    self.handedToWorker.append { completion(work()) }
+                },
                 // Some tests drop the fake after began(); the clock then stays at 0.
                 now: { [weak self] in self?.clock ?? 0 }
             )
         }
+    }
+
+    /// Boxes what a notification's completion reported.
+    final class Reported {
+        var recovery: AudioSessionGate.Recovery?
+        var record: (AudioSessionGate.Recovery) -> Void { { [unowned self] in self.recovery = $0 } }
     }
 
     private func began() -> (FakeAudio, AudioSessionGate) {
@@ -69,8 +88,14 @@ struct AudioSessionGateTests {
 
     @Test func interruptionEndedWithShouldResumeRestartsAndClearsTheFlag() {
         let (audio, gate) = began()
+        let reported = Reported()
 
-        #expect(gate.interruptionEnded(shouldResume: true) == .recovered)
+        gate.interruptionEnded(shouldResume: true, completion: reported.record)
+        #expect(gate.isPlaybackSuppressed, "playback was back before the worker restarted the engine")
+        #expect(reported.recovery == nil)
+        audio.finishRecoveries()
+
+        #expect(reported.recovery == .recovered)
         #expect(gate.state == .ready)
         #expect(!gate.isPlaybackSuppressed)
         #expect(audio.activateCount == 1)
@@ -80,8 +105,11 @@ struct AudioSessionGateTests {
 
     @Test func interruptionEndedWithoutShouldResumeStaysSuppressed() {
         let (audio, gate) = began()
+        let reported = Reported()
 
-        #expect(gate.interruptionEnded(shouldResume: false) == .stillSuppressed)
+        gate.interruptionEnded(shouldResume: false, completion: reported.record)
+        audio.finishRecoveries()
+        #expect(reported.recovery == .stillSuppressed)
         #expect(gate.isPlaybackSuppressed)
         #expect(gate.state == .needsRecovery)
         // The notification itself resumes nothing.
@@ -95,6 +123,8 @@ struct AudioSessionGateTests {
         let (audio, gate) = began()
         gate.interruptionEnded(shouldResume: false)
 
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 1)
         #expect(audio.startCount == 1)
@@ -104,10 +134,14 @@ struct AudioSessionGateTests {
     @Test func aSessionThatCannotBeActivatedKeepsPlaybackSuppressed() {
         let (audio, gate) = began()
         audio.canActivate = false
+        let reported = Reported()
 
-        #expect(gate.interruptionEnded(shouldResume: true) == .stillSuppressed)
+        gate.interruptionEnded(shouldResume: true, completion: reported.record)
+        audio.finishRecoveries()
+        #expect(reported.recovery == .stillSuppressed)
         #expect(gate.isPlaybackSuppressed)
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         // The engine is never started on a session we do not hold.
         #expect(audio.startCount == 0)
     }
@@ -116,7 +150,8 @@ struct AudioSessionGateTests {
         let (audio, gate) = began()
         audio.canStart = false
 
-        #expect(gate.interruptionEnded(shouldResume: true) == .stillSuppressed)
+        gate.interruptionEnded(shouldResume: true)
+        audio.finishRecoveries()
         #expect(gate.isPlaybackSuppressed)
         #expect(audio.startCount == 1)
     }
@@ -126,7 +161,8 @@ struct AudioSessionGateTests {
         let (audio, gate) = began()
         audio.startLeavesEngineStopped = true
 
-        #expect(gate.interruptionEnded(shouldResume: true) == .stillSuppressed)
+        gate.interruptionEnded(shouldResume: true)
+        audio.finishRecoveries()
         #expect(gate.isPlaybackSuppressed)
         #expect(!gate.ensureEngineRunning())
     }
@@ -145,6 +181,7 @@ struct AudioSessionGateTests {
         #expect(gate.suppressionLogCount == 1)
 
         gate.interruptionEnded(shouldResume: true)
+        audio.finishRecoveries()
         #expect(gate.suppressionLogCount == 0)
 
         audio.engineRunning = false
@@ -159,15 +196,19 @@ struct AudioSessionGateTests {
         audio.engineRunning = false
         audio.canActivate = false
 
-        #expect(gate.mediaServicesWereReset() == .stillSuppressed)
+        gate.mediaServicesWereReset()
+        audio.finishRecoveries()
         #expect(gate.mediaServicesResetCount == 1)
         #expect(gate.isPlaybackSuppressed)
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
 
         // The audio server comes back: a pad after the retry interval configures the session again
         // and restarts the engine.
         audio.clock += AudioSessionGate.interruptedRetryInterval
         audio.canActivate = true
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.startCount == 1)
         #expect(!gate.isPlaybackSuppressed)
@@ -177,8 +218,11 @@ struct AudioSessionGateTests {
         let audio = FakeAudio()
         let gate = AudioSessionGate(hooks: audio.hooks)
         audio.engineRunning = false
+        let reported = Reported()
 
-        #expect(gate.configurationChanged() == .recovered)
+        gate.configurationChanged(completion: reported.record)
+        audio.finishRecoveries()
+        #expect(reported.recovery == .recovered)
         #expect(audio.startCount == 1)
         #expect(!gate.isPlaybackSuppressed)
     }
@@ -186,7 +230,11 @@ struct AudioSessionGateTests {
     @Test func aConfigurationChangeDuringAnInterruptionChangesNothing() {
         let (audio, gate) = began()
 
-        #expect(gate.configurationChanged() == .stillSuppressed)
+        let reported = Reported()
+
+        gate.configurationChanged(completion: reported.record)
+        #expect(reported.recovery == .stillSuppressed)
+        #expect(audio.pendingRecoveries == 0)
         #expect(audio.activateCount == 0)
         #expect(audio.startCount == 0)
         #expect(gate.state == .interrupted)
@@ -198,6 +246,8 @@ struct AudioSessionGateTests {
         let gate = AudioSessionGate(hooks: audio.hooks)
         audio.engineRunning = false
 
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 1)
         #expect(audio.startCount == 1)
@@ -210,7 +260,9 @@ struct AudioSessionGateTests {
 
         #expect(gate.isPlaybackSuppressed)
         #expect(gate.state == .needsRecovery)
-        // The next pad re-activates the session before it plays.
+        // The next pad has the session re-activated; the pads after it play.
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 1)
     }
@@ -219,8 +271,11 @@ struct AudioSessionGateTests {
     /// the app). Coming back to the app takes the session back.
     @Test func anInterruptionThatNeverEndsIsRecoveredWhenTheAppComesBack() {
         let (audio, gate) = began()
+        let reported = Reported()
 
-        #expect(gate.appBecameActive() == .recovered)
+        gate.appBecameActive(completion: reported.record)
+        audio.finishRecoveries()
+        #expect(reported.recovery == .recovered)
         #expect(gate.state == .ready)
         #expect(audio.activateCount == 1)
         #expect(audio.startCount == 1)
@@ -231,12 +286,14 @@ struct AudioSessionGateTests {
         let (audio, gate) = began()
         audio.canActivate = false
 
-        #expect(gate.appBecameActive() == .stillSuppressed)
+        gate.appBecameActive()
+        audio.finishRecoveries()
         #expect(gate.state == .interrupted)
         #expect(audio.startCount == 0, "the engine was started on a session we do not hold")
 
         audio.canActivate = true
-        #expect(gate.appBecameActive() == .recovered)
+        gate.appBecameActive()
+        audio.finishRecoveries()
         #expect(!gate.isPlaybackSuppressed)
     }
 
@@ -247,13 +304,17 @@ struct AudioSessionGateTests {
         audio.canActivate = false
         audio.clock = AudioSessionGate.interruptedRetryInterval * 5
 
-        #expect(gate.appBecameActive() == .stillSuppressed)
+        gate.appBecameActive()
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1)
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1, "the pad right after coming back tried again")
 
         audio.clock += AudioSessionGate.interruptedRetryInterval
         audio.canActivate = true
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 2)
     }
@@ -262,7 +323,8 @@ struct AudioSessionGateTests {
         let (audio, gate) = began()
         gate.interruptionEnded(shouldResume: false)
 
-        #expect(gate.appBecameActive() == .recovered)
+        gate.appBecameActive()
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1)
         #expect(!gate.isPlaybackSuppressed)
     }
@@ -270,8 +332,11 @@ struct AudioSessionGateTests {
     @Test func comingBackWithNothingInterruptedTouchesNothing() {
         let audio = FakeAudio()
         let gate = AudioSessionGate(hooks: audio.hooks)
+        let reported = Reported()
 
-        #expect(gate.appBecameActive() == .recovered)
+        gate.appBecameActive(completion: reported.record)
+        #expect(reported.recovery == .recovered)
+        #expect(audio.pendingRecoveries == 0)
         #expect(audio.activateCount == 0)
         #expect(audio.startCount == 0)
     }
@@ -289,14 +354,18 @@ struct AudioSessionGateTests {
 
         audio.clock = interval
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1)
         for _ in 0..<16 { _ = gate.ensureEngineRunning() }
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1, "every pad press called into the audio server")
         #expect(gate.state == .interrupted)
         #expect(gate.suppressionLogCount == 1)
 
         audio.clock = interval * 2
         audio.canActivate = true
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 2)
         #expect(audio.startCount == 1)
@@ -315,10 +384,12 @@ struct AudioSessionGateTests {
         gate.playbackFailed(reason: "player did not see an IO cycle")
 
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1, "the first pad after the failure did not try at once")
         for _ in 0..<32 {
             audio.clock += interval / 64
             _ = gate.ensureEngineRunning()
+            audio.finishRecoveries()
         }
         #expect(audio.activateCount == 1, "every pad press called into the audio server")
         #expect(gate.state == .needsRecovery)
@@ -326,6 +397,8 @@ struct AudioSessionGateTests {
 
         audio.clock = 100 + interval
         audio.canActivate = true
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 2)
         #expect(!gate.isPlaybackSuppressed)
@@ -339,13 +412,81 @@ struct AudioSessionGateTests {
         audio.canActivate = false
         gate.playbackFailed(reason: "player did not see an IO cycle")
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(audio.activateCount == 1)
 
         audio.canActivate = true
         audio.engineRunning = false
         gate.playbackFailed(reason: "player did not see an IO cycle")
+        #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(gate.ensureEngineRunning())
         #expect(audio.activateCount == 2)
+    }
+
+    /// A pad pressed while the engine needs a recovery hands it to the worker and returns at once;
+    /// it never waits for the session to be activated. Autoplay's pads that follow add nothing while
+    /// the recovery is on the worker, and once it is back the pads play again.
+    @Test func aPadThatNeedsARecoveryDoesNotWaitForTheSession() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        audio.engineRunning = false
+
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.activateCount == 0, "the pad activated the session itself")
+        #expect(audio.pendingRecoveries == 1)
+        for _ in 0..<16 { #expect(!gate.ensureEngineRunning()) }
+        #expect(audio.pendingRecoveries == 1, "every pad handed the worker another recovery")
+        #expect(gate.isRecovering)
+
+        audio.finishRecoveries()
+        #expect(audio.activateCount == 1)
+        #expect(!gate.isRecovering)
+        #expect(gate.ensureEngineRunning())
+    }
+
+    /// Unplugging headphones mid-play: the notification only hands the restart to the worker.
+    @Test func aRouteChangeDoesNotWaitForTheEngineToRestart() {
+        let audio = FakeAudio()
+        let gate = AudioSessionGate(hooks: audio.hooks)
+        audio.engineRunning = false
+
+        gate.configurationChanged()
+        #expect(audio.activateCount == 0)
+        #expect(audio.startCount == 0)
+        #expect(!gate.ensureEngineRunning())
+        #expect(audio.pendingRecoveries == 1)
+
+        audio.finishRecoveries()
+        #expect(gate.ensureEngineRunning())
+    }
+
+    /// The end of an interruption asked for a recovery, and another interruption began before it came
+    /// back. The engine the worker restarted is not ours to play on.
+    @Test func aRecoveryOvertakenByANewInterruptionChangesNothing() {
+        let (audio, gate) = began()
+        let reported = Reported()
+        gate.interruptionEnded(shouldResume: true, completion: reported.record)
+
+        gate.interruptionBegan()
+        audio.finishRecoveries()
+
+        #expect(reported.recovery == .stillSuppressed)
+        #expect(gate.state == .interrupted)
+        #expect(!gate.ensureEngineRunning())
+    }
+
+    @Test func shutDownWhileARecoveryIsOnTheWorkerStaysShutDown() {
+        let (audio, gate) = began()
+        let reported = Reported()
+        gate.appBecameActive(completion: reported.record)
+
+        gate.shutDown()
+        audio.finishRecoveries()
+
+        #expect(reported.recovery == .stillSuppressed)
+        #expect(gate.state == .shutDown)
+        #expect(!gate.ensureEngineRunning())
     }
 
     @Test func comingBackAfterShutDownStartsNothing() {
@@ -355,8 +496,9 @@ struct AudioSessionGateTests {
         gate.shutDown()
         audio.clock = AudioSessionGate.interruptedRetryInterval * 10
 
-        #expect(gate.appBecameActive() == .stillSuppressed)
+        gate.appBecameActive()
         #expect(!gate.ensureEngineRunning())
+        audio.finishRecoveries()
         #expect(audio.activateCount == 0)
     }
 
@@ -364,11 +506,16 @@ struct AudioSessionGateTests {
         let audio = FakeAudio()
         let gate = AudioSessionGate(hooks: audio.hooks)
         gate.shutDown()
+        let ended = Reported(), reset = Reported(), changed = Reported()
 
         #expect(!gate.ensureEngineRunning())
-        #expect(gate.interruptionEnded(shouldResume: true) == .stillSuppressed)
-        #expect(gate.mediaServicesWereReset() == .stillSuppressed)
-        #expect(gate.configurationChanged() == .stillSuppressed)
+        gate.interruptionEnded(shouldResume: true, completion: ended.record)
+        gate.mediaServicesWereReset(completion: reset.record)
+        gate.configurationChanged(completion: changed.record)
+        audio.finishRecoveries()
+        #expect(ended.recovery == .stillSuppressed)
+        #expect(reset.recovery == .stillSuppressed)
+        #expect(changed.recovery == .stillSuppressed)
         #expect(gate.state == .shutDown)
         #expect(audio.activateCount == 0)
         #expect(audio.startCount == 0)

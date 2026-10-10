@@ -1054,9 +1054,8 @@ final class PlayViewModel {
 
     func startVolumeObserver() {
         #if canImport(UIKit)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setActive(true)
-        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+        // SoundEngine keeps the session active and takes it back after an interruption.
+        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.updateVolumeUI()
             }
