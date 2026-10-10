@@ -96,11 +96,7 @@ final class HomeSettingsEntryTests: XCTestCase {
         openSettingsAndReturn(language)
 
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else {
-            XCTAssertEqual(app.buttons.matching(identifier: "main.recentPack").count, 0,
-                           "[\(language.code)] recent packs shown for an empty library")
-            throw XCTSkip("no pack in the library, so the selected-pack state was not walked")
-        }
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         packTitles.element(boundBy: 0).tap()
         sleep(1)
         UITestSupport.attachScreenshot("\(language.code)\(largeText ? "-large" : "")-pack-selected", to: self)
@@ -112,10 +108,9 @@ final class HomeSettingsEntryTests: XCTestCase {
     @MainActor
     func testRecentPackShowsItsDetails() throws {
         launch(Self.english)
+        UITestSupport.playAndReturn(app.scrollViews["main.packList"].staticTexts["Release Fixture - Tests"].firstMatch, in: app)
         let recent = app.buttons["main.recentPack"].firstMatch
-        guard recent.waitForExistence(timeout: 5) else {
-            throw XCTSkip("no pack has been played on this simulator, so there is no recent pack to tap")
-        }
+        XCTAssertTrue(recent.waitForExistence(timeout: 5), "playing must create a recent pack")
         XCTAssertTrue(recent.isHittable, "the recent pack is not hittable")
         recent.tap()
         XCTAssertTrue(app.buttons["trash"].waitForExistence(timeout: 5), "the pack's details never appeared")

@@ -34,9 +34,7 @@ final class HomeGuidingCardsTests: XCTestCase {
     /// The top bar with search only exists once there is at least one pack.
     private func requireTopBar() throws -> XCUIElement {
         let search = app.buttons["magnifyingglass"].firstMatch
-        guard search.waitForExistence(timeout: 30) else {
-            throw XCTSkip("the list is empty, so the top bar is not shown")
-        }
+        XCTAssertTrue(search.waitForExistence(timeout: 30), "the fixture must prepare a populated library")
         return search
     }
 

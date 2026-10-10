@@ -5,7 +5,9 @@ import XCTest
 /// so these tests ask the host to press it through the simulator's HID input
 /// instead. Run them with `ci/host-keys.sh`; without it they are skipped.
 final class MidiHelpHardwareKeyTests: XCTestCase {
-    private static let escape = "key 41"
+    // AXe's short-key event can complete without dismissing help on iOS 27.
+    // Use one explicit down/hold/up press; never retry Escape or tap Close.
+    private static let escape = "key 41 --duration 0.15"
     private var app: XCUIApplication!
 
     private struct Labels {
@@ -55,6 +57,14 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             FileManager.default.fileExists(atPath: "\(dir)/done-\(id)")
         }, evaluatedWith: nil)
         wait(for: [pressed], timeout: 30)
+        let response = try? String(contentsOfFile: "\(dir)/done-\(id)", encoding: .utf8)
+        let output = (try? String(contentsOfFile: "\(dir)/output-\(id)", encoding: .utf8)) ?? ""
+        let delivery = XCTAttachment(string: "request=\(keys)\nresponse=\(response ?? "missing")\n\(output)")
+        delivery.name = "host-key-delivery-\(id)"
+        delivery.lifetime = .keepAlways
+        add(delivery)
+        XCTAssertEqual(response?.trimmingCharacters(in: .whitespacesAndNewlines), "successful",
+                       "The host must deliver the key successfully: \(output)")
     }
 
     private func waitSixSeconds() {
@@ -81,8 +91,16 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     }
 
     private func assertOnlyHelpClosed(_ labels: Labels) {
+        let closed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
+        if !closed {
+            UITestSupport.attachScreenshot("real-escape-still-open", to: self)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "real-escape-still-open-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
+        XCTAssertTrue(closed, "Escape must close the help")
         XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["midi.help.close"].exists)
         XCTAssertTrue(app.buttons["midi.confirm"].exists, "Escape must close only the help")
         waitSixSeconds()
         XCTAssertTrue(app.buttons["midi.help.open"].exists, "the selection must stay after the help closes")
@@ -157,7 +175,27 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         XCTAssertTrue(speech.contains(labels.close), "VoiceOver must be on the close button: \(speech)")
         pressHostKeys(Self.escape)
         XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["midi.help.close"].exists, "Escape must close the help")
+        // The opener remains in XCTest's tree even while accessibility-hidden.
+        // Wait for dismissal itself after the HID request, not for that opener.
+        let closeWasPresent = !app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
+        if closeWasPresent {
+            let before = try voiceOver.currentSpeech().utterance
+            UITestSupport.attachScreenshot("escape-still-open-\(language)", to: self)
+            let start = Date()
+            let eventuallyClosed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 10)
+            let after = try voiceOver.currentSpeech().utterance
+            let diagnostic = XCTAttachment(string: """
+                before=\(before)
+                after=\(after)
+                closed=\(eventuallyClosed)
+                seconds=\(Date().timeIntervalSince(start))
+                """)
+            diagnostic.name = "escape-delay-diagnostic-\(language)"
+            diagnostic.lifetime = .keepAlways
+            add(diagnostic)
+            UITestSupport.attachScreenshot("escape-diagnostic-after-\(language)", to: self)
+        }
+        XCTAssertFalse(closeWasPresent, "Escape must close the help")
         XCTAssertTrue(app.buttons["midi.confirm"].exists)
         let returned = try voiceOver.currentSpeech().utterance
         let focus = XCTAttachment(string: returned)

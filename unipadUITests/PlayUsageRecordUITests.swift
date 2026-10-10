@@ -31,7 +31,7 @@ final class PlayUsageRecordUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "play-usage")
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -55,7 +55,7 @@ final class PlayUsageRecordUITests: XCTestCase {
     private func openProbePack() throws -> XCUIElement {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", Self.packTitle)).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install test-fixtures/PlayUsage first")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the isolated PlayUsage pack must be prepared")
         mark("open pack")
         title.tap()
         let play = app.buttons["Play"].firstMatch

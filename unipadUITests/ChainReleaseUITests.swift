@@ -1,7 +1,8 @@
+import CryptoKit
 import XCTest
 
-/// Install the unchanged ChainRelease delayed archive in Documents/UniPack before running.
-/// A missing pack skips this optional check; required fixture runs must report a pass, not a skip.
+/// The release suite stages the unchanged ChainRelease delayed archive in an isolated library
+/// and requires a pass. Elsewhere, install it in Documents/UniPack; a missing pack skips the check.
 /// One actual simulator finger holds the first pad through the pack's 100 ms chain move.
 /// Audio stop targets are independently checked by ChainReleaseTests, not inferred here.
 final class ChainReleaseUITests: XCTestCase {
@@ -9,12 +10,16 @@ final class ChainReleaseUITests: XCTestCase {
     func testOneFingerThroughPackChainMoveAndRelease() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        let archive = UITestSupport.isReleaseSuite ? try Self.approvedArchive() : nil
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "chain-release", archive: archive)
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Chain Release v1 delayed")).firstMatch
-        guard title.waitForExistence(timeout: 10) else {
+        let installed = title.waitForExistence(timeout: 10)
+        if archive != nil {
+            XCTAssertTrue(installed, "the release suite must stage Chain Release v1 delayed")
+        } else if !installed {
             throw XCTSkip("Chain Release v1 delayed is not installed in Documents/UniPack; chain release UI was not checked")
         }
         title.tap()
@@ -33,5 +38,16 @@ final class ChainReleaseUITests: XCTestCase {
         app.buttons["rectangle.portrait.and.arrow.right"].tap()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 10))
         UITestSupport.attachScreenshot("04-home-after-exit", to: self)
+    }
+
+    /// The simulator runner reads the reviewed copy from the source tree and refuses changed bytes.
+    private static func approvedArchive() throws -> Data {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("unipadTests/Fixtures/ChainRelease/delayed.uni")
+        let data = try Data(contentsOf: url)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(digest, "7f8647fc894b4226df180061d94febaa9306c0a2c1a3d019299b47a6c56c7236",
+                       "delayed.uni must match the approved chain-release-v1 manifest")
+        return data
     }
 }

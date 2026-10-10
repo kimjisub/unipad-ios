@@ -35,30 +35,52 @@ if [[ -z $axe ]]; then
   fi
 fi
 
-keys=$(mktemp -d "${TMPDIR:-/tmp}/unipad-host-keys.XXXXXX")
-log=$keys/presses.log
+keys=$(mktemp -d "${PAPERCLIP_RUN_SCRATCH_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/unipad-host-keys.XXXXXX")
 trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
 
+deliver() {
+  local state
+  # Xcode 27 keeps legacy keyboard input disconnected after dtuhidd exits idle.
+  # AXe selects DTUHID only while that process is running. Wake the existing
+  # service on this device before selection; never change its activation state
+  # or replay a key that might already have been delivered.
+  state=$(xcrun simctl spawn $udid notifyutil -g com.apple.coredevice.dtuhidd.active) || return
+  print "$state"
+  case $state in
+    'com.apple.coredevice.dtuhidd.active 1')
+      xcrun simctl spawn $udid launchctl kickstart -p user/$UID/com.apple.coredevice.dtuhidd || return
+      ;;
+    'com.apple.coredevice.dtuhidd.active 0') ;;
+    *) print -u2 "Unrecognized simulator input state: $state"; return 1 ;;
+  esac
+  $axe batch --udid $udid --file $request --verbose
+}
+
+# The responder ends with this script even when the script is killed without
+# running its EXIT trap; $$ stays this script's pid inside the subshell.
 {
-  while true; do
+  while kill -0 $$ 2>/dev/null; do
     for request in $keys/request-*; do
       id=${request:t}; id=${id#request-}
       steps=$(<$request)
-      if $axe batch --udid $udid --file $request >/dev/null; then
-        print "$(date +%T) performed: ${steps//$'\n'/; }" >>$log
+      print "$(date +%T) host request $id: ${steps//$'\n'/; }"
+      if deliver >$keys/output-$id 2>&1; then
+        print successful >$keys/response-$id
       else
-        print "$(date +%T) FAILED: ${steps//$'\n'/; }" >>$log
+        print failed >$keys/response-$id
       fi
+      cat $keys/output-$id
+      print "$(date +%T) host response $id: $(<$keys/response-$id)"
       rm -f $request
-      touch $keys/done-$id
+      mv $keys/response-$id $keys/done-$id
     done
     sleep 0.2
   done
+  rm -rf $keys
 } &
 responder=$!
 
 result=0
 TEST_RUNNER_HOST_KEYS_DIR=$keys xcodebuild "$@" \
   -destination "id=$udid" -derivedDataPath $derived -parallel-testing-enabled NO -collect-test-diagnostics never || result=$?
-[[ -f $log ]] && cat $log
 exit $result
