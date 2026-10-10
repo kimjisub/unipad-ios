@@ -81,7 +81,7 @@ final class ConformanceReport: @unchecked Sendable {
             return .object(["id": .string(id), "fingerprint": .string(entry.fingerprint), "status": .string(entry.status), "detail": .string(entry.detail), "actual": entry.actual])
         }
         let report = JSONValue.object([
-            "platform": .string(ConformanceCorpus.platform), "corpusSha256": .string(corpus.sha256),
+            "platform": .string(ConformanceCorpus.platform), "corpusSha256": .string(corpus.sha256), "corpusSource": .string(corpus.source),
             "generatedAt": .string(ISO8601DateFormatter().string(from: Date())), "assertions": .string(Self.assertions),
             "cases": .array(cases),
         ])

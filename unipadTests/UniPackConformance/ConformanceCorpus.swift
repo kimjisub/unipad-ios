@@ -42,11 +42,13 @@ struct ConformanceCorpus {
     enum LoadError: Error, CustomStringConvertible {
         case missing
         case invalid(String)
+        case digest(String)
 
         var description: String {
             switch self {
             case .missing: return "corpus.json is neither in the test bundle nor next to the test sources"
             case .invalid(let reason): return "corpus.json is invalid: \(reason)"
+            case .digest(let reason): return reason
             }
         }
     }
@@ -76,7 +78,26 @@ struct ConformanceCorpus {
             url = beside
             source = "source-tree"
         }
-        return try parse(Data(contentsOf: url), source: source)
+        let data = try Data(contentsOf: url)
+        let digestFile = try? String(contentsOf: url.deletingLastPathComponent().appendingPathComponent("corpus.sha256"), encoding: .utf8)
+        _ = try verifyDigest(of: data, digestFile: digestFile)
+        return try parse(data, source: source)
+    }
+
+    /// The sha256 of the corpus.json bytes, after checking it against the corpus.sha256 that unipad.io's
+    /// build-corpus.mjs writes and sync.mjs copies beside it. A copy without that file, or one that does
+    /// not hash to it, is refused.
+    static func verifyDigest(of data: Data, digestFile: String?) throws -> String {
+        let actual = sha256Hex(data)
+        guard let digestFile else {
+            throw LoadError.digest("corpus.sha256 is missing beside corpus.json; copy both with unipad.io meta/unipack-conformance/sync.mjs")
+        }
+        let declared = String(digestFile.prefix(64))
+        guard declared.count == 64, declared.allSatisfy({ "0123456789abcdef".contains($0) }), digestFile == declared + "  corpus.json\n" else {
+            throw LoadError.digest("corpus.sha256 is not one \"<sha256>  corpus.json\" line: \(digestFile.debugDescription)")
+        }
+        guard declared == actual else { throw LoadError.digest("corpus.json hashes to \(actual), corpus.sha256 declares \(declared)") }
+        return actual
     }
 
     static func parse(_ data: Data, source: String) throws -> ConformanceCorpus {
