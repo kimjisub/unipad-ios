@@ -51,6 +51,13 @@ struct ConformanceCorpus {
         }
     }
 
+    /// Keep one invocation when discovery fails; it reloads the corpus and reports the actual error.
+    /// An empty parameter list would silently omit the case runner and leave an old report behind.
+    static func caseIDs(load: () throws -> ConformanceCorpus = { try Self.load() }, onlyPrefix: String? = nil) -> [String] {
+        do { return try load().cases.map(\.id).filter { onlyPrefix.map($0.hasPrefix) ?? true } }
+        catch { return ["corpus-load-failed"] }
+    }
+
     private final class BundleLocator {}
 
     /// The copy in the test bundle (the synchronized group ships it as a resource); the copy beside

@@ -19,22 +19,29 @@ extension PlayUsageRecordTests {
             private let lock = NSLock()
             private var mainSteps: [String] = []
             private var started = false
+            private var detailStarted = false
             private var holdTimedOut = false
             private let hold: DispatchSemaphore?
             private let holdTimeout: TimeInterval
             private let failsInfo: Bool
+            private let holdsDetail: Bool
+            private let infoWarning: String?
 
             override var id: String { "probe-pack" }
 
-            init(holdInfo: Bool = false, holdTimeout: TimeInterval = 2, failsInfo: Bool = false) {
-                self.hold = holdInfo ? DispatchSemaphore(value: 0) : nil
+            init(holdInfo: Bool = false, holdDetail: Bool = false, holdTimeout: TimeInterval = 2,
+                 failsInfo: Bool = false, infoWarning: String? = nil) {
+                self.hold = holdInfo || holdDetail ? DispatchSemaphore(value: 0) : nil
                 self.holdTimeout = holdTimeout
                 self.failsInfo = failsInfo
+                self.holdsDetail = holdDetail
+                self.infoWarning = infoWarning
                 super.init()
             }
 
             var stepsOnMain: [String] { lock.withLock { mainSteps } }
             var readStarted: Bool { lock.withLock { started } }
+            var detailReadStarted: Bool { lock.withLock { detailStarted } }
             var holdExpired: Bool { lock.withLock { holdTimedOut } }
 
             func release() { hold?.signal() }
@@ -54,7 +61,7 @@ extension PlayUsageRecordTests {
             override func loadInfo() -> UniPack {
                 note("loadInfo")
                 lock.withLock { started = true }
-                if let hold, hold.wait(timeout: .now() + holdTimeout) == .timedOut {
+                if !holdsDetail, let hold, hold.wait(timeout: .now() + holdTimeout) == .timedOut {
                     lock.withLock { holdTimedOut = true }
                 }
                 if failsInfo {
@@ -63,6 +70,7 @@ extension PlayUsageRecordTests {
                     return self
                 }
                 title = "Probe"
+                if let infoWarning { addErr(infoWarning) }
                 buttonX = 8
                 buttonY = 8
                 chain = 1
@@ -71,6 +79,10 @@ extension PlayUsageRecordTests {
 
             override func loadDetailWithProgress(onPhase: (String, Int, Int) -> Void) -> UniPack {
                 note("loadDetail")
+                lock.withLock { detailStarted = true }
+                if holdsDetail, let hold, hold.wait(timeout: .now() + holdTimeout) == .timedOut {
+                    lock.withLock { holdTimedOut = true }
+                }
                 onPhase("keySound", 0, 3)
                 onPhase("keyLed", 1, 3)
                 onPhase("autoPlay", 2, 3)
@@ -110,11 +122,14 @@ extension PlayUsageRecordTests {
             #expect(!pack.holdExpired, "the held read kept the main actor from running other work")
         }
 
-        @Test func leavingWhileTheReadIsRunningStartsNothing() async throws {
-            let pack = ProbePack(holdInfo: true)
+        @Test(arguments: [false, true])
+        func leavingWhileTheReadIsRunningStartsNothing(_ detail: Bool) async throws {
+            let pack = ProbePack(holdInfo: !detail, holdDetail: detail, infoWarning: "info warning")
             let vm = makeViewModel(pack)
             let loading = Task { try await vm.loadUnipack(path: "/probe") }
-            while !pack.readStarted { try await Task.sleep(nanoseconds: 5_000_000) }
+            while !(detail ? pack.detailReadStarted : pack.readStarted) {
+                try await Task.sleep(nanoseconds: 5_000_000)
+            }
 
             loading.cancel()
             vm.cleanup()
@@ -124,6 +139,22 @@ extension PlayUsageRecordTests {
             #expect(vm.unipack == nil)
             #expect(vm.soundEngine == nil)
             #expect(vm.unipackLoadError == nil)
+            #expect(vm.unipackWarning == nil)
+        }
+
+        @Test func warningWaitsUntilDetailReadFinishes() async throws {
+            let pack = ProbePack(holdDetail: true, infoWarning: "info warning")
+            let vm = makeViewModel(pack)
+            let loading = Task { try await vm.loadUnipack(path: "/probe") }
+            while !pack.detailReadStarted { try await Task.sleep(nanoseconds: 5_000_000) }
+
+            #expect(vm.unipackWarning == nil, "show one complete warning after the detail read")
+            pack.release()
+            try await loading.value
+            defer { vm.cleanup() }
+
+            #expect(!pack.holdExpired)
+            #expect(vm.unipackWarning == "info warning")
         }
 
         @Test func aPackThatCannotBeReadReportsTheErrorAndStops() async throws {
@@ -134,6 +165,38 @@ extension PlayUsageRecordTests {
 
             #expect(vm.unipackLoadError == "info doesn't exist")
             #expect(vm.unipack == nil)
+            #expect(!vm.unipackLoading)
+        }
+
+        @Test(arguments: [(false, false), (true, false), (false, true), (true, true)])
+        func warningsIncludeBothInfoAndDetailErrors(_ missing: (info: Bool, sound: Bool)) async throws {
+            let folder = FileManager.default.temporaryDirectory
+                .appending(path: "PackWarnings-\(UUID().uuidString)", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: folder.appending(path: "sounds"), withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let metadata = missing.info ? "" : "title=Warning Test\nproducerName=Tester\n"
+            try (metadata + "buttonX=8\nbuttonY=8\nchain=1\n")
+                .write(to: folder.appending(path: "info"), atomically: true, encoding: .utf8)
+            try (missing.sound ? "1 1 1 nope.wav\n" : "")
+                .write(to: folder.appending(path: "keySound"), atomically: true, encoding: .utf8)
+            let vm = PlayViewModel()
+            defer { vm.cleanup() }
+
+            try await vm.loadUnipack(path: folder.path)
+
+            let pack = try #require(vm.unipack)
+            var errors: [String] = []
+            if missing.info {
+                errors += ["info : title was missing", "info : producerName was missing"]
+            }
+            if missing.sound {
+                errors.append("keySound : [1 1 1 nope.wav] sound was not found")
+            }
+            let expected = errors.isEmpty ? nil : errors.joined(separator: "\n")
+            #expect(pack.detailLoaded)
+            #expect(pack.errorDetail == expected)
+            #expect(vm.unipackWarning == expected)
+            #expect(vm.unipackLoadError == nil)
             #expect(!vm.unipackLoading)
         }
 

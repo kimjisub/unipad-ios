@@ -178,10 +178,6 @@ final class PlayViewModel {
             return
         }
 
-        if let warning = pack.errorDetail {
-            unipackWarning = warning
-        }
-
         logger.info("loadUnipack: info loaded - title=\(pack.title), buttonX=\(pack.buttonX), buttonY=\(pack.buttonY), chain=\(pack.chain)")
 
         loadingPhase = "detail"
@@ -197,6 +193,8 @@ final class PlayViewModel {
             }
         }.value
         if Task.isCancelled { return }
+
+        unipackWarning = pack.errorDetail
 
         logger.info("loadUnipack: detail loaded - soundCount=\(pack.soundCount), ledCount=\(pack.ledTableCount), keyLedExist=\(pack.keyLedExist), autoPlayExist=\(pack.autoPlayExist)")
 

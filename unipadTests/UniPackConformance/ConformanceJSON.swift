@@ -101,7 +101,9 @@ enum JSONValue: Equatable {
         }
 
         mutating func hex4() throws -> UInt32 {
-            guard bytes.count - position >= 4, let code = UInt32(String(decoding: bytes[position..<position + 4], as: UTF8.self), radix: 16) else { throw ParseError.unexpected(position) }
+            guard bytes.count - position >= 4,
+                  bytes[position..<position + 4].allSatisfy({ (0x30...0x39).contains($0) || (0x41...0x46).contains($0) || (0x61...0x66).contains($0) }),
+                  let code = UInt32(String(decoding: bytes[position..<position + 4], as: UTF8.self), radix: 16) else { throw ParseError.unexpected(position) }
             position += 4
             return code
         }

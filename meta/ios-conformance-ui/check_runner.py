@@ -64,7 +64,7 @@ class RunnerChecks(unittest.TestCase):
         self.library = self.container / 'Documents/UniPack'
         self.library.mkdir(parents=True)
         (self.library / 'existing').write_bytes(b'preserve me')
-        self.staged = self.library / 'JIS-70-regression'
+        self.staged = self.library / 'Conformance-regression'
         self.pack = self.root / 'pack.zip'
         with zipfile.ZipFile(self.pack, 'w') as z:
             z.writestr('info', 'title=Conformance\n')
@@ -83,13 +83,6 @@ class RunnerChecks(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
         self.mock_product_files = list(self.baseline_files)
-
-    def git(self, command, **kwargs):
-        if command[1] == 'ls-tree':
-            # Match git's path-limited enumeration from the tool subdirectory.
-            return (('\0' if '-z' in command else '\n').join(self.mock_product_files).encode()
-                    if '--full-tree' in command else b'')
-        return self.baseline_files[command[2].split(':', 1)[1]]
 
     def invoke(self, command, log=None, check=True, timeout=None):
         self.commands.append(command)
@@ -144,15 +137,14 @@ class RunnerChecks(unittest.TestCase):
 
     def run_tool(self):
         argv = ['run.py', '--udid', 'fake-device', '--source', str(self.source),
-                '--derived-data', str(self.build), '--pack', str(self.pack), '--out', str(self.out)]
+                '--derived-data', str(self.build), '--pack', str(self.pack), '--out', str(self.out)] + getattr(self, 'extra_args', [])
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.object(sys, 'argv', argv))
             stack.enter_context(patch.dict(os.environ, PAPERCLIP_RUN_SCRATCH_DIR=str(self.root),
                                           PAPERCLIP_RUN_ID='regression', HARNESS=str(self.root)))
-            stack.enter_context(patch.object(runner, 'AP001_SHA256', hashlib.sha256(self.pack.read_bytes()).hexdigest()
-                                            if self.pack.exists() else 'missing'))
+            stack.enter_context(patch.object(runner, 'approved_pack', lambda path: ('TEST', hashlib.sha256(path.read_bytes()).hexdigest())))
+            stack.enter_context(patch.object(runner, 'load_baseline', lambda: {name: hashlib.sha256(self.baseline_files[name]).hexdigest() for name in self.mock_product_files}))
             stack.enter_context(patch.object(runner, 'invoke', self.invoke))
-            stack.enter_context(patch.object(runner.subprocess, 'check_output', self.git))
             stack.enter_context(patch.object(runner.subprocess, 'Popen', self.popen))
             stack.enter_context(patch.object(runner.time, 'sleep'))
             runner.main()
@@ -200,6 +192,71 @@ class RunnerChecks(unittest.TestCase):
         self.assertEqual(runner.hashes(self.library), before)
         self.assertTrue(self.receipt()['libraryRestored'])
         self.assertTrue(any('test-without-building' in c for c in self.commands))
+
+    def test_arbitrary_title_reaches_ui(self):
+        with zipfile.ZipFile(self.pack, 'w') as archive:
+            archive.writestr('info', 'title=Spaced Title\n')
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['fixtureTitle'], 'Spaced Title')
+        self.assertTrue(any('test-without-building' in c for c in self.commands))
+
+    def test_empty_title_reaches_ui_using_staged_folder_label(self):
+        with zipfile.ZipFile(self.pack, 'w') as archive:
+            archive.writestr('info', 'buttonX=4\nbuttonY=3\n')
+        self.run_tool()
+        self.assertEqual(self.receipt()['fixtureTitle'], '')
+        self.assertEqual(self.receipt()['selectionTitle'], '')
+        self.assertTrue(self.receipt()['success'])
+
+    def test_keep_device_skips_return_after_failure(self):
+        self.extra_args = ['--keep-device']
+        self.fail_command = lambda c: 'test-without-building' in c
+        with self.assertRaisesRegex(RuntimeError, 'UI|command'):
+            self.run_tool()
+        self.assertFalse(any(c[-1] == 'down' for c in self.commands))
+        self.assertFalse(self.staged.exists())
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertFalse(self.receipt()['deviceReturned'])
+
+    def test_approved_sample_fingerprints_and_modified_pack(self):
+        approved = json.loads((runner.TOOLS / 'pack-fingerprints.json').read_text())
+        self.assertEqual(len(approved), 20)
+        self.assertEqual(len(set(approved.values())), 20)
+        with self.assertRaisesRegex(RuntimeError, 'unchanged ZIP'):
+            runner.approved_pack(self.pack)
+
+    def test_output_outside_scratch_is_fresh_and_allowed(self):
+        with tempfile.TemporaryDirectory(dir=self.root.parent) as directory:
+            self.out = Path(directory) / 'evidence'
+            self.run_tool()
+            self.assertTrue(self.receipt()['success'])
+            with self.assertRaises(RuntimeError):
+                self.run_tool()
+
+    def test_runner_does_not_need_git(self):
+        with patch.object(runner.subprocess, 'check_output', side_effect=AssertionError('git must not run')):
+            self.assertEqual(len(runner.load_baseline()), 236)
+            self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+
+    def test_ui_parameters_match_fixture_and_no_autoplay(self):
+        self.run_tool()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        targets = plistlib.loads(copy.read_bytes())['TestConfigurations'][0]['TestTargets']
+        for target in targets:
+            self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_TITLE'], 'Conformance')
+            self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_HAS_AUTOPLAY'], 'NO')
+
+    def test_autoplay_file_parameter_reaches_every_target(self):
+        with zipfile.ZipFile(self.pack, 'a') as archive:
+            archive.writestr('AutoPlay', 'c 1\n')
+        self.run_tool()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        for configuration in plistlib.loads(copy.read_bytes())['TestConfigurations']:
+            for target in configuration['TestTargets']:
+                self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_HAS_AUTOPLAY'], 'YES')
+        self.assertTrue(self.receipt()['hasAutoplayFile'])
 
     def test_conformance_number_suffix_allowed(self):
         self.assert_other_title_allowed(b'title=Conformance 2\n')
@@ -564,6 +621,37 @@ class RunnerChecks(unittest.TestCase):
         for option in ['-collect-test-diagnostics', '-parallel-testing-enabled', '-enableCodeCoverage']:
             self.assertIn(option, ui)
         self.assertIn('-only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit', ui)
+
+    def test_xctestrun_parameters_written_once(self):
+        original = plistlib.loads(self.xctestrun.read_bytes())
+        original['TestConfigurations'].append({
+            'TestTargets': [{'EnvironmentVariables': {'EXISTING': 'preserve'}}]})
+        self.xctestrun.write_bytes(plistlib.dumps(original))
+        original_bytes = self.xctestrun.read_bytes()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        writes = []
+        write_bytes = Path.write_bytes
+
+        def record_write(path, data):
+            if path == copy:
+                writes.append(data)
+            return write_bytes(path, data)
+
+        with patch.object(Path, 'write_bytes', record_write):
+            self.run_tool()
+        self.assertEqual(len(writes), 1, 'Configure capture and fixture parameters in one write')
+        configurations = plistlib.loads(writes[0])['TestConfigurations']
+        for configuration in configurations:
+            for target in configuration['TestTargets']:
+                expected = {'CONFORMANCE_TITLE': 'Conformance', 'CONFORMANCE_SAMPLE': 'TEST',
+                            'CONFORMANCE_HAS_AUTOPLAY': 'NO'}
+                if configuration == configurations[1]:
+                    expected['EXISTING'] = 'preserve'
+                self.assertEqual(target['EnvironmentVariables'], expected)
+                self.assertEqual(target['PreferredScreenCaptureFormat'], 'screenshots')
+        self.assertEqual(self.xctestrun.read_bytes(), original_bytes)
+        self.assertEqual(self.receipt()['screenshotsXctestrunSha256'],
+                         hashlib.sha256(writes[0]).hexdigest())
 
     def test_rerun_ignores_previous_screenshots_copy(self):
         self.run_tool()
