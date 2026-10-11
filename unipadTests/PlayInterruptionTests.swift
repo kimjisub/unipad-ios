@@ -38,6 +38,11 @@ extension PlayUsageRecordTests {
             return runner
         }
 
+        /// Taking the session back runs on the audio session worker and reports on the main queue.
+        private func waitForRecovery(_ s: PlayUsageScenario, _ engine: SoundEngine) async throws {
+            try await s.waitWhile { engine.isPlaybackSuppressed }
+        }
+
         private func isPressedLit(_ s: PlayUsageScenario, x: Int, y: Int) -> Bool {
             s.vm.channelManager?.get(x: x, y: y, channel: .pressed) != nil
         }
@@ -54,6 +59,7 @@ extension PlayUsageRecordTests {
 
                 engine.handleInterruption(interruption(.began))
                 s.vm.onResume()
+                try await waitForRecovery(s, engine)
                 s.press(0, 1); s.release(0, 1)
 
                 #expect(engine.playsStarted == 2, "the pad after coming back was not requested to play")
@@ -78,6 +84,7 @@ extension PlayUsageRecordTests {
                 #expect(runner.progress == pausedAt, "autoplay moved on silently during the interruption")
 
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
                 #expect(s.vm.isAutoPlayPlaying)
                 try await s.waitWhile { runner.progress <= pausedAt }
                 #expect(runner.progress > pausedAt, "autoplay did not continue after the interruption")
@@ -133,6 +140,7 @@ extension PlayUsageRecordTests {
                 engine.handleInterruption(interruption(.began))
                 s.vm.switchPlayMode(.none)
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
 
                 #expect(!s.vm.isAutoPlayPlaying)
                 #expect(s.vm.playMode == .none)
@@ -150,11 +158,13 @@ extension PlayUsageRecordTests {
 
                 engine.handleInterruption(interruption(.began))
                 s.vm.onResume()
+                try await waitForRecovery(s, engine)
                 #expect(!engine.isPlaybackSuppressed)
                 #expect(!s.vm.isAutoPlayPlaying)
 
                 engine.handleInterruption(interruption(.began))
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
                 let pausedAt = runner.progress
                 try await Task.sleep(for: .milliseconds(500))
 
@@ -174,6 +184,7 @@ extension PlayUsageRecordTests {
                 s.vm.autoPlayResume()
                 s.vm.autoPlayPause()
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
 
                 #expect(!s.vm.isAutoPlayPlaying, "the end of the interruption overrode the user's pause")
             }
@@ -190,6 +201,7 @@ extension PlayUsageRecordTests {
                 engine.handleInterruption(interruption(.began))
                 s.vm.switchPlayMode(.stepPractice)
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
 
                 #expect(s.vm.playMode == .stepPractice)
                 #expect(!s.vm.isAutoPlayPlaying, "step practice was turned into a playing autoplay")
