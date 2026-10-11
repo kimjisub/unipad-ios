@@ -48,6 +48,23 @@ nonisolated enum ReleaseTestSupport {
                     try contents.write(to: pack.appendingPathComponent(name), atomically: true, encoding: .utf8)
                 }
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed/1 1 1 1"))
+            case "chain-layout":
+                // INF-002 of the public conformance corpus: the smallest grid with the most chains.
+                let small = library.appendingPathComponent("Conformance")
+                try makePack(at: small, title: "Conformance")
+                try "title=Conformance\nproducerName=UniPad Conformance\nbuttonX=4\nbuttonY=3\nchain=24\nsquareButton=true"
+                    .write(to: small.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+                try "24 1 1 a.wav".write(to: small.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+                for name in ["a.wav", "b.wav", "c.wav"] {
+                    try fm.copyItem(at: small.appendingPathComponent("sounds/silence.wav"),
+                                    to: small.appendingPathComponent("sounds/\(name)"))
+                }
+                for name in ["sounds/silence.wav", "keyLed", "autoPlay"] {
+                    try fm.removeItem(at: small.appendingPathComponent(name))
+                }
+                // The shared Faded sample's grid and chain count, with silent sounds.
+                try makePack(at: library.appendingPathComponent("Faded"), title: "Alan Walker - Faded",
+                             producer: "Otarygen, 김지섭, K1A2", chains: 6)
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
             case "warning-sound", "warning-info", "warning-none":
@@ -124,11 +141,12 @@ nonisolated enum ReleaseTestSupport {
         }
     }
 
-    static func makePack(at root: URL, title: String, producer: String = "Tests", firstPadRepeats: Int = 0, loadingLEDLines: Int = 0) throws {
+    static func makePack(at root: URL, title: String, producer: String = "Tests", chains: Int = 2,
+                         firstPadRepeats: Int = 0, loadingLEDLines: Int = 0) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: root.appendingPathComponent("sounds"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
-        try "title=\(title)\nproducerName=\(producer)\nbuttonX=8\nbuttonY=8\nchain=2\n"
+        try "title=\(title)\nproducerName=\(producer)\nbuttonX=8\nbuttonY=8\nchain=\(chains)\n"
             .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
         try "1 1 1 silence.wav \(firstPadRepeats)\n1 1 2 silence.wav 0\n2 1 1 silence.wav 0\n"
             .write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
