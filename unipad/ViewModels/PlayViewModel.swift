@@ -1054,7 +1054,8 @@ final class PlayViewModel {
 
     func startVolumeObserver() {
         #if canImport(UIKit)
-        // SoundEngine keeps the session active and takes it back after an interruption.
+        // SoundEngine keeps the session active: it takes it back after an interruption and activates
+        // it again, off the main thread, when the app comes back.
         volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.updateVolumeUI()

@@ -66,10 +66,7 @@ struct SoundEngineInterruptionTests {
 
     /// Recovery runs on the audio session worker and reports back on the main queue. Bounded wait.
     private func waitWhile(_ condition: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(5)
-        while condition(), Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        try await PlayUsageScenario.waitWhile(timeout: 5, condition)
     }
 
     /// What the session activation hook saw, written from whichever thread ran it.
@@ -166,6 +163,33 @@ struct SoundEngineInterruptionTests {
         } else {
             #expect(engine.playsStarted == playsBefore + 1)
         }
+    }
+
+    /// The screen closed while the session was being taken back after a call; the screen is gone and
+    /// must not hear about the end of the call.
+    @Test func theEndOfAnInterruptionIsNotReportedAfterTheEngineIsDestroyed() async throws {
+        let (engine, _, _) = try await makeLoadedEngine()
+        var reported: [SoundEngine.Interruption] = []
+        engine.onInterruption = { reported.append($0) }
+
+        engine.handleInterruption(interruption(.began))
+        engine.handleInterruption(interruption(.ended, shouldResume: true))
+        engine.destroy()
+        // The worker's answer comes back on the main queue.
+        try await Task.sleep(for: .milliseconds(500))
+
+        #expect(reported == [.began(whileInterrupted: false)])
+    }
+
+    /// A call or a route change while the pack opens must reach the engine, so the session is
+    /// observed from the moment the engine exists, not once the worker has set it up.
+    @Test func theSessionIsObservedBeforeItIsSetUp() async throws {
+        let url = try writeSilentSound()
+        let listener = TestSoundLoadListener()
+        let engine = SoundEngine(unipack: StubPack(soundFile: url), chain: ChainObserver(), loadingListener: listener)
+        defer { engine.destroy() }
+
+        #expect(engine.isObservingSession, "a call while the pack opened would have gone unheard")
     }
 
     @Test func aDestroyedEngineNeverPlaysAgain() async throws {

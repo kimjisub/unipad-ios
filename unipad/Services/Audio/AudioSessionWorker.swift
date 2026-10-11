@@ -6,8 +6,13 @@ import Foundation
 /// AVAudioSession warns that these "can lead to UI unresponsiveness if called on the main thread",
 /// and before this queue existed a route change or the end of an interruption made the pad press
 /// that followed wait for them. Callers hand work over and hear back on the main queue; nothing on
-/// the main thread ever waits for this queue, so it cannot stall the screen.
+/// the main thread ever waits for this queue, so it cannot stall the screen. The session is shared by
+/// the whole app, so there is one queue: work for one pack's engine runs after the previous pack's.
 nonisolated final class AudioSessionWorker: @unchecked Sendable {
+    static let shared = AudioSessionWorker()
+
+    private init() {}
+
     private let queue = DispatchQueue(label: "UniPad.audioSession", qos: .userInitiated)
 
     /// Runs `work` on the queue, then `completion` with its result on the main queue.

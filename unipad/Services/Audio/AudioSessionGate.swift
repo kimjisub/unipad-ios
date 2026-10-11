@@ -17,9 +17,15 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad",
 /// engine block on the audio server, so they run through `Hooks.runOffMain` (the app's
 /// `AudioSessionWorker`) and their result comes back on the main queue. Nothing waits for it: the pad
 /// that asks for a recovery is silent, like every pad while playback is suppressed, and the pads after
-/// the recovery play. Only the newest recovery's result is applied; anything that happened after it
-/// was asked for (another interruption, a route change, `shutDown()`) makes it stale. So the gate is
+/// the recovery play. Only the newest recovery's result is applied: a change the recovery may have
+/// missed (the end of an interruption, a route change, a media services reset, a raised `play()`)
+/// hands the worker a fresh one, and the result of the one before it is dropped. So the gate is
 /// `.ready` only when no recovery of ours is left on the worker, and `play()` never runs while one is.
+///
+/// A notification's `completion` stays attached until a recovery result is applied, however many
+/// fresh recoveries replace the one it asked for; the app coming back joins a recovery already on the
+/// worker instead of replacing it. Only a new interruption and `shutDown()` abandon the recovery, and
+/// they report `.abandoned` to whoever waited for it.
 ///
 /// The state machine:
 ///
@@ -51,6 +57,9 @@ final class AudioSessionGate {
     enum Recovery: Equatable {
         case recovered
         case stillSuppressed
+        /// An interruption began or the owner shut down before the recovery came back. What the
+        /// caller waited for no longer applies: a new interruption reports its own end.
+        case abandoned
     }
 
     /// What one try to take the session back and restart the engine found, on the worker.
@@ -89,11 +98,16 @@ final class AudioSessionGate {
     private var lastInterruptedAttempt: TimeInterval = 0
     /// When a pad's try to recover from `.needsRecovery` last failed; nil once something changed.
     private var lastFailedPadRecovery: TimeInterval?
-    /// Moves on with every event and every recovery asked for; a recovery whose generation is no
-    /// longer current comes back stale and changes nothing.
+    /// Moves on with every recovery handed to the worker and every abandoned one; a recovery whose
+    /// generation is no longer current comes back stale and changes nothing.
     private var generation = 0
     /// A recovery for the current generation is on the worker, so a pad has nothing to add.
     private(set) var isRecovering = false
+    /// The completions waiting for the next recovery result to be applied.
+    private var waiting: [(Recovery) -> Void] = []
+    /// From an interruption's beginning until playback is back. An interruption that begins
+    /// meanwhile overlaps it: the session has not been ours since the earlier one began.
+    private(set) var isInterruptionUnresolved = false
 
     var isPlaybackSuppressed: Bool { state != .ready }
 
@@ -107,7 +121,8 @@ final class AudioSessionGate {
     func interruptionBegan() {
         guard state != .shutDown else { return }
         state = .interrupted
-        invalidateRecovery()
+        isInterruptionUnresolved = true
+        abandonRecovery()
         lastInterruptedAttempt = hooks.now()
         suppressionLogCount = 0
         logSuppressionOnce("audio session interrupted; playback suppressed")
@@ -121,7 +136,11 @@ final class AudioSessionGate {
     func interruptionEnded(shouldResume: Bool, completion: ((Recovery) -> Void)? = nil) {
         guard state != .shutDown else { completion?(.stillSuppressed); return }
         enterNeedsRecovery()
-        guard shouldResume else { completion?(.stillSuppressed); return }
+        guard shouldResume else {
+            refreshRecoveryOnTheWorker()
+            completion?(.stillSuppressed)
+            return
+        }
         requestRecovery(completion: completion)
     }
 
@@ -154,17 +173,31 @@ final class AudioSessionGate {
 
     /// The app is in front again (`UIApplication.didBecomeActiveNotification`). Apple's guidance:
     /// the end of an interruption is not guaranteed, so re-activate when the app comes back.
+    ///
+    /// Coming back changes nothing a recovery already on the worker would miss, so it waits for that
+    /// one. With playback on, the session is activated again on the worker while the pads keep
+    /// playing: it may have been deactivated in the background without an interruption we heard of,
+    /// and activating a session that is still active changes nothing.
     func appBecameActive(completion: ((Recovery) -> Void)? = nil) {
         switch state {
         case .shutDown:
             completion?(.stillSuppressed)
         case .ready:
+            let hooks = self.hooks
+            hooks.runOffMain({ Self.reactivate(hooks) }) { attempt in
+                if case .failed(let message) = attempt { logger.error("\(message, privacy: .public)") }
+            }
             completion?(.recovered)
-        case .interrupted:
-            lastInterruptedAttempt = hooks.now()
-            requestRecovery(completion: completion)
-        case .needsRecovery:
-            enterNeedsRecovery()
+        case .interrupted, .needsRecovery:
+            if isRecovering {
+                if let completion { waiting.append(completion) }
+                return
+            }
+            if state == .interrupted {
+                lastInterruptedAttempt = hooks.now()
+            } else {
+                enterNeedsRecovery()
+            }
             requestRecovery(completion: completion)
         }
     }
@@ -173,7 +206,7 @@ final class AudioSessionGate {
     /// destroyed engine, and a recovery still on the worker comes back stale.
     func shutDown() {
         state = .shutDown
-        invalidateRecovery()
+        abandonRecovery()
     }
 
     // MARK: - Hot path
@@ -222,6 +255,7 @@ final class AudioSessionGate {
     func playbackFailed(reason: String) {
         guard state != .shutDown else { return }
         enterNeedsRecovery()
+        refreshRecoveryOnTheWorker()
         suppressionLogCount = 0
         logSuppressionOnce("play() failed (\(reason)); the engine will be restarted before the next pad")
     }
@@ -232,38 +266,59 @@ final class AudioSessionGate {
     private func enterNeedsRecovery() {
         state = .needsRecovery
         lastFailedPadRecovery = nil
-        invalidateRecovery()
     }
 
-    private func invalidateRecovery() {
+    /// A recovery on the worker may have run before what just changed; a fresh one replaces it.
+    private func refreshRecoveryOnTheWorker() {
+        if isRecovering { requestRecovery() }
+    }
+
+    private func abandonRecovery() {
         generation += 1
         isRecovering = false
+        report(.abandoned)
     }
 
-    /// `completion` hears `.stillSuppressed` when the recovery came back stale.
+    private func report(_ recovery: Recovery) {
+        let completions = waiting
+        waiting.removeAll()
+        completions.forEach { $0(recovery) }
+    }
+
+    /// Hands the worker a fresh recovery; one already there comes back stale. `completion` hears the
+    /// first result applied after this, or `.abandoned`.
     private func requestRecovery(byPad: Bool = false, completion: ((Recovery) -> Void)? = nil) {
-        invalidateRecovery()
+        if let completion { waiting.append(completion) }
+        generation += 1
         isRecovering = true
         let requested = generation
         let hooks = self.hooks
         hooks.runOffMain({ Self.recover(hooks) }) { [weak self] attempt in
-            guard let self, self.generation == requested else {
-                completion?(.stillSuppressed)
-                return
-            }
+            guard let self, self.generation == requested else { return }
             self.isRecovering = false
             switch attempt {
             case .recovered:
                 self.state = .ready
+                self.isInterruptionUnresolved = false
                 self.lastFailedPadRecovery = nil
                 self.suppressionLogCount = 0
                 logger.info("audio engine recovered; playback resumed")
-                completion?(.recovered)
+                self.report(.recovered)
             case .failed(let message):
                 if byPad { self.lastFailedPadRecovery = self.hooks.now() }
                 self.logSuppressionOnce(message)
-                completion?(.stillSuppressed)
+                self.report(.stillSuppressed)
             }
+        }
+    }
+
+    /// Runs on the worker.
+    nonisolated private static func reactivate(_ hooks: Hooks) -> Attempt {
+        do {
+            try hooks.activateSession()
+            return .recovered
+        } catch {
+            return .failed("could not activate the audio session on coming back: \(error.localizedDescription)")
         }
     }
 

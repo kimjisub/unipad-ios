@@ -329,16 +329,23 @@ struct AudioSessionGateTests {
         #expect(!gate.isPlaybackSuppressed)
     }
 
-    @Test func comingBackWithNothingInterruptedTouchesNothing() {
+    /// The session can be deactivated in the background without an interruption we hear of. Coming
+    /// back activates it again on the worker, and the pads keep playing meanwhile.
+    @Test func comingBackWithNothingInterruptedOnlyReactivatesTheSessionOffTheMainThread() {
         let audio = FakeAudio()
         let gate = AudioSessionGate(hooks: audio.hooks)
         let reported = Reported()
 
         gate.appBecameActive(completion: reported.record)
         #expect(reported.recovery == .recovered)
-        #expect(audio.pendingRecoveries == 0)
-        #expect(audio.activateCount == 0)
+        #expect(audio.activateCount == 0, "the session was activated on the main thread")
+        #expect(audio.pendingRecoveries == 1)
+        #expect(gate.ensureEngineRunning(), "the pads waited for the session")
+
+        audio.finishRecoveries()
+        #expect(audio.activateCount == 1)
         #expect(audio.startCount == 0)
+        #expect(gate.state == .ready)
     }
 
     /// A pad is the user asking for sound, so it also tries to take an interrupted session back, but
@@ -471,9 +478,60 @@ struct AudioSessionGateTests {
         gate.interruptionBegan()
         audio.finishRecoveries()
 
-        #expect(reported.recovery == .stillSuppressed)
+        #expect(reported.recovery == .abandoned)
         #expect(gate.state == .interrupted)
         #expect(!gate.ensureEngineRunning())
+    }
+
+    /// A call ends with `.shouldResume` and the app comes back right after, as it does when the call
+    /// screen closes, before the worker has taken the session back. Coming back adds nothing to that
+    /// recovery, so the end still hears that playback is back and autoplay resumes.
+    @Test func comingBackBeforeTheRecoveryForAResumableEndKeepsItsResult() {
+        let (audio, gate) = began()
+        let reported = Reported()
+
+        gate.interruptionEnded(shouldResume: true, completion: reported.record)
+        gate.appBecameActive()
+        #expect(audio.pendingRecoveries == 1, "coming back replaced the recovery on the worker")
+        audio.finishRecoveries()
+
+        #expect(reported.recovery == .recovered)
+        #expect(gate.state == .ready)
+    }
+
+    /// A route change or a raised play() after the end of an interruption hands the worker a fresh
+    /// recovery; the end hears that one's result instead of being dropped.
+    @Test(arguments: ["route change", "raised play"])
+    func aChangeBeforeTheRecoveryForAResumableEndReportsTheFreshRecovery(_ change: String) {
+        let (audio, gate) = began()
+        let reported = Reported()
+
+        gate.interruptionEnded(shouldResume: true, completion: reported.record)
+        if change == "route change" {
+            gate.configurationChanged()
+        } else {
+            gate.playbackFailed(reason: "player did not see an IO cycle")
+        }
+        audio.finishRecoveries()
+
+        #expect(reported.recovery == .recovered)
+        #expect(gate.state == .ready)
+        #expect(audio.startCount == 1)
+    }
+
+    /// Two interruptions overlap when the second begins before the session was ours again after the
+    /// first; the first one's end is abandoned and the second reports its own.
+    @Test func anInterruptionStaysUnresolvedUntilPlaybackIsBack() {
+        let (audio, gate) = began()
+        #expect(gate.isInterruptionUnresolved)
+        gate.interruptionEnded(shouldResume: true)
+        #expect(gate.isInterruptionUnresolved, "resolved before the session was taken back")
+
+        gate.interruptionBegan()
+        #expect(gate.isInterruptionUnresolved)
+        gate.interruptionEnded(shouldResume: true)
+        audio.finishRecoveries()
+        #expect(!gate.isInterruptionUnresolved)
     }
 
     @Test func shutDownWhileARecoveryIsOnTheWorkerStaysShutDown() {
@@ -482,9 +540,10 @@ struct AudioSessionGateTests {
         gate.appBecameActive(completion: reported.record)
 
         gate.shutDown()
+        #expect(reported.recovery == .abandoned)
         audio.finishRecoveries()
 
-        #expect(reported.recovery == .stillSuppressed)
+        #expect(reported.recovery == .abandoned)
         #expect(gate.state == .shutDown)
         #expect(!gate.ensureEngineRunning())
     }

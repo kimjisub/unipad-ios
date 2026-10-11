@@ -4,7 +4,7 @@ import XCTest
 /// Screenshots and the app's audio logs are evidence of the simulator flow, not audible latency.
 final class AudioLifecycleUITests: XCTestCase {
     @MainActor
-    func testPadsAndAutoplayRemainUsableAfterReturningFromHome() {
+    func testPadsAndAutoplayRemainUsableAfterReturningFromHome() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
@@ -14,7 +14,9 @@ final class AudioLifecycleUITests: XCTestCase {
         let list = app.scrollViews["main.packList"]
         XCTAssertTrue(list.waitForExistence(timeout: 30))
         let title = list.staticTexts.matching(NSPredicate(format: "label == %@", "Alan Walker - Faded")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install the shared Faded sample pack")
+        guard title.waitForExistence(timeout: 10) else {
+            throw XCTSkip("Faded is not installed in Documents/UniPack; the audio lifecycle was not checked")
+        }
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20))
         UITestSupport.attachScreenshot("audio-01-pack-selected", to: self)
         title.tap()

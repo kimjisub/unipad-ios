@@ -5,17 +5,23 @@ import os
 nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "SoundEngine")
 
 /// Threads: the session, the engine's start and stop, and attaching or detaching its nodes belong
-/// to `worker` (see AudioSessionWorker); the main thread never waits for them. Pads schedule and play
-/// nodes on the main thread, and only while `gate` says the engine runs, which it never says while a
-/// recovery of ours is still on the worker. Finite repeats are scheduled on FiniteRepeatScheduler's
-/// queue.
+/// to `AudioSessionWorker.shared`; the main thread never waits for them. One worker serves every
+/// engine, so a closed pack's engine has stopped before the next pack configures the session. Pads
+/// schedule and play nodes on the main thread, and only while `gate` says the engine runs, which it
+/// never says while a recovery of ours is still on the worker. Finite repeats are scheduled on
+/// FiniteRepeatScheduler's queue.
+///
+/// Stopping nodes is the exception: an interruption, a media services reset and `destroy()` stop
+/// them from the main thread (through FiniteRepeatScheduler) while the worker may be starting the
+/// engine. A player node's `stop()` does not need a rendering engine, and every stop runs inside
+/// the Objective-C catcher, so a stop that races a start costs nothing but that voice.
 final class SoundEngine {
     // Android's native mixer has 64 voices regardless of the pack; a pool sized to the sound
     // count gave a 5-sound pack 5 voices and the 6th overlapping note cut the first.
     static let maxStreams = 64
 
     private let engine = AVAudioEngine()
-    private let worker = AudioSessionWorker()
+    private let worker = AudioSessionWorker.shared
     // Written by the loader on a utility queue while soundOn reads and destroy() clears it on the
     // main thread; the unguarded dictionary rehashed under the reader.
     private let buffersLock = NSLock()
@@ -63,6 +69,8 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+    /// Whether interruptions, media services resets and route changes reach the gate. A test seam.
+    var isObservingSession: Bool { !observerTokens.isEmpty }
 
     enum Interruption: Equatable {
         /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
@@ -144,9 +152,44 @@ final class SoundEngine {
         nodeStartOrder = Array(repeating: 0, count: playerCount)
         playerNodes = (0..<playerCount).map { _ in AVAudioPlayerNode() }
 
+        // Before the set-up is handed over: a call or a route change while the worker configures the
+        // session must reach the gate, or it would allow pads on an engine that is not rendering.
+        observeSession()
+
         let nodes = playerNodes
         worker.run({ Self.setUp(engine, nodes: nodes) }, then: { [weak self] result in
             self?.finishSetUp(result, table: table, soundCount: soundCount)
+        })
+    }
+
+    private func observeSession() {
+        #if canImport(UIKit)
+        // Block observers are not removed automatically; one leaked per opened pack before.
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleInterruption(notification)
+        })
+        // The audio server can die and take the session configuration with it; every node is stale
+        // afterwards, so playback stays suppressed until the session and the engine come back.
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleMediaServicesReset()
+        })
+        #endif
+        // A route change (headphones at 44.1 kHz, unplug) stops the engine; scheduling on a node of
+        // a stopped engine raised an uncatchable Objective-C exception on the next pad.
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            self?.gate.configurationChanged()
         })
     }
 
@@ -184,40 +227,12 @@ final class SoundEngine {
         case .success(let format):
             playbackFormat = format
         case .failure(let error):
+            // Nothing will play on this engine; a later notification must not start it.
+            gate.shutDown()
             loadingListener?.onException(error)
             return
         }
         isUsable = true
-
-        #if canImport(UIKit)
-        // Block observers are not removed automatically; one leaked per opened pack before.
-        observerTokens.append(NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            self?.handleInterruption(notification)
-        })
-        // The audio server can die and take the session configuration with it; every node is stale
-        // afterwards, so playback stays suppressed until the session and the engine come back.
-        observerTokens.append(NotificationCenter.default.addObserver(
-            forName: AVAudioSession.mediaServicesWereResetNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleMediaServicesReset()
-        })
-        #endif
-        // A route change (headphones at 44.1 kHz, unplug) stops the engine; scheduling on a node of
-        // a stopped engine raised an uncatchable Objective-C exception on the next pad.
-        observerTokens.append(NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { [weak self] _ in
-            self?.gate.configurationChanged()
-        })
-
         loadingListener?.onStart(soundCount: soundCount)
         load(table, as: playbackFormat)
     }
@@ -406,11 +421,13 @@ final class SoundEngine {
             let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
             // Resuming autoplay on a session we could not take back would run it without sound.
             gate.interruptionEnded(shouldResume: shouldResume) { [weak self] recovery in
+                // A new interruption overtook this end and reports its own; or the screen is gone.
+                guard recovery != .abandoned else { return }
                 self?.onInterruption?(.ended(shouldResume: recovery == .recovered))
             }
         default:
             // `.began`, and any type a later SDK adds: suppressing is the safe side.
-            let whileInterrupted = gate.state == .interrupted
+            let whileInterrupted = gate.isInterruptionUnresolved
             gate.interruptionBegan()
             releaseAllVoices()
             onInterruption?(.began(whileInterrupted: whileInterrupted))

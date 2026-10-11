@@ -91,6 +91,46 @@ extension PlayUsageRecordTests {
             }
         }
 
+        /// The call screen closes: the end of the interruption and the app coming back arrive together,
+        /// before the session has been taken back. Autoplay still resumes.
+        @Test func autoplayResumesWhenTheAppComesBackRightAfterAResumableEnd() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                let pausedAt = runner.progress
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after a resumable end")
+                try await s.waitWhile { runner.progress <= pausedAt }
+                #expect(runner.progress > pausedAt)
+            }
+        }
+
+        /// A second interruption begins before the session was taken back after the first. The first
+        /// one paused autoplay, and the end of the second resumes it.
+        @Test func autoplayResumesAfterASecondInterruptionThatOvertookTheFirstOnesRecovery() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(s.vm.isAutoPlayPlaying, "the second end forgot that the first paused autoplay")
+            }
+        }
+
         /// The end says playback may resume, but the app cannot take the session back (another app
         /// still holds it). Resuming would run autoplay with its lights and no sound, so it stays
         /// paused for the user, as on Android when audio focus is lost for good.
