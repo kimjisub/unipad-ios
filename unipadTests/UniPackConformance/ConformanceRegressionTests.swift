@@ -13,6 +13,19 @@ struct ConformanceRegressionTests {
         }
     }
 
+    @Test func aCopyThatDoesNotHashToItsCorpusSha256OrHasNoneIsRefused() throws {
+        let data = Data(#"{"cases":[{"id":"KS-001"}]}"#.utf8)
+        let digest = ConformanceCorpus.sha256Hex(data) + "  corpus.json\n"
+        #expect(try ConformanceCorpus.verifyDigest(of: data, digestFile: digest) == ConformanceCorpus.sha256Hex(data))
+        var changed = data
+        changed[changed.firstIndex(of: UInt8(ascii: "K"))!] ^= 1
+        #expect(throws: ConformanceCorpus.LoadError.self) { try ConformanceCorpus.verifyDigest(of: changed, digestFile: digest) }
+        #expect(throws: ConformanceCorpus.LoadError.self) { try ConformanceCorpus.verifyDigest(of: data, digestFile: nil) }
+        #expect(throws: ConformanceCorpus.LoadError.self) {
+            try ConformanceCorpus.verifyDigest(of: data, digestFile: digest.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
     @Test(arguments: [#""\u+041""#, #""\u-000""#, #""\u00g0""#])
     func unicodeEscapesRequireFourHexDigits(text: String) {
         #expect(throws: JSONValue.ParseError.self) { try JSONValue(data: Data(text.utf8)) }

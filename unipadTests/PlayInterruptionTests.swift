@@ -38,6 +38,11 @@ extension PlayUsageRecordTests {
             return runner
         }
 
+        /// Taking the session back runs on the audio session worker and reports on the main queue.
+        private func waitForRecovery(_ s: PlayUsageScenario, _ engine: SoundEngine) async throws {
+            try await s.waitWhile { engine.isPlaybackSuppressed }
+        }
+
         private func isPressedLit(_ s: PlayUsageScenario, x: Int, y: Int) -> Bool {
             s.vm.channelManager?.get(x: x, y: y, channel: .pressed) != nil
         }
@@ -54,6 +59,7 @@ extension PlayUsageRecordTests {
 
                 engine.handleInterruption(interruption(.began))
                 s.vm.onResume()
+                try await waitForRecovery(s, engine)
                 s.press(0, 1); s.release(0, 1)
 
                 #expect(engine.playsStarted == 2, "the pad after coming back was not requested to play")
@@ -78,9 +84,50 @@ extension PlayUsageRecordTests {
                 #expect(runner.progress == pausedAt, "autoplay moved on silently during the interruption")
 
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
                 #expect(s.vm.isAutoPlayPlaying)
                 try await s.waitWhile { runner.progress <= pausedAt }
                 #expect(runner.progress > pausedAt, "autoplay did not continue after the interruption")
+            }
+        }
+
+        /// The call screen closes: the end of the interruption and the app coming back arrive together,
+        /// before the session has been taken back. Autoplay still resumes.
+        @Test func autoplayResumesWhenTheAppComesBackRightAfterAResumableEnd() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                let pausedAt = runner.progress
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after a resumable end")
+                try await s.waitWhile { runner.progress <= pausedAt }
+                #expect(runner.progress > pausedAt)
+            }
+        }
+
+        /// A second interruption begins before the session was taken back after the first. The first
+        /// one paused autoplay, and the end of the second resumes it.
+        @Test func autoplayResumesAfterASecondInterruptionThatOvertookTheFirstOnesRecovery() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(s.vm.isAutoPlayPlaying, "the second end forgot that the first paused autoplay")
             }
         }
 
@@ -133,6 +180,7 @@ extension PlayUsageRecordTests {
                 engine.handleInterruption(interruption(.began))
                 s.vm.switchPlayMode(.none)
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
 
                 #expect(!s.vm.isAutoPlayPlaying)
                 #expect(s.vm.playMode == .none)
@@ -150,11 +198,13 @@ extension PlayUsageRecordTests {
 
                 engine.handleInterruption(interruption(.began))
                 s.vm.onResume()
+                try await waitForRecovery(s, engine)
                 #expect(!engine.isPlaybackSuppressed)
                 #expect(!s.vm.isAutoPlayPlaying)
 
                 engine.handleInterruption(interruption(.began))
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
                 let pausedAt = runner.progress
                 try await Task.sleep(for: .milliseconds(500))
 
@@ -174,6 +224,7 @@ extension PlayUsageRecordTests {
                 s.vm.autoPlayResume()
                 s.vm.autoPlayPause()
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
 
                 #expect(!s.vm.isAutoPlayPlaying, "the end of the interruption overrode the user's pause")
             }
@@ -190,6 +241,7 @@ extension PlayUsageRecordTests {
                 engine.handleInterruption(interruption(.began))
                 s.vm.switchPlayMode(.stepPractice)
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
 
                 #expect(s.vm.playMode == .stepPractice)
                 #expect(!s.vm.isAutoPlayPlaying, "step practice was turned into a playing autoplay")

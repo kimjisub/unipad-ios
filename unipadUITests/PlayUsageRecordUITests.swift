@@ -54,8 +54,12 @@ final class PlayUsageRecordUITests: XCTestCase {
 
     private func openProbePack() throws -> XCUIElement {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
-        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", Self.packTitle)).firstMatch
+        let list = app.scrollViews["main.packList"]
+        let title = list.staticTexts.matching(NSPredicate(format: "label == %@", Self.packTitle)).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10), "the isolated PlayUsage pack must be prepared")
+        // XCTest can report an offscreen title as hittable, then tap a different row while scrolling.
+        XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
+                      "fixture title never reached the visible pack list")
         mark("open pack")
         title.tap()
         let play = app.buttons["Play"].firstMatch
@@ -74,6 +78,7 @@ final class PlayUsageRecordUITests: XCTestCase {
         mark("open menu")
         app.buttons["line.3.horizontal"].tap()
         XCTAssertTrue(app.buttons["rectangle.portrait.and.arrow.right"].waitForExistence(timeout: 5), "option panel never opened")
+        XCTAssertTrue(app.staticTexts[Self.packTitle].exists, "opened a different pack than the usage fixture")
         shot("2-menu")
     }
 

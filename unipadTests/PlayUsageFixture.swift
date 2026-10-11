@@ -48,6 +48,11 @@ final class PlayUsageScenario {
     }
 
     func waitWhile(timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
+        try await Self.waitWhile(timeout: timeout, condition)
+    }
+
+    /// Polls until `condition` is false or `timeout` passes; the caller checks which.
+    static func waitWhile(timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while condition() && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
     }

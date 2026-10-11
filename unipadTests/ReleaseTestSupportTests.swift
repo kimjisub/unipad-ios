@@ -63,6 +63,37 @@ final class ReleaseTestSupportTests: XCTestCase {
         }
     }
 
+    func testChainLayoutLibraryHasTheSmallConformancePackAndAnEightByEightFaded() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("chain-layout", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let packs = WorkspaceManager.unipackFolders(in: workspace).map { folder -> UniPackFolder in
+            let pack = UniPackFolder(rootFolder: folder)
+            pack.load()
+            pack.loadDetail()
+            XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+            return pack
+        }
+        XCTAssertEqual(packs.map(\.title).sorted(), ["Alan Walker - Faded", "Conformance"])
+        let small = try XCTUnwrap(packs.first { $0.title == "Conformance" })
+        XCTAssertEqual([small.buttonX, small.buttonY, small.chain], [4, 3, 24])
+        XCTAssertTrue(small.squareButton)
+        XCTAssertEqual(small.soundCount, 1)
+        XCTAssertFalse(small.keyLedExist)
+        XCTAssertFalse(small.autoPlayExist)
+        let faded = try XCTUnwrap(packs.first { $0.title == "Alan Walker - Faded" })
+        XCTAssertEqual([faded.buttonX, faded.buttonY, faded.chain], [8, 8, 6])
+        XCTAssertTrue(faded.autoPlayExist)
+    }
+
     func testSearchLibraryHasTitlesAndProducersUsedByScreenChecks() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
