@@ -127,11 +127,11 @@ final class ChainReleaseTests: XCTestCase {
                 let pad = try XCTUnwrap(step.input.pad)
                 let input = (x: pad[0] - 1, y: pad[1] - 1, id: UUID())
                 inputs[name] = input
-                vm.padTouch(x: input.x, y: input.y, isDown: true, inputID: input.id)
+                vm.padTouch(x: input.x, y: input.y, isDown: true, trigger: .pad(.screen), inputID: input.id)
             case "chain-button": vm.selectChain(try XCTUnwrap(step.input.chain) - 1)
             case "release", "cancel":
                 let input = try XCTUnwrap(inputs[try XCTUnwrap(step.input.inputId)])
-                vm.padTouch(x: input.x, y: input.y, isDown: false, inputID: input.id)
+                vm.padTouch(x: input.x, y: input.y, isDown: false, trigger: .pad(.screen), inputID: input.id)
             case "checkpoint":
                 if observationDelay != .zero { try await Task.sleep(for: observationDelay) }
                 if scenario.pack == "delayed", step.atMs >= 100 {
