@@ -33,7 +33,7 @@ final class PlayThemeLayoutTests: XCTestCase {
         let faded = packTitles.matching(NSPredicate(format: "label CONTAINS[c] %@", "Faded")).firstMatch
         let title: XCUIElement
         if loadingFixture {
-            title = packTitles.matching(NSPredicate(format: "label == %@", "Release Fixture - Tests")).firstMatch
+            title = packTitles.matching(NSPredicate(format: "label == %@", "Faded - Tests")).firstMatch
             XCTAssertTrue(title.waitForExistence(timeout: 10), "the slow-loading fixture was not prepared")
         } else {
             title = faded.exists ? faded : packTitles.element(boundBy: 0)
