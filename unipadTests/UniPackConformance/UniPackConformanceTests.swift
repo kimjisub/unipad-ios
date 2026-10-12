@@ -153,8 +153,16 @@ struct UniPackConformanceTests {
     }
 
     @Test func anUndeterminedCaseIsNeverAPass() throws {
-        let corpus = try loadCorpus()
-        let open = try #require(corpus.cases.first { !$0.determined })
+        // The corpus may have no undetermined case, so one is made from a determined one.
+        let determined = try find("KS-001", in: try loadCorpus())
+        let expected = try #require(determined.expected)
+        let open = ConformanceCase(
+            id: determined.id, layer: determined.layer, title: determined.title, files: determined.files,
+            fingerprint: determined.fingerprint, determined: false, expected: nil, question: "still open?",
+            scenario: determined.scenario, known: determined.known, unobserved: determined.unobserved
+        )
+        #expect(determined.classify(expected).status == "pass")
+        #expect(open.classify(expected).status == "unverified")
         #expect(open.classify(["loaded": true]).status == "unverified")
     }
 

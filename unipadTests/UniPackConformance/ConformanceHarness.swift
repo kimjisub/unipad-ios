@@ -27,11 +27,25 @@ struct ConformanceDeps {
         if !pack.criticalError { pack.loadDetailWithProgress { _, _, _ in } }
         return pack
     }
+    /// The same setup and attach callback used when MainView becomes the current route again.
+    /// Without physical MIDI, invoke the connection callback after installing the controller.
+    var returnToMain: @MainActor () -> Void = {
+        let screen = MainViewModel()
+        screen.setupMidiController()
+        if !MidiManager.shared.isConnected { MidiManager.shared.controller?.onAttach() }
+        screen.removeMidiController()
+    }
+    var stopAutoPlay: @MainActor (AutoPlayRunner) -> Void = { $0.stop() }
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
 }
 
 enum ConformanceHarness {
+    /// The canonical corpus's historical iOS annotations predate these two observation seams.
+    /// Keep its bytes and expectations intact; other unobserved cases remain unverified.
+    static let newlyObservableCases: Set<String> = [
+        "RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004",
+    ]
     // MARK: - Normalization
 
     static func hex8(_ color: Int) -> String {
@@ -123,7 +137,8 @@ enum ConformanceHarness {
 
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
-        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
+        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
+           !newlyObservableCases.contains(conformanceCase.id) { return .unverified(reason) }
         if conformanceCase.layer == "palette" {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
         }
@@ -189,10 +204,15 @@ enum ConformanceHarness {
 
     private final class LedRecorder: LedRunner.Listener {
         let log: EventLog
-        init(log: EventLog) { self.log = log }
+        let screenLights: ScreenLights
+        init(log: EventLog, screenLights: ScreenLights) {
+            self.log = log
+            self.screenLights = screenLights
+        }
 
         func onLedBatch(_ events: [LedRunner.LedEvent]) {
             for event in events {
+                screenLights.record(event)
                 switch event {
                 case .padOn(let x, let y, let color, let velocity): log.add(["ledOn", .int(x), .int(y), .string(hex8(color)), .int(velocity)])
                 case .padOff(let x, let y): log.add(["ledOff", .int(x), .int(y)])
@@ -201,6 +221,119 @@ enum ConformanceHarness {
                 }
             }
         }
+    }
+
+    /// A MIDI boundary spy: remembers the lights emitted during playback and observes a hardware
+    /// clear command from the real main-screen adapter. Home-screen watermark/selection lights are
+    /// outside the playback trace. This proves the clear call, not physical Launchpad delivery.
+    private final class ScreenLights: @unchecked Sendable {
+        private let lock = NSLock()
+        private struct Light: Hashable {
+            let x: Int
+            let y: Int
+        }
+        private var lit: Set<Light> = []
+        private let log: EventLog
+        init(log: EventLog) { self.log = log }
+
+        func record(_ event: LedRunner.LedEvent) {
+            lock.lock()
+            defer { lock.unlock() }
+            switch event {
+            case .padOn(let x, let y, _, _): lit.insert(Light(x: x, y: y))
+            case .padOff(let x, let y): lit.remove(Light(x: x, y: y))
+            case .chainOn(let c, _, _): lit.insert(Light(x: -1, y: c))
+            case .chainOff(let c): lit.remove(Light(x: -1, y: c))
+            }
+        }
+
+        func clear(record: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+            if record {
+                for light in lit.sorted(by: { ($0.x, $0.y) < ($1.x, $1.y) }) {
+                    log.add(["ledOff", .int(light.x), .int(light.y)])
+                }
+            }
+            lit.removeAll()
+        }
+    }
+
+    private final class ScreenClearDriver: BaseMidiDriver {
+        let lights: ScreenLights
+        var recordsClears = true
+        init(lights: ScreenLights) { self.lights = lights }
+        override func sendClearLed() { lights.clear(record: recordsClears) }
+    }
+
+    /// Each wake waits for the production task to finish its tick and suspend again. Advancing
+    /// time never guesses how many Task.yield calls are enough to deliver an autoplay event.
+    @MainActor
+    private final class AutoPlayClock {
+        var now: Int64 = 1000
+        var ended = false
+        private var waiting: CheckedContinuation<Void, Never>?
+
+        func sleep() async {
+            await withCheckedContinuation { waiting = $0 }
+        }
+
+        func settle() async throws {
+            let deadline = Date().addingTimeInterval(120)
+            while waiting == nil && !ended {
+                guard Date() < deadline else { throw ConformanceError.harness("autoplay did not finish its virtual tick within 120 s") }
+                await Task.yield()
+            }
+        }
+
+        func wake() {
+            let continuation = waiting
+            waiting = nil
+            continuation?.resume()
+        }
+
+        func tick() async throws {
+            if ended { return }
+            wake()
+            try await settle()
+        }
+    }
+
+    @MainActor
+    private final class AutoRecorder: AutoPlayRunner.Listener {
+        let log: EventLog
+        let clock: AutoPlayClock
+        let chain: ChainObserver
+        let forward: (Int, Int, Bool) -> Void
+        init(log: EventLog, clock: AutoPlayClock, chain: ChainObserver, forward: @escaping (Int, Int, Bool) -> Void) {
+            self.log = log
+            self.clock = clock
+            self.chain = chain
+            self.forward = forward
+        }
+        func onStart() {}
+        func onPadTouchOn(x: Int, y: Int) {
+            log.add(["autoOn", .int(x), .int(y)])
+            forward(x, y, true)
+        }
+        func onPadTouchOff(x: Int, y: Int) {
+            log.add(["autoOff", .int(x), .int(y)])
+            forward(x, y, false)
+        }
+        func onChainChange(c: Int) {
+            log.recordsChain = false
+            chain.setValue(c)
+            log.recordsChain = true
+            log.add(["autoChain", .int(c)])
+        }
+        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {}
+        func onGuidePadOff(x: Int, y: Int) {}
+        func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
+        func onGuideChainOn(c: Int) {}
+        func onRemoveGuide() {}
+        func chainButsRefresh() {}
+        func onProgressUpdate(progress: Int) {}
+        func onEnd() { clock.ended = true }
     }
 
     /// The sound engine is the real AVAudioEngine-backed one: it has no seam to observe which sound it
@@ -217,7 +350,8 @@ enum ConformanceHarness {
 
         let clock = TestManualClock()
         // LedRunner keeps its listener weakly, so the recorder must be held here.
-        let recorder = LedRecorder(log: log)
+        let screenLights = ScreenLights(log: log)
+        let recorder = LedRecorder(log: log, screenLights: screenLights)
         let led = LedRunner(unipack: pack, listener: recorder, chain: chain, loopDelay: 3600, clock: { clock.read() })
         led.launch()
         let deadline = Date().addingTimeInterval(5)
@@ -229,12 +363,34 @@ enum ConformanceHarness {
         let loading = TestSoundLoadListener()
         let engine = SoundEngine(unipack: pack, chain: chain, loadingListener: loading)
         var engineDestroyed = false
+        let autoClock = AutoPlayClock()
+        var autoPlay: AutoPlayRunner?
+        var autoRecorder: AutoRecorder?
         /// Cancels the LED loop and destroys the engine, including sounds still repeating.
         func shutDown() async {
+            autoPlay?.stop()
+            autoClock.ended = true
+            autoClock.wake()
             led.stop()
             guard !engineDestroyed else { return }
             engineDestroyed = true
             engine.destroy()
+        }
+
+        func touch(_ x: Int, _ y: Int, _ down: Bool) {
+            if down {
+                let playing = chain.value
+                let head = pack.soundGet(c: playing, x: x, y: y)
+                let before = engine.playsStarted
+                engine.soundOn(x: x, y: y)
+                if engine.playsStarted > before, let head {
+                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root)), .int(head.loop)])
+                }
+                deps.ledEventOn(led, x, y)
+            } else {
+                engine.soundOff(x: x, y: y)
+                led.eventOff(x: x, y: y)
+            }
         }
 
         func play() async throws -> ConformanceActual {
@@ -254,17 +410,20 @@ enum ConformanceHarness {
                 let y = step["y"]?.int ?? 0
                 switch step["do"]?.string {
                 case "press":
-                    let playing = chain.value
-                    let head = pack.soundGet(c: playing, x: x, y: y)
-                    let before = engine.playsStarted
-                    engine.soundOn(x: x, y: y)
-                    if engine.playsStarted > before, let head {
-                        log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root)), .int(head.loop)])
-                    }
-                    deps.ledEventOn(led, x, y)
+                    touch(x, y, true)
                 case "release":
-                    engine.soundOff(x: x, y: y)
-                    led.eventOff(x: x, y: y)
+                    touch(x, y, false)
+                case "autoplay":
+                    let toPads = step["toPads"] == .bool(true)
+                    let listener = AutoRecorder(log: log, clock: autoClock, chain: chain) { x, y, down in
+                        if toPads { touch(x, y, down) }
+                    }
+                    autoRecorder = listener
+                    let runner = AutoPlayRunner(unipack: pack, listener: listener, chain: chain,
+                                                clock: { autoClock.now }, sleep: { _ in await autoClock.sleep() })
+                    autoPlay = runner
+                    runner.launch()
+                    try await autoClock.settle()
                 case "chain":
                     log.recordsChain = false
                     chain.setValue(step["c"]?.int ?? 0)
@@ -276,6 +435,8 @@ enum ConformanceHarness {
                     while remaining > 0 {
                         let tick = min(4, remaining)
                         clock.advance(Int64(tick))
+                        autoClock.now += Int64(tick)
+                        if autoPlay != nil { try await autoClock.tick() }
                         if led.active { led.loop() }
                         await Task.yield()
                         await Task.yield()
@@ -285,7 +446,23 @@ enum ConformanceHarness {
                     await Task.yield()
                     checkpoints.append(.array(log.drain()))
                 case "stop":
-                    await shutDown()
+                    if let autoPlay { deps.stopAutoPlay(autoPlay) }
+                    // Release a virtual wait even when stop is deliberately omitted in a self-check.
+                    autoClock.wake()
+                    if autoPlay?.active == false { autoClock.ended = true }
+                    led.stop()
+                    if !engineDestroyed { engineDestroyed = true; engine.destroy() }
+                    let manager = MidiManager.shared
+                    let previousDriver = manager.driver
+                    let previousController = manager.controller
+                    let screenDriver = ScreenClearDriver(lights: screenLights)
+                    manager.overrideDriver(screenDriver)
+                    deps.returnToMain()
+                    // Driver replacement also clears the old driver. That cleanup is outside the
+                    // screen transition under test and must not make an omitted onAttach pass.
+                    screenDriver.recordsClears = false
+                    manager.overrideDriver(previousDriver)
+                    manager.controller = previousController
                 default:
                     throw ConformanceError.harness("\(conformanceCase.id): unknown scenario step \(step["do"]?.string ?? "?")")
                 }
@@ -296,7 +473,7 @@ enum ConformanceHarness {
         let result: Result<ConformanceActual, Error>
         do { result = .success(try await play()) } catch { result = .failure(error) }
         await shutDown()
-        return try withExtendedLifetime(recorder) { try result.get() }
+        return try withExtendedLifetime((recorder, autoRecorder)) { try result.get() }
     }
 
     // MARK: - Reproduction aid

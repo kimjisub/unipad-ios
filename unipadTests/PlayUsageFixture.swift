@@ -80,7 +80,7 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
-    private static func writePack(to folder: URL, keySound: String, autoPlay: String) throws {
+    static func writePack(to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
         let files: [(String, Data)] = [
             ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n".utf8)),
             ("keySound", Data(keySound.utf8)),
