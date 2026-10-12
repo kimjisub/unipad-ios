@@ -105,7 +105,8 @@ final class PlaybackStopTests: XCTestCase {
                 let gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
                     isEngineRunning: { false },
                     activateSession: {},
-                    startEngine: {}
+                    startEngine: {},
+                    runOffMain: { _, _ in }
                 ))
                 released = gate
                 XCTAssertEqual(gate.state, .ready)
