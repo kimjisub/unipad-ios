@@ -1,4 +1,5 @@
-This update fixes three problems:
+UniPad now fills the whole screen on iPhone Duo, folded or unfolded, so the pads appear larger.
+This update also fixes three problems:
 - A looping sound no longer keeps playing after you release its pad when another finger changed the chain while it was held.
 - Sound comes back after a phone call or other interruption, as soon as you return to UniPad or press a pad. AutoPlay now pauses during an interruption instead of running on silently.
 - If UniPad closes while importing or installing a pack, the half-installed pack no longer shows up in your library (often as "An error has occurred."), and its leftover files are cleaned up.
