@@ -43,6 +43,66 @@ extension PlayUsageRecordTests {
             try await s.waitWhile { engine.isPlaybackSuppressed }
         }
 
+        /// What the engine reported to the screen, in order, after the screen's own handler ran.
+        private func observeInterruptions(_ engine: SoundEngine) -> Reports {
+            let reports = Reports()
+            let screen = engine.onInterruption
+            engine.onInterruption = { interruption in
+                screen?(interruption)
+                reports.all.append(interruption)
+            }
+            return reports
+        }
+
+        /// Waits for a report instead of a fixed time: the worker may be slow on a loaded machine.
+        private func waitForReport(
+            _ s: PlayUsageScenario, _ reports: Reports, _ matches: (SoundEngine.Interruption) -> Bool
+        ) async throws {
+            let seen = reports.all.count
+            func reported() -> Bool { reports.all.dropFirst(seen).contains(where: matches) }
+            try await s.waitWhile { !reported() }
+            let found = reported()
+            try #require(found, "the engine never reported it")
+        }
+
+        /// The app comes back to the front again, now with the session, and autoplay stays paused.
+        private func expectALaterReturnLeavesAutoplayPaused(
+            _ s: PlayUsageScenario, _ engine: SoundEngine, _ runner: AutoPlayRunner, _ reports: Reports,
+            _ activate: @escaping () throws -> Void
+        ) async throws {
+            engine.activateSessionForRecovery = activate
+            s.vm.onResume()
+            try await waitForReport(s, reports) { $0 == .appReturned(recovered: true) }
+            let pausedAt = runner.progress
+            try await Task.sleep(for: .milliseconds(500))
+
+            #expect(!s.vm.isAutoPlayPlaying, "a later return resumed autoplay")
+            #expect(runner.progress == pausedAt)
+            #expect(s.vm.playMode == .autoPlay, "the user's choice of autoplay is kept for them to resume")
+        }
+
+        final class Reports {
+            var all: [SoundEngine.Interruption] = []
+        }
+
+        /// The first try to take the session back fails, as it does in the background; later ones run
+        /// `then`. Called on the audio session worker.
+        nonisolated final class FailsFirstActivation: @unchecked Sendable {
+            private let lock = NSLock()
+            private var count = 0
+            private let then: () throws -> Void
+
+            init(then: @escaping () throws -> Void) { self.then = then }
+
+            var calls: Int { lock.withLock { count } }
+
+            func activate() throws {
+                let call = lock.withLock { count += 1; return count }
+                if call == 1 { throw CocoaError(.featureUnsupported) }
+                try then()
+            }
+        }
+
         private func isPressedLit(_ s: PlayUsageScenario, x: Int, y: Int) -> Bool {
             s.vm.channelManager?.get(x: x, y: y, channel: .pressed) != nil
         }
@@ -150,6 +210,114 @@ extension PlayUsageRecordTests {
                 #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
                 #expect(runner.progress == pausedAt)
                 #expect(s.vm.playMode == .autoPlay, "the user's choice of autoplay is kept for them to resume")
+            }
+        }
+
+        /// The end said playback may resume but came while the app was in the background, where a
+        /// session that does not mix with others cannot be taken back. The app coming back to the front
+        /// takes it back, and autoplay continues as it would after going home and back without a call.
+        @Test func autoplayResumesWhenTheAppComesBackWithTheSessionAfterAResumableEndFailed() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let reported = observeInterruptions(engine)
+                let activate = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+                engine.isAppInFront = { false }
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForReport(s, reported) { if case .ended = $0 { true } else { false } }
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
+                let pausedAt = runner.progress
+
+                engine.activateSessionForRecovery = activate
+                engine.isAppInFront = { true }
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after the app took the session back")
+                try await s.waitWhile { runner.progress <= pausedAt }
+                #expect(runner.progress > pausedAt)
+            }
+        }
+
+        /// The app comes back while the try made in the background for a resumable end is still on the
+        /// worker, as when the call screen closes. That try fails; the one made on coming back takes the
+        /// session, and autoplay continues.
+        @Test func autoplayResumesWhenTheAppComesBackWhileTheBackgroundTryIsStillFailing() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let activate = engine.activateSessionForRecovery
+                let firstTry = FailsFirstActivation(then: activate)
+                engine.activateSessionForRecovery = { try firstTry.activate() }
+                engine.isAppInFront = { false }
+
+                engine.handleInterruption(interruption(.began))
+                let pausedAt = runner.progress
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                engine.isAppInFront = { true }
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(firstTry.calls == 2, "coming back did not try to take the session again")
+                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused although the app took the session back")
+                try await s.waitWhile { runner.progress <= pausedAt }
+                #expect(runner.progress > pausedAt)
+            }
+        }
+
+        /// The app came back but another app still holds the session: autoplay stays paused, and a later
+        /// return that gets the session no longer resumes it; by then it is the user's to resume.
+        @Test func autoplayStaysPausedWhenTheAppComesBackStillWithoutTheSession() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let reported = observeInterruptions(engine)
+                let activate = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+                engine.isAppInFront = { false }
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForReport(s, reported) { if case .ended = $0 { true } else { false } }
+                engine.isAppInFront = { true }
+                s.vm.onResume()
+                try await waitForReport(s, reported) { $0 == .appReturned(recovered: false) }
+                #expect(engine.isPlaybackSuppressed)
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
+
+                try await expectALaterReturnLeavesAutoplayPaused(s, engine, runner, reported, activate)
+            }
+        }
+
+        /// The app was already in front when the resumable end came, and another app still held the
+        /// session. A later return to the front (Control Center pulled down and back) has nothing to do
+        /// with the call and does not start autoplay.
+        @Test func autoplayStaysPausedOnALaterReturnAfterAResumableEndFailedInFront() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let reported = observeInterruptions(engine)
+                let activate = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+                engine.isAppInFront = { true }
+
+                engine.handleInterruption(interruption(.began))
+                s.vm.onResume()
+                try await waitForReport(s, reported) { $0 == .appReturned(recovered: false) }
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForReport(s, reported) { if case .ended = $0 { true } else { false } }
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
+
+                try await expectALaterReturnLeavesAutoplayPaused(s, engine, runner, reported, activate)
             }
         }
 
