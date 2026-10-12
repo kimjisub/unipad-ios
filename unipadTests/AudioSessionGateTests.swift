@@ -29,6 +29,11 @@ struct AudioSessionGateTests {
             work.forEach { $0() }
         }
 
+        /// Runs the oldest thing the gate handed to the worker and hands its result back.
+        func finishNextRecovery() {
+            handedToWorker.removeFirst()()
+        }
+
         var hooks: AudioSessionGate.Hooks {
             AudioSessionGate.Hooks(
                 isEngineRunning: { [unowned self] in self.engineRunning },
@@ -484,18 +489,40 @@ struct AudioSessionGateTests {
     }
 
     /// A call ends with `.shouldResume` and the app comes back right after, as it does when the call
-    /// screen closes, before the worker has taken the session back. Coming back adds nothing to that
-    /// recovery, so the end still hears that playback is back and autoplay resumes.
-    @Test func comingBackBeforeTheRecoveryForAResumableEndKeepsItsResult() {
+    /// screen closes, before the worker has taken the session back. The end hears the result of the
+    /// try made on coming back, so autoplay resumes.
+    @Test func comingBackBeforeTheRecoveryForAResumableEndReportsTheTryOnComingBack() {
         let (audio, gate) = began()
-        let reported = Reported()
+        let ended = Reported(), returned = Reported()
 
-        gate.interruptionEnded(shouldResume: true, completion: reported.record)
-        gate.appBecameActive()
-        #expect(audio.pendingRecoveries == 1, "coming back replaced the recovery on the worker")
+        gate.interruptionEnded(shouldResume: true, completion: ended.record)
+        gate.appBecameActive(completion: returned.record)
+        #expect(audio.pendingRecoveries == 2, "coming back did not try again")
         audio.finishRecoveries()
 
-        #expect(reported.recovery == .recovered)
+        #expect(ended.recovery == .recovered)
+        #expect(returned.recovery == .recovered)
+        #expect(gate.state == .ready)
+    }
+
+    /// The end came while the app was in the background, where a session that does not mix with others
+    /// cannot be activated, and the app came back before that try failed. Coming back tries again in
+    /// front, and the end hears that try's result instead of the failure.
+    @Test func comingBackWhileABackgroundTryIsFailingTriesAgainInFront() {
+        let (audio, gate) = began()
+        let ended = Reported(), returned = Reported()
+
+        gate.interruptionEnded(shouldResume: true, completion: ended.record)
+        gate.appBecameActive(completion: returned.record)
+        audio.canActivate = false
+        audio.finishNextRecovery()
+        #expect(ended.recovery == nil, "the failure of the background try was reported")
+        audio.canActivate = true
+        audio.finishNextRecovery()
+
+        #expect(audio.activateCount == 2)
+        #expect(ended.recovery == .recovered)
+        #expect(returned.recovery == .recovered)
         #expect(gate.state == .ready)
     }
 

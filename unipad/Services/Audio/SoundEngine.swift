@@ -1,6 +1,9 @@
 import AVFoundation
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "SoundEngine")
 
@@ -76,11 +79,13 @@ final class SoundEngine {
         /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
         case began(whileInterrupted: Bool)
         /// `shouldResume`: the system allows playback to resume. `recovered`: the session is ours again.
-        case ended(shouldResume: Bool, recovered: Bool)
+        /// `whileInFront`: the end came while the app was active.
+        case ended(shouldResume: Bool, recovered: Bool, whileInFront: Bool)
         /// The app is in front again. `recovered`: this took back a session that was not ours.
         case appReturned(recovered: Bool)
     }
-    /// Told after the engine has handled an interruption, so the screen can pause what it drives.
+    /// Told after the engine has handled an interruption or the app's return to the front, so the
+    /// screen can pause or resume what it drives.
     var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
@@ -99,6 +104,11 @@ final class SoundEngine {
         get { gate.hooks.activateSession }
         set { gate.hooks.activateSession = newValue }
     }
+    #if canImport(UIKit)
+    /// Whether the app is active. A test seam: the test host stays active, and an interruption can end
+    /// while the app is still in the background.
+    var isAppInFront: () -> Bool = { UIApplication.shared.applicationState == .active }
+    #endif
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -421,11 +431,13 @@ final class SoundEngine {
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
             let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            let whileInFront = isAppInFront()
             // Resuming autoplay on a session we could not take back would run it without sound.
             gate.interruptionEnded(shouldResume: shouldResume) { [weak self] recovery in
                 // A new interruption overtook this end and reports its own; or the screen is gone.
                 guard recovery != .abandoned else { return }
-                self?.onInterruption?(.ended(shouldResume: shouldResume, recovered: recovery == .recovered))
+                self?.onInterruption?(.ended(
+                    shouldResume: shouldResume, recovered: recovery == .recovered, whileInFront: whileInFront))
             }
         default:
             // `.began`, and any type a later SDK adds: suppressing is the safe side.
