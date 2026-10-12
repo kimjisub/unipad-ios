@@ -153,6 +153,63 @@ extension PlayUsageRecordTests {
             }
         }
 
+        /// The end said playback may resume but came while the app was in the background, where a
+        /// session that does not mix with others cannot be taken back. The app coming back to the front
+        /// takes it back, and autoplay continues as it would after going home and back without a call.
+        @Test func autoplayResumesWhenTheAppComesBackWithTheSessionAfterAResumableEndFailed() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let activate = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await Task.sleep(for: .milliseconds(500))
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
+                let pausedAt = runner.progress
+
+                engine.activateSessionForRecovery = activate
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
+
+                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after the app took the session back")
+                try await s.waitWhile { runner.progress <= pausedAt }
+                #expect(runner.progress > pausedAt)
+            }
+        }
+
+        /// The app came back but another app still holds the session: autoplay stays paused, and a later
+        /// return that gets the session no longer resumes it; by then it is the user's to resume.
+        @Test func autoplayStaysPausedWhenTheAppComesBackStillWithoutTheSession() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let activate = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                s.vm.onResume()
+                try await Task.sleep(for: .milliseconds(500))
+                #expect(engine.isPlaybackSuppressed)
+                #expect(!s.vm.isAutoPlayPlaying, "autoplay resumed without sound")
+
+                engine.activateSessionForRecovery = activate
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                let pausedAt = runner.progress
+                try await Task.sleep(for: .milliseconds(500))
+
+                #expect(!s.vm.isAutoPlayPlaying, "a later return resumed autoplay")
+                #expect(runner.progress == pausedAt)
+                #expect(s.vm.playMode == .autoPlay, "the user's choice of autoplay is kept for them to resume")
+            }
+        }
+
         @Test func autoplayStaysPausedWhenTheEndDoesNotSayResume() async throws {
             try await Self.run { s in
                 try await s.loadReady()

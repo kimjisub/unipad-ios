@@ -75,8 +75,10 @@ final class SoundEngine {
     enum Interruption: Equatable {
         /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
         case began(whileInterrupted: Bool)
-        /// `shouldResume`: the system allows playback to resume and the session is ours again.
-        case ended(shouldResume: Bool)
+        /// `shouldResume`: the system allows playback to resume. `recovered`: the session is ours again.
+        case ended(shouldResume: Bool, recovered: Bool)
+        /// The app is in front again. `recovered`: this took back a session that was not ours.
+        case appReturned(recovered: Bool)
     }
     /// Told after the engine has handled an interruption, so the screen can pause what it drives.
     var onInterruption: ((Interruption) -> Void)?
@@ -423,7 +425,7 @@ final class SoundEngine {
             gate.interruptionEnded(shouldResume: shouldResume) { [weak self] recovery in
                 // A new interruption overtook this end and reports its own; or the screen is gone.
                 guard recovery != .abandoned else { return }
-                self?.onInterruption?(.ended(shouldResume: recovery == .recovered))
+                self?.onInterruption?(.ended(shouldResume: shouldResume, recovered: recovery == .recovered))
             }
         default:
             // `.began`, and any type a later SDK adds: suppressing is the safe side.
@@ -443,7 +445,16 @@ final class SoundEngine {
     /// The app is in front again. A call that was answered may never send the end of its
     /// interruption, so this is where the session is taken back in that case.
     func appBecameActive() {
-        gate.appBecameActive()
+        guard gate.isPlaybackSuppressed else {
+            gate.appBecameActive()
+            onInterruption?(.appReturned(recovered: false))
+            return
+        }
+        gate.appBecameActive { [weak self] recovery in
+            // A new interruption overtook the return and reports its own; or the screen is gone.
+            guard recovery != .abandoned else { return }
+            self?.onInterruption?(.appReturned(recovered: recovery == .recovered))
+        }
     }
 
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
