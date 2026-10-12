@@ -14,9 +14,19 @@ final class StoreViewModel {
         var isAutoPlay: Bool
         var downloaded: Bool
         var downloading: Bool = false
+        /// The last download failed; stays set until the user starts the next one.
+        var downloadFailed: Bool = false
         var isToggle: Bool = false
         var playText: String = ""
         var flagColorOverride: Color?
+
+        /// The selected row's flag reads the download's progress or failure while there is one,
+        /// otherwise whether the pack is already in the library.
+        var listFlagText: String? {
+            if downloading || downloadFailed { return playText }
+            guard isToggle else { return nil }
+            return downloaded ? String(localized: "downloaded") : String(localized: "download")
+        }
     }
 
     var storeItems: [StoreItem] = []
@@ -34,6 +44,11 @@ final class StoreViewModel {
 
     private let firebaseManager = FirebaseManager.shared
     private let workspaceManager = WorkspaceManager.shared
+    private let makeDownloader: () -> UniPackDownloader
+
+    init(makeDownloader: @escaping () -> UniPackDownloader = { UniPackDownloader() }) {
+        self.makeDownloader = makeDownloader
+    }
 
     func loadStore() {
         isLoading = true
@@ -90,6 +105,7 @@ final class StoreViewModel {
         guard !storeItems[index].downloaded, !storeItems[index].downloading else { return }
 
         storeItems[index].downloading = true
+        storeItems[index].downloadFailed = false
         storeItems[index].flagColorOverride = AppColors.textPrimary
         storeItems[index].playText = "0%"
 
@@ -98,9 +114,9 @@ final class StoreViewModel {
         let downloadURL = item.downloadURL
         let fileSize = item.fileSize
         let workspace = workspaceManager.downloadWorkspace.url
+        let downloader = makeDownloader()
 
         Task {
-            let downloader = UniPackDownloader()
             let delegate = StoreDownloadDelegate(viewModel: self, itemId: itemId)
             await downloader.download(
                 title: title,
@@ -175,6 +191,7 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
         UsageAnalytics.shared.packImportFailed(source: .store, error: error)
         updateItem {
             $0.downloading = false
+            $0.downloadFailed = true
             $0.playText = String(localized: "failed")
             $0.flagColorOverride = AppColors.red
         }
