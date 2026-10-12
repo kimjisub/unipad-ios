@@ -142,6 +142,7 @@ final class AutoPlayRunner {
 
             guard let autoPlay = self.unipack.autoPlayTable else {
                 // onStart already put the UI in the playing state; without this it never leaves it.
+                self.task = nil
                 self.listener?.onEnd()
                 return
             }
@@ -336,6 +337,7 @@ final class AutoPlayRunner {
 
             // stop() already reset the UI; a cancelled run must not post another onEnd after it.
             guard !Task.isCancelled else { return }
+            self.task = nil
             self.listener?.onEnd()
         }
     }

@@ -54,6 +54,7 @@ final class PlayUsageRecordUITests: XCTestCase {
 
     private func openProbePack() throws -> XCUIElement {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
+        UITestSupport.searchForPack(Self.packTitle, in: app)
         let list = app.scrollViews["main.packList"]
         let title = list.staticTexts.matching(NSPredicate(format: "label == %@", Self.packTitle)).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10), "install test-fixtures/PlayUsage first")
