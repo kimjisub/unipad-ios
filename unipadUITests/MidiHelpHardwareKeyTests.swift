@@ -145,7 +145,10 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         let voiceOver = XCUIDevice.shared.voiceOverService
         let labels = openHelp(language: language)
         try voiceOver.enable()
-        var speech = try voiceOver.currentSpeech().utterance
+        // Enabling speaks nothing of its own; any current speech is an unrelated
+        // system announcement (e.g. "Port on right"), and without one reading it
+        // throws "No speech available". Start reading by moving instead.
+        var speech = try voiceOver.moveForward().utterance
         var transcript = [speech]
         // Enabling VoiceOver over an open help may start in its body; read back
         // to the fixed header first.
