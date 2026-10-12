@@ -5,6 +5,45 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004"])
+    func formerlyUnobservedPlaybackCasesAreMeasured(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "pass", "\(id): \(value.serialized())")
+    }
+
+    @Test(arguments: ["RUN-L-006", "RUN-L-007"])
+    func omittingTheMainScreenAttachFailsTheExitCase(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        deps.returnToMain = {}
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "runner shutdown alone must not stand in for screen cleanup")
+    }
+
+    @Test func omittingAutoplayStopFailsTheExitCase() async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == "RUN-A-002" })
+        var deps = ConformanceDeps()
+        deps.stopAutoPlay = { _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("autoplay stop was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "an uncancelled task must emit later presses on virtual time")
+    }
+
     @Test func anEmptyCaseFilterIsNotAPartialRun() {
         // This check runs with TEST_RUNNER_UNIPACK_CONFORMANCE_ONLY set to an empty string.
         if ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ONLY"] == "" {
