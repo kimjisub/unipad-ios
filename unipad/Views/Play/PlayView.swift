@@ -161,11 +161,12 @@ struct PlayView: View {
                 chainColors: vm.chainColors,
                 chainItems: vm.chainItems,
                 visibleChainIndices: visibleChains,
-                cellSize: layout.cellSize,
+                cellSize: layout.chainWidth,
+                selectedChain: vm.chain.value,
                 theme: theme,
                 onChainTap: { vm.selectChain($0) }
             )
-            .frame(width: layout.gridWidth, height: layout.chainHeight)
+            .frame(width: layout.chainWidth * CGFloat(PlayViewModel.topBarCount), height: layout.chainHeight)
             .position(x: centerX, y: padTop - layout.chainHeight / 2)
         }
 
@@ -175,11 +176,12 @@ struct PlayView: View {
             chainColors: vm.chainColors,
             chainItems: vm.chainItems,
             visibleChainIndices: visibleChains,
-            cellSize: layout.cellSize,
+            cellSize: layout.chainWidth,
+            selectedChain: vm.chain.value,
             theme: theme,
             onChainTap: { vm.selectChain($0) }
         )
-        .frame(width: layout.chainWidth, height: layout.gridHeight)
+        .frame(width: layout.chainWidth, height: layout.chainHeight * CGFloat(PlayViewModel.topBarCount))
         .position(x: padLeft - layout.chainWidth / 2, y: centerY)
 
         PadGridView(
@@ -211,11 +213,12 @@ struct PlayView: View {
             chainColors: vm.chainColors,
             chainItems: vm.chainItems,
             visibleChainIndices: visibleChains,
-            cellSize: layout.cellSize,
+            cellSize: layout.chainWidth,
+            selectedChain: vm.chain.value,
             theme: theme,
             onChainTap: { vm.selectChain($0) }
         )
-        .frame(width: layout.chainWidth, height: layout.gridHeight)
+        .frame(width: layout.chainWidth, height: layout.chainHeight * CGFloat(PlayViewModel.topBarCount))
         .position(x: padLeft + layout.gridWidth + layout.chainWidth / 2, y: centerY)
 
         if showAllSides || unipack.chain > PlayViewModel.chainIndexOffset {
@@ -225,11 +228,12 @@ struct PlayView: View {
                 chainColors: vm.chainColors,
                 chainItems: vm.chainItems,
                 visibleChainIndices: visibleChains,
-                cellSize: layout.cellSize,
+                cellSize: layout.chainWidth,
+                selectedChain: vm.chain.value,
                 theme: theme,
                 onChainTap: { vm.selectChain($0) }
             )
-            .frame(width: layout.gridWidth, height: layout.chainHeight)
+            .frame(width: layout.chainWidth * CGFloat(PlayViewModel.topBarCount), height: layout.chainHeight)
             .position(x: centerX, y: padTop + layout.gridHeight + layout.chainHeight / 2)
         }
     }
@@ -486,10 +490,15 @@ struct PlayLayout {
         )
         gridWidth = cellSize * CGFloat(buttonY)
         gridHeight = cellSize * CGFloat(buttonX)
-        chainWidth = cellSize
-        chainHeight = cellSize
+        // Keep the pads' size. Eight chains may extend past a short side, but they must
+        // fit the safe area and at least one grid dimension to keep adjacent strips apart.
+        let chainsPerSide = CGFloat(PlayViewModel.topBarCount)
+        chainWidth = min(cellSize, totalWidth / chainsPerSide, totalHeight / chainsPerSide,
+                         max(gridWidth, gridHeight) / chainsPerSide)
+        chainHeight = chainWidth
         let screenCenterX = (viewSize.width + safeAreaInsets.trailing - safeAreaInsets.leading) / 2
-        padCenterX = min(screenCenterX, viewSize.width - reservedWidth - chainWidth - gridWidth / 2)
+        let halfWidth = max(gridWidth / 2 + chainWidth, showAllSides ? chainWidth * chainsPerSide / 2 : 0)
+        padCenterX = max(halfWidth, min(screenCenterX, totalWidth - halfWidth))
         padCenterY = viewSize.height / 2
     }
 

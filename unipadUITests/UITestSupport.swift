@@ -80,7 +80,7 @@ enum UITestSupport {
 
     /// The system file picker's cancel button, once the picker has settled.
     ///
-    /// The picker runs in its own process and lays itself out several times as it
+    /// The picker runs in its own process and, on an iPhone, lays itself out several times as it
     /// opens: as a sheet, as a split view whose sidebar has a cancel button of its
     /// own, and with a phone-width bar, before it fills the screen. Its cancel
     /// button is listed at each of those places in turn, and XCUITest waits only
@@ -88,15 +88,19 @@ enum UITestSupport {
     /// lands on empty space once the picker has moved on, and the picker stays
     /// open. The button is returned only once it sits in the full-width bar the
     /// picker ends in and has stopped moving. Its label is in the app's language.
+    ///
+    /// On an iPad the picker ends as a sheet in the middle of the screen with its
+    /// sidebar shown, and the cancel button, drawn as an X, stays in the sidebar's bar.
     static func settledFilePickerCancelButton(in app: XCUIApplication, timeout: TimeInterval) -> XCUIElement? {
-        let bar = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        let onPad = UIDevice.current.userInterfaceIdiom == .pad
+        let bar = app.navigationBars[onPad ? "DOCSidebarView" : "FullDocumentManagerViewControllerNavigationBar"]
         let cancel = bar.buttons
             .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
             .firstMatch
         let screenWidth = app.windows.firstMatch.frame.width
         var lastFrame = CGRect.null
         let settled = NSPredicate { _, _ in
-            guard cancel.exists, bar.frame.width == screenWidth else {
+            guard cancel.exists, onPad || bar.frame.width == screenWidth else {
                 lastFrame = .null
                 return false
             }

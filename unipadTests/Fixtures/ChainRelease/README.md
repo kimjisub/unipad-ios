@@ -1,11 +1,8 @@
 # Approved chain-release fixtures
 
-Copied from UniPad web commit `388bff2b20bdb997bd0892f2bdb6968c89dfeee9`
-(original reviewed head `f9a23cd068caa639bd300b2273f89d22d5791412`),
-`meta/unipack-conformance/chain-release-v1/`. The archives are byte-for-byte copies;
-`expectations.json` leaves out the source's `approval` record, which only identified the review.
-The manifest keeps the hashes of the archives, expectations, and their contents, with the
-expectations entry updated for that change.
+Byte-for-byte copies from UniPad web commit `90d1574e734a7816720fa6b5219eb8085a713036`,
+`meta/unipack-conformance/chain-release-v1/`. The shared expectations omit private review
+metadata. The manifest keeps the hashes of the archives, expectations, and their contents.
 `ChainReleaseTests.testApprovedFixtureBytesMatchSourceRevision` checks the copied archive
 and expectations hashes against both pinned values and the manifest.
 

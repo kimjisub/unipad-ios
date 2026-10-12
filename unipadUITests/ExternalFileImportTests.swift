@@ -50,7 +50,7 @@ final class ExternalFileImportTests: XCTestCase {
         let file = app.cells
             .matching(NSPredicate(format: "label BEGINSWITH %@", "ReleaseFixture-")).firstMatch
         if !file.waitForExistence(timeout: 3) {
-            for label in ["Browse", "On My iPhone", "UniPad"] {
+            for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
                 let item = app.descendants(matching: .any)
                     .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
                 if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }

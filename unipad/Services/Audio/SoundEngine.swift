@@ -2,23 +2,35 @@ import AVFoundation
 import Foundation
 import os
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "SoundEngine")
+nonisolated private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "SoundEngine")
 
+/// Threads: the session, the engine's start and stop, and attaching or detaching its nodes belong
+/// to `AudioSessionWorker.shared`; the main thread never waits for them. One worker serves every
+/// engine, so a closed pack's engine has stopped before the next pack configures the session. Pads
+/// schedule and play nodes on the main thread, and only while `gate` says the engine runs, which it
+/// never says while a recovery of ours is still on the worker. Finite repeats are scheduled on
+/// FiniteRepeatScheduler's queue.
+///
+/// Stopping nodes is the exception: an interruption, a media services reset and `destroy()` stop
+/// them from the main thread (through FiniteRepeatScheduler) while the worker may be starting the
+/// engine. A player node's `stop()` does not need a rendering engine, and every stop runs inside
+/// the Objective-C catcher, so a stop that races a start costs nothing but that voice.
 final class SoundEngine {
     // Android's native mixer has 64 voices regardless of the pack; a pool sized to the sound
     // count gave a 5-sound pack 5 voices and the 6th overlapping note cut the first.
     static let maxStreams = 64
 
     private let engine = AVAudioEngine()
+    private let worker = AudioSessionWorker.shared
     // Written by the loader on a utility queue while soundOn reads and destroy() clears it on the
     // main thread; the unguarded dictionary rehashed under the reader.
     private let buffersLock = NSLock()
     private var buffers: [Int: AVAudioPCMBuffer] = [:]
     private var destroyed = false
-    /// false when the audio session could not be configured: the tables below are empty then.
-    private let isUsable: Bool
+    /// False until the worker has configured the session and started the engine, and for good when
+    /// that failed.
+    private var isUsable = false
     private var observerTokens: [NSObjectProtocol] = []
-    private let playbackFormat: AVAudioFormat
     private var playerNodes: [AVAudioPlayerNode] = []
     private var nextPlayerIndex = 0
     private let playerCount: Int
@@ -57,6 +69,17 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+    /// Whether interruptions, media services resets and route changes reach the gate. A test seam.
+    var isObservingSession: Bool { !observerTokens.isEmpty }
+
+    enum Interruption: Equatable {
+        /// `whileInterrupted`: the session had not been ours again since an earlier interruption began.
+        case began(whileInterrupted: Bool)
+        /// `shouldResume`: the system allows playback to resume and the session is ours again.
+        case ended(shouldResume: Bool)
+    }
+    /// Told after the engine has handled an interruption, so the screen can pause what it drives.
+    var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
     /// Test observations for finite-loop completion and stale callback cancellation.
@@ -68,6 +91,12 @@ final class SoundEngine {
     /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
     /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
     var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+    /// Takes the session back when playback recovers. A test seam: a simulator always hands the
+    /// session back, so tests replace this to make it refuse as another app holding it would.
+    var activateSessionForRecovery: () throws -> Void {
+        get { gate.hooks.activateSession }
+        set { gate.hooks.activateSession = newValue }
+    }
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
@@ -85,35 +114,16 @@ final class SoundEngine {
         self.chain = chain
         self.loadingListener = loadingListener
 
-        // The hooks capture the engine, never self: the gate is owned by this object and must not
-        // keep it alive.
+        // The hooks capture the engine and the worker, never self: the gate is owned by this object
+        // and must not keep it alive.
         let engine = self.engine
+        let worker = self.worker
         self.gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
             isEngineRunning: { engine.isRunning },
             activateSession: { try Self.configureSession() },
-            startEngine: { try engine.start() }
+            startEngine: { try engine.start() },
+            runOffMain: { worker.run($0, then: $1) }
         ))
-
-        // Configure AVAudioSession BEFORE reading engine format
-        #if canImport(UIKit)
-        do {
-            try Self.configureSession()
-            logger.info("AVAudioSession configured for playback")
-        } catch {
-            logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
-            self.playbackFormat = engine.mainMixerNode.outputFormat(forBus: 0)
-            self.playerCount = 1
-            self.stopID = []
-            self.nodePlayID = []
-            self.isUsable = false
-            loadingListener.onException(error)
-            return
-        }
-        #endif
-
-        self.isUsable = true
-        self.playbackFormat = engine.mainMixerNode.outputFormat(forBus: 0)
-        logger.info("Playback format: sampleRate=\(self.playbackFormat.sampleRate), channels=\(self.playbackFormat.channelCount)")
 
         let table = unipack.soundTable
         var soundCount = 0
@@ -140,24 +150,19 @@ final class SoundEngine {
         nodePlayID = Array(repeating: 0, count: playerCount)
         nodeIsLoop = Array(repeating: false, count: playerCount)
         nodeStartOrder = Array(repeating: 0, count: playerCount)
+        playerNodes = (0..<playerCount).map { _ in AVAudioPlayerNode() }
 
-        for _ in 0..<playerCount {
-            let node = AVAudioPlayerNode()
-            engine.attach(node)
-            engine.connect(node, to: engine.mainMixerNode, format: playbackFormat)
-            playerNodes.append(node)
-        }
+        // Before the set-up is handed over: a call or a route change while the worker configures the
+        // session must reach the gate, or it would allow pads on an engine that is not rendering.
+        observeSession()
 
-        engine.prepare()
-        do {
-            try engine.start()
-            logger.info("AVAudioEngine started successfully with \(self.playerCount) player nodes")
-        } catch {
-            logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
-            loadingListener.onException(error)
-            return
-        }
+        let nodes = playerNodes
+        worker.run({ Self.setUp(engine, nodes: nodes) }, then: { [weak self] result in
+            self?.finishSetUp(result, table: table, soundCount: soundCount)
+        })
+    }
 
+    private func observeSession() {
         #if canImport(UIKit)
         // Block observers are not removed automatically; one leaked per opened pack before.
         observerTokens.append(NotificationCenter.default.addObserver(
@@ -186,9 +191,54 @@ final class SoundEngine {
         ) { [weak self] _ in
             self?.gate.configurationChanged()
         })
+    }
 
-        loadingListener.onStart(soundCount: soundCount)
+    /// Runs on the worker. Configures the session before reading the engine's format, so the nodes
+    /// are connected at the session's sample rate.
+    nonisolated private static func setUp(_ engine: AVAudioEngine, nodes: [AVAudioPlayerNode]) -> Result<AVAudioFormat, Error> {
+        do {
+            try configureSession()
+            logger.info("AVAudioSession configured for playback")
+        } catch {
+            logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
+            return .failure(error)
+        }
+        let format = engine.mainMixerNode.outputFormat(forBus: 0)
+        logger.info("Playback format: sampleRate=\(format.sampleRate), channels=\(format.channelCount)")
+        for node in nodes {
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: format)
+        }
+        engine.prepare()
+        do {
+            try engine.start()
+            logger.info("AVAudioEngine started successfully with \(nodes.count) player nodes")
+        } catch {
+            logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
+            return .failure(error)
+        }
+        return .success(format)
+    }
 
+    private func finishSetUp(_ result: Result<AVAudioFormat, Error>, table: [[[Deque<Sound>?]]]?, soundCount: Int) {
+        guard !isDestroyed() else { return }
+        let playbackFormat: AVAudioFormat
+        switch result {
+        case .success(let format):
+            playbackFormat = format
+        case .failure(let error):
+            // Nothing will play on this engine; a later notification must not start it.
+            gate.shutDown()
+            loadingListener?.onException(error)
+            return
+        }
+        isUsable = true
+        loadingListener?.onStart(soundCount: soundCount)
+        load(table, as: playbackFormat)
+    }
+
+    private func load(_ table: [[[Deque<Sound>?]]]?, as playbackFormat: AVAudioFormat) {
+        let unipack = self.unipack
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             guard let table else {
@@ -217,7 +267,7 @@ final class SoundEngine {
                                     playBuffer = cached
                                 } else {
                                     let rawBuffer = try Self.loadAudioBuffer(from: sound.file)
-                                    playBuffer = try Self.convertIfNeeded(rawBuffer, to: self.playbackFormat)
+                                    playBuffer = try Self.convertIfNeeded(rawBuffer, to: playbackFormat)
                                     byFile[sound.file] = playBuffer
                                 }
                                 self.buffersLock.lock()
@@ -346,7 +396,7 @@ final class SoundEngine {
     #if canImport(UIKit)
     /// Applies the category and the low-latency preferences and activates the session. Idempotent on
     /// purpose: recovery runs it again, and after a media services reset the configuration is gone.
-    private static func configureSession() throws {
+    nonisolated private static func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setPreferredSampleRate(48_000)
@@ -354,7 +404,7 @@ final class SoundEngine {
         try session.setActive(true)
     }
     #else
-    private static func configureSession() throws {}
+    nonisolated private static func configureSession() throws {}
     #endif
 
     #if canImport(UIKit)
@@ -366,16 +416,21 @@ final class SoundEngine {
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
         switch type {
-        case .began:
-            gate.interruptionBegan()
-            releaseAllVoices()
         case .ended:
             let optionsValue = (info[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            gate.interruptionEnded(shouldResume: options.contains(.shouldResume))
-        @unknown default:
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            // Resuming autoplay on a session we could not take back would run it without sound.
+            gate.interruptionEnded(shouldResume: shouldResume) { [weak self] recovery in
+                // A new interruption overtook this end and reports its own; or the screen is gone.
+                guard recovery != .abandoned else { return }
+                self?.onInterruption?(.ended(shouldResume: recovery == .recovered))
+            }
+        default:
+            // `.began`, and any type a later SDK adds: suppressing is the safe side.
+            let whileInterrupted = gate.isInterruptionUnresolved
             gate.interruptionBegan()
             releaseAllVoices()
+            onInterruption?(.began(whileInterrupted: whileInterrupted))
         }
     }
 
@@ -384,6 +439,12 @@ final class SoundEngine {
         gate.mediaServicesWereReset()
     }
     #endif
+
+    /// The app is in front again. A call that was answered may never send the end of its
+    /// interruption, so this is where the session is taken back in that case.
+    func appBecameActive() {
+        gate.appBecameActive()
+    }
 
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
     /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
@@ -509,9 +570,14 @@ final class SoundEngine {
         }
         observerTokens.removeAll()
         for node in playerNodes { repeatScheduler.stop(node) }
-        engine.stop()
-        for node in playerNodes {
-            engine.detach(node)
+        // After any set-up or recovery still on the worker, so nothing starts the engine again.
+        let engine = self.engine
+        let nodes = playerNodes
+        worker.run {
+            engine.stop()
+            for node in nodes where node.engine != nil {
+                engine.detach(node)
+            }
         }
         playerNodes.removeAll()
         buffersLock.lock()

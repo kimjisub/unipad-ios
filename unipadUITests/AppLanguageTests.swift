@@ -86,11 +86,14 @@ final class AppLanguageTests: XCTestCase {
         // test, in the flag at the row's leading edge. Buttons come and go while
         // the picker leaves and home settles, so both taps wait for their target
         // to be hittable instead of reading the button list at a fixed moment.
-        let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
+        let list = app.scrollViews["main.packList"]
+        let packTitles = list.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
         guard packTitles.count > 0 else {
             throw XCTSkip("no pack in the library, so pack selection and play were not walked")
         }
         let title = packTitles.element(boundBy: 0)
+        XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
+                      "[\(language.code)] the pack row never scrolled into view")
         XCTAssertTrue(UITestSupport.waitUntilHittable(title, timeout: 10), "[\(language.code)] the pack row never settled on screen")
         title.tap()
         let play = app.buttons[language.play].firstMatch
