@@ -1,4 +1,4 @@
-"""Execute the UI workflow command and require a working host-key bridge."""
+"""Execute the UI test script and require a working host-key bridge."""
 import json
 import os
 import signal
@@ -108,49 +108,67 @@ class UIHostKeysTests(unittest.TestCase):
                 except ProcessLookupError:
                     pass
 
-    def run_step(self, exit_code=0):
+    def run_script(self, exit_code=0, summary=None, args=()):
         root = Path(__file__).resolve().parents[1]
-        workflow = (root / ".github/workflows/ios-checks.yml").read_text()
-        step = workflow.split("      - name: Run all UI tests\n", 1)[1]
-        script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - name:", 1)[0])
-        scratch = os.environ.get("UNIPAD_TEST_TMPDIR") or os.environ.get("RUNNER_TEMP")
-        with tempfile.TemporaryDirectory(dir=scratch) as directory:
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
             fake = folder / "bin"
             fake.mkdir()
+            if summary is None:
+                summary = dict(totalTestCount=3, passedTests=3, failedTests=0, skippedTests=0)
             for name, content in {
                 "axe": "#!/bin/sh\nexit 0\n",
                 "xcodebuild": "#!/usr/bin/env python3\n" +
                     "import json, os, pathlib, sys\n" +
                     "keys = os.environ.get('TEST_RUNNER_HOST_KEYS_DIR', '')\n" +
-                    "print(json.dumps({'args': sys.argv[1:], 'keysReady': bool(keys) and pathlib.Path(keys).is_dir(), 'keysUnderScratch': bool(keys) and pathlib.Path(keys).is_relative_to(os.environ['RUNNER_TEMP']), 'fixtures': os.environ.get('TEST_RUNNER_UNIPAD_RELEASE_SUITE')}))\n" +
+                    "print(json.dumps({'args': sys.argv[1:], 'keysReady': bool(keys) and pathlib.Path(keys).is_dir(), 'fixtures': os.environ.get('TEST_RUNNER_UNIPAD_RELEASE_SUITE')}))\n" +
                     "sys.exit(" + str(exit_code) + ")\n",
+                "xcrun": "#!/bin/sh\n" +
+                    "[ \"$1 $2 $3 $4\" = 'xcresulttool get test-results summary' ] || exit 99\n" +
+                    f"echo '{json.dumps(summary)}'\n",
             }.items():
                 path = fake / name
                 path.write_text(content)
                 path.chmod(0o755)
+            output = folder / "out"
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
-                       SIMULATOR_UDID="leased-device", RUNNER_TEMP=str(folder),
-                       UNIPAD_TEST_TMPDIR=str(folder), TEST_RUNNER_UNIPAD_RELEASE_SUITE="1")
-            result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
+                       UNIPAD_TEST_TMPDIR=str(folder), UNIPAD_UI_TEST_OUTPUT=str(output))
+            result = subprocess.run(["ci/ui-tests.sh", "leased-device", *args],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=15)
-            probe = next(json.loads(line) for line in result.stdout.splitlines() if line.startswith("{"))
+            log = (output / "ui-tests.log").read_text()
+            probe = next(json.loads(line) for line in log.splitlines() if line.startswith("{"))
             return result, probe
 
     def test_full_ui_command_passes_fixtures_and_host_key_bridge_to_same_device(self):
-        result, probe = self.run_step()
+        result, probe = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(probe["keysReady"], "hardware-key UI checks must receive a live host responder directory")
-        self.assertTrue(probe["keysUnderScratch"])
         self.assertEqual(probe["fixtures"], "1")
         self.assertIn("-only-testing:unipadUITests", probe["args"])
         self.assertIn("UNIPAD_WARNINGS_AS_ERRORS=YES", probe["args"])
         self.assertFalse(any(arg.startswith("-skip-testing:") for arg in probe["args"]))
         self.assertIn("id=leased-device", probe["args"])
+        self.assertEqual(result.stdout.strip().splitlines()[-1],
+                         "UI tests: 3 passed, 0 failed, 0 skipped; 3 total; exit 0")
 
-    def test_workflow_propagates_failed_ui_command(self):
-        result, _ = self.run_step(exit_code=65)
+    def test_selected_classes_replace_the_whole_target(self):
+        result, probe = self.run_script(args=["-only-testing:unipadUITests/PackWarningUITests"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("-only-testing:unipadUITests/PackWarningUITests", probe["args"])
+        self.assertNotIn("-only-testing:unipadUITests", probe["args"])
+
+    def test_skipped_test_fails_the_run_even_when_xcodebuild_succeeds(self):
+        result, _ = self.run_script(summary=dict(totalTestCount=3, passedTests=2, failedTests=0, skippedTests=1))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout.strip().splitlines()[-1],
+                         "UI tests: 2 passed, 0 failed, 1 skipped; 3 total; exit 1")
+
+    def test_failed_ui_command_keeps_its_exit_code(self):
+        result, _ = self.run_script(exit_code=65,
+                                    summary=dict(totalTestCount=3, passedTests=2, failedTests=1, skippedTests=0))
         self.assertEqual(result.returncode, 65)
+        self.assertEqual(result.stdout.strip().splitlines()[-1],
+                         "UI tests: 2 passed, 1 failed, 0 skipped; 3 total; exit 65")
 
 
 if __name__ == "__main__":

@@ -46,69 +46,52 @@ open unipad.xcodeproj
 
 ## Pull request checks
 
-Every pull request runs **iOS checks / Build and unit tests** on a
+Every pull request runs one **iOS checks / Build and unit tests** job on a
 GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
-available iPhone simulator. Dependencies use the
+available iPhone simulator. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
 
-The staged **iOS checks / UI tests** job runs the entire `unipadUITests` target
-in Debug on iPhone 17 Pro with iOS 27, using the GitHub-hosted `xcode-27` preview
-image and Xcode 27. Parallel execution is disabled.
-That device has independently measured safe-area references in the layout tests. No class or
-test is excluded: `DesignScreenshots` asserts that navigation reaches each
-screen, so it remains part of regression coverage. `ci/check_ui_results.py`
-rejects failed, skipped, empty, and incomplete results, including tests that
-skip because their input packs were not prepared. Logs, screenshots and the
-result bundle are saved in `ios-ui-check-results` for seven days.
-
-The UI runner sets `TEST_RUNNER_UNIPAD_RELEASE_SUITE=1`. Each test launch then
-uses a UUID-scoped library and history store. Search, deletion and play-usage checks generate
-their own packs; import checks generate a silent archive in the isolated Documents/00-ReleaseTestImports folder and select
-it through the system picker. Counts and recent packs are prepared through UI
-playback. A deletion-error check protects the generated pack and unlocks it in
-teardown. Warning checks prepare the missing-sound, missing-metadata and valid
-pack scenarios independently, retaining their warning text, grid and input checks.
-Loading-layout checks explicitly request the larger silent fixture from main so
-the unchanged frame assertions observe both loading and playback without an app delay.
-Picker control arrival and frame stabilization have separate bounded waits; a
-host test executes the actual Swift wait for late, missing and moving controls.
-File-picker checks also start from Recents and scroll inside the unobscured file viewport.
-If picker readiness or archive visibility fails, screenshots, the accessibility
-hierarchy and the measured bounds are retained for diagnosis.
-Missing setup fails instead of skipping a check. The fixture code is
-compiled out of ordinary Release/archive builds.
-
-The full UI command runs through `ci/host-keys.sh`. It provides the test runner
-with a host responder that presses Escape through the simulator HID interface
-using the pinned, checksum-verified AXe release. The same bridge also runs the
-English and Korean VoiceOver focus checks, which require Xcode 27 and iOS 27.
-No OS-dependent skip is accepted by the result gate. The responder uses the run
-scratch directory, exits after the test command, and prints key actions into
-the saved UI log as they occur. Each host response records success or failure
-and the HID output in the test result bundle; a failed send cannot be accepted
-as a completed key press. The app's dismissal and focus assertions still check
-that the delivered input had its intended effect.
-On Xcode 27, the new HID service can exit while idle with legacy keyboard input
-still disabled. Before each request the responder reads this device's input
-activation state and wakes its existing service when active, so AXe selects the
-working transport. It sends each key once and does not change simulator settings.
-
-For a local run, use the same `ci/host-keys.sh` command in the workflow with a
-local iPhone 17 Pro on iOS 27 and export
-`TEST_RUNNER_UNIPAD_RELEASE_SUITE=1` first. The wrapper disables automatic test
-diagnostic collection: on the local iOS 27 runtime, crash-reporter synchronization
-can otherwise wait 300 seconds after each test. Assertions and result checks
-still run; the `.xcresult` bundle and screenshots remain saved. Both build and test jobs set `UNIPAD_WARNINGS_AS_ERRORS=YES` for UniPad targets.
-This does not add SwiftLint or pass incompatible warning flags to Swift packages.
-
-Both jobs need no repository secrets or signing credentials. They replace the
+The job needs no repository secrets or signing credentials. It replaces the
 Firebase plist only in its disposable checkout with clearly fake values from
 `ci/firebase_fixture.py`; the existing unit-test runtime uses local Firebase
 stubs. App configuration, version, and behavior in normal builds are unchanged.
 Build logs and the test result bundle are available in the run's
 `ios-check-results` artifact for seven days. This workflow does not upload to
 a store or change required checks.
+
+## UI tests
+
+UI tests are not part of the pull request checks. Run the whole `unipadUITests`
+target on an iPhone simulator before pushing a change, and attach the result
+to the pull request:
+
+```bash
+ci/ui-tests.sh <simulator-udid>
+```
+
+The script builds Debug without signing and runs every UI test on that
+simulator, one at a time. Its last line is the result, for example
+`UI tests: 87 passed, 0 failed, 0 skipped; 87 total; exit 0`. Any failed or
+skipped test, or a run without a complete result, gives a non-zero exit. The
+log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
+`UNIPAD_UI_TEST_OUTPUT` to use another folder).
+
+- Use iPhone 17 Pro or iPhone 16e: the layout checks compare against safe areas
+  measured independently on those screens.
+- Each test launch gets its own library and generates the packs it needs
+  (`unipad/App/ReleaseTestSupport.swift`, compiled out of Release builds), so
+  packs already on the simulator are neither used nor changed.
+- Help checks that need a real Escape key or VoiceOver run through
+  `ci/host-keys.sh`, which the script uses. It presses keys through the
+  simulator's HID input with a pinned, checksum-verified AXe release. VoiceOver
+  checks need Xcode 27 and iOS 27.
+- A full run takes about 80–90 minutes. To split it, pass test classes; the
+  parts together must name every class:
+
+  ```bash
+  ci/ui-tests.sh <simulator-udid> -only-testing:unipadUITests/PackWarningUITests -only-testing:unipadUITests/PlayChainLayoutTests
+  ```
 
 ## App Store destination check
 
