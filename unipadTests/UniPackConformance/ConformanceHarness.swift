@@ -70,10 +70,14 @@ enum ConformanceHarness {
         return "\(section):\(kind)"
     }
 
+    /// A sound's path below the pack's sounds folder, whatever case that folder is written in.
     private static func soundName(_ file: URL, root: URL) -> String {
-        let base = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
+        let base = root.resolvingSymlinksInPath().path + "/"
         let path = file.resolvingSymlinksInPath().path
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : file.lastPathComponent
+        guard path.hasPrefix(base) else { return file.lastPathComponent }
+        let relative = path.dropFirst(base.count)
+        guard let slash = relative.firstIndex(of: "/"), relative[..<slash].lowercased() == "sounds" else { return String(relative) }
+        return String(relative[relative.index(after: slash)...])
     }
 
     static func parseResult(_ pack: UniPack, root: URL) -> JSONValue {
