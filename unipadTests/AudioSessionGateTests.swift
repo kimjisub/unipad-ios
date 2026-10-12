@@ -29,8 +29,9 @@ struct AudioSessionGateTests {
             work.forEach { $0() }
         }
 
-        /// Runs the oldest thing the gate handed to the worker and hands its result back.
+        /// Runs the oldest thing the gate handed to the worker, if any, and hands its result back.
         func finishNextRecovery() {
+            guard !handedToWorker.isEmpty else { return }
             handedToWorker.removeFirst()()
         }
 
@@ -514,6 +515,7 @@ struct AudioSessionGateTests {
 
         gate.interruptionEnded(shouldResume: true, completion: ended.record)
         gate.appBecameActive(completion: returned.record)
+        #expect(audio.pendingRecoveries == 2, "coming back did not try again")
         audio.canActivate = false
         audio.finishNextRecovery()
         #expect(ended.recovery == nil, "the failure of the background try was reported")
