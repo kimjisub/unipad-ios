@@ -3,8 +3,8 @@ import XCTest
 /// Install Fixtures/PlaybackStop in Documents/UniPack before running; missing content fails the
 /// check. Pad input XCUITest's public gestures can aim at pads, through the real touch path: one
 /// finger dragged across pads (D), and the app leaving and returning with no finger held (part of
-/// G). After each gesture every pad must look as it did before it: a pressed pad is lit red, so a
-/// pad left lit by lost input shows in the comparison. Several fingers at once (A, B, C, E, F),
+/// G). After each gesture every pad must look as it did before it: a pressed pad is drawn with the
+/// theme's pressed image, so a pad left lit by lost input shows in the comparison. Several fingers at once (A, B, C, E, F),
 /// released cancelled touches (G) and a finger resting beside the pads (I) are covered by
 /// MultiTouchPlayTests through the same pad view. Not covered anywhere: a finger held while the
 /// app leaves, since XCUITest cannot hold a press during another action. The public
@@ -33,6 +33,7 @@ final class MultiTouchPlayUITests: XCTestCase {
         // The menu button stays on screen under the open panel, so wait for a panel button to go.
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: exit)
         XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "option panel never closed")
+        XCTAssertTrue(UITestSupport.waitForHiddenWindowsPillToGo(timeout: 30), "the system pill stayed over the pads")
         let idle = try settledPads()
         UITestSupport.attachScreenshot("01-idle", to: self)
 
@@ -44,6 +45,7 @@ final class MultiTouchPlayUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(grid.waitForExistence(timeout: 15), "the play screen did not come back")
+        XCTAssertTrue(UITestSupport.waitForHiddenWindowsPillToGo(timeout: 30), "the system pill stayed over the pads")
         try expectNoPadLit(comparedWith: idle, after: "G leaving and returning to the app with no finger held")
         UITestSupport.attachScreenshot("02-after-gestures", to: self)
 
