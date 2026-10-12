@@ -237,9 +237,9 @@ enum UITestSupport {
         XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
     }
 
-    /// iPadOS draws a "hidden windows / show all windows" pill on the screen edge for a while
-    /// after an app comes to the front. Screenshots include it, so a pixel check waits for it to
-    /// go. Returns false when it is still there after the timeout.
+    /// iPadOS draws a "hidden windows / show all windows" pill after an app comes to the front.
+    /// It can remain until an app interaction dismisses it. Screenshots include it, so callers
+    /// dismiss it before waiting. Returns false when it is still there after the timeout.
     static func waitForHiddenWindowsPillToGo(timeout: TimeInterval) -> Bool {
         let pill = XCUIApplication(bundleIdentifier: "com.apple.springboard").images["macwindow.on.rectangle"]
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: pill)

@@ -29,7 +29,8 @@ final class MultiTouchPlayUITests: XCTestCase {
         menu.tap()
         XCTAssertTrue(exit.waitForExistence(timeout: 5), "option panel never opened")
         UITestSupport.setPlayOption("Trace Log", on: false, in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let marginOffset = CGVector(dx: 0.1, dy: 0.5)
+        app.coordinate(withNormalizedOffset: marginOffset).tap()
         // The menu button stays on screen under the open panel, so wait for a panel button to go.
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: exit)
         XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "option panel never closed")
@@ -45,6 +46,17 @@ final class MultiTouchPlayUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(grid.waitForExistence(timeout: 15), "the play screen did not come back")
+        // The iPadOS window pill can stay until the app receives input. Use the same empty
+        // margin that closed the options panel, without sending another touch to a pad.
+        let appFrame = app.frame
+        let marginPoint = CGPoint(x: appFrame.minX + appFrame.width * marginOffset.dx,
+                                  y: appFrame.minY + appFrame.height * marginOffset.dy)
+        let gridFrame = grid.frame
+        guard !appFrame.isEmpty, !gridFrame.isEmpty, !gridFrame.contains(marginPoint) else {
+            XCTFail("the system pill dismissal point must be outside the pads")
+            return
+        }
+        app.coordinate(withNormalizedOffset: marginOffset).tap()
         XCTAssertTrue(UITestSupport.waitForHiddenWindowsPillToGo(timeout: 30), "the system pill stayed over the pads")
         try expectNoPadLit(comparedWith: idle, after: "G leaving and returning to the app with no finger held")
         UITestSupport.attachScreenshot("02-after-gestures", to: self)
