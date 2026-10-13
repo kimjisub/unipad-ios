@@ -73,7 +73,7 @@ final class MidiManager: ObservableObject {
 
     // MARK: - Device Registry
 
-    private struct DriverEntry {
+    struct DriverEntry {
         let name: String
         let factory: () -> MidiDriver
         let preferredPort: Int
@@ -323,10 +323,10 @@ final class MidiManager: ObservableObject {
         ("pro (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("mk2 (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("mk2 (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("lps (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("lps (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("mini (midi)",        DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("mini (daw)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lps (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
+        ("lps (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
+        ("mini (midi)",        DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
+        ("mini (daw)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
         ("lpx (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("lpx (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("mini mk3 (midi)",    DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
@@ -341,6 +341,14 @@ final class MidiManager: ObservableObject {
         ("matrix pro",   DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
         ("matrix",       DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
     ]
+
+    /// CoreFW endpoints are always named "<target> (PORT)", which stock firmware never uses.
+    static func coreFWDriverEntry(sourceName: String) -> DriverEntry? {
+        let lowered = sourceName.lowercased()
+        return sourceNameDriverMap.first { mapping in
+            mapping.entry.name == "Launchpad (CoreFW)" && lowered.hasPrefix(mapping.prefix)
+        }?.entry
+    }
 
     private func findDriverForSource(_ source: MIDIEndpointRef) -> DriverEntry? {
         let sourceName = getMIDIObjectName(source)
@@ -363,12 +371,9 @@ final class MidiManager: ObservableObject {
             }
         }
 
-        // 1. Check CoreFW by source/endpoint name first (CoreFW endpoints are always "<target> (PORT)")
-        let loweredSrc = sourceName.lowercased()
-        for mapping in Self.sourceNameDriverMap where mapping.entry.name == "Launchpad (CoreFW)" {
-            if loweredSrc.hasPrefix(mapping.prefix) {
-                return mapping.entry
-            }
+        // 1. Check CoreFW by source/endpoint name first
+        if let coreFW = Self.coreFWDriverEntry(sourceName: sourceName) {
+            return coreFW
         }
 
         // 2. Check sourceName, displayName, deviceName, entityName, and modelName against sourceNameDriverMap
