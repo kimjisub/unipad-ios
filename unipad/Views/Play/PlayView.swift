@@ -200,7 +200,7 @@ struct PlayView: View {
             traceLogColor: theme.traceLogColor,
             traceLogClassic: traceLogClassic,
             onPadTouch: { x, y, isDown, inputID in
-                vm.padTouch(x: x, y: y, isDown: isDown, inputID: inputID)
+                vm.padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
             }
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)
