@@ -105,11 +105,16 @@ final class ExternalFileImportTests: XCTestCase {
         play.tap()
         XCTAssertTrue(app.descendants(matching: .any)["playPadGrid"].waitForExistence(timeout: 30))
         XCTAssertFalse(title.exists)
+        let grid = app.descendants(matching: .any)["playPadGrid"]
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap()
+        XCTAssertEqual(app.state, .runningForeground)
         UITestSupport.attachScreenshot("internal-picker-play-now", to: self)
     }
 
     func testImportedFoldersKeepArchiveNames() throws {
         try importWithPicker()
+        XCTAssertTrue(app.staticTexts["Downloaded Fixture"].firstMatch.waitForExistence(timeout: 10))
+        UITestSupport.attachScreenshot("internal-picker-library", to: self)
         try open("Normal")
         ok.tap()
 
