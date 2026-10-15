@@ -23,9 +23,8 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad",
 /// `.ready` only when no recovery of ours is left on the worker, and `play()` never runs while one is.
 ///
 /// A notification's `completion` stays attached until a recovery result is applied, however many
-/// fresh recoveries replace the one it asked for; the app coming back joins a recovery already on the
-/// worker instead of replacing it. Only a new interruption and `shutDown()` abandon the recovery, and
-/// they report `.abandoned` to whoever waited for it.
+/// fresh recoveries replace the one it asked for. Only a new interruption and `shutDown()` abandon the
+/// recovery, and they report `.abandoned` to whoever waited for it.
 ///
 /// The state machine:
 ///
@@ -174,10 +173,12 @@ final class AudioSessionGate {
     /// The app is in front again (`UIApplication.didBecomeActiveNotification`). Apple's guidance:
     /// the end of an interruption is not guaranteed, so re-activate when the app comes back.
     ///
-    /// Coming back changes nothing a recovery already on the worker would miss, so it waits for that
-    /// one. With playback on, the session is activated again on the worker while the pads keep
-    /// playing: it may have been deactivated in the background without an interruption we heard of,
-    /// and activating a session that is still active changes nothing.
+    /// A recovery already on the worker may have been asked for in the background, where a session
+    /// that does not mix with others cannot be activated, so coming back always hands the worker a
+    /// fresh one; whoever waited for the earlier one hears the fresh one's result. With playback on,
+    /// the session is activated again on the worker while the pads keep playing: it may have been
+    /// deactivated in the background without an interruption we heard of, and activating a session
+    /// that is still active changes nothing.
     func appBecameActive(completion: ((Recovery) -> Void)? = nil) {
         switch state {
         case .shutDown:
@@ -189,10 +190,6 @@ final class AudioSessionGate {
             }
             completion?(.recovered)
         case .interrupted, .needsRecovery:
-            if isRecovering {
-                if let completion { waiting.append(completion) }
-                return
-            }
             if state == .interrupted {
                 lastInterruptedAttempt = hooks.now()
             } else {

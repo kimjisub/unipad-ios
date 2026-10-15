@@ -520,11 +520,11 @@ final class PlayViewModel {
         guard let unipack else { return }
         let inputs = activePadInputs
         for (id, pad) in inputs {
-            padTouch(x: pad.x, y: pad.y, isDown: false, inputID: id)
+            padRelease(x: pad.x, y: pad.y, inputID: id)
         }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
-                padTouch(x: i, y: j, isDown: false)
+                padRelease(x: i, y: j)
             }
         }
     }
@@ -561,7 +561,8 @@ final class PlayViewModel {
     private static let pressedVelocity = 3 // LED_RED
     private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
 
-    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger = .pad, inputID: UUID? = nil) {
+    /// `trigger` says who pressed the pad; a release does the same whoever caused it.
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil) {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
@@ -595,18 +596,23 @@ final class PlayViewModel {
             }
             ledRunner?.eventOn(x: x, y: y)
         } else {
-            // An ended touch can be reported again after a fresh press. Ignore the
-            // duplicate for both sound and pressed light, without clearing other pads.
-            if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
-            soundEngine?.soundOff(x: x, y: y, inputID: inputID)
-            if let cm = channelManager {
-                cm.remove(x: x, y: y, channel: .pressed)
-                refreshPadFromChannel(x: x, y: y)
-            } else {
-                clearPadColor(x: x, y: y)
-            }
-            ledRunner?.eventOff(x: x, y: y)
+            padRelease(x: x, y: y, inputID: inputID)
         }
+    }
+
+    /// `x` and `y` must be a pad of the loaded pack.
+    private func padRelease(x: Int, y: Int, inputID: UUID? = nil) {
+        // An ended touch can be reported again after a fresh press. Ignore the
+        // duplicate for both sound and pressed light, without clearing other pads.
+        if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
+        soundEngine?.soundOff(x: x, y: y, inputID: inputID)
+        if let cm = channelManager {
+            cm.remove(x: x, y: y, channel: .pressed)
+            refreshPadFromChannel(x: x, y: y)
+        } else {
+            clearPadColor(x: x, y: y)
+        }
+        ledRunner?.eventOff(x: x, y: y)
     }
 
     // MARK: - LED
@@ -1351,7 +1357,7 @@ private final class PlayMidiControllerAdapter: MidiController {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel else { return }
             if !vm.isOptionWindowVisible {
-                vm.padTouch(x: x, y: y, isDown: upDown)
+                vm.padTouch(x: x, y: y, isDown: upDown, trigger: .pad(.midi))
             }
         }
     }
@@ -1392,33 +1398,23 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
     }
 
     func onStart() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = true
-        }
+        viewModel?.autoMappingActive = true
     }
 
     func onGetWorkSize(_ size: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingMax = size
-        }
+        viewModel?.autoMappingMax = size
     }
 
     func onProgress(_ progress: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingProgress = progress
-        }
+        viewModel?.autoMappingProgress = progress
     }
 
     func onDone() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.finishAutoMapping()
-        }
+        viewModel?.finishAutoMapping()
     }
 
     func onException(_ error: Error) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.toastMessage = error.localizedDescription
-            self?.viewModel?.finishAutoMapping()
-        }
+        viewModel?.toastMessage = error.localizedDescription
+        viewModel?.finishAutoMapping()
     }
 }

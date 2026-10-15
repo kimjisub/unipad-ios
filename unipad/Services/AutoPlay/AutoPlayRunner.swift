@@ -13,6 +13,8 @@ final class AutoPlayRunner {
     private let unipack: UniPack
     private let chain: ChainObserver
     private let loopDelay: TimeInterval
+    private let clock: () -> Int64
+    private let sleep: @MainActor (UInt64) async throws -> Void
 
     var playmode: Bool = true
     var beforeStartPlaying: Bool = true
@@ -87,16 +89,21 @@ final class AutoPlayRunner {
     // Pad presses are drained by the next tick on the main actor.
     private var _pressedKeysQueue: [Int] = []
 
+    /// Time reads and suspension can share a virtual clock in tests; app defaults remain real time.
     init(
         unipack: UniPack,
         listener: Listener,
         chain: ChainObserver,
-        loopDelay: TimeInterval = 0.001
+        loopDelay: TimeInterval = 0.001,
+        clock: @escaping () -> Int64 = { Int64(CACurrentMediaTime() * 1000) },
+        sleep: @escaping @MainActor (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     ) {
         self.unipack = unipack
         self.listener = listener
         self.chain = chain
         self.loopDelay = loopDelay
+        self.clock = clock
+        self.sleep = sleep
     }
 
     private func guideKey(x: Int, y: Int) -> Int { x * 256 + y }
@@ -147,11 +154,11 @@ final class AutoPlayRunner {
             }
 
             var delayAccum: Int64 = 0
-            var startTime = Self.currentTimeMillis()
+            var startTime = self.clock()
             var prevPracticeGuide = self.practiceGuide
 
             while self.progress < autoPlay.elements.count && !Task.isCancelled {
-                let currTime = Self.currentTimeMillis()
+                let currTime = self.clock()
 
                 // Detect mid-run practice mode toggle
                 if self.practiceGuide != prevPracticeGuide {
@@ -324,7 +331,7 @@ final class AutoPlayRunner {
                     }
                 }
 
-                try? await Task.sleep(nanoseconds: UInt64(self.loopDelay * 1_000_000_000))
+                try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
             }
 
             // stop() already reset the UI; a cancelled run must not post another onEnd after it.
@@ -371,7 +378,7 @@ final class AutoPlayRunner {
         // waitStartTime 0; on resume startTime jumped far into the future and autoplay froze
         // (same fix as Android AutoPlayRunner.resetStepState, 2026-09-07).
         waitingForChain = -1
-        waitStartTime = Self.currentTimeMillis()
+        waitStartTime = self.clock()
     }
 
     func stepPadPressed(x: Int, y: Int) {
@@ -435,7 +442,4 @@ final class AutoPlayRunner {
         _stepPendingPads = newPending
     }
 
-    private static func currentTimeMillis() -> Int64 {
-        Int64(CACurrentMediaTime() * 1000)
-    }
 }

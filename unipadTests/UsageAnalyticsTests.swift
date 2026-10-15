@@ -113,7 +113,7 @@ struct UsageAnalyticsTests {
         session.loadFailed(.invalidPack)
         session.loadFailed(.soundEngine)
         session.loadSucceeded()
-        session.playTriggered(.pad)
+        session.playTriggered(.pad(.screen))
         session.ended()
 
         #expect(sink.events.map(\.name) == ["pack_load"])
@@ -136,27 +136,27 @@ struct UsageAnalyticsTests {
         session.loadStarted()
         session.loadSucceeded()
         session.playTriggered(.autoplay)
-        session.playTriggered(.pad)
-        session.playTriggered(.pad)
+        session.playTriggered(.pad(.screen))
+        session.playTriggered(.pad(.screen))
         clock.seconds += 45
         session.ended()
         session.ended()
 
         #expect(sink.events.map(\.name) == ["pack_load", "play_start", "play_first_input", "play_end"])
         #expect(sink.events(named: "play_start")[0].parameters == ["trigger": "autoplay"])
-        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad"]])
+        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad", "input_source": "screen"]])
         #expect(sink.events(named: "play_end")[0].parameters == ["duration_bucket": "30s_2m"])
     }
 
     @Test func noPlayEventsWithoutAPressAfterLoading() {
         let (sink, _, session) = makeSession()
 
-        session.playTriggered(.pad)
+        session.playTriggered(.pad(.screen))
         session.loadStarted()
-        session.playTriggered(.pad)
+        session.playTriggered(.pad(.screen))
         session.loadSucceeded()
         session.ended()
-        session.playTriggered(.pad)
+        session.playTriggered(.pad(.screen))
 
         #expect(sink.events.map(\.name) == ["pack_load"])
     }
@@ -170,22 +170,40 @@ struct UsageAnalyticsTests {
         automatic.playTriggered(.autoplay)
         automatic.playTriggered(.autoplay)
         automatic.ended()
-        automatic.playTriggered(.pad)
+        automatic.playTriggered(.pad(.screen))
         #expect(sink.events(named: "play_first_input").isEmpty)
 
         let next = analytics.makePlaySession()
         next.loadStarted()
-        next.playTriggered(.pad)
+        next.playTriggered(.pad(.screen))
         next.loadSucceeded()
-        next.playTriggered(.pad)
+        next.playTriggered(.pad(.midi))
         next.playTriggered(.autoplay)
-        next.playTriggered(.pad)
+        next.playTriggered(.pad(.screen))
         next.ended()
         #expect(sink.events(named: "play_start").map(\.parameters) == [
             ["trigger": "autoplay"], ["trigger": "pad"],
         ])
-        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad"]])
+        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad", "input_source": "midi"]])
         #expect(sink.events(named: "play_end").count == 2)
+    }
+
+    @Test(arguments: [(PlayInputSource.screen, "screen"), (PlayInputSource.midi, "midi")])
+    func firstHumanInputNamesOnlyItsSource(source: PlayInputSource, value: String) {
+        let (sink, _, session) = makeSession()
+
+        session.loadStarted()
+        session.loadSucceeded()
+        session.playTriggered(.autoplay)
+        session.playTriggered(.pad(source))
+        session.playTriggered(.pad(source == .screen ? .midi : .screen))
+        session.playTriggered(.pad(source))
+        session.ended()
+
+        #expect(sink.events(named: "play_first_input").map(\.parameters) == [["trigger": "pad", "input_source": value]])
+        for name in ["pack_load", "play_start", "play_end"] {
+            #expect(sink.events(named: name).allSatisfy { $0.parameters["input_source"] == nil }, "\(name)")
+        }
     }
 
     @Test func everyParameterIsAllowedAndCategorical() {
@@ -197,11 +215,11 @@ struct UsageAnalyticsTests {
         session.loadStarted()
         clock.seconds += 7200
         session.loadSucceeded()
-        session.playTriggered(.pad)
+        session.playTriggered(.pad(.midi))
         session.ended()
 
         let categorical = Set(
-            ["success", "failure", "cancelled", "file", "open_in", "store", "code", "pad", "autoplay",
+            ["success", "failure", "cancelled", "file", "open_in", "store", "code", "pad", "autoplay", "screen", "midi",
              "lt_1s", "1s_3s", "3s_10s", "10s_30s", "30s_2m", "2m_10m", "10m_30m", "30m_plus"]
         ).union([
             "invalid_pack", "corrupt_archive", "file_access", "storage", "not_found", "server", "network",
@@ -212,6 +230,7 @@ struct UsageAnalyticsTests {
             #expect(Set(event.parameters.values).isSubset(of: categorical))
         }
         #expect(sink.events(named: "pack_load")[0].parameters["duration_bucket"] == "30m_plus")
+        #expect(sink.events(named: "play_first_input")[0].parameters["input_source"] == "midi")
     }
 
     @Test(arguments: [(0.0, "lt_1s"), (0.999, "lt_1s"), (1.0, "1s_3s"), (9.9, "3s_10s"), (599, "2m_10m"), (1800, "30m_plus")])

@@ -59,10 +59,11 @@ final class PlayUsageScenario {
 
     func removePackFile(_ name: String) throws { try FileManager.default.removeItem(at: packFolder.appending(path: name)) }
 
-    func press(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: true) }
-    func release(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: false) }
+    func press(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: true, trigger: .pad(.screen)) }
+    func release(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: false, trigger: .pad(.screen)) }
     var starts: [String?] { sink.events(named: "play_start").map { $0.parameters["trigger"] } }
     var firstInputs: [String?] { sink.events(named: "play_first_input").map { $0.parameters["trigger"] } }
+    var firstInputSources: [String?] { sink.events(named: "play_first_input").map { $0.parameters["input_source"] } }
 
     func midi(cmd: Int, note: Int, velocity: Int) async throws {
         if !restoresMidiDriver {
@@ -80,7 +81,7 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
-    private static func writePack(to folder: URL, keySound: String, autoPlay: String) throws {
+    static func writePack(to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
         let files: [(String, Data)] = [
             ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n".utf8)),
             ("keySound", Data(keySound.utf8)),
