@@ -72,8 +72,10 @@ struct UniPackImportFolderNameTests {
     @Test(arguments: [
         ("", UniPackImporter.fallbackFolderName),
         (".zip", UniPackImporter.fallbackFolderName),
+        (".unipack", UniPackImporter.fallbackFolderName),
         ("...zip", UniPackImporter.fallbackFolderName),
         ("..", UniPackImporter.fallbackFolderName),
+        ("/", UniPackImporter.fallbackFolderName),
         ("   .zip", UniPackImporter.fallbackFolderName),
         ("../../Outside.zip", "Outside"),
         ("a/b:c?.zip", "abc"),

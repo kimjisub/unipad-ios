@@ -112,7 +112,10 @@ actor UniPackImporter {
     /// to one folder name inside the library. The library is shown in the Files app, so the folder
     /// keeps the name the user knows the pack by.
     static func folderName(forArchiveNamed fileName: String) -> String {
-        var name = FileManagerExtensions.filterFilename((fileName as NSString).deletingPathExtension)
+        // A leading-dot archive such as ".zip" also has no usable stem. NSString treats it
+        // as an extensionless hidden file, so remove the final suffix explicitly.
+        let stem = fileName.lastIndex(of: ".").map { String(fileName[..<$0]) } ?? fileName
+        var name = FileManagerExtensions.filterFilename(stem)
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         // Room for the " (2)" a taken name gets, within the file system's 255-byte name limit.
         while name.utf8.count > maxFolderNameBytes { name.removeLast() }
