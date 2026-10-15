@@ -18,8 +18,9 @@ enum UsageParam {
     static let errorType = "error_type"
     static let durationBucket = "duration_bucket"
     static let trigger = "trigger"
+    static let inputSource = "input_source"
 
-    static let allowed: Set<String> = [result, importSource, errorType, durationBucket, trigger]
+    static let allowed: Set<String> = [result, importSource, errorType, durationBucket, trigger, inputSource]
 }
 
 enum UsageResult: String {
@@ -38,9 +39,25 @@ enum PackImportSource: String {
     case code
 }
 
-enum PlayTrigger: String {
-    case pad
+enum PlayTrigger: Equatable {
+    /// A person pressed a pad.
+    case pad(PlayInputSource)
     case autoplay
+
+    var name: String {
+        switch self {
+        case .pad: return "pad"
+        case .autoplay: return "autoplay"
+        }
+    }
+}
+
+/// Where a person's pad press came from. Device names, models and connection types are never sent.
+enum PlayInputSource: String {
+    /// A pad on the screen.
+    case screen
+    /// An external controller such as a Launchpad, over USB or Bluetooth.
+    case midi
 }
 
 enum UsageErrorType: String {
