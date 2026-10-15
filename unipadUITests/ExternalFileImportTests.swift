@@ -66,14 +66,23 @@ final class ExternalFileImportTests: XCTestCase {
     private func pickerItem(named name: String) -> XCUIElement {
         let predicate = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")
         let files = app.collectionViews["File View"]
+        var previousFirstVisible: String?
+        for _ in 0..<40 {
+            let first = files.cells.allElementsBoundByIndex.first {
+                $0.frame.midY > app.navigationBars.firstMatch.frame.maxY && $0.frame.midY < files.frame.maxY - 64
+            }?.label
+            if first == previousFirstVisible { break }
+            previousFirstVisible = first
+            files.swipeDown()
+        }
         for _ in 0..<40 {
             let item = app.cells.matching(predicate).firstMatch
-            if item.exists && item.isHittable && (item.label == name || item.label.hasPrefix(name + ",")) {
+            if item.exists && (item.label == name || item.label.hasPrefix(name + ",")) {
                 let center = item.frame.midY
                 let top = app.navigationBars.firstMatch.frame.maxY
                 let bottom = files.frame.maxY - 64
                 // A clipped cell can report hittable while its center is behind a system bar.
-                if center > top && center < bottom { return item }
+                if center > top && center < bottom && item.isHittable { return item }
                 if center <= top { files.swipeDown(); continue }
             }
             files.swipeUp()
