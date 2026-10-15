@@ -137,6 +137,8 @@ final class AutoPlayRunner {
             _ = await previousRun?.value
             guard let self, !Task.isCancelled else { return }
 
+            // A completed step run can leave its final pads pending; every new run starts fresh.
+            self.resetStepState()
             self.progress = 0
             self.listener?.onStart()
 

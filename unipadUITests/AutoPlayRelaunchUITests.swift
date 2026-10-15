@@ -1,10 +1,12 @@
 import XCTest
 
-/// Uses the real Faded sample pack and lets autoplay reach the end without seeking.
+/// Covers real Faded playback and step practice with the silent PlaybackStop fixture.
 final class AutoPlayRelaunchUITests: XCTestCase {
     @MainActor
-    func testGuideAndAutoplayCanStartAfterTheSongFinishes() {
+    func testGuideStartsAfterSongEndAndCanSwitchToAutoplay() {
         continueAfterFailure = false
+        let orientation = XCUIDevice.shared.orientation
+        defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
         app.launchArguments = UITestSupport.englishLaunchArguments()
@@ -41,6 +43,63 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         app.buttons["rectangle.portrait.and.arrow.right"].tap()
         XCTAssertTrue(list.waitForExistence(timeout: 10))
         app.terminate()
+    }
+
+    @MainActor
+    func testStepPracticeCanStartAfterItsLastGroup() {
+        continueAfterFailure = false
+        let orientation = XCUIDevice.shared.orientation
+        defer { XCUIDevice.shared.orientation = orientation }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launch()
+        defer { app.terminate() }
+        UITestSupport.dismissSystemAlerts()
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
+        UITestSupport.searchForPack("Playback Stop Fixture", in: app)
+        let title = app.staticTexts["Playback Stop Fixture"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "Install Fixtures/PlaybackStop before this check")
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+        let grid = app.otherElements["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 15))
+
+        choose("Step", app: app)
+        UITestSupport.attachScreenshot("step-01-first-group", to: self)
+        pressFirstTwoPads(grid)
+        waitForStepEnd(app)
+        UITestSupport.attachScreenshot("step-02-last-group", to: self)
+        choose("Step", app: app)
+        UITestSupport.attachScreenshot("step-03-restarted-first-group", to: self)
+        // Completing the first two groups again proves the new run did not wait for
+        // the previous run's third pad. Guide colors are also captured for review.
+        pressFirstTwoPads(grid)
+        waitForStepEnd(app)
+        UITestSupport.attachScreenshot("step-04-second-end", to: self)
+    }
+
+    @MainActor
+    private func waitForStepEnd(_ app: XCUIApplication) {
+        let ended = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.buttons["forward.end.fill"])
+        XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: 15), .completed,
+                       "Step practice did not finish after its first two pads")
+    }
+
+    @MainActor
+    private func pressFirstTwoPads(_ grid: XCUIElement) {
+        // The square grid is centered in its container.
+        let frame = grid.frame
+        let side = min(frame.width, frame.height)
+        for column in 0..<2 {
+            grid.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: (frame.width - side) / 2 + side * (CGFloat(column) + 0.5) / 8,
+                dy: (frame.height - side) / 2 + side / 16
+            )).tap()
+        }
     }
 
     @MainActor

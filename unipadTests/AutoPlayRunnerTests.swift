@@ -7,12 +7,13 @@ final class AutoPlayRunnerTests: XCTestCase {
         var starts = 0
         var ends = 0
         var onFinish: (() -> Void)?
+        var guidePads: [Int] = []
         func onStart() { starts += 1 }
         func onEnd() { ends += 1; onFinish?() }
         func onPadTouchOn(x: Int, y: Int) {}
         func onPadTouchOff(x: Int, y: Int) {}
         func onChainChange(c: Int) {}
-        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {}
+        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) { guidePads.append(x * 256 + y) }
         func onGuidePadOff(x: Int, y: Int) {}
         func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
         func onGuideChainOn(c: Int) {}
@@ -49,6 +50,35 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertEqual(recorder.starts, 2)
         XCTAssertEqual(runner.progress, 2)
         XCTAssertFalse(runner.active)
+    }
+
+    func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [
+            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 100),
+            .on(x: 0, y: 1, currChain: 0, num: 0),
+        ])
+        let recorder = Recorder()
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver())
+        defer { runner.stop() }
+        runner.practiceGuide = true
+        runner.stepMode = true
+        runner.playmode = false
+        runner.launch()
+        try await wait { recorder.guidePads == [0] }
+        runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.guidePads, [0, 1])
+        XCTAssertFalse(runner.active)
+
+        // Do not press the last pad: a new run must not inherit its pending step.
+        runner.launch()
+        try await wait { recorder.guidePads.count >= 3 }
+        XCTAssertEqual(recorder.guidePads, [0, 1, 0])
+        XCTAssertEqual(recorder.starts, 2)
+        runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.ends == 2 }
+        XCTAssertEqual(recorder.guidePads, [0, 1, 0, 1])
     }
 
     func testMissingAutoplayCanLaunchAfterATableIsLoaded() async throws {
