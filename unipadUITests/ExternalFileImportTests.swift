@@ -64,10 +64,11 @@ final class ExternalFileImportTests: XCTestCase {
     }
 
     private func pickerItem(named name: String) -> XCUIElement {
-        let item = app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
+        let predicate = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")
         let files = app.collectionViews["File View"]
         for _ in 0..<40 {
-            if item.exists && item.isHittable {
+            let item = app.cells.matching(predicate).firstMatch
+            if item.exists && item.isHittable && (item.label == name || item.label.hasPrefix(name + ",")) {
                 let center = item.frame.midY
                 let top = app.navigationBars.firstMatch.frame.maxY
                 let bottom = files.frame.maxY - 64
@@ -77,7 +78,7 @@ final class ExternalFileImportTests: XCTestCase {
             }
             files.swipeUp()
         }
-        return item
+        return app.cells.matching(predicate).firstMatch
     }
 
     private func importWithPicker(dismissResult: Bool = true) throws {
