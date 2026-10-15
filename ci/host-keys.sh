@@ -41,7 +41,8 @@ fi
 
 keys=$(mktemp -d "${TMPDIR:-/tmp}/unipad-host-keys.XXXXXX")
 log=$keys/presses.log
-trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
+responder=
+trap '[[ -n $responder ]] && kill $responder 2>/dev/null; rm -rf $keys' EXIT
 
 xcrun --sdk iphonesimulator clang -dynamiclib -fobjc-arc -arch arm64 -arch x86_64 \
   -mios-simulator-version-min=17.0 -framework UIKit \
