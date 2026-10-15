@@ -52,7 +52,7 @@ final class ExternalFileImportTests: XCTestCase {
         let clear = search.buttons["Clear text"]
         if clear.exists { clear.tap() }
         search.typeText(name + "\n")
-        let deviceScope = search.buttons
+        let deviceScope = app.segmentedControls["scopeBar"].buttons
             .matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
         XCTAssertTrue(deviceScope.waitForExistence(timeout: 5), "file picker device search scope is missing")
         deviceScope.tap()
