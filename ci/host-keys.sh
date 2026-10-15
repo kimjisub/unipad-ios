@@ -7,6 +7,10 @@
 # simulator's HID input with AXe and answers with a done file. A request holds
 # `axe batch` steps, one per line (e.g. "key 41" presses Escape).
 #
+# AXe reporting a press as performed does not prove the app received it, so
+# the script also builds ci/key-arrival-probe.m into HOST_KEYS_DIR; tests load
+# it into the app to see which presses actually arrived.
+#
 #   ci/host-keys.sh <simulator-udid> <derived-data> <xcodebuild test args...>
 #   e.g. ci/host-keys.sh "$UDID" "$DD" test-without-building -scheme unipad \
 #          -only-testing:unipadUITests/MidiHelpHardwareKeyTests
@@ -39,12 +43,21 @@ keys=$(mktemp -d "${TMPDIR:-/tmp}/unipad-host-keys.XXXXXX")
 log=$keys/presses.log
 trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
 
+xcrun --sdk iphonesimulator clang -dynamiclib -fobjc-arc -arch arm64 -arch x86_64 \
+  -mios-simulator-version-min=17.0 -framework UIKit \
+  -o $keys/key-arrival-probe.dylib ${0:A:h}/key-arrival-probe.m
+
 {
   while true; do
     for request in $keys/request-*; do
       id=${request:t}; id=${id#request-}
       steps=$(<$request)
-      if $axe batch --udid $udid --file $request >/dev/null; then
+      # Each batch opens a new HID session whose keyboard the simulator takes
+      # up to a few hundred milliseconds to register. Keys from a session that
+      # closes before that are dropped without an error (AXe still reports
+      # them performed), so the session is held open after the steps.
+      { print -r -- $steps; print "sleep 1"; } >$keys/batch
+      if $axe batch --udid $udid --file $keys/batch >/dev/null; then
         print "$(date +%T) performed: ${steps//$'\n'/; }" >>$log
       else
         print "$(date +%T) FAILED: ${steps//$'\n'/; }" >>$log
