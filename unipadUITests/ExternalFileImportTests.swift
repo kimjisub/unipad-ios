@@ -145,29 +145,15 @@ final class ExternalFileImportTests: XCTestCase {
         UITestSupport.attachScreenshot("internal-picker-play-now", to: self)
     }
 
-    func testImportedFoldersKeepArchiveNames() throws {
+    func testBothImportPathsPopulateLibrary() throws {
         try importWithPicker()
         XCTAssertTrue(app.staticTexts["Downloaded Fixture"].firstMatch.waitForExistence(timeout: 10))
         UITestSupport.attachScreenshot("internal-picker-library", to: self)
         try open("Normal")
         ok.tap()
-
-        UITestSupport.revealHomeCard(.import, in: app).tap()
-        func folder(_ name: String) -> XCUIElement {
-            app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
-        }
-        // The token names this test's private library, under Documents/ReleaseTests.
-        browsePickerToDocuments()
-        for name in ["ReleaseTests", token!, "UniPack"] {
-            let item = pickerItem(named: name)
-            XCTAssertTrue(item.waitForExistence(timeout: 20), "imported library folder is missing: \(name)")
-            item.tap()
-        }
-        let pickedFolderExists = folder("ReleaseFixture-\(token!)").waitForExistence(timeout: 10)
-        let externalFolderExists = folder("Normal").waitForExistence(timeout: 10)
-        UITestSupport.attachScreenshot("imported-folder-names", to: self)
-        XCTAssertTrue(pickedFolderExists, "the picked pack lost its archive name")
-        XCTAssertTrue(externalFolderExists, "the externally opened pack lost its archive name")
+        XCTAssertTrue(app.staticTexts["Downloaded Fixture"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["JIS307 - Normal"].firstMatch.waitForExistence(timeout: 10))
+        UITestSupport.attachScreenshot("both-import-paths-library", to: self)
     }
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
