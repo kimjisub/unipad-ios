@@ -130,9 +130,11 @@ final class ExternalFileImportTests: XCTestCase {
             XCTAssertTrue(item.waitForExistence(timeout: 20), "imported library folder is missing: \(name)")
             item.tap()
         }
+        let pickedFolderExists = folder("ReleaseFixture-\(token!)").waitForExistence(timeout: 10)
+        let externalFolderExists = folder("Normal").waitForExistence(timeout: 10)
         UITestSupport.attachScreenshot("imported-folder-names", to: self)
-        XCTAssertTrue(folder("ReleaseFixture-\(token!)").exists, "the picked pack lost its archive name")
-        XCTAssertTrue(folder("Normal").exists, "the externally opened pack lost its archive name")
+        XCTAssertTrue(pickedFolderExists, "the picked pack lost its archive name")
+        XCTAssertTrue(externalFolderExists, "the externally opened pack lost its archive name")
     }
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
