@@ -67,7 +67,14 @@ final class ExternalFileImportTests: XCTestCase {
         let item = app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
         let files = app.collectionViews["File View"]
         for _ in 0..<40 {
-            if item.exists && item.isHittable { return item }
+            if item.exists && item.isHittable {
+                let center = item.frame.midY
+                let top = app.navigationBars.firstMatch.frame.maxY
+                let bottom = files.frame.maxY - 64
+                // A clipped cell can report hittable while its center is behind a system bar.
+                if center > top && center < bottom { return item }
+                if center <= top { files.swipeDown(); continue }
+            }
             files.swipeUp()
         }
         return item
