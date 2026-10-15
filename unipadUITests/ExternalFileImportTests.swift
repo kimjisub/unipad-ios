@@ -45,21 +45,23 @@ final class ExternalFileImportTests: XCTestCase {
         UITestSupport.attachScreenshot("external-\(name)-result", to: self)
     }
 
+    private func searchPicker(for name: String) {
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 15), "file picker search is missing")
+        search.tap()
+        let clear = search.buttons["Clear text"]
+        if clear.exists { clear.tap() }
+        search.typeText(name)
+    }
+
     private func importWithPicker(dismissResult: Bool = true) throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
         let fixtureName = "ReleaseFixture-\(token!)"
+        // Search also finds this launch's fixture when earlier archives fill the visible rows.
+        searchPicker(for: fixtureName)
         let file = app.cells
             .matching(NSPredicate(format: "label BEGINSWITH %@", fixtureName)).firstMatch
-        if !file.waitForExistence(timeout: 3) {
-            for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
-                let item = app.descendants(matching: .any)
-                    .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
-                if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
-            }
-        }
-        // Select this launch's silent fixture so an earlier test's archive cannot
-        // satisfy the picker step but fail the imported-folder-name assertion.
-        XCTAssertTrue(file.waitForExistence(timeout: 10), "generated picker fixture is missing")
+        XCTAssertTrue(file.waitForExistence(timeout: 20), "generated picker fixture is missing")
         file.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 30))
         XCTAssertEqual(title.label, "Pack imported!")
@@ -115,17 +117,12 @@ final class ExternalFileImportTests: XCTestCase {
         func folder(_ name: String) -> XCUIElement {
             app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
         }
-        let testLibraries = folder("ReleaseTests")
-        if !testLibraries.waitForExistence(timeout: 3) {
-            for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
-                let item = app.descendants(matching: .any)
-                    .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
-                if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
-            }
-        }
-        for name in ["ReleaseTests", token!, "UniPack"] {
+        // The token names this test's private library, under Documents/ReleaseTests.
+        // Search avoids depending on the picker's remembered directory or scroll position.
+        searchPicker(for: token!)
+        for name in [token!, "UniPack"] {
             let item = folder(name)
-            XCTAssertTrue(item.waitForExistence(timeout: 10), "imported library folder is missing: \(name)")
+            XCTAssertTrue(item.waitForExistence(timeout: 20), "imported library folder is missing: \(name)")
             item.tap()
         }
         UITestSupport.attachScreenshot("imported-folder-names", to: self)
