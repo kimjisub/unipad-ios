@@ -46,13 +46,18 @@ final class ExternalFileImportTests: XCTestCase {
     }
 
     private func browsePickerToDocuments() {
+        let files = app.collectionViews["File View"]
+        XCTAssertTrue(files.waitForExistence(timeout: 20))
+        let appFolder = app.navigationBars.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "UniPad,")).firstMatch
         let back = app.buttons["DOC.navBarButton.backInHistory"]
-        for _ in 0..<8 {
+        for _ in 0..<12 {
+            if appFolder.exists { return }
             guard back.exists && back.isEnabled else { break }
             back.tap()
         }
-        for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
-            let item = app.descendants(matching: .any)
+        for label in ["On My iPhone", "On My iPad", "UniPad"] {
+            let item = app.cells
                 .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
             if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
         }
