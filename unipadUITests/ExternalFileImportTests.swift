@@ -45,28 +45,34 @@ final class ExternalFileImportTests: XCTestCase {
         UITestSupport.attachScreenshot("external-\(name)-result", to: self)
     }
 
-    private func searchPicker(for name: String) {
-        let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 15), "file picker search is missing")
-        search.tap()
-        let clear = search.buttons["Clear text"]
-        if clear.exists { clear.tap() }
-        search.typeText(name)
-        let deviceScope = app.buttons
-            .matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
-        XCTAssertTrue(deviceScope.waitForExistence(timeout: 15), "file picker device search scope is missing")
-        deviceScope.tap()
-        let submit = app.keyboards.buttons["Search"]
-        if submit.exists { submit.tap() }
+    private func browsePickerToDocuments() {
+        let back = app.buttons["DOC.navBarButton.backInHistory"]
+        for _ in 0..<8 {
+            guard back.exists && back.isEnabled else { break }
+            back.tap()
+        }
+        for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
+            let item = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
+            if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
+        }
+    }
+
+    private func pickerItem(named name: String) -> XCUIElement {
+        let item = app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
+        let files = app.collectionViews["File View"]
+        for _ in 0..<40 {
+            if item.exists && item.isHittable { return item }
+            files.swipeUp()
+        }
+        return item
     }
 
     private func importWithPicker(dismissResult: Bool = true) throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
         let fixtureName = "ReleaseFixture-\(token!)"
-        // Search also finds this launch's fixture when earlier archives fill the visible rows.
-        searchPicker(for: fixtureName)
-        let file = app.cells
-            .matching(NSPredicate(format: "label BEGINSWITH %@", fixtureName)).firstMatch
+        browsePickerToDocuments()
+        let file = pickerItem(named: fixtureName + ".zip")
         XCTAssertTrue(file.waitForExistence(timeout: 20), "generated picker fixture is missing")
         file.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 30))
@@ -129,10 +135,9 @@ final class ExternalFileImportTests: XCTestCase {
             app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
         }
         // The token names this test's private library, under Documents/ReleaseTests.
-        // Search avoids depending on the picker's remembered directory or scroll position.
-        searchPicker(for: token!)
-        for name in [token!, "UniPack"] {
-            let item = folder(name)
+        browsePickerToDocuments()
+        for name in ["ReleaseTests", token!, "UniPack"] {
+            let item = pickerItem(named: name)
             XCTAssertTrue(item.waitForExistence(timeout: 20), "imported library folder is missing: \(name)")
             item.tap()
         }
