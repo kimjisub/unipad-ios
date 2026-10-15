@@ -45,7 +45,7 @@ final class ExternalFileImportTests: XCTestCase {
         UITestSupport.attachScreenshot("external-\(name)-result", to: self)
     }
 
-    private func importWithPicker() throws {
+    private func importWithPicker(dismissResult: Bool = true) throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
         let file = app.cells
             .matching(NSPredicate(format: "label BEGINSWITH %@", "ReleaseFixture-")).firstMatch
@@ -64,8 +64,10 @@ final class ExternalFileImportTests: XCTestCase {
         XCTAssertEqual(title.label, "Pack imported!")
         XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "Downloaded Fixture")
         UITestSupport.attachScreenshot("internal-picker-result", to: self)
-        ok.tap()
-        XCTAssertFalse(title.exists)
+        if dismissResult {
+            ok.tap()
+            XCTAssertFalse(title.exists)
+        }
     }
 
     private func assertNormal() {
@@ -94,6 +96,41 @@ final class ExternalFileImportTests: XCTestCase {
     }
 
     func testNormalFromEmptyLibrary() throws { try open("Normal"); assertNormal() }
+    func testPickerImportCanBePlayed() throws {
+        try importWithPicker(dismissResult: false)
+        XCTAssertTrue(play.isHittable)
+        play.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["playPadGrid"].waitForExistence(timeout: 30))
+        XCTAssertFalse(title.exists)
+        UITestSupport.attachScreenshot("internal-picker-play-now", to: self)
+    }
+
+    func testImportedFoldersKeepArchiveNames() throws {
+        try importWithPicker()
+        try open("Normal")
+        ok.tap()
+
+        UITestSupport.revealHomeCard(.import, in: app).tap()
+        func folder(_ name: String) -> XCUIElement {
+            app.cells.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + ",")).firstMatch
+        }
+        let testLibraries = folder("ReleaseTests")
+        if !testLibraries.waitForExistence(timeout: 3) {
+            for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
+                let item = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
+                if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
+            }
+        }
+        for name in ["ReleaseTests", token!, "UniPack"] {
+            let item = folder(name)
+            XCTAssertTrue(item.waitForExistence(timeout: 10), "imported library folder is missing: \(name)")
+            item.tap()
+        }
+        UITestSupport.attachScreenshot("imported-folder-names", to: self)
+        XCTAssertTrue(folder("ReleaseFixture-\(token!)").exists, "the picked pack lost its archive name")
+        XCTAssertTrue(folder("Normal").exists, "the externally opened pack lost its archive name")
+    }
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
     func testNormalAfterPickerResult() throws { try importWithPicker(); try open("Normal"); assertNormal() }
