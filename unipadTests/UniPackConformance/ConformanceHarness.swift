@@ -320,6 +320,10 @@ enum ConformanceHarness {
             log.add(["autoOff", .int(x), .int(y)])
             forward(x, y, false)
         }
+        // The corpus records scripted off events; input cancellation is cleanup, not a script step.
+        func onPadTouchCancel(x: Int, y: Int, chain: Int) {
+            forward(x, y, false)
+        }
         func onChainChange(c: Int) {
             log.recordsChain = false
             chain.setValue(c)

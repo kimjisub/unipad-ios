@@ -182,6 +182,99 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(vm.chain.value, 0)
     }
 
+    private func checkAutoplayRelease(
+        loop: Int = 0,
+        manualPad: (Int, Int)? = nil,
+        identifiedManual: Bool = true,
+        script: String = "on 1 1\ndelay 60000\noff 1 1\n",
+        autoplayPresses: Int = 1,
+        stop: (PlayViewModel) -> Void
+    ) async throws {
+        let root = try pack(loop: loop)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Autoplay Release\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        try "1 1 1 a.wav \(loop)\n1 1 2 a.wav 0\n2 1 1 a.wav \(loop)\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try script.write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        // Keep short finite samples observable even if simulator scheduling is delayed.
+        engine.playbackCompletionDelivery = { _, _, _ in }
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "autoplay press", until: { engine.playsStarted == autoplayPresses })
+        let autoplayIDs = engine.activePlayIDs
+        XCTAssertEqual(autoplayIDs.count, autoplayPresses)
+        let manualTrigger: PlayTrigger = .pad(identifiedManual ? .screen : .midi)
+        let manualID = identifiedManual ? UUID() : nil
+        if let (x, y) = manualPad {
+            vm.padTouch(x: x, y: y, isDown: true, trigger: manualTrigger, inputID: manualID)
+        }
+        let beforeStop = engine.activePlayIDs
+        let manualIDs = beforeStop.subtracting(autoplayIDs)
+        let chainBeforeStop = vm.chain.value
+        stop(vm)
+        XCTAssertEqual(vm.chain.value, chainBeforeStop)
+        let expected = loop == 0 ? manualIDs : beforeStop
+        print("AUTOPLAY RELEASE loop=\(loop) manual=\(manualPad != nil) before=\(autoplayIDs) after=\(engine.activePlayIDs)")
+        XCTAssertEqual(engine.activePlayIDs, expected)
+        if let (x, y) = manualPad {
+            XCTAssertEqual(manualIDs.count, 1)
+            vm.padTouch(x: x, y: y, isDown: false, trigger: manualTrigger, inputID: manualID)
+            XCTAssertTrue(engine.activePlayIDs.isDisjoint(with: manualIDs))
+        }
+    }
+
+    func testStoppingAutoplayReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.stopAutoPlay() }
+    }
+
+    func testTurningAutoplayOffReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesAnotherHeldPad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 1)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesManualPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesControllerPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0), identifiedManual: false) { $0.switchPlayMode(.none) }
+    }
+
+    func testPausingAutoplayPreservesManualPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0)) { $0.autoPlayPause() }
+    }
+
+    func testSkippingAutoplayReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.autoPlayNext() }
+    }
+
+    func testEnteringGuideModeReleasesAutoplaySound() async throws {
+        try await checkAutoplayRelease { $0.switchPlayMode(.guidePlay) }
+    }
+
+    func testSkippingAutoplayPreservesAnotherHeldPad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 1)) { $0.autoPlayNext() }
+    }
+
+    func testStoppingAutoplayReleasesHeldPadsAcrossChains() async throws {
+        try await checkAutoplayRelease(
+            script: "on 1 1\nchain 2\non 1 1\ndelay 60000\n", autoplayPresses: 2
+        ) { $0.stopAutoPlay() }
+    }
+
+    func testStoppingAutoplayPreservesFiniteAndOneShotSounds() async throws {
+        for loop in [1, 50] {
+            try await checkAutoplayRelease(loop: loop) { $0.stopAutoPlay() }
+            try await checkAutoplayRelease(loop: loop) { $0.switchPlayMode(.none) }
+        }
+    }
+
     private func holdScreen() { Thread.sleep(forTimeInterval: 0.8) }
 
     func testRepeatSupplyDoesNotWaitForTheScreen() async throws {
