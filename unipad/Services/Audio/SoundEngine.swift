@@ -50,7 +50,7 @@ final class SoundEngine {
 
     private enum Input: Hashable {
         case identified(UUID)
-        // MIDI and autoplay have paired pad events, without a touch identity.
+        // MIDI has paired pad events without a touch identity.
         case pad(Int, Int)
     }
     private struct StartedPlayback {

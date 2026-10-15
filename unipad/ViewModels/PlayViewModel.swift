@@ -821,7 +821,6 @@ final class PlayViewModel {
             runner.playmode = false
             removeAllGuide()
             if runner.active { runner.stop() }
-            padInit()
             ledInit()
             isPracticeMode = false
             isAutoPlayPlaying = false
@@ -829,9 +828,9 @@ final class PlayViewModel {
             autoPlayControlVisible = false
             if let unipack, unipack.keyLedExist {
                 scbLed.setChecked(true)
-                scbFeedbackLight.setChecked(false)
+                scbFeedbackLight.setCheckedSilently(false)
             } else {
-                scbFeedbackLight.setChecked(true)
+                scbFeedbackLight.setCheckedSilently(true)
             }
             refreshWatermark()
             return
@@ -905,23 +904,22 @@ final class PlayViewModel {
         runner.stepMode = false
         runner.resetStepState()
         removeAllGuide()
-        padInit()
         ledInit()
         runner.playmode = true
         isAutoPlayPlaying = true
         if let unipack, unipack.keyLedExist {
             scbLed.setChecked(true)
-            scbFeedbackLight.setChecked(false)
+            scbFeedbackLight.setCheckedSilently(false)
         } else {
-            scbFeedbackLight.setChecked(true)
+            scbFeedbackLight.setCheckedSilently(true)
         }
+        refreshWatermark()
         runner.beforeStartPlaying = true
     }
 
     private func pauseAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
-        padInit()
         ledInit()
         isAutoPlayPlaying = false
         if playMode == .stepPractice {
@@ -943,14 +941,12 @@ final class PlayViewModel {
     }
 
     func autoPlayPrev() {
-        padInit()
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(-40)
     }
 
     func autoPlayNext() {
-        padInit()
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(40)
@@ -1125,7 +1121,7 @@ final class PlayViewModel {
         autoPlayRunner?.stop()
         autoPlayControlVisible = false
         isAutoPlayPlaying = false
-        clearAllPadColors()
+        removeAllGuide()
     }
 
     /// Called when sound loading completes to apply initial settings
@@ -1245,6 +1241,7 @@ private final class LedListenerAdapter: LedRunner.Listener {
 @MainActor
 private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     private weak var viewModel: PlayViewModel?
+    private var padInputs: [AutoPlayRunner.Pad: UUID] = [:]
 
     init(viewModel: PlayViewModel) {
         self.viewModel = viewModel
@@ -1259,11 +1256,22 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     }
 
     func onPadTouchOn(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay)
+        guard let vm = viewModel else { return }
+        let pad = AutoPlayRunner.Pad(x: x, y: y, chain: vm.chain.value)
+        let inputID = padInputs[pad] ?? UUID()
+        padInputs[pad] = inputID
+        vm.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID)
     }
 
     func onPadTouchOff(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay)
+        guard let vm = viewModel else { return }
+        onPadTouchCancel(x: x, y: y, chain: vm.chain.value)
+    }
+
+    func onPadTouchCancel(x: Int, y: Int, chain: Int) {
+        let pad = AutoPlayRunner.Pad(x: x, y: y, chain: chain)
+        guard let inputID = padInputs.removeValue(forKey: pad) else { return }
+        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID)
     }
 
     func onChainChange(c: Int) {
@@ -1325,9 +1333,9 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         vm.autoPlayControlVisible = false
         if let unipack = vm.unipack, unipack.keyLedExist {
             vm.scbLed.setChecked(true)
-            vm.scbFeedbackLight.setChecked(false)
+            vm.scbFeedbackLight.setCheckedSilently(false)
         } else {
-            vm.scbFeedbackLight.setChecked(true)
+            vm.scbFeedbackLight.setCheckedSilently(true)
         }
         vm.refreshWatermark()
     }
