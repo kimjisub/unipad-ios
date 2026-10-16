@@ -122,10 +122,12 @@ class UIHostKeysTests(unittest.TestCase):
                 except ProcessLookupError:
                     pass
 
-    def run_script(self, exit_code=0, summary=None, args=()):
+    def run_script(self, exit_code=0, summary=None, args=(), container=None, inspect=None):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
+            if container is not None:
+                container = container(folder)
             fake = folder / "bin"
             fake.mkdir()
             if summary is None:
@@ -140,6 +142,8 @@ class UIHostKeysTests(unittest.TestCase):
                     "'fixtures': os.environ.get('TEST_RUNNER_UNIPAD_RELEASE_SUITE')}))\n" +
                     "sys.exit(" + str(exit_code) + ")\n",
                 "xcrun": "#!/bin/sh\n" + FAKE_PROBE_BUILD +
+                    ("[ \"$1 $2 $3 $4 $5\" = 'simctl get_app_container leased-device kim.jisub.unipad data' ]"
+                     f" && echo '{container}' && exit 0\n" if container else "") +
                     "[ \"$1 $2 $3 $4\" = 'xcresulttool get test-results summary' ] || exit 99\n" +
                     f"echo '{json.dumps(summary)}'\n",
             }.items():
@@ -153,7 +157,32 @@ class UIHostKeysTests(unittest.TestCase):
                                     cwd=root, env=env, capture_output=True, text=True, timeout=15)
             log = (output / "ui-tests.log").read_text()
             probe = next(json.loads(line) for line in log.splitlines() if line.startswith("{"))
+            if inspect:
+                inspect(container)
             return result, probe
+
+    def test_leftover_test_libraries_are_cleared_and_user_files_kept(self):
+        def make_container(folder):
+            documents = folder / "container" / "Documents"
+            locked = documents / "ReleaseTests" / "old-token" / "UniPack" / "Deletion"
+            locked.mkdir(parents=True)
+            (locked / "info").write_text("title=UI Test Pack")
+            (documents / "00-ReleaseTestImports").mkdir()
+            (documents / "00-ReleaseTestImports" / "ReleaseFixture-old.zip").write_text("zip")
+            (documents / "UniPack" / "Mine").mkdir(parents=True)
+            subprocess.run(["chflags", "-R", "uchg", str(documents / "ReleaseTests")], check=True)
+            return documents.parent
+
+        def check(container):
+            documents = container / "Documents"
+            leftovers = [name for name in ("ReleaseTests", "00-ReleaseTestImports") if (documents / name).exists()]
+            if leftovers:
+                subprocess.run(["chflags", "-R", "nouchg", str(documents)], check=False)
+            self.assertEqual(leftovers, [])
+            self.assertTrue((documents / "UniPack" / "Mine").is_dir(), "the user's own packs must stay")
+
+        result, _ = self.run_script(container=make_container, inspect=check)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_full_ui_command_passes_fixtures_and_host_key_bridge_to_same_device(self):
         result, probe = self.run_script()

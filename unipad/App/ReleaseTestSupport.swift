@@ -29,7 +29,8 @@ nonisolated enum ReleaseTestSupport {
         let library = root.appendingPathComponent("UniPack")
         try fm.createDirectory(at: library, withIntermediateDirectories: true)
         if !UserDefaults.standard.bool(forKey: "UniPadReleaseEmpty") {
-            switch UserDefaults.standard.string(forKey: "UniPadUITestLibrary") {
+            let kind = UserDefaults.standard.string(forKey: "UniPadUITestLibrary")
+            switch kind {
             case "search":
                 for (folder, title, producer) in [("Faded", "Alan Walker - Faded", "Otarygen, 김지섭, K1A2"),
                                                   ("Sunflower", "Sunflower", "Post Malone"),
@@ -88,7 +89,6 @@ nonisolated enum ReleaseTestSupport {
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
             case "warning-sound", "warning-info", "warning-none":
-                let kind = UserDefaults.standard.string(forKey: "UniPadUITestLibrary")
                 let pack = library.appendingPathComponent("Warning")
                 try makePack(at: pack, title: "Warning Test", producer: "Tester")
                 let metadata = kind == "warning-info" ? "" : "title=Warning Test\nproducerName=Tester\n"
@@ -145,8 +145,8 @@ nonisolated enum ReleaseTestSupport {
         }
     }
 
-    /// Protect the complete isolated deletion fixture, as the old host's recursive lock did.
-    /// A subsequent launch with NO unlocks the directories before their contents.
+    /// Locks the whole isolated deletion fixture, directories after their contents, so the
+    /// app's delete fails. A later launch with NO unlocks the directories before their contents.
     private static func updateDeleteProtection(in root: URL) throws {
         guard UserDefaults.standard.string(forKey: "UniPadUITestLibrary") == "deletion" else { return }
         let pack = root.appendingPathComponent("UniPack/Deletion")

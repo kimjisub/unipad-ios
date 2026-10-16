@@ -7,29 +7,36 @@ import XCTest
 
 enum UITestSupport {
 
+    static var isReleaseSuite: Bool { ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" }
+
     /// Launch arguments for tests that find controls by their English text
     /// ("Information", "Theme", "Play", option names). The app follows the
     /// simulator's language, so these pin it to English to make the result the
     /// same whatever language the simulator was left in.
-    static var isReleaseSuite: Bool { ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" }
-
     static func englishLaunchArguments(library: String = "standard", token: String = UUID().uuidString,
-                                       file: Bool = false, archive: Data? = nil) -> [String] {
-        launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file, archive: archive)
+                                       file: Bool = false, archive: Data? = nil,
+                                       isolated: Bool = isReleaseSuite, themeLoading: Bool = false) -> [String] {
+        launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file,
+                        archive: archive, isolated: isolated, themeLoading: themeLoading)
     }
 
+    /// Every launch argument a test passes to the app, each key once. With `isolated` the app
+    /// prepares its own library under `token` (see ReleaseTestSupport); the whole suite always
+    /// runs isolated, and tests that need a particular library ask for it outside the suite too.
     static func launchArguments(language: String, locale: String, library: String = "standard",
                                 token: String = UUID().uuidString, file: Bool = false,
-                                archive: Data? = nil) -> [String] {
+                                archive: Data? = nil, isolated: Bool = isReleaseSuite,
+                                themeLoading: Bool = false) -> [String] {
         var arguments = [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
         ]
-        if isReleaseSuite {
+        if isolated {
             arguments += ["-UniPadReleaseTest", token, "-UniPadUITestLibrary", library,
                           "-UniPadReleaseEmpty", library == "empty" ? "YES" : "NO",
                           "-UniPadReleaseFile", file ? "YES" : "NO"]
+            if themeLoading { arguments += ["-UniPadReleaseThemeLoading", "YES"] }
             if let archive { arguments += ["-UniPadReleaseArchive", archive.base64EncodedString()] }
         }
         return arguments
@@ -116,7 +123,7 @@ enum UITestSupport {
         tapRow(localNames)
         tapRow(["UniPad", "unipad"])
         // Grid folder titles can accept a synthetic tap without opening the folder.
-        // Select its fully visible thumbnail once, using the existing screen helper.
+        // Select its fully visible thumbnail once, by its on-screen point.
         let fixtureFolder = app.cells.containing(.staticText, identifier: "00-ReleaseTestImports").firstMatch
         let folderIcon = fixtureFolder.images.firstMatch
         let folderViewport = app.windows.firstMatch.frame.insetBy(dx: 0, dy: 24)
@@ -188,11 +195,8 @@ enum UITestSupport {
         XCTContext.runActivity(named: "Select the fully visible prepared archive") { activity in
             let state = XCTAttachment(string: "tabs present: \(tabs.exists), icon: \(icon.frame), viewport: \(viewport)\n" + app.debugDescription)
             state.name = "prepared-archive-selection"
-            state.lifetime = .keepAlways
             activity.add(state)
-            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            screenshot.lifetime = .keepAlways
-            activity.add(screenshot)
+            activity.add(XCTAttachment(screenshot: XCUIScreen.main.screenshot()))
         }
         icon.tap()
     }
@@ -202,18 +206,15 @@ enum UITestSupport {
     /// at launch, so on a fresh install there is normally nothing to clear here.
     static func dismissSystemAlerts() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let labels = ["허용 안 함", "Don't Allow", "허용", "Allow", "OK", "확인"]
         for _ in 0..<3 {
             guard springboard.alerts.firstMatch.waitForExistence(timeout: 1) else { return }
-            var tapped = false
-            for label in ["허용 안 함", "Don't Allow", "허용", "Allow", "OK", "확인"] {
-                let b = springboard.buttons[label]
-                if b.exists && b.isHittable {
-                    b.tap()
-                    tapped = true
-                    break
-                }
-            }
-            if !tapped { break }
+            // An alert that is still sliding in lists its buttons before they take taps.
+            let anyButton = springboard.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+            guard anyButton.waitForExistence(timeout: 2),
+                  let button = labels.lazy.map({ springboard.buttons[$0] }).first(where: { $0.exists }),
+                  waitUntilHittable(button, timeout: 2) else { return }
+            button.tap()
         }
     }
 

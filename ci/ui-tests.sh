@@ -28,6 +28,15 @@ output=${output:A}
 rm -rf $output/UITests.xcresult $output/summary.json
 
 # Each test launch gets its own library and generated packs (see ReleaseTestSupport).
+# Clear what earlier runs left on this simulator: only the test-owned folders, after
+# unlocking a deletion fixture a crashed test may have left immutable.
+if container=$(xcrun simctl get_app_container $udid kim.jisub.unipad data 2>/dev/null) \
+    && [[ -d $container/Documents ]]; then
+  for leftover in $container/Documents/ReleaseTests $container/Documents/00-ReleaseTestImports; do
+    [[ -e $leftover ]] || continue
+    chflags -R nouchg $leftover && rm -rf $leftover
+  done
+fi
 export TEST_RUNNER_UNIPAD_RELEASE_SUITE=1
 ci/host-keys.sh $udid $output/DerivedData test \
   -project unipad.xcodeproj -scheme unipad -configuration Debug \

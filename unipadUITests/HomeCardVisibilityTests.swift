@@ -17,11 +17,8 @@ final class HomeCardVisibilityTests: XCTestCase {
     private func launch(empty: Bool, orientation: UIDeviceOrientation) {
         XCUIDevice.shared.orientation = orientation
         app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
-        if !app.launchArguments.contains("-UniPadReleaseTest") {
-            app.launchArguments += ["-UniPadReleaseTest", UUID().uuidString]
-        }
-        app.launchArguments += ["-UniPadReleaseEmpty", empty ? "YES" : "NO"]
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: empty ? "empty" : "standard",
+                                                                   isolated: true)
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons[UITestSupport.HomeCard.download.rawValue].firstMatch.waitForExistence(timeout: 10))

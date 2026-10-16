@@ -19,10 +19,7 @@ final class StoreDownloadFailureUITests: XCTestCase {
     func testFailedDownloadStaysMarkedFailed() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
-        if !app.launchArguments.contains("-UniPadReleaseTest") {
-            app.launchArguments += ["-UniPadReleaseTest", UUID().uuidString]
-        }
+        app.launchArguments = UITestSupport.englishLaunchArguments(isolated: true)
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "home never appeared")

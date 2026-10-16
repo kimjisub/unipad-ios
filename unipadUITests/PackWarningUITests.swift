@@ -26,10 +26,8 @@ final class PackWarningUITests: XCTestCase {
         XCTAssertTrue(["sound", "info", "none"].contains(kind))
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = preparedBySuite
-            ? UITestSupport.englishLaunchArguments(library: "warning-\(kind)", token: token)
-            : UITestSupport.englishLaunchArguments()
-        if !preparedBySuite { app.launchArguments += ["-UniPadReleaseTest", token] }
+        app.launchArguments = UITestSupport.englishLaunchArguments(
+            library: preparedBySuite ? "warning-\(kind)" : "standard", token: token, isolated: true)
         app.launch()
         defer { app.terminate() }
 

@@ -15,12 +15,8 @@ final class ExternalFileImportTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         token = UUID().uuidString
         app = XCUIApplication()
-        app.launchArguments = [
-            "-UniPadFirebaseLocalOnly", "YES",
-            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-            "-UniPadReleaseTest", token, "-UniPadReleaseEmpty", "YES",
-            "-UniPadReleaseFile", "YES",
-        ]
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "empty", token: token, file: true,
+                                                                   isolated: true)
         app.launchEnvironment["XCTestConfigurationFilePath"] = "external-import-local-only"
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))

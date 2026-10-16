@@ -9,14 +9,9 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// screen saves, so the walk through the Theme screen launches without one.
     private func launch(theme: String? = nil, observeLoading: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(
+            isolated: observeLoading || UITestSupport.isReleaseSuite, themeLoading: observeLoading)
         if let theme { app.launchArguments += ["-SelectedTheme", theme] }
-        if observeLoading {
-            app.launchArguments += [
-                "-UniPadReleaseTest", UUID().uuidString,
-                "-UniPadReleaseThemeLoading", "YES",
-            ]
-        }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         return app
