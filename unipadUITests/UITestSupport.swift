@@ -237,6 +237,27 @@ enum UITestSupport {
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
     }
 
+    /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
+    /// Documents/UniPack first; a missing fixture fails the check.
+    static func openPlaybackStopFixture(in app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
+        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
+    }
+
+    /// iPadOS draws a "hidden windows / show all windows" pill after an app comes to the front.
+    /// It can remain until an app interaction dismisses it. Screenshots include it, so callers
+    /// dismiss it before waiting. Returns false when it is still there after the timeout.
+    static func waitForHiddenWindowsPillToGo(timeout: TimeInterval) -> Bool {
+        let pill = XCUIApplication(bundleIdentifier: "com.apple.springboard").images["macwindow.on.rectangle"]
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: pill)
+        return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
+    }
+
     static func attachScreenshot(_ name: String, to testCase: XCTestCase) {
         let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         a.name = name
