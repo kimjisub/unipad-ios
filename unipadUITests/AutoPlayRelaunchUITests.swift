@@ -85,8 +85,8 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         let transport = app.buttons["forward.end.fill"]
         pressTopRow(grid, columns: 0..<2)
         Thread.sleep(forTimeInterval: 0.5)
-        XCTAssertTrue(transport.exists, "Step practice ended before its last group was played")
         UITestSupport.attachScreenshot("step-last-group", to: self)
+        XCTAssertTrue(transport.exists, "Step practice ended before its last group was played")
         pressTopRow(grid, columns: 2..<3)
         let ended = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: transport)
         XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: 15), .completed,
