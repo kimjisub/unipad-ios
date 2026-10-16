@@ -259,7 +259,7 @@ final class SoundEngine {
                 }
                 return
             }
-            // One failing file (an .ogg AVAudioFile cannot open, a 0-byte wav) used to abort the
+            // One failing file (a damaged .ogg, a 0-byte wav) used to abort the
             // whole load and kick the user out of the pack; Android's SoundPool skips it.
             var loaded = 0
             var firstError: Error?
@@ -323,7 +323,12 @@ final class SoundEngine {
     }
 
     private static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
-        let audioFile = try AVAudioFile(forReading: url)
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(forReading: url)
+        } catch _ where OggVorbisDecoder.isOgg(url) {
+            return try OggVorbisDecoder.decode(url)
+        }
         let format = audioFile.processingFormat
         let frameCount = AVAudioFrameCount(audioFile.length)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
