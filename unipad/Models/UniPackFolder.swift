@@ -212,6 +212,7 @@ nonisolated class UniPackFolder: UniPack {
             return
         }
         logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
+        let soundFinder = PackFileFinder()
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -267,8 +268,7 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("keySound : [\(s)] sounds directory not found"); continue
             }
 
-            let soundFile = soundsDir.appendingPathComponent(soundURL)
-            guard FileManager.default.fileExists(atPath: soundFile.path) else {
+            guard let soundFile = soundFinder.file(soundURL, in: soundsDir) else {
                 addErr("keySound : [\(s)] sound was not found"); continue
             }
 
