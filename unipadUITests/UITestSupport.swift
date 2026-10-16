@@ -332,6 +332,18 @@ enum UITestSupport {
         return !viewport.isEmpty && !frame.isEmpty && viewport.contains(frame)
     }
 
+    /// Search exposes a fixture even when a large lazy library has not created its row yet.
+    static func searchForPack(_ query: String, in app: XCUIApplication) {
+        let toggle = app.buttons["magnifyingglass"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10))
+        toggle.tap()
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(query)
+        field.typeText("\n")
+    }
+
     @discardableResult
     static func scrollIntoView(_ element: XCUIElement, in scrollView: XCUIElement,
                                app: XCUIApplication, maxSwipes: Int = 6) -> Bool {

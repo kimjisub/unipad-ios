@@ -15,6 +15,7 @@ final class ChainReleaseUITests: XCTestCase {
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
+        UITestSupport.searchForPack("Chain Release", in: app)
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Chain Release v1 delayed")).firstMatch
         let installed = title.waitForExistence(timeout: 10)
         if archive != nil {
