@@ -41,12 +41,7 @@ final class LaunchpadSDriver: BaseMidiDriver {
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
         guard (0...7).contains(x), (0...7).contains(y) else { return }
-        sendSignal(cmd: 9, sig: -112, note: x * 16 + y, velocity: Self.sCode(velocity))
-    }
-
-    /// velocity is a LED code read out of a pack (`on 1 1 a 200` is valid text); sCode has 128 entries.
-    private static func sCode(_ velocity: Int) -> Int {
-        LaunchpadColor.sCode[min(max(velocity, 0), LaunchpadColor.sCode.count - 1)]
+        sendSignal(cmd: 9, sig: -112, note: x * 16 + y, velocity: LaunchpadColor.sCodeClamped(velocity))
     }
 
     override func sendChainLed(c: Int, velocity: Int) {
@@ -60,7 +55,7 @@ final class LaunchpadSDriver: BaseMidiDriver {
             sendSignal(cmd: Self.circleCode[f][0],
                        sig: Self.circleCode[f][1],
                        note: Self.circleCode[f][2],
-                       velocity: Self.sCode(velocity))
+                       velocity: LaunchpadColor.sCodeClamped(velocity))
         }
     }
 

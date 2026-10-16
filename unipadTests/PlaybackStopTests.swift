@@ -190,23 +190,16 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         defer { vm.cleanup() }
         let engine = try XCTUnwrap(vm.soundEngine)
-        vm.padTouch(x: 0, y: 0, isDown: true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
         // Deliberately hold screen processing longer than all 50 ten-millisecond samples.
         // Supply must keep running while this actor cannot execute completion work.
         holdScreen()
         XCTAssertEqual(engine.repeatedBuffersScheduled, 50)
     }
 
-    nonisolated private final class RenderCapture {
-        private let lock = NSLock()
-        private var samples: [Float] = []
-        func append(_ buffer: AVAudioPCMBuffer) {
-            guard let data = buffer.floatChannelData?[0] else { return }
-            lock.withLock { samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(buffer.frameLength))) }
-        }
-        var captured: [Float] { lock.withLock { samples } }
-    }
-
+    /// The engine renders offline, one sample length per call, on the main thread itself: the screen
+    /// stays busy for the whole render and nothing hinges on how fast the simulator plays audio.
+    /// Before each call the next repeat only has to be queued, which the scheduler does on its own queue.
     func testFiniteRepeatsRenderWithoutGapsWhileTheScreenIsBusy() throws {
         let engine = AVAudioEngine()
         let node = AVAudioPlayerNode()
@@ -217,23 +210,34 @@ final class PlaybackStopTests: XCTestCase {
         for channel in 0..<2 {
             for frame in 0..<480 { buffer.floatChannelData?[channel][frame] = 0.125 }
         }
+        try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 480)
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-        // Observe the rendered player output before the muted mixer; no test tone reaches speakers.
-        engine.mainMixerNode.outputVolume = 0
-        let capture = RenderCapture()
-        node.installTap(onBus: 0, bufferSize: 480, format: format) { buffer, _ in capture.append(buffer) }
         try engine.start()
         defer {
             scheduler.stop(node)
-            node.removeTap(onBus: 0)
             engine.stop()
         }
         XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 50) { failure in
             XCTAssertNil(failure)
         })
-        holdScreen()
-        let samples = capture.captured
+        let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 480))
+        var samples: [Float] = []
+        // Five sample lengths past the last repeat, so a late or extra repeat would still be rendered.
+        for step in 0..<55 {
+            if step < 50 {
+                let deadline = Date().addingTimeInterval(Self.silenceLimit)
+                while scheduler.buffersScheduled <= step {
+                    guard Date() < deadline else {
+                        return XCTFail("repeat \(step + 1) was not queued within \(Int(Self.silenceLimit)) s")
+                    }
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+            }
+            XCTAssertEqual(try engine.renderOffline(480, to: output), .success)
+            let data = try XCTUnwrap(output.floatChannelData?[0])
+            samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(output.frameLength)))
+        }
         let first = try XCTUnwrap(samples.firstIndex { abs($0) > 0.01 })
         let last = try XCTUnwrap(samples.lastIndex { abs($0) > 0.01 })
         let rendered = samples[first...last]
@@ -250,7 +254,7 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         let engine = try XCTUnwrap(vm.soundEngine)
         let began = Date()
-        vm.padTouch(x: 0, y: 0, isDown: true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
         vm.cleanup()
         XCTAssertLessThan(Date().timeIntervalSince(began), 1)
         XCTAssertLessThanOrEqual(engine.repeatedBuffersScheduled, 128)
@@ -263,7 +267,7 @@ final class PlaybackStopTests: XCTestCase {
         for round in 0..<30 {
             let vm = try await loaded(root)
             let engine = try XCTUnwrap(vm.soundEngine)
-            vm.padTouch(x: 0, y: 0, isDown: true)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             XCTAssertEqual(engine.playsStarted, 1)
             if round > 0 { try await Task.sleep(for: .milliseconds(round % 10)) }
             let began = Date()
@@ -281,8 +285,8 @@ final class PlaybackStopTests: XCTestCase {
         let engine = try XCTUnwrap(vm.soundEngine)
         for round in 0..<100 {
             let began = Date()
-            vm.padTouch(x: 0, y: 0, isDown: true)
-            vm.padTouch(x: 0, y: 0, isDown: true)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             XCTAssertLessThan(Date().timeIntervalSince(began), 1)
             try await Task.sleep(for: .milliseconds(round % 10))
         }
@@ -296,7 +300,7 @@ final class PlaybackStopTests: XCTestCase {
             let vm = try await loaded(root)
             let engine = try XCTUnwrap(vm.soundEngine)
             defer { vm.cleanup() }
-            vm.padTouch(x: 0, y: 0, isDown: true)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             try await wait(for: "finite repeats", until: { engine.activeVoiceCount == 0 })
             XCTAssertEqual(engine.repeatedBuffersScheduled, loop, "keySound stores total plays, not additional repeats")
             XCTAssertEqual(engine.activeVoiceCount, 0)
@@ -311,8 +315,8 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         let engine = try XCTUnwrap(vm.soundEngine)
         defer { vm.cleanup() }
-        vm.padTouch(x: 0, y: 0, isDown: true)
-        vm.padTouch(x: 0, y: 0, isDown: true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
         let suppliedBeforeStop = engine.repeatedBuffersScheduled
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(engine.repeatedBuffersScheduled, suppliedBeforeStop, "obsolete callback scheduled another repeat")
@@ -337,7 +341,7 @@ final class PlaybackStopTests: XCTestCase {
             if round.isMultiple(of: 2) {
                 vm.cleanup()
             } else {
-                vm.padTouch(x: 0, y: 0, isDown: true)
+                vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
                 vm.switchPlayMode(.autoPlay)
                 vm.switchPlayMode(.guidePlay)
                 vm.switchPlayMode(.none)

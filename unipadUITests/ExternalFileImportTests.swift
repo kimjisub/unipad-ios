@@ -1,7 +1,7 @@
 import XCTest
 
-/// JIS-313: exercise iOS document opening, without substituting a notification or
-/// calling the router directly. Fixtures are the three ZIPs used by JIS-307 QA.
+/// Exercises iOS document opening, without substituting a notification or calling
+/// the router directly. Fixtures are the three ZIPs in ExternalImportFixtures.
 @MainActor
 final class ExternalFileImportTests: XCTestCase {
     private var app: XCUIApplication!
@@ -70,7 +70,7 @@ final class ExternalFileImportTests: XCTestCase {
 
     private func assertNormal() {
         XCTAssertEqual(title.label, "Pack imported!")
-        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "JIS307 - Normal")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Normal")
         XCTAssertTrue(play.isHittable)
         play.tap()
         XCTAssertTrue(app.descendants(matching: .any)["playPadGrid"].waitForExistence(timeout: 30))
@@ -94,6 +94,14 @@ final class ExternalFileImportTests: XCTestCase {
     }
 
     func testNormalFromEmptyLibrary() throws { try open("Normal"); assertNormal() }
+
+    /// The pack folder sits next to a readme.txt at the top of the archive.
+    func testPackFolderBesideAReadmeImports() throws {
+        try open("BesideReadme")
+        XCTAssertEqual(title.label, "Pack imported!")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Beside Readme")
+        XCTAssertTrue(play.isHittable)
+    }
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
     func testNormalAfterPickerResult() throws { try importWithPicker(); try open("Normal"); assertNormal() }
@@ -108,7 +116,7 @@ final class ExternalFileImportTests: XCTestCase {
 
     func testConsecutiveExternalImportsReplaceTheResult() throws {
         try open("Normal")
-        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "JIS307 - Normal")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Normal")
         ok.tap()
         try open("Missing"); assertMissing()
         ok.tap()

@@ -8,7 +8,6 @@ nonisolated class UniPackFolder: UniPack {
     private let rootFolder: URL
 
     private var infoFile: URL?
-    private var infoJsonFile: URL?
     private var soundsDir: URL?
     private var keySoundFile: URL?
     private var keyLedDir: URL?
@@ -93,8 +92,6 @@ nonisolated class UniPackFolder: UniPack {
             switch name {
             case "info":
                 infoFile = item.isFileURL && !isDir ? item : nil
-            case "info.json":
-                infoJsonFile = item.isFileURL && !isDir ? item : nil
             case "sounds":
                 soundsDir = isDir ? item : nil
             case "keysound":
@@ -108,12 +105,12 @@ nonisolated class UniPackFolder: UniPack {
             }
         }
 
-        logger.info("checkFile: info=\(self.infoFile != nil), infoJson=\(self.infoJsonFile != nil), keySound=\(self.keySoundFile != nil), sounds=\(self.soundsDir != nil), keyLed=\(self.keyLedDir != nil), autoPlay=\(self.autoPlayFile != nil)")
+        logger.info("checkFile: info=\(self.infoFile != nil), keySound=\(self.keySoundFile != nil), sounds=\(self.soundsDir != nil), keyLed=\(self.keyLedDir != nil), autoPlay=\(self.autoPlayFile != nil)")
 
-        if infoFile == nil && infoJsonFile == nil { addErr("info doesn't exist") }
+        if infoFile == nil { addErr("info doesn't exist") }
         if keySoundFile == nil { addErr("keySound doesn't exist") }
-        if infoFile == nil && infoJsonFile == nil && keySoundFile == nil { addErr("It does not seem to be UniPack.") }
-        if (infoFile == nil && infoJsonFile == nil) || keySoundFile == nil {
+        if infoFile == nil && keySoundFile == nil { addErr("It does not seem to be UniPack.") }
+        if infoFile == nil || keySoundFile == nil {
             criticalError = true
         }
     }
@@ -147,51 +144,22 @@ nonisolated class UniPackFolder: UniPack {
 
             for rawLine in data.components(separatedBy: .newlines) {
                 let s = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-                if s.isEmpty { continue }
-
-                let split = s.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                guard split.count == 2 else {
-                    addErr("info : [\(s)] format is not found")
-                    continue
-                }
-                let key = split[0]
-                let value = split[1]
+                // A line without "=" is skipped without a warning, as on the web (info.mdx).
+                guard let separator = s.firstIndex(of: "=") else { continue }
+                let key = s[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = s[s.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
 
                 switch key {
                 case "title": title = value
                 case "producerName": producerName = value
-                case "buttonX": buttonX = Int(value) ?? 0
-                case "buttonY": buttonY = Int(value) ?? 0
+                case "buttonX": buttonX = gridSize(key, value)
+                case "buttonY": buttonY = gridSize(key, value)
                 case "chain": chain = Int(value) ?? 0
                 case "squareButton": squareButton = value == "true"
                 case "website": website = value
                 default: break
                 }
             }
-        } else if let infoJsonFile {
-            guard
-                let data = try? Data(contentsOf: infoJsonFile),
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else {
-                addErr("info.json : file could not be decoded")
-                criticalError = true
-                return
-            }
-
-            if let value = json["title"] as? String { title = value }
-            if let value = json["producerName"] as? String { producerName = value }
-            if let value = json["buttonX"] as? Int { buttonX = value }
-            else if let value = json["buttonX"] as? String { buttonX = Int(value) ?? 0 }
-            if let value = json["buttonY"] as? Int { buttonY = value }
-            else if let value = json["buttonY"] as? String { buttonY = Int(value) ?? 0 }
-            if let value = json["chain"] as? Int { chain = value }
-            else if let value = json["chain"] as? String { chain = Int(value) ?? 0 }
-            if let value = json["squareButton"] as? Bool { squareButton = value }
-            else if let value = json["squareButton"] as? String {
-                let lower = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                squareButton = lower == "true" || lower == "1" || lower == "yes" || lower == "y"
-            }
-            if let value = json["website"] as? String { website = value }
         }
 
         if title.isEmpty { addErr("info : title was missing") }
@@ -209,6 +177,17 @@ nonisolated class UniPackFolder: UniPack {
             addErr("info : buttonX/buttonY out of range")
             criticalError = true
         }
+    }
+
+    /// A grid size that is not an integer (`buttonX=abc`) refuses the pack (info.mdx); reading it as
+    /// 0 opened a pack with no pads.
+    private func gridSize(_ key: String, _ value: String) -> Int {
+        guard let size = Int(value) else {
+            addErr("info : \(key) is not a number")
+            criticalError = true
+            return 0
+        }
+        return size
     }
 
     private static let maxGridSize = 64
@@ -233,6 +212,7 @@ nonisolated class UniPackFolder: UniPack {
             return
         }
         logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
+        let soundFinder = PackFileFinder()
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -288,8 +268,7 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("keySound : [\(s)] sounds directory not found"); continue
             }
 
-            let soundFile = soundsDir.appendingPathComponent(soundURL)
-            guard FileManager.default.fileExists(atPath: soundFile.path) else {
+            guard let soundFile = soundFinder.file(soundURL, in: soundsDir) else {
                 addErr("keySound : [\(s)] sound was not found"); continue
             }
 
@@ -513,6 +492,11 @@ nonisolated class UniPackFolder: UniPack {
         autoPlayTable = autoPlay
         var map = Array(repeating: [Int](repeating: 0, count: buttonY), count: buttonX)
         var currChain = 0
+        func moveToChain(_ c: Int) {
+            currChain = c
+            autoPlay.elements.append(.chain(c: currChain))
+            for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+        }
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -556,29 +540,25 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("autoPlay : [\(s)] format is incorrect"); continue
             }
 
+            // `touch` is `on` and `off` in one line: both count the pad's next sound and follow
+            // that sound's wormhole.
             switch option {
-            case "on", "o":
+            case "on", "o", "touch", "t":
                 autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
+                if option == "touch" || option == "t" {
+                    autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
+                }
                 let sound = soundGet(c: currChain, x: x, y: y, num: map[x][y])
                 map[x][y] += 1
                 if let sound, sound.wormhole != Sound.noWormhole {
-                    currChain = sound.wormhole
-                    autoPlay.elements.append(.chain(c: currChain))
-                    for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                    moveToChain(sound.wormhole)
                 }
 
             case "off", "f":
                 autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
 
-            case "touch", "t":
-                autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
-                autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
-                map[x][y] += 1
-
             case "chain", "c":
-                currChain = chainVal
-                autoPlay.elements.append(.chain(c: currChain))
-                for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                moveToChain(chainVal)
 
             case "delay", "d":
                 autoPlay.elements.append(.delay(delay: delay))

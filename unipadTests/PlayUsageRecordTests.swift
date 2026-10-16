@@ -24,6 +24,7 @@ struct PlayUsageRecordTests {
             s.vm.cleanup(); s.vm.cleanup(); s.press()
             #expect(s.starts == ["pad"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["screen"])
             #expect(s.sink.events.map(\.name) == ["pack_load", "play_start", "play_first_input", "play_end"])
         }
     }
@@ -40,6 +41,7 @@ struct PlayUsageRecordTests {
             s.press(7, 7)
             #expect(s.starts == ["pad"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["screen"])
         }
     }
 
@@ -57,6 +59,7 @@ struct PlayUsageRecordTests {
             try await s.midi(cmd: 9, note: 82, velocity: 100)
             #expect(s.starts == ["pad"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["midi"])
         }
     }
 
@@ -79,6 +82,7 @@ struct PlayUsageRecordTests {
             s.press(); s.release(); s.press(0, 1)
             #expect(s.starts == ["pad"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["screen"])
         }
     }
 
@@ -129,6 +133,7 @@ struct PlayUsageRecordTests {
             s.press(5, 5); s.release(5, 5); s.press(5, 6)
             #expect(s.starts == ["autoplay"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["screen"])
         }
     }
 
@@ -140,6 +145,7 @@ struct PlayUsageRecordTests {
             try await s.midi(cmd: 9, note: 81, velocity: 100)
             #expect(s.starts == ["autoplay"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["midi"])
         }
     }
 
@@ -151,6 +157,36 @@ struct PlayUsageRecordTests {
             try await s.autoplayEnded()
             #expect(s.starts == ["pad"])
             #expect(s.firstInputs == ["pad"])
+            #expect(s.firstInputSources == ["screen"])
+        }
+    }
+
+    @Test func onlyTheFirstHumanInputNamesItsSource() async throws {
+        try await PlayUsageScenario.run { s in
+            try await s.loadReady()
+            try await s.midi(cmd: 9, note: 81, velocity: 100)
+            try await s.midi(cmd: 9, note: 81, velocity: 0)
+            s.press(); s.release()
+            #expect(s.firstInputSources == ["midi"])
+        }
+        try await PlayUsageScenario.run { s in
+            try await s.loadReady()
+            s.press(); s.release()
+            try await s.midi(cmd: 9, note: 81, velocity: 100)
+            #expect(s.firstInputSources == ["screen"])
+        }
+    }
+
+    @Test func playStartAndEndCarryThePlayScreenWindowLayout() async throws {
+        try await PlayUsageScenario.run { s in
+            let screen = CGSize(width: 1376, height: 1032)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            try await s.loadReady()
+            s.press()
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: CGSize(width: 684, height: 1032), screenSize: screen))
+            s.vm.cleanup()
+            #expect(s.layouts(of: "play_start") == ["landscape 840dp_plus full_screen"])
+            #expect(s.layouts(of: "play_end") == ["portrait 600dp_839dp multi_window"])
         }
     }
 
