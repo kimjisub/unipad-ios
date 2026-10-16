@@ -1093,6 +1093,11 @@ final class PlayViewModel {
         startVolumeObserver()
     }
 
+    /// Keeps the window layout that the next `play_start` or `play_end` reports.
+    func screenLayoutChanged(_ layout: ScreenLayout?) {
+        usageSession.screenLayoutChanged(layout)
+    }
+
     // MARK: - Cleanup
 
     func cleanup() {
