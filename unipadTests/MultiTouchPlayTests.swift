@@ -50,7 +50,7 @@ final class MultiTouchPlayTests: XCTestCase {
             pads.rows = 8
             pads.columns = 8
             pads.onPadTouch = { [vm] row, col, isDown, inputID in
-                vm.padTouch(x: row, y: col, isDown: isDown, inputID: inputID)
+                vm.padTouch(x: row, y: col, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
             }
         }
 
