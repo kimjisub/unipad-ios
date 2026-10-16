@@ -69,32 +69,36 @@ final class AutoPlayRelaunchUITests: XCTestCase {
 
         choose("Step", app: app)
         UITestSupport.attachScreenshot("step-01-first-group", to: self)
-        pressFirstTwoPads(grid)
-        waitForStepEnd(app)
-        UITestSupport.attachScreenshot("step-02-last-group", to: self)
+        playAllGroups(grid, app: app)
+        UITestSupport.attachScreenshot("step-02-end", to: self)
         choose("Step", app: app)
         UITestSupport.attachScreenshot("step-03-restarted-first-group", to: self)
-        // Completing the first two groups again proves the new run did not wait for
-        // the previous run's third pad. Guide colors are also captured for review.
-        pressFirstTwoPads(grid)
-        waitForStepEnd(app)
+        // Completing every group again proves the new run started at the first one.
+        // Guide colors are also captured for review.
+        playAllGroups(grid, app: app)
         UITestSupport.attachScreenshot("step-04-second-end", to: self)
     }
 
+    /// The fixture's three groups are one pad each, along the top row.
     @MainActor
-    private func waitForStepEnd(_ app: XCUIApplication) {
-        let ended = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == false"), object: app.buttons["forward.end.fill"])
+    private func playAllGroups(_ grid: XCUIElement, app: XCUIApplication) {
+        let transport = app.buttons["forward.end.fill"]
+        pressTopRow(grid, columns: 0..<2)
+        Thread.sleep(forTimeInterval: 0.5)
+        UITestSupport.attachScreenshot("step-last-group", to: self)
+        XCTAssertTrue(transport.exists, "Step practice ended before its last group was played")
+        pressTopRow(grid, columns: 2..<3)
+        let ended = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: transport)
         XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: 15), .completed,
-                       "Step practice did not finish after its first two pads")
+                       "Step practice did not finish after its last group")
     }
 
     @MainActor
-    private func pressFirstTwoPads(_ grid: XCUIElement) {
+    private func pressTopRow(_ grid: XCUIElement, columns: Range<Int>) {
         // The square grid is centered in its container.
         let frame = grid.frame
         let side = min(frame.width, frame.height)
-        for column in 0..<2 {
+        for column in columns {
             grid.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
                 dx: (frame.width - side) / 2 + side * (CGFloat(column) + 0.5) / 8,
                 dy: (frame.height - side) / 2 + side / 16
