@@ -20,8 +20,7 @@ struct LaunchpadCoreCFWDriverTests {
         func onSendRaw(messages: [[UInt8]], cableNumber: Int) { raw.append((messages, cableNumber)) }
     }
 
-    private func make() -> (LaunchpadCoreCFWDriver, Capture) {
-        let driver = LaunchpadCoreCFWDriver()
+    private func make(_ driver: LaunchpadCoreCFWDriver = LaunchpadCoreCFWDriver()) -> (LaunchpadCoreCFWDriver, Capture) {
         let capture = Capture()
         driver.receiveSignalListener = capture
         driver.sendSignalListener = capture
@@ -86,12 +85,78 @@ struct LaunchpadCoreCFWDriverTests {
         #expect(capture.sent.isEmpty)
     }
 
-    @Test func initSendsUnifiedSysExSequence() {
+    /// Stock-firmware messages that select a mode or layout, as (device id, command) pairs:
+    /// Pro mode/layout, MK2 layout, and X / Mini MK3 / Pro MK3 layout, programmer/live and DAW mode.
+    private static let modeSelectCommands: Set<[UInt8]> = [
+        [0x10, 0x21], [0x10, 0x22], [0x10, 0x2C],
+        [0x18, 0x22],
+        [0x0C, 0x00], [0x0C, 0x0E], [0x0C, 0x10],
+        [0x0D, 0x00], [0x0D, 0x0E], [0x0D, 0x10],
+        [0x0E, 0x00], [0x0E, 0x0E], [0x0E, 0x10],
+    ]
+
+    @Test func initClearsLedsWithoutSelectingAStockMode() {
         let (driver, capture) = make()
         driver.initialize()
         #expect(capture.raw.map(\.cable) == [0])
-        #expect(capture.raw[0].messages.count == 10)
-        #expect(capture.raw[0].messages[0] == [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x22, 0x03, 0xF7])
-        #expect(capture.raw[0].messages[1] == [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0E, 0x00, 0xF7])
+        #expect(capture.raw[0].messages == [
+            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0E, 0x00, 0xF7],
+            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x0E, 0x00, 0xF7],
+            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x12, 0x01, 0x01, 0x01, 0xF7],
+            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x12, 0x01, 0x00, 0x01, 0xF7],
+        ])
+        for message in capture.raw[0].messages {
+            #expect(!Self.modeSelectCommands.contains(Array(message[5...6])), "\(message)")
+        }
+    }
+
+    @Test func paletteModelsSendThePackCodeUnchanged() {
+        let (driver, capture) = make()
+        driver.sendPadLed(x: 0, y: 0, velocity: 3)
+        driver.sendFunctionKeyLed(f: 0, velocity: 21)
+        driver.sendChainLed(c: 0, velocity: 5)
+        #expect(capture.sent.map(\.velocity) == [3, 21, 5])
+    }
+
+    /// Launchpad S and Mini mk1 running CoreFW read velocities in the Launchpad S red-green format,
+    /// so every LED gets the same code the stock Launchpad S driver sends.
+    @Test func redGreenModelsSendTheLaunchpadSCode() {
+        let (driver, capture) = make(LaunchpadCoreCFWDriver(ledColors: .redGreen))
+        let stock = LaunchpadSDriver()
+        let stockCapture = Capture()
+        stock.sendSignalListener = stockCapture
+        for code in -1...128 {
+            capture.sent.removeAll()
+            stockCapture.sent.removeAll()
+            driver.sendPadLed(x: 2, y: 5, velocity: code)
+            stock.sendPadLed(x: 2, y: 5, velocity: code)
+            #expect(capture.sent.map(\.velocity) == stockCapture.sent.map(\.velocity), "code \(code)")
+        }
+
+        capture.sent.removeAll()
+        driver.sendPadLed(x: 0, y: 0, velocity: 3)         // white
+        driver.sendPadLed(x: 0, y: 0, velocity: 21)        // green
+        driver.sendPadLed(x: 0, y: 0, velocity: 0)         // off
+        driver.sendFunctionKeyLed(f: 0, velocity: 3)
+        driver.sendChainLed(c: 20, velocity: 21)
+        #expect(capture.sent.map(\.velocity) == [63, 56, 0, 63, 56])
+    }
+
+    @MainActor
+    @Test func portNameChoosesTheColourFormat() {
+        func velocity(forPort name: String) -> UInt8? {
+            guard let driver = MidiManager.coreFWDriverEntry(sourceName: name)?.factory() else { return nil }
+            let capture = Capture()
+            driver.sendSignalListener = capture
+            driver.sendPadLed(x: 0, y: 0, velocity: 3)
+            return capture.sent.first?.velocity
+        }
+        for name in ["LPS (MIDI)", "LPS (DAW)", "MINI (MIDI)", "MINI (DAW)"] {
+            #expect(velocity(forPort: name) == 63, "\(name)")
+        }
+        for name in ["MINI MK3 (MIDI)", "MINI MK3 (DAW)", "LPX (MIDI)", "PRO (MIDI)", "MK2 (MIDI)", "PRO MK3 (MIDI)"] {
+            #expect(velocity(forPort: name) == 3, "\(name)")
+        }
+        #expect(MidiManager.coreFWDriverEntry(sourceName: "Launchpad Mini") == nil)
     }
 }
