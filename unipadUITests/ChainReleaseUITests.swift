@@ -13,6 +13,7 @@ final class ChainReleaseUITests: XCTestCase {
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
+        UITestSupport.searchForPack("Chain Release", in: app)
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Chain Release v1 delayed")).firstMatch
         guard title.waitForExistence(timeout: 10) else {
             throw XCTSkip("Chain Release v1 delayed is not installed in Documents/UniPack; chain release UI was not checked")

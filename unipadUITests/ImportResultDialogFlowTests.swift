@@ -11,6 +11,10 @@
 //  the simulator's On My iPhone folder first; the tests skip otherwise (see
 //  FirstPackGuideTests for where that folder is).
 //
+//  Every launch starts from its own empty test library, so the imported copies
+//  never reach the simulator's real library, where tests that open
+//  "Alan Walker - Faded" by title (PlayChainLayoutTests) need it to be unique.
+//
 
 import XCTest
 
@@ -50,11 +54,11 @@ final class ImportResultDialogFlowTests: XCTestCase {
 
     private func launch(_ language: Language) {
         app = XCUIApplication()
-        app.launchArguments += [
-            "-UniPadFirebaseLocalOnly", "YES",
-            "-AppleLanguages", "(\(language.code))",
-            "-AppleLocale", language.locale,
-        ]
+        app.launchArguments = UITestSupport.launchArguments(language: language.code, locale: language.locale)
+        if !app.launchArguments.contains("-UniPadReleaseTest") {
+            app.launchArguments += ["-UniPadReleaseTest", UUID().uuidString]
+        }
+        app.launchArguments += ["-UniPadReleaseEmpty", "YES"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "[\(language.code)] home never appeared")
