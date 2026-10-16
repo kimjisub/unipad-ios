@@ -4,11 +4,18 @@ import XCTest
 /// XCTest's typeKey never sends Escape (the app receives no key event at all),
 /// so these tests ask the host to press it through the simulator's HID input
 /// instead. Run them with `ci/host-keys.sh`; without it they are skipped.
+///
+/// The simulator sometimes accepts a host key press and hands it to no app.
+/// The app is therefore launched with the host's key arrival probe, and every
+/// Escape is checked against it: a press that never reached the app is pressed
+/// again (at most three presses, all attached to the result), and one that did
+/// reach it must close the help as before.
 final class MidiHelpHardwareKeyTests: XCTestCase {
-    // AXe's short-key event can complete without dismissing help on iOS 27.
-    // Use one explicit down/hold/up press; never retry Escape or tap Close.
-    private static let escape = "key 41 --duration 0.15"
+    private static let escape = "key 41"
+    private static let escapeArrival = "began 41"
+    private static let escapePresses = 3
     private var app: XCUIApplication!
+    private var arrivalLog: String!
 
     private struct Labels {
         let title, model, close, reconnect, confirm: String
@@ -67,6 +74,38 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
                        "The host must deliver the key successfully: \(output)")
     }
 
+    private var arrivals: String {
+        (try? String(contentsOfFile: arrivalLog, encoding: .utf8)) ?? ""
+    }
+
+    private func escapesArrived() -> Int {
+        arrivals.split(separator: "\n").filter { $0 == Self.escapeArrival }.count
+    }
+
+    /// Presses Escape on the host until the app's event entry has received it.
+    /// Only a press the app provably never received is repeated; what the app
+    /// does with a received one is left to the caller's checks.
+    private func pressEscape(_ step: String) {
+        var record: [String] = []
+        var arrived = false
+        for press in 1...Self.escapePresses where !arrived {
+            let before = escapesArrived()
+            pressHostKeys(Self.escape)
+            let received = XCTNSPredicateExpectation(predicate: NSPredicate { [unowned self] _, _ in
+                self.escapesArrived() > before
+            }, object: nil)
+            arrived = XCTWaiter().wait(for: [received], timeout: 3) == .completed
+            record.append("press \(press): " + (arrived ? "reached the app" : "did not reach the app within 3 s"))
+        }
+        let attachment = XCTAttachment(string: record.joined(separator: "\n") + "\n\nkey arrival log:\n" + arrivals)
+        attachment.name = "escape-delivery-\(step)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print("Escape delivery (\(step)): \(record.joined(separator: "; "))")
+        XCTAssertTrue(arrived, "Test input failure, not an app result: the host pressed Escape "
+                      + "\(Self.escapePresses) times and none reached the app")
+    }
+
     private func waitSixSeconds() {
         let elapsed = expectation(description: "six seconds elapsed")
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { elapsed.fulfill() }
@@ -80,7 +119,13 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         app.launchArguments = UITestSupport.launchArguments(
             language: language, locale: language == "ko" ? "ko_KR" : "en_US"
         ) + ["-LaunchpadConnectMethod", "0"]
+        let dir = Self.hostKeysDirectory!
+        arrivalLog = "\(dir)/arrivals-\(UUID().uuidString)"
+        app.launchEnvironment["DYLD_INSERT_LIBRARIES"] = "\(dir)/key-arrival-probe.dylib"
+        app.launchEnvironment["UNIPAD_KEY_ARRIVAL_LOG"] = arrivalLog
         app.launch()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: arrivalLog),
+                      "the key arrival probe did not load into the app")
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
         app.buttons["gearshape"].tap()
         XCTAssertTrue(app.buttons[labels.reconnect].waitForExistence(timeout: 10))
@@ -90,17 +135,25 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         return labels
     }
 
-    private func assertOnlyHelpClosed(_ labels: Labels) {
+    private static let ignoredEscape = "Escape reached the app but the help did not close"
+
+    /// The opener stays in XCTest's tree while the help hides it, so its
+    /// presence proves nothing; wait for the help itself to go away.
+    private func assertHelpClosed(_ step: String) {
         let closed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
         if !closed {
-            UITestSupport.attachScreenshot("real-escape-still-open", to: self)
+            UITestSupport.attachScreenshot("\(step)-still-open", to: self)
             let tree = XCTAttachment(string: app.debugDescription)
-            tree.name = "real-escape-still-open-tree"
+            tree.name = "\(step)-still-open-tree"
             tree.lifetime = .keepAlways
             add(tree)
         }
-        XCTAssertTrue(closed, "Escape must close the help")
-        XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
+        XCTAssertTrue(closed, Self.ignoredEscape)
+        XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5), Self.ignoredEscape)
+    }
+
+    private func assertOnlyHelpClosed(_ labels: Labels) {
+        assertHelpClosed("real-escape")
         XCTAssertTrue(app.buttons["midi.confirm"].exists, "Escape must close only the help")
         waitSixSeconds()
         XCTAssertTrue(app.buttons["midi.help.open"].exists, "the selection must stay after the help closes")
@@ -112,7 +165,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         for language in ["en", "ko"] {
             let labels = openHelp(language: language)
             UITestSupport.attachScreenshot("escape-before-\(language)", to: self)
-            pressHostKeys(Self.escape)
+            pressEscape(language)
             assertOnlyHelpClosed(labels)
             UITestSupport.attachScreenshot("escape-after-\(language)", to: self)
             app.terminate()
@@ -176,29 +229,8 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             speech = try voiceOver.moveBackward().utterance
         }
         XCTAssertTrue(speech.contains(labels.close), "VoiceOver must be on the close button: \(speech)")
-        pressHostKeys(Self.escape)
-        XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5))
-        // The opener remains in XCTest's tree even while accessibility-hidden.
-        // Wait for dismissal itself after the HID request, not for that opener.
-        let closeWasPresent = !app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
-        if closeWasPresent {
-            let before = try voiceOver.currentSpeech().utterance
-            UITestSupport.attachScreenshot("escape-still-open-\(language)", to: self)
-            let start = Date()
-            let eventuallyClosed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 10)
-            let after = try voiceOver.currentSpeech().utterance
-            let diagnostic = XCTAttachment(string: """
-                before=\(before)
-                after=\(after)
-                closed=\(eventuallyClosed)
-                seconds=\(Date().timeIntervalSince(start))
-                """)
-            diagnostic.name = "escape-delay-diagnostic-\(language)"
-            diagnostic.lifetime = .keepAlways
-            add(diagnostic)
-            UITestSupport.attachScreenshot("escape-diagnostic-after-\(language)", to: self)
-        }
-        XCTAssertFalse(closeWasPresent, "Escape must close the help")
+        pressEscape("voiceover-\(language)")
+        assertHelpClosed("voiceover-escape-\(language)")
         XCTAssertTrue(app.buttons["midi.confirm"].exists)
         let returned = try voiceOver.currentSpeech().utterance
         let focus = XCTAttachment(string: returned)

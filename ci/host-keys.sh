@@ -7,6 +7,10 @@
 # simulator's HID input with AXe and answers with a done file. A request holds
 # `axe batch` steps, one per line (e.g. "key 41" presses Escape).
 #
+# AXe reporting a press as performed does not prove the app received it, so
+# the script also builds ci/key-arrival-probe.m into HOST_KEYS_DIR; tests load
+# it into the app to see which presses actually arrived.
+#
 #   ci/host-keys.sh <simulator-udid> <derived-data> <xcodebuild test args...>
 #   e.g. ci/host-keys.sh "$UDID" "$DD" test-without-building -scheme unipad \
 #          -only-testing:unipadUITests/MidiHelpHardwareKeyTests
@@ -36,7 +40,8 @@ if [[ -z $axe ]]; then
 fi
 
 keys=$(mktemp -d "${UNIPAD_TEST_TMPDIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/unipad-host-keys.XXXXXX")
-trap 'kill $responder 2>/dev/null; rm -rf $keys' EXIT
+responder=
+trap '[[ -n $responder ]] && kill $responder 2>/dev/null; rm -rf $keys' EXIT
 
 deliver() {
   local state
@@ -53,17 +58,23 @@ deliver() {
     'com.apple.coredevice.dtuhidd.active 0') ;;
     *) print -u2 "Unrecognized simulator input state: $state"; return 1 ;;
   esac
-  $axe batch --udid $udid --file $request --verbose
+  $axe batch --udid $udid --file $keys/batch --verbose
 }
 
 # The responder ends with this script even when the script is killed without
-# running its EXIT trap; $$ stays this script's pid inside the subshell.
+# running its EXIT trap; $$ stays this script's pid inside the subshell. It
+# starts before anything slow so a kill at any point leaves no folder behind.
 {
   while kill -0 $$ 2>/dev/null; do
     for request in $keys/request-*; do
       id=${request:t}; id=${id#request-}
       steps=$(<$request)
       print "$(date +%T) host request $id: ${steps//$'\n'/; }"
+      # Each batch opens a new HID session whose keyboard the simulator takes
+      # up to a few hundred milliseconds to register. Keys from a session that
+      # closes before that are dropped without an error (AXe still reports
+      # them performed), so the session is held open after the steps.
+      { print -r -- $steps; print "sleep 1"; } >$keys/batch
       if deliver >$keys/output-$id 2>&1; then
         print successful >$keys/response-$id
       else
@@ -79,6 +90,10 @@ deliver() {
   rm -rf $keys
 } &
 responder=$!
+
+xcrun --sdk iphonesimulator clang -dynamiclib -fobjc-arc -arch arm64 -arch x86_64 \
+  -mios-simulator-version-min=17.0 -framework UIKit \
+  -o $keys/key-arrival-probe.dylib ${0:A:h}/key-arrival-probe.m
 
 result=0
 TEST_RUNNER_HOST_KEYS_DIR=$keys xcodebuild "$@" \

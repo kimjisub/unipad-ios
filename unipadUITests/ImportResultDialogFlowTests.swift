@@ -7,7 +7,9 @@
 //  closes it without counting a play, that Play now opens the imported pack, and
 //  that tapping outside closes it.
 //
-//  Shared fixtures prepare an isolated empty library and a Documents archive.
+//  Every launch starts from its own empty test library and generated archive, so
+//  the imported copies never reach the simulator's real library, where tests that
+//  open "Alan Walker - Faded" by title (PlayChainLayoutTests) need it to be unique.
 //
 
 import XCTest

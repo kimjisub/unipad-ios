@@ -10,6 +10,12 @@ import time
 import unittest
 
 
+# Stands in for the key arrival probe build: writes the requested output file.
+FAKE_PROBE_BUILD = ('if [ "$1" = --sdk ]; then\n'
+                    '  while [ $# -gt 0 ]; do [ "$1" = -o ] && : > "$2"; shift; done; exit 0\n'
+                    'fi\n')
+
+
 class UIHostKeysTests(unittest.TestCase):
     def key_delivery(self, exit_code, state=0, wake_exit=0):
         root = Path(__file__).resolve().parents[1]
@@ -19,7 +25,7 @@ class UIHostKeysTests(unittest.TestCase):
             fake.mkdir()
             programs = {
                 "axe": f"#!/bin/sh\necho 'HID delivery result' >&2\nexit {exit_code}\n",
-                "xcrun": "#!/bin/sh\n" +
+                "xcrun": "#!/bin/sh\n" + FAKE_PROBE_BUILD +
                     f"if [ \"$4\" = notifyutil ]; then echo 'com.apple.coredevice.dtuhidd.active {state}'; exit 0; fi\n" +
                     f"if [ \"$4\" = launchctl ]; then echo 'Waking HID for device='\"$3\"' target='\"$7\"; exit {wake_exit}; fi\n" +
                     "exit 99\n",
@@ -76,14 +82,22 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertNotIn('HID delivery result', result.stdout)
 
     def test_responder_stops_when_the_runner_is_killed(self):
+        self.kill_runner(probe_build=FAKE_PROBE_BUILD)
+
+    def test_runner_killed_while_building_the_probe_leaves_nothing_behind(self):
+        self.kill_runner(probe_build='[ "$1" = --sdk ] && exec sleep 30\n')
+
+    def kill_runner(self, probe_build):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
             fake = folder / "bin"
             fake.mkdir()
-            xcodebuild = fake / "xcodebuild"
-            xcodebuild.write_text("#!/bin/sh\nexec sleep 30\n")
-            xcodebuild.chmod(0o755)
+            for name, content in {"xcodebuild": "#!/bin/sh\nexec sleep 30\n",
+                                  "xcrun": "#!/bin/sh\n" + probe_build + "exit 99\n"}.items():
+                path = fake / name
+                path.write_text(content)
+                path.chmod(0o755)
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
                        UNIPAD_TEST_TMPDIR=str(folder))
             runner = subprocess.Popen(["ci/host-keys.sh", "leased-device", str(folder / "DD"), "test"],
@@ -121,9 +135,11 @@ class UIHostKeysTests(unittest.TestCase):
                 "xcodebuild": "#!/usr/bin/env python3\n" +
                     "import json, os, pathlib, sys\n" +
                     "keys = os.environ.get('TEST_RUNNER_HOST_KEYS_DIR', '')\n" +
-                    "print(json.dumps({'args': sys.argv[1:], 'keysReady': bool(keys) and pathlib.Path(keys).is_dir(), 'fixtures': os.environ.get('TEST_RUNNER_UNIPAD_RELEASE_SUITE')}))\n" +
+                    "print(json.dumps({'args': sys.argv[1:], 'keysReady': bool(keys) and pathlib.Path(keys).is_dir(), " +
+                    "'probeReady': bool(keys) and (pathlib.Path(keys) / 'key-arrival-probe.dylib').is_file(), " +
+                    "'fixtures': os.environ.get('TEST_RUNNER_UNIPAD_RELEASE_SUITE')}))\n" +
                     "sys.exit(" + str(exit_code) + ")\n",
-                "xcrun": "#!/bin/sh\n" +
+                "xcrun": "#!/bin/sh\n" + FAKE_PROBE_BUILD +
                     "[ \"$1 $2 $3 $4\" = 'xcresulttool get test-results summary' ] || exit 99\n" +
                     f"echo '{json.dumps(summary)}'\n",
             }.items():
@@ -143,6 +159,7 @@ class UIHostKeysTests(unittest.TestCase):
         result, probe = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(probe["keysReady"], "hardware-key UI checks must receive a live host responder directory")
+        self.assertTrue(probe["probeReady"], "hardware-key UI checks must receive the key arrival probe")
         self.assertEqual(probe["fixtures"], "1")
         self.assertIn("-only-testing:unipadUITests", probe["args"])
         self.assertIn("UNIPAD_WARNINGS_AS_ERRORS=YES", probe["args"])

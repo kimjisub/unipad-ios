@@ -65,6 +65,13 @@ final class PlayUsageScenario {
     var firstInputs: [String?] { sink.events(named: "play_first_input").map { $0.parameters["trigger"] } }
     var firstInputSources: [String?] { sink.events(named: "play_first_input").map { $0.parameters["input_source"] } }
 
+    /// Each event's window layout as "orientation short_side window_mode".
+    func layouts(of name: String) -> [String] {
+        sink.events(named: name).map { event in
+            ["orientation", "screen_short_side", "window_mode"].map { event.parameters[$0] ?? "-" }.joined(separator: " ")
+        }
+    }
+
     func midi(cmd: Int, note: Int, velocity: Int) async throws {
         if !restoresMidiDriver {
             MidiManager.shared.overrideDriver(LaunchpadMK2Driver())
