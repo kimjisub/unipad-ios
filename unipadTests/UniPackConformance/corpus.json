@@ -2752,30 +2752,6 @@
         "leds": [],
         "autoPlay": null,
         "errors": []
-      },
-      "known": {
-        "web": {
-          "status": "fail",
-          "actual": {
-            "loaded": true,
-            "info": {
-              "title": "Conformance",
-              "producerName": "UniPad Conformance",
-              "buttonX": 4,
-              "buttonY": 3,
-              "chain": 2,
-              "squareButton": true
-            },
-            "sounds": [],
-            "keyLedExist": false,
-            "leds": [],
-            "autoPlay": null,
-            "errors": [
-              "keySound:format"
-            ]
-          },
-          "note": "The web parser reads the file as UTF-8, so the UTF-16 line is not a keySound line: one format warning, and the pack has no sound."
-        }
       }
     },
     {
@@ -7278,55 +7254,6 @@
         ],
         "autoPlay": null,
         "errors": []
-      },
-      "known": {
-        "web": {
-          "status": "fail",
-          "actual": {
-            "loaded": true,
-            "info": {
-              "title": "Conformance",
-              "producerName": "UniPad Conformance",
-              "buttonX": 4,
-              "buttonY": 3,
-              "chain": 2,
-              "squareButton": true
-            },
-            "sounds": [
-              {
-                "c": 0,
-                "x": 3,
-                "y": 2,
-                "queue": [
-                  {
-                    "file": "c.wav",
-                    "loop": 0,
-                    "wormhole": -1
-                  }
-                ]
-              }
-            ],
-            "keyLedExist": true,
-            "leds": [
-              {
-                "c": 0,
-                "x": 0,
-                "y": 0,
-                "queue": [
-                  {
-                    "loop": 1,
-                    "events": []
-                  }
-                ]
-              }
-            ],
-            "autoPlay": null,
-            "errors": [
-              "keyLed:format"
-            ]
-          },
-          "note": "The web parser drops an LED event outside the pad grid when it reads the file and records a format warning for each such line."
-        }
       }
     },
     {
@@ -10430,9 +10357,6 @@
           "note": "LEDs still lit are cleared on exit and no stale light is sent afterwards"
         }
       ],
-      "unobserved": {
-        "ios": "Leaving the play screen is a screen-level step on iOS: the main screen clears the Launchpad when it takes the MIDI controller back (MainView onChange -> MainViewModel.setupMidiController -> MainMidiControllerAdapter.onAttach -> sendClearLed) and the on-screen pads go away with the play view. The iOS harness drives the runners alone, where LedRunner.stop() only cancels the loop, so what a user sees after leaving is not measured. Not checked on a real Launchpad either."
-      },
       "expectation": "determined",
       "files": [
         {
@@ -10522,9 +10446,6 @@
           "note": "LEDs still lit are cleared on exit and no stale light is sent afterwards"
         }
       ],
-      "unobserved": {
-        "ios": "Leaving the play screen is a screen-level step on iOS: the main screen clears the Launchpad when it takes the MIDI controller back (MainView onChange -> MainViewModel.setupMidiController -> MainMidiControllerAdapter.onAttach -> sendClearLed) and the on-screen pads go away with the play view. The iOS harness drives the runners alone, where LedRunner.stop() only cancels the loop, so what a user sees after leaving is not measured. Not checked on a real Launchpad either."
-      },
       "expectation": "determined",
       "files": [
         {
@@ -10719,9 +10640,6 @@
           "note": "Events are executed sequentially from top to bottom; delay waits in milliseconds"
         }
       ],
-      "unobserved": {
-        "ios": "The iOS AutoPlayRunner reads the wall clock and sleeps in real time (currentTimeMillis, Task.sleep), so a scenario cannot be driven on a virtual clock without a product change."
-      },
       "expectation": "determined",
       "files": [
         {
@@ -10816,9 +10734,6 @@
           "note": "a stopped runner sends no more presses"
         }
       ],
-      "unobserved": {
-        "ios": "The iOS AutoPlayRunner reads the wall clock and sleeps in real time (currentTimeMillis, Task.sleep), so a scenario cannot be driven on a virtual clock without a product change."
-      },
       "expectation": "determined",
       "files": [
         {
@@ -11508,9 +11423,6 @@
           "note": "a hex-only `on` line carries velocity 4; the docs do not state the default"
         }
       ],
-      "unobserved": {
-        "ios": "The iOS AutoPlayRunner reads the wall clock and sleeps in real time (currentTimeMillis, Task.sleep), so a scenario cannot be driven on a virtual clock without a product change."
-      },
       "expectation": "determined",
       "files": [
         {
@@ -11672,9 +11584,6 @@
           "note": "a hex-only `on` line carries velocity 4; the docs do not state the default"
         }
       ],
-      "unobserved": {
-        "ios": "The iOS AutoPlayRunner reads the wall clock and sleeps in real time (currentTimeMillis, Task.sleep), so a scenario cannot be driven on a virtual clock without a product change."
-      },
       "expectation": "determined",
       "files": [
         {
