@@ -94,6 +94,51 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertTrue(faded.autoPlayExist)
     }
 
+    func testAutoplayRelaunchLibraryHasThePlaybackStopFixtureAndAFinishingFaded() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("autoplay-relaunch", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let packs = WorkspaceManager.unipackFolders(in: workspace).map { folder -> UniPackFolder in
+            let pack = UniPackFolder(rootFolder: folder)
+            pack.load()
+            pack.loadDetail()
+            XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+            return pack
+        }
+        XCTAssertEqual(packs.map(\.title).sorted(), ["Alan Walker - Faded", "Playback Stop Fixture"])
+
+        // The step check depends on the fixture's three separate groups, so the staged copy
+        // must keep its text files byte for byte.
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("unipadUITests/Fixtures/PlaybackStop")
+        let staged = root.appendingPathComponent("UniPack/PlaybackStop")
+        for name in ["info", "keySound", "autoPlay"] {
+            XCTAssertEqual(try Data(contentsOf: staged.appendingPathComponent(name)),
+                           try Data(contentsOf: fixture.appendingPathComponent(name)), name)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staged.appendingPathComponent("sounds/a.wav").path))
+
+        let faded = try XCTUnwrap(packs.first { $0.title == "Alan Walker - Faded" })
+        XCTAssertEqual([faded.buttonX, faded.buttonY, faded.chain], [8, 8, 6])
+        // Long enough to still be playing when the screen check looks for the transport,
+        // short enough to finish twice well inside its 240 s wait.
+        let autoPlay = try String(contentsOf: root.appendingPathComponent("UniPack/Faded/autoPlay"), encoding: .utf8)
+        let total = autoPlay.split(separator: "\n").compactMap { line -> Int? in
+            let parts = line.split(separator: " ")
+            return parts.first == "delay" ? Int(parts[1]) : nil
+        }.reduce(0, +)
+        XCTAssertTrue((10_000...60_000).contains(total), "autoplay lasts \(total) ms")
+        XCTAssertTrue(autoPlay.contains("chain 6"), "autoplay must reach the last chain")
+    }
+
     func testSearchLibraryHasTitlesAndProducersUsedByScreenChecks() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]

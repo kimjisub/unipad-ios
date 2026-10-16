@@ -65,6 +65,26 @@ nonisolated enum ReleaseTestSupport {
                 // The shared Faded sample's grid and chain count, with silent sounds.
                 try makePack(at: library.appendingPathComponent("Faded"), title: "Alan Walker - Faded",
                              producer: "Otarygen, 김지섭, K1A2", chains: 6)
+            case "autoplay-relaunch":
+                // unipadUITests/Fixtures/PlaybackStop, whose three single-pad groups the step check walks.
+                let stop = library.appendingPathComponent("PlaybackStop")
+                try makePack(at: stop, title: "Playback Stop Fixture")
+                for (name, contents) in [
+                    ("info", "title=Playback Stop Fixture\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\n"),
+                    ("keySound", "1 1 1 a.wav 50\n1 1 2 a.wav 3\n"),
+                    ("autoPlay", "on 1 1\noff 1 1\ndelay 10000\non 1 2\noff 1 2\ndelay 10000\non 1 3\noff 1 3\n"),
+                ] {
+                    try contents.write(to: stop.appendingPathComponent(name), atomically: true, encoding: .utf8)
+                }
+                try fm.moveItem(at: stop.appendingPathComponent("sounds/silence.wav"),
+                                to: stop.appendingPathComponent("sounds/a.wav"))
+                try fm.removeItem(at: stop.appendingPathComponent("keyLed"))
+                // The shared Faded sample's grid and chains, silent, with a song that walks every
+                // chain and ends in about 15 s so the relaunch check can wait for two full runs.
+                let faded = library.appendingPathComponent("Faded")
+                try makePack(at: faded, title: "Alan Walker - Faded", producer: "Otarygen, 김지섭, K1A2", chains: 6)
+                let song = (1...6).map { "chain \($0)\non 1 1\ndelay 1250\noff 1 1\non 1 2\ndelay 1250\noff 1 2\n" }
+                try song.joined().write(to: faded.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
             case "warning-sound", "warning-info", "warning-none":
