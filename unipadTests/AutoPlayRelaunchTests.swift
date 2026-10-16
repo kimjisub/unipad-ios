@@ -13,8 +13,14 @@ extension PlayUsageRecordTests {
                 #expect(s.vm.padItems[0][0]?.channel == .guide)
                 s.press()
                 s.release()
+                try await s.waitWhile { s.vm.padItems[0][1]?.channel != .guide }
+                try await Task.sleep(for: .milliseconds(50))
+                #expect(runner.active, "Step practice must wait for its last pad")
+                s.press(0, 1)
+                s.release(0, 1)
                 try await s.waitWhile { runner.active }
                 try #require(!runner.active)
+                #expect(s.vm.padItems[0][1]?.channel != .guide, "The last step must not stay lit after the end")
 
                 s.vm.switchPlayMode(.stepPractice)
                 try await s.waitWhile { s.vm.padItems[0][0]?.channel != .guide }
@@ -22,6 +28,9 @@ extension PlayUsageRecordTests {
                 #expect(s.vm.padItems[0][1]?.channel != .guide, "The previous final step must be cleared")
                 s.press()
                 s.release()
+                try await s.waitWhile { s.vm.padItems[0][1]?.channel != .guide }
+                s.press(0, 1)
+                s.release(0, 1)
                 try await s.waitWhile { runner.active }
                 #expect(!runner.active)
             }
