@@ -94,6 +94,14 @@ final class ExternalFileImportTests: XCTestCase {
     }
 
     func testNormalFromEmptyLibrary() throws { try open("Normal"); assertNormal() }
+
+    /// The pack folder sits next to a readme.txt at the top of the archive.
+    func testPackFolderBesideAReadmeImports() throws {
+        try open("BesideReadme")
+        XCTAssertEqual(title.label, "Pack imported!")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Beside Readme")
+        XCTAssertTrue(play.isHittable)
+    }
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
     func testNormalAfterPickerResult() throws { try importWithPicker(); try open("Normal"); assertNormal() }
