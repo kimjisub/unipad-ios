@@ -83,6 +83,7 @@ private final class ReleaseURLProtocol: URLProtocol, @unchecked Sendable {
                 throw URLError(.badURL)
             }
             let zip = try Data(contentsOf: root.appendingPathComponent("ReleaseFixture.zip"))
+            var status = 200
             let body: Data
             let contentType: String
             switch (url.host, url.path) {
@@ -92,9 +93,14 @@ private final class ReleaseURLProtocol: URLProtocol, @unchecked Sendable {
             case ("api.unipad.io", "/unishare/release-test/download"), ("release.invalid", "/pack.zip"):
                 body = zip
                 contentType = "application/zip"
+            case ("release.invalid", "/missing.zip"):
+                // A store entry whose file is gone from the server.
+                status = 404
+                body = Data()
+                contentType = "text/html"
             default: throw URLError(.unsupportedURL)
             }
-            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
                                            headerFields: ["Content-Type": contentType, "Content-Length": String(body.count)])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             if request.httpMethod != "HEAD" { client?.urlProtocol(self, didLoad: body) }
@@ -110,9 +116,10 @@ nonisolated struct ReleaseStore: FirestoreServiceProtocol {
     func fetchStoreItems() async throws -> [FirestoreStoreItem] {
         (0..<40).map { index in
             FirestoreStoreItem(id: index == 0 ? "release-test" : "release-test-\(index)",
-                               title: index == 0 ? "Downloaded Fixture" : "Store Fixture \(index)", producer: "Tests",
-                               downloadURL: "https://release.invalid/pack.zip", fileSize: 0,
-                               downloadCount: 0, isLED: true, isAutoPlay: true, timestamp: nil)
+                               title: index == 0 ? "Downloaded Fixture" : index == 1 ? "Missing Fixture" : "Store Fixture \(index)",
+                               producer: "Tests",
+                               downloadURL: index == 1 ? "https://release.invalid/missing.zip" : "https://release.invalid/pack.zip",
+                               fileSize: 0, downloadCount: 0, isLED: true, isAutoPlay: true, timestamp: nil)
         }
     }
     func fetchStoreItemCount() async throws -> Int { 40 }
