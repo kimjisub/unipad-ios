@@ -2,11 +2,6 @@
   "suite": "chain-release-v1",
   "schemaVersion": 1,
   "evidenceLevel": "authored-expectations-not-platform-results",
-  "approval": {
-    "issue": "JIS-325",
-    "revisionId": "b2e2b2fc-98b0-4564-ac97-cbe27b4aacab",
-    "commentId": "051f89a5-7015-46ad-845a-22da927f4b42"
-  },
   "coordinates": "one-based chain,x,y; pad=[x,y]",
   "isolation": "fresh pack, chain 1, empty playback and input state per case",
   "clock": "logical milliseconds from first press; drain due timers before checkpoint; sample duration 100ms",

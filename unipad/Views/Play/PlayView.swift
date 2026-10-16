@@ -20,6 +20,11 @@ struct PlayView: View {
         .background {
             Color.black.ignoresSafeArea()
         }
+        #if os(iOS)
+        .background {
+            WindowLayoutReader { vm.screenLayoutChanged($0) }
+        }
+        #endif
         .platformNavigationBarHidden(true)
         #if canImport(UIKit)
         .statusBarHidden(true)
@@ -200,7 +205,7 @@ struct PlayView: View {
             traceLogColor: theme.traceLogColor,
             traceLogClassic: traceLogClassic,
             onPadTouch: { x, y, isDown, inputID in
-                vm.padTouch(x: x, y: y, isDown: isDown, inputID: inputID)
+                vm.padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
             }
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)

@@ -158,7 +158,7 @@ private struct StoreListItemView: View {
             isBookmarked: false,
             isSelected: item.isToggle,
             flagColor: flagColor,
-            flagText: item.downloading ? item.playText : (item.isToggle ? (item.downloaded ? String(localized: "downloaded") : String(localized: "download")) : nil),
+            flagText: item.listFlagText,
             flagExpandedWidth: 100,
             indicatorFontSize: 12,
             onTap: onTap,
@@ -330,6 +330,17 @@ private struct StorePackPanel: View {
                         .background(Color(hex: 0xE8F5E9))
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                 } else {
+                    if item.downloadFailed {
+                        Text(String(localized: "failed"))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color(hex: 0xD32F2F))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(hex: 0xFFEBEE))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Spacer().frame(height: 8)
+                    }
                     Button(action: onDownload) {
                         Text(String(localized: "download"))
                             .font(.system(size: 14, weight: .medium))

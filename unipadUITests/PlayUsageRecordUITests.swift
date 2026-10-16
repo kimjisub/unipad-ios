@@ -12,9 +12,9 @@
 //      --predicate 'category == "AnalyticsLocal"' > analytics.log &
 //
 //  The app is launched with -UniPadFirebaseLocalOnly YES (UITestSupport), so nothing reaches
-//  Firebase. Needs a pack titled "JIS20 First Input Fixture" in the app's library (Documents/UniPack); the
+//  Firebase. Needs a pack titled "First Input Fixture" in the app's library (Documents/UniPack); the
 //  unit tests in PlayUsageRecordTests describe the same pack:
-//    info: title=JIS20 First Input Fixture, producerName=Tester, buttonX=8, buttonY=8, chain=1, squareButton=true
+//    info: title=First Input Fixture, producerName=Tester, buttonX=8, buttonY=8, chain=1, squareButton=true
 //    keySound: "1 1 1 a.wav", "1 1 2 a.wav", "1 1 3 a.wav"   sounds/a.wav: silent 16-bit PCM
 //    autoPlay: on 1 1 / delay 400 / on 1 2 / delay 400 / on 1 3
 //
@@ -25,7 +25,7 @@ import XCTest
 
 final class PlayUsageRecordUITests: XCTestCase {
 
-    private static let packTitle = "JIS20 First Input Fixture"
+    private static let packTitle = "First Input Fixture"
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
