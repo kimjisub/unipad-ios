@@ -8,16 +8,21 @@ final class AutoPlayRunnerTests: XCTestCase {
         var ends = 0
         var onFinish: (() -> Void)?
         var guidePads: [Int] = []
+        /// Guide pads on screen, as the play screen tracks them.
+        var litGuides: Set<Int> = []
         func onStart() { starts += 1 }
         func onEnd() { ends += 1; onFinish?() }
         func onPadTouchOn(x: Int, y: Int) {}
         func onPadTouchOff(x: Int, y: Int) {}
         func onChainChange(c: Int) {}
-        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) { guidePads.append(x * 256 + y) }
-        func onGuidePadOff(x: Int, y: Int) {}
+        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
+            guidePads.append(x * 256 + y)
+            litGuides.insert(x * 256 + y)
+        }
+        func onGuidePadOff(x: Int, y: Int) { litGuides.remove(x * 256 + y) }
         func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
         func onGuideChainOn(c: Int) {}
-        func onRemoveGuide() {}
+        func onRemoveGuide() { litGuides.removeAll() }
         func chainButsRefresh() {}
         func onProgressUpdate(progress: Int) {}
     }
@@ -52,33 +57,80 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertFalse(runner.active)
     }
 
-    func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
+    private func twoStepPack() -> UniPack {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [
             .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 100),
             .on(x: 0, y: 1, currChain: 0, num: 0),
         ])
-        let recorder = Recorder()
-        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver())
-        defer { runner.stop() }
+        return pack
+    }
+
+    private func startStepPractice(_ runner: AutoPlayRunner) {
         runner.practiceGuide = true
         runner.stepMode = true
         runner.playmode = false
         runner.launch()
+    }
+
+    func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
+        let recorder = Recorder()
+        let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder, chain: ChainObserver())
+        defer { runner.stop() }
+        startStepPractice(runner)
         try await wait { recorder.guidePads == [0] }
         runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.guidePads == [0, 1] }
+        runner.stepPadPressed(x: 0, y: 1)
         try await wait { recorder.ends == 1 }
-        XCTAssertEqual(recorder.guidePads, [0, 1])
         XCTAssertFalse(runner.active)
 
-        // Do not press the last pad: a new run must not inherit its pending step.
         runner.launch()
         try await wait { recorder.guidePads.count >= 3 }
         XCTAssertEqual(recorder.guidePads, [0, 1, 0])
         XCTAssertEqual(recorder.starts, 2)
         runner.stepPadPressed(x: 0, y: 0)
-        try await wait { recorder.ends == 2 }
+        try await wait { recorder.guidePads.count >= 4 }
         XCTAssertEqual(recorder.guidePads, [0, 1, 0, 1])
+        runner.stepPadPressed(x: 0, y: 1)
+        try await wait { recorder.ends == 2 }
+    }
+
+    func testStepPracticeEndsOnlyAfterTheLastGroupIsPressed() async throws {
+        let recorder = Recorder()
+        var ticks = 0
+        let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder, chain: ChainObserver(), sleep: {
+            ticks += 1
+            try await Task.sleep(nanoseconds: $0)
+        })
+        defer { runner.stop() }
+        startStepPractice(runner)
+        try await wait { recorder.guidePads == [0] }
+        runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.guidePads == [0, 1] }
+        let shown = ticks
+        try await wait { ticks >= shown + 5 || recorder.ends > 0 }
+        XCTAssertEqual(recorder.ends, 0, "The run ended before the last group was played")
+        XCTAssertTrue(runner.active)
+        XCTAssertEqual(recorder.litGuides, [1])
+
+        runner.stepPadPressed(x: 0, y: 1)
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.litGuides, [])
+        XCTAssertFalse(runner.active)
+    }
+
+    func testRunLeavingStepPracticeAtTheLastGroupTurnsItsGuidesOff() async throws {
+        let recorder = Recorder()
+        let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder, chain: ChainObserver())
+        defer { runner.stop() }
+        startStepPractice(runner)
+        try await wait { recorder.guidePads == [0] }
+        runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.guidePads == [0, 1] }
+        runner.stepMode = false
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.litGuides, [], "A finished run left its last guide lit")
     }
 
     func testMissingAutoplayCanLaunchAfterATableIsLoaded() async throws {

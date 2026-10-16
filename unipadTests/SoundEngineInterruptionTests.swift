@@ -10,56 +10,9 @@ import Testing
 /// through the same handler the system would call.
 @MainActor
 struct SoundEngineInterruptionTests {
-    final class StubPack: UniPack {
-        private let file: URL
-        override var id: String { "stub-pack" }
-
-        init(soundFile: URL) {
-            self.file = soundFile
-            super.init()
-            title = "stub"
-            buttonX = 1
-            buttonY = 1
-            chain = 1
-            var queue = Deque<Sound>()
-            queue.append(Sound(file: soundFile, loop: 0))
-            soundTable = [[[queue]]]
-            soundCount = 1
-        }
-
-        override func lastModified() -> TimeInterval { 0 }
-        override func loadInfo() -> UniPack { self }
-        override func loadDetail() -> UniPack { self }
-        override func checkFile() {}
-        override func delete() {}
-        override func getPathString() -> String { file.deletingLastPathComponent().path }
-        override func getByteSize() -> Int64 { 0 }
-    }
-
-    /// 100 ms of silence: the engine only has to be able to decode and schedule it.
-    private func writeSilentSound() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "SoundEngineInterruptionTests-\(UUID().uuidString).caf")
-        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
-        buffer.frameLength = 4_800
-        try file.write(from: buffer)
-        return url
-    }
-
-    private func makeLoadedEngine() async throws -> (SoundEngine, TestSoundLoadListener, StubPack) {
-        let url = try writeSilentSound()
-        let pack = StubPack(soundFile: url)
-        let listener = TestSoundLoadListener()
-        let engine = SoundEngine(unipack: pack, chain: ChainObserver(), loadingListener: listener)
-
-        // The loader runs on a utility queue and reports back on the main queue. Bounded wait.
-        let deadline = Date().addingTimeInterval(20)
-        while !listener.finished, Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        #expect(listener.finished, "the pack did not finish loading within 20 s")
+    private func makeLoadedEngine() async throws -> (SoundEngine, TestSoundLoadListener, OnePadPack) {
+        let pack = OnePadPack(soundFile: try SoundEngineTestSupport.writeSilentSound())
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
         #expect(listener.failure == nil)
         return (engine, listener, pack)
     }
@@ -184,9 +137,9 @@ struct SoundEngineInterruptionTests {
     /// A call or a route change while the pack opens must reach the engine, so the session is
     /// observed from the moment the engine exists, not once the worker has set it up.
     @Test func theSessionIsObservedBeforeItIsSetUp() async throws {
-        let url = try writeSilentSound()
+        let url = try SoundEngineTestSupport.writeSilentSound()
         let listener = TestSoundLoadListener()
-        let engine = SoundEngine(unipack: StubPack(soundFile: url), chain: ChainObserver(), loadingListener: listener)
+        let engine = SoundEngine(unipack: OnePadPack(soundFile: url), chain: ChainObserver(), loadingListener: listener)
         defer { engine.destroy() }
 
         #expect(engine.isObservingSession, "a call while the pack opened would have gone unheard")

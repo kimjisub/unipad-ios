@@ -88,7 +88,7 @@ actor UniPackDownloader {
             await delegate?.onImportStart()
 
             try await importer.extractOnly(at: archive, to: staged.packFolder)
-            try FileManagerExtensions.removeDoubleFolder(at: staged.packFolder)
+            try FileManagerExtensions.unwrapUniPackFolder(at: staged.packFolder)
 
             // Validate extracted pack. load() runs the case-insensitive checkFile; the exact-case
             // `info` pre-check that used to sit here rejected a pack named `Info` that imports fine.
