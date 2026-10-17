@@ -197,16 +197,9 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(engine.repeatedBuffersScheduled, 50)
     }
 
-    nonisolated private final class RenderCapture {
-        private let lock = NSLock()
-        private var samples: [Float] = []
-        func append(_ buffer: AVAudioPCMBuffer) {
-            guard let data = buffer.floatChannelData?[0] else { return }
-            lock.withLock { samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(buffer.frameLength))) }
-        }
-        var captured: [Float] { lock.withLock { samples } }
-    }
-
+    /// The engine renders offline, one sample length per call, on the main thread itself: the screen
+    /// stays busy for the whole render and nothing hinges on how fast the simulator plays audio.
+    /// Before each call the next repeat only has to be queued, which the scheduler does on its own queue.
     func testFiniteRepeatsRenderWithoutGapsWhileTheScreenIsBusy() throws {
         let engine = AVAudioEngine()
         let node = AVAudioPlayerNode()
@@ -217,23 +210,34 @@ final class PlaybackStopTests: XCTestCase {
         for channel in 0..<2 {
             for frame in 0..<480 { buffer.floatChannelData?[channel][frame] = 0.125 }
         }
+        try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 480)
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-        // Observe the rendered player output before the muted mixer; no test tone reaches speakers.
-        engine.mainMixerNode.outputVolume = 0
-        let capture = RenderCapture()
-        node.installTap(onBus: 0, bufferSize: 480, format: format) { buffer, _ in capture.append(buffer) }
         try engine.start()
         defer {
             scheduler.stop(node)
-            node.removeTap(onBus: 0)
             engine.stop()
         }
         XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 50) { failure in
             XCTAssertNil(failure)
         })
-        holdScreen()
-        let samples = capture.captured
+        let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 480))
+        var samples: [Float] = []
+        // Five sample lengths past the last repeat, so a late or extra repeat would still be rendered.
+        for step in 0..<55 {
+            if step < 50 {
+                let deadline = Date().addingTimeInterval(Self.silenceLimit)
+                while scheduler.buffersScheduled <= step {
+                    guard Date() < deadline else {
+                        return XCTFail("repeat \(step + 1) was not queued within \(Int(Self.silenceLimit)) s")
+                    }
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+            }
+            XCTAssertEqual(try engine.renderOffline(480, to: output), .success)
+            let data = try XCTUnwrap(output.floatChannelData?[0])
+            samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(output.frameLength)))
+        }
         let first = try XCTUnwrap(samples.firstIndex { abs($0) > 0.01 })
         let last = try XCTUnwrap(samples.lastIndex { abs($0) > 0.01 })
         let rendered = samples[first...last]

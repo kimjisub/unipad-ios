@@ -11,19 +11,60 @@ nonisolated enum FileManagerExtensions {
     /// Throws when an item cannot be moved up: the folder is then only partly unwrapped, and a pack
     /// accepted in that state is missing whatever stayed behind.
     static func removeDoubleFolder(at path: URL) throws {
-        let fm = FileManager.default
-        var current = path
-        while true {
-            guard let contents = try? fm.contentsOfDirectory(at: current, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
-            // Finder's `__MACOSX` sibling (and dot files) do not count as content: every pack zipped
-            // on a Mac used to fail to import because the root had two children.
-            let nonHidden = contents.filter { !$0.lastPathComponent.hasPrefix(".") && $0.lastPathComponent != "__MACOSX" }
-            guard nonHidden.count == 1,
-                  let single = nonHidden.first,
-                  (try? single.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { break }
-            try moveDirectory(from: single, to: current)
-            current = path
+        try unwrap(at: path) { visible in
+            guard visible.count == 1, let single = visible.first, isDirectory(single) else { return nil }
+            return single
         }
+    }
+
+    /// Unwraps an extracted UniPack to the folder that holds its `info` file. Wrapper folders are
+    /// removed as `removeDoubleFolder` does, and files or folders left beside the pack (a readme next
+    /// to the pack folder) are ignored as long as exactly one folder at that level leads to an
+    /// `info`. Two packs in one archive are left as they are, so the import reports that none is found.
+    static func unwrapUniPackFolder(at path: URL) throws {
+        try unwrap(at: path) { visible in
+            guard !visible.contains(where: { isInfoFile($0) }) else { return nil }
+            let folders = visible.filter(isDirectory)
+            if visible.count == 1 { return folders.first }
+            let leadingToInfo = folders.filter(containsInfoFile)
+            return leadingToInfo.count == 1 ? leadingToInfo.first : nil
+        }
+    }
+
+    /// Moves the contents of the folder `next` picks up into `path`, level by level, until it
+    /// picks none. `next` sees the folder's items without Finder's `__MACOSX` sibling and dot files:
+    /// every pack zipped on a Mac used to fail to import because the root had two children.
+    private static func unwrap(at path: URL, next: ([URL]) -> URL?) throws {
+        while true {
+            guard let contents = try? FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+            guard let wrapped = next(contents.filter { !isHiddenFromUnwrap($0) }) else { return }
+            try moveDirectory(from: wrapped, to: path)
+        }
+    }
+
+    private static func isHiddenFromUnwrap(_ url: URL) -> Bool {
+        url.lastPathComponent.hasPrefix(".") || url.lastPathComponent == "__MACOSX"
+    }
+
+    private static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+
+    /// The pack reader matches `info` without regard to case.
+    private static func isInfoFile(_ url: URL) -> Bool {
+        url.lastPathComponent.lowercased() == "info" && !isDirectory(url)
+    }
+
+    private static func containsInfoFile(_ folder: URL) -> Bool {
+        guard let items = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { return false }
+        for case let item as URL in items {
+            if item.lastPathComponent == "__MACOSX" {
+                items.skipDescendants()
+            } else if isInfoFile(item) {
+                return true
+            }
+        }
+        return false
     }
 
     static func makeNextPath(dir: URL, name: String, extension ext: String) -> URL {

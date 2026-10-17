@@ -4,12 +4,10 @@ The test bundle contains the unchanged shared corpus and its SHA-256. The harnes
 compares recorded output with the corpus expectations; it does not derive those
 expectations from the iOS implementation.
 
-The corpus's historical iOS `unobserved` annotations for `RUN-L-006`, `RUN-L-007`,
-`RUN-A-001`, `RUN-A-002`, `RUN-RP-003`, and `RUN-RP-004` predate the harness's
-virtual autoplay clock and screen-return observation. Only those six annotations
-are superseded by actual execution here. Other unobserved cases remain unverified.
-The shared report aggregator must also recognize this new evidence before its
-combined table can replace those historical annotations.
+`RUN-L-006`, `RUN-L-007`, `RUN-A-001`, `RUN-A-002`, `RUN-RP-003`, and `RUN-RP-004`
+were marked `unobserved` for iOS until the harness gained the virtual autoplay clock
+and the screen-return observation below; the corpus no longer marks them. A case the
+corpus does mark `unobserved` for iOS is reported unverified with its reason and not run.
 
 Autoplay uses the production `AutoPlayRunner`, with injected time reads and
 suspension. Each virtual advance waits until the task completes its tick and

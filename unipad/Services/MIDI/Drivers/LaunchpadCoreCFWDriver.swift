@@ -3,27 +3,36 @@ import Foundation
 /// Unified driver for Novation Launchpad devices running the "Launchpad Core Firmware" (CoreFW).
 /// Compatible with Launchpad Pro, MK2, S, Mini mk1, X, Mini MK3, and Pro MK3 running CoreFW.
 final class LaunchpadCoreCFWDriver: BaseMidiDriver {
+    /// How the device reads a note-on velocity as an LED colour.
+    enum LedColors {
+        /// Pro, MK2, X, Mini MK3 and Pro MK3: the velocity is an index into the device's palette.
+        case palette
+        /// Launchpad S and Mini mk1: red-green LEDs read the Launchpad S colour format.
+        case redGreen
+    }
+
     private static let channelLed = 0 // MIDI channel 1 (0x90)
     private static let statusNoteOn = 0x90 | channelLed
     private static let cinNoteOn = 0x09
 
+    private let ledColors: LedColors
+
+    init(ledColors: LedColors = .palette) {
+        self.ledColors = ledColors
+    }
+
+    /// CoreFW boots in its own performance mode, which is the layout this driver speaks. The stock
+    /// firmwares' mode and layout selection messages are left out so they cannot switch it away.
     override func getInitSysEx() -> (messages: [[UInt8]], cableNumber: Int)? {
         return (messages: [
-            // Pro: Enter Performance Mode + Clear canvas 
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x22, 0x03, 0xF7],
+            // Pro: set all LEDs to colour 0
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0E, 0x00, 0xF7],
-            // MK2: Enter Performance Mode + Clear canvas 
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x22, 0x01, 0xF7],
+            // MK2: set all LEDs to colour 0
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x0E, 0x00, 0xF7],
-            // X: Enter Performance Mode + Clear canvas
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x00, 0x7E, 0xF7],
+            // X: clear session, drum rack and CC LEDs
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x12, 0x01, 0x01, 0x01, 0xF7],
-            // Mini MK3: Enter Performance Mode + Clear canvas
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x00, 0x7E, 0xF7],
+            // Mini MK3: clear session and CC LEDs
             [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x12, 0x01, 0x00, 0x01, 0xF7],
-            // Pro MK3: Enter Performance Mode + Clear canvas
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x00, 0x14, 0x00, 0x00, 0xF7],
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x0E, 0x00, 0xF7],
         ], cableNumber: 0)
     }
 
@@ -69,7 +78,7 @@ final class LaunchpadCoreCFWDriver: BaseMidiDriver {
         guard (0...7).contains(x), (0...7).contains(y) else { return }
         let rowInverted = 7 - x
         let note = y < 4 ? 36 + rowInverted * 4 + y : 68 + rowInverted * 4 + (y - 4)
-        sendSignal(cmd: Self.cinNoteOn, sig: Self.statusNoteOn, note: note, velocity: velocity)
+        sendLed(note: note, velocity: velocity)
     }
 
     override func sendChainLed(c: Int, velocity: Int) {
@@ -88,7 +97,12 @@ final class LaunchpadCoreCFWDriver: BaseMidiDriver {
         case 32: note = 27
         default: return
         }
-        sendSignal(cmd: Self.cinNoteOn, sig: Self.statusNoteOn, note: note, velocity: velocity)
+        sendLed(note: note, velocity: velocity)
+    }
+
+    private func sendLed(note: Int, velocity: Int) {
+        let code = ledColors == .redGreen ? LaunchpadColor.sCodeClamped(velocity) : velocity
+        sendSignal(cmd: Self.cinNoteOn, sig: Self.statusNoteOn, note: note, velocity: code)
     }
 
     override func sendClearLed() {

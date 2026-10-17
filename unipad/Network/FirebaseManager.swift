@@ -391,6 +391,7 @@ final class FirebaseManager: ObservableObject {
         analytics.setUserProperty(value: "ios", forName: "platform")
         crashlytics.setCrashlyticsCollectionEnabled(true)
         crashlytics.log("Firebase app launch configured")
+        MetricKitExitSubscriber.start(reportingTo: crashlytics)
         Task { [remoteConfig] in
             await remoteConfig.configureForAppLaunch()
         }
