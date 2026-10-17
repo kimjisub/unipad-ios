@@ -362,17 +362,13 @@ class MultiTouchUIView: UIView {
     var columns: Int = 0
     var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
-    private enum Finger {
-        case onPad(row: Int, col: Int, id: UUID)
-        case besideThePads
-        /// Down when the pads moved on the screen (a turn, a window resize). It now rests over
-        /// another pad without having moved, so it plays nothing until it is lifted.
-        case fromBeforeThePadsMoved
-    }
-
-    private var fingers: [AnyHashable: Finger] = [:]
-    /// Where the pad grid sat on the physical screen when the fingers last saw it.
-    private var gridOnScreen: [CGPoint]?
+    private var activeFingers: [AnyHashable: (row: Int, col: Int, id: UUID)] = [:]
+    /// Every finger on the view, on a pad or beside the pads.
+    private var fingersDown: Set<AnyHashable> = []
+    /// Fingers that were down when the screen rotated or resized. They now rest over a different
+    /// pad without having moved, so they play nothing until they are lifted.
+    private var fingersFromBeforeTheScreenChanged: Set<AnyHashable> = []
+    private var screenGeometryObservation: NSKeyValueObservation?
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let col = Int((point.x - gridOrigin.x) / cellWidth)
@@ -381,13 +377,29 @@ class MultiTouchUIView: UIView {
         return (row, col)
     }
 
+    private var laidOutSize: CGSize?
+
+    // A 180° turn keeps the view's size, so no layout pass reports it; the scene's orientation does.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        screenGeometryObservation = window?.windowScene?.observe(\.effectiveGeometry, options: [.old, .new]) { [weak self] _, change in
+            guard let old = change.oldValue, let new = change.newValue,
+                  old.interfaceOrientation != new.interfaceOrientation else { return }
+            MainActor.assumeIsolated { self?.screenChanged() }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let laidOutSize, laidOutSize != bounds.size { screenChanged() }
+        laidOutSize = bounds.size
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        noticeThePadsMoving()
         for touch in touches { fingerDown(touch, at: touch.location(in: self)) }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        noticeThePadsMoving()
         for touch in touches { fingerMoved(touch, to: touch.location(in: self)) }
     }
 
@@ -405,66 +417,50 @@ class MultiTouchUIView: UIView {
     // itself on screen, so tests can drive several fingers without constructing touches.
 
     func fingerDown(_ finger: AnyHashable, at point: CGPoint) {
-        guard let (row, col) = padAt(point) else {
-            fingers[finger] = .besideThePads
-            return
-        }
-        press(finger, row: row, col: col)
+        fingersDown.insert(finger)
+        guard let (row, col) = padAt(point) else { return }
+        let id = UUID()
+        activeFingers[finger] = (row, col, id)
+        onPadTouch?(row, col, true, id)
     }
 
     func fingerMoved(_ finger: AnyHashable, to point: CGPoint) {
+        guard !fingersFromBeforeTheScreenChanged.contains(finger) else { return }
         let next = padAt(point)
-        switch fingers[finger] {
-        case .fromBeforeThePadsMoved:
+        let prev = activeFingers[finger]
+
+        if let prev, next == nil {
+            onPadTouch?(prev.row, prev.col, false, prev.id)
+            activeFingers.removeValue(forKey: finger)
             return
-        case .besideThePads, nil:
-            if let (row, col) = next { press(finger, row: row, col: col) }
-        case let .onPad(row, col, id):
-            guard next.map({ $0 != (row, col) }) ?? true else { return }
-            onPadTouch?(row, col, false, id)
-            if let (row, col) = next {
-                press(finger, row: row, col: col)
-            } else {
-                fingers[finger] = .besideThePads
-            }
+        }
+
+        guard let (row, col) = next else { return }
+        if let prev, (prev.row, prev.col) != (row, col) {
+            onPadTouch?(prev.row, prev.col, false, prev.id)
+            let id = UUID()
+            activeFingers[finger] = (row, col, id)
+            onPadTouch?(row, col, true, id)
+        } else if prev == nil {
+            let id = UUID()
+            activeFingers[finger] = (row, col, id)
+            onPadTouch?(row, col, true, id)
         }
     }
 
     func fingerUp(_ finger: AnyHashable) {
-        if case let .onPad(row, col, id) = fingers.removeValue(forKey: finger) {
-            onPadTouch?(row, col, false, id)
+        fingersDown.remove(finger)
+        fingersFromBeforeTheScreenChanged.remove(finger)
+        if let input = activeFingers.removeValue(forKey: finger) {
+            onPadTouch?(input.row, input.col, false, input.id)
         }
     }
 
-    private func press(_ finger: AnyHashable, row: Int, col: Int) {
-        let id = UUID()
-        fingers[finger] = .onPad(row: row, col: col, id: id)
-        onPadTouch?(row, col, true, id)
-    }
-
-    /// A finger stays still on the glass while the pads can move under it: the screen turns
-    /// (180° keeps the view's size), or an iPad window resizes and re-centres the grid. Comparing
-    /// the grid's corners in the screen's fixed coordinate space catches every such move.
-    func noticeThePadsMoving() {
-        guard let space = window?.windowScene?.screen.fixedCoordinateSpace else { return }
-        let corners = [gridOrigin,
-                       CGPoint(x: gridOrigin.x + cellWidth * CGFloat(columns), y: gridOrigin.y + cellHeight * CGFloat(rows))]
-            .map { convert($0, to: space) }
-        guard let gridOnScreen else {
-            gridOnScreen = corners
-            return
-        }
-        guard zip(gridOnScreen, corners).contains(where: { abs($0.x - $1.x) > 0.5 || abs($0.y - $1.y) > 0.5 }) else { return }
-        self.gridOnScreen = corners
-        padsMoved()
-    }
-
-    /// Releases every held pad; the fingers that were down start nothing until they are lifted.
-    func padsMoved() {
-        for (finger, state) in fingers {
-            if case let .onPad(row, col, id) = state { onPadTouch?(row, col, false, id) }
-            fingers[finger] = .fromBeforeThePadsMoved
-        }
+    /// Releases every held pad when the screen rotates or resizes under the fingers.
+    func screenChanged() {
+        fingersFromBeforeTheScreenChanged.formUnion(fingersDown)
+        for input in activeFingers.values { onPadTouch?(input.row, input.col, false, input.id) }
+        activeFingers.removeAll()
     }
 }
 
