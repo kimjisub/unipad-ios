@@ -68,6 +68,22 @@ extension PlayUsageRecordTests {
             #expect(wroteOnMain.withLock { $0 } == false, "the mapping ran on the main thread")
         }
 
+        /// A header claiming 0 Hz gave an infinite length that trapped; 20 Hz a wait thousands of
+        /// times too long. Such a sound gets no length, like one that cannot be opened.
+        @Test(arguments: [UInt32(0), 1, 20])
+        func aSoundWithAnImplausibleSampleRateGetsNoLength(sampleRate: UInt32) async throws {
+            let broken = try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: 4_410)
+            defer { try? FileManager.default.removeItem(at: broken) }
+            let pack = try MapperPack(keySound: "1 1 1 a.wav\n1 1 2 broken.wav\n1 1 3 a.wav\n", sounds: ["broken.wav": broken])
+            defer { pack.remove() }
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
+        }
+
         @Test func autoMappingCancelledBeforeWritingLeavesThePack() async throws {
             let pack = try MapperPack()
             defer { pack.remove() }
@@ -124,8 +140,11 @@ private struct MapperPack {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("AutoMapping-\(UUID().uuidString)")
     let unipack: UniPackFolder
 
-    init() throws {
-        try PlayUsageScenario.writePack(to: folder)
+    init(keySound: String = PlayUsageScenario.defaultKeySound, sounds: [String: URL] = [:]) throws {
+        try PlayUsageScenario.writePack(to: folder, keySound: keySound)
+        for (name, source) in sounds {
+            try FileManager.default.copyItem(at: source, to: folder.appending(path: "sounds/\(name)"))
+        }
         unipack = UniPackFolder(rootFolder: folder)
         unipack.load()
         unipack.loadDetail()
