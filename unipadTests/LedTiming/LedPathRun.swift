@@ -248,7 +248,7 @@ nonisolated private final class HandoverRecorder: LedRunner.Listener, @unchecked
 
     func onLedBatch(_ events: [LedRunner.LedEvent]) {
         // The intended timeline ends here too. Do not pass shutdown or late ticks on as pack LEDs.
-        guard let at = clock.now(), at <= Double(giveUpAtMs) else { return }
+        guard let at = clock.now(), at < Double(giveUpAtMs) else { return }
         lock.withLock {
             for event in events {
                 switch event {

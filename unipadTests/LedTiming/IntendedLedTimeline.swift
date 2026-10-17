@@ -60,7 +60,7 @@ nonisolated struct IntendedLedTimeline {
     /// moves the chain later presses and the final release use, as the play screen applies it.
     ///
     /// `pack` must be loaded for this alone: its multi-mapping queues rotate as the play screen's do.
-    /// `releaseAllAtMs` releases every pad on the last chain, as PlayViewModel.padInit does. Nothing after
+    /// `releaseAllAtMs` releases every pad on the last chain, as PlayViewModel.padInit does. Nothing at or after
     /// `giveUpAtMs` is played, as LedPathRun stops recording then: an endless animation no release
     /// reaches would otherwise run forever.
     static func of(_ pack: UniPack, releaseAllAtMs: Int64? = nil, giveUpAtMs: Int64 = .max) -> IntendedLedTimeline {
@@ -124,7 +124,7 @@ nonisolated private final class TimelineSimulation {
             }
             let animationDue = running.map(\.due).min() ?? .max
             let t = min(autoPlayDue, animationDue)
-            if t == .max || t > giveUpAtMs { break }
+            if t == .max || t >= giveUpAtMs { break }
 
             for animation in running where animation.due <= t { play(animation, at: t) }
             running.removeAll { !$0.playing }

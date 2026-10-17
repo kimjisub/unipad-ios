@@ -63,6 +63,16 @@ struct LedTimingTimelineTests {
         #expect(timeline.commands.map(\.ms) == [0, 50, 100])
     }
 
+    @Test func excludesCommandsDueExactlyAtTheGiveUpTime() throws {
+        let timeline = IntendedLedTimeline.of(try pack(
+            chains: 2,
+            keyLed: ["2 2 2 0": "o 2 2 a 9\nd 50\n"],
+            autoPlay: "c 2\no 2 2\nd 10\nc 1\n"
+        ), releaseAllAtMs: 20, giveUpAtMs: 100)
+
+        #expect(timeline.commands.map(\.ms) == [0, 50])
+    }
+
     /// LedRunner keeps playing an endless animation without delays one pass a tick; it still owns its LED until released.
     @Test func releasesAnEndlessAnimationWithoutDelays() throws {
         let timeline = IntendedLedTimeline.of(try pack(
@@ -111,7 +121,7 @@ final class LedTimingTests: XCTestCase {
             autoPlay: "c 2\no 2 2\nd 10\nc 1\n", releaseAll: 100, giveUp: 625
         )
         XCTAssertFalse(recording.toDriver.isEmpty)
-        XCTAssertTrue(recording.handedOver.allSatisfy { $0.ms <= 625 }, "handover continued past give-up")
+        XCTAssertTrue(recording.handedOver.allSatisfy { $0.ms < 625 }, "handover continued past give-up")
         // T1 may be later while a batch accepted before the cutoff drains to the main actor.
         XCTAssertEqual(recording.toDriver.count, recording.handedOver.count)
         assertDelivered(recording)
