@@ -433,13 +433,18 @@ class MultiTouchUIView: UIView {
     /// `previous` is where the finger was at its last event, measured against where the view is
     /// now; leaving it out means the view has not moved since.
     func fingerMoved(_ finger: AnyHashable, to point: CGPoint, from previous: CGPoint? = nil) {
-        if let previous, let seenAt = fingers[finger]?.seenAt,
-           abs(previous.x - seenAt.x) > 1 || abs(previous.y - seenAt.y) > 1 {
+        // A resting finger plays nothing until it is lifted, so it is not compared: its first move
+        // after the pads moved would read as the pads moving again and release the newer fingers.
+        if let previous, let seen = fingers[finger], !seen.restsSinceThePadsMoved,
+           abs(previous.x - seen.seenAt.x) > 1 || abs(previous.y - seen.seenAt.y) > 1 {
             screenChanged()
         }
         var state = fingers[finger] ?? Finger(seenAt: point)
-        guard !state.restsSinceThePadsMoved else { return }
         state.seenAt = point
+        guard !state.restsSinceThePadsMoved else {
+            fingers[finger] = state
+            return
+        }
         let next = padAt(point)
         if let held = state.pad, next.map({ $0 != (held.row, held.col) }) ?? true {
             onPadTouch?(held.row, held.col, false, held.id)
@@ -459,7 +464,8 @@ class MultiTouchUIView: UIView {
     func screenChanged() {
         for (finger, state) in fingers {
             if let held = state.pad { onPadTouch?(held.row, held.col, false, held.id) }
-            fingers[finger] = Finger(seenAt: state.seenAt, pad: nil, restsSinceThePadsMoved: true)
+            fingers[finger]?.pad = nil
+            fingers[finger]?.restsSinceThePadsMoved = true
         }
     }
 

@@ -371,6 +371,37 @@ final class MultiTouchPlayTests: XCTestCase {
         }
     }
 
+    // A finger resting since the screen changed never stays perfectly still, and its first move
+    // reports a previous position from before the change. That is not the pads moving again: a
+    // pad pressed since then keeps playing.
+    func testRestingFingerTremblingKeepsANewerPadPlaying() async throws {
+        try await withScreen { screen in
+            let held = Pad(2, 2), mirrored = Pad(5, 5), pressed = Pad(4, 6)
+            screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(held)) }
+            screen.input { screen.pads.screenChanged() }
+            XCTAssertEqual(screen.input { screen.pads.fingerDown(2, at: PlayScreen.center(pressed)) }, [pressed])
+            let rest = PlayScreen.center(mirrored)
+            let trembled = screen.input {
+                screen.pads.fingerMoved(1, to: rest, from: rest)
+                screen.pads.fingerMoved(1, to: CGPoint(x: rest.x + 0.5, y: rest.y), from: rest)
+                screen.pads.fingerMoved(1, to: rest, from: CGPoint(x: rest.x + 0.5, y: rest.y))
+            }
+            XCTAssertEqual(trembled, [], "a resting finger started the pad under it")
+            XCTAssertEqual(screen.sounding, [pressed], "a resting finger's tremble stopped a newer pad")
+            XCTAssertEqual(screen.lit, [pressed], "a resting finger's tremble darkened a newer pad")
+            let dragged = Pad(4, 7)
+            XCTAssertEqual(screen.input {
+                screen.pads.fingerMoved(2, to: PlayScreen.center(dragged), from: PlayScreen.center(pressed))
+            }, [dragged], "the newer finger no longer drags across the pads")
+            screen.input {
+                screen.pads.fingerUp(1)
+                screen.pads.fingerUp(2)
+            }
+            XCTAssertEqual(screen.sounding, [])
+            XCTAssertEqual(screen.lit, [])
+        }
+    }
+
     // I: the pad view also receives a finger that rests beside the pads.
     func testFingerOffThePadsIsSilentAndDoesNotDisturbPlaying() async throws {
         try await withScreen { screen in
