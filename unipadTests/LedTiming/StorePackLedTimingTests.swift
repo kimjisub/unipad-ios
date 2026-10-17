@@ -81,7 +81,7 @@ final class StorePackLedTimingTests: XCTestCase {
         for name in names {
             let source = try XCTUnwrap(try packSources().first { $0.lastPathComponent == name }, "\(name) is not in the packs folder")
             let root = try XCTUnwrap(LedTimingPackFiles.packRoot(in: source), "no info file in \(source.path)")
-            let timeline = Self.timeline(for: LedTimingPackFiles.load(root))
+            let timeline = try Self.measurementTimeline(in: root)
             let releaseAll = timeline.autoPlayLengthMs + Self.tailMs
             let recording = try await LedPathRun(pack: LedTimingPackFiles.load(root), midiArrivals: LedTimingOptions.midiArrivals)
                 .run(releaseAllAtMs: releaseAll, giveUpAtMs: releaseAll + Self.giveUpAfterMs)
@@ -92,6 +92,10 @@ final class StorePackLedTimingTests: XCTestCase {
             }
         }
         XCTAssertTrue(failed.isEmpty, "reordered, missing or extra commands: \(failed)")
+    }
+
+    static func measurementTimeline(in root: URL) throws -> IntendedLedTimeline {
+        timeline(for: LedTimingPackFiles.load(root))
     }
 
     /// The timeline LedPathRun is compared with: every pad released `tailMs` after autoplay ends, and

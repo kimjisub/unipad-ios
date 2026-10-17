@@ -94,6 +94,61 @@ struct LedTimingTimelineTests {
 /// the commands also go out as MIDI to a virtual Launchpad MK2, which must receive all of them in order.
 @MainActor
 final class LedTimingTests: XCTestCase {
+    func testKeyLedChainChangeDoesNotCountRepaintsAsRunnerCommands() async throws {
+        let recording = try await record(
+            keyLed: ["1 1 1 1": "o 1 1 a 5\nd 20\nc 2\nd 20\nf 1 1\n"],
+            autoPlay: "o 1 1\n", releaseAll: 200, giveUp: 1000
+        )
+        XCTAssertEqual(recording.handedOver.count, 2)
+        XCTAssertEqual(recording.toDriver.map(\.code), [5, 0])
+        XCTAssertGreaterThanOrEqual(recording.repaints, 24)
+        assertDelivered(recording)
+    }
+
+    func testUnreleasedAnimationIsNotRecordedAfterGiveUp() async throws {
+        let recording = try await record(
+            keyLed: ["2 2 2 0": "o 2 2 a 9\nd 50\n"],
+            autoPlay: "c 2\no 2 2\nd 10\nc 1\n", releaseAll: 100, giveUp: 625
+        )
+        XCTAssertFalse(recording.toDriver.isEmpty)
+        XCTAssertTrue(recording.handedOver.allSatisfy { $0.ms <= 625 }, "handover continued past give-up")
+        XCTAssertTrue(recording.toDriver.allSatisfy { $0.ms <= 625 }, "driver recording continued past give-up")
+        assertDelivered(recording)
+    }
+
+    func testMeasurementRejectsUnreadableOrUnplayablePacks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("LedTimingInvalid-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertThrowsError(try StorePackLedTimingTests.measurementTimeline(in: root))
+        for missing in ["autoPlay", "keyLed", "info"] {
+            _ = try LedTimingPackFiles.write(to: root, buttons: 8,
+                                        keyLed: ["1 1 1 1": "o 1 1 a 5\n"], autoPlay: "o 1 1\n")
+            try FileManager.default.removeItem(at: root.appendingPathComponent(missing))
+            XCTAssertThrowsError(try StorePackLedTimingTests.measurementTimeline(in: root), missing)
+            try FileManager.default.removeItem(at: root)
+        }
+        _ = try LedTimingPackFiles.write(to: root, buttons: 8,
+                                    keyLed: ["1 1 1 1": "o 1 1 a 5\n"], autoPlay: "d 10\n")
+        XCTAssertThrowsError(try StorePackLedTimingTests.measurementTimeline(in: root), "no LED commands")
+    }
+
+    private func record(keyLed: [String: String], autoPlay: String, releaseAll: Int64, giveUp: Int64) async throws -> LedPathRecording {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("LedTimingPath-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try LedTimingPackFiles.write(to: root, buttons: 8, keyLed: keyLed, autoPlay: autoPlay, chains: 2)
+        return try await LedPathRun(pack: LedTimingPackFiles.load(root), midiArrivals: LedTimingOptions.midiArrivals)
+            .run(releaseAllAtMs: releaseAll, giveUpAtMs: giveUp)
+    }
+
+    private func assertDelivered(_ recording: LedPathRecording, file: StaticString = #filePath, line: UInt = #line) {
+        let comparison = LedTimingComparison(expected: recording.handedOver, arrived: recording.toDriver)
+        XCTAssertTrue(comparison.orderedAndComplete, comparison.differences.joined(separator: "\n"), file: file, line: line)
+        if let departed = recording.departed {
+            let midi = LedTimingComparison(expected: recording.toMidi, arrived: departed)
+            XCTAssertTrue(midi.orderedAndComplete, midi.differences.joined(separator: "\n"), file: file, line: line)
+        }
+    }
+
     /// 63 pads pressed 5 ms apart for ten rounds, each flashing itself every millisecond for 40 ms
     /// (repeating a colour, as packs do), the top row also lighting a round LED, and one endless
     /// animation released halfway: about 8,000 commands a second at peak. No two animations touch the
