@@ -14,6 +14,10 @@ struct ConformanceKnown {
     let status: String
     let actual: JSONValue
     let note: String
+    /// The same difference as the platform gives it elsewhere (another file system, say).
+    var otherActuals: [JSONValue] = []
+
+    func matches(_ result: JSONValue) -> Bool { result == actual || otherActuals.contains(result) }
 }
 
 struct ConformanceCase {
@@ -122,7 +126,8 @@ struct ConformanceCorpus {
             }
             let known = (value["known"]?.object ?? [:]).compactMapValues { pin -> ConformanceKnown? in
                 guard let status = pin["status"]?.string, let actual = pin["actual"], let note = pin["note"]?.string else { return nil }
-                return ConformanceKnown(status: status, actual: actual, note: note)
+                let others = (pin["otherActuals"]?.array ?? []).compactMap { $0.object?["actual"] }
+                return ConformanceKnown(status: status, actual: actual, note: note, otherActuals: others)
             }
             return ConformanceCase(
                 id: id, layer: layer, title: title,
@@ -205,7 +210,7 @@ extension ConformanceCase {
                 : ConformanceOutcome(status: ConformanceStatus.pass.rawValue, unexpected: true, detail: "a pinned difference no longer occurs; update divergences.json")
         }
         if let pin {
-            return actual == pin.actual
+            return pin.matches(actual)
                 ? ConformanceOutcome(status: pin.status, unexpected: false, detail: pin.note)
                 : ConformanceOutcome(status: ConformanceStatus.fail.rawValue, unexpected: true, detail: "the result changed from the pinned difference")
         }

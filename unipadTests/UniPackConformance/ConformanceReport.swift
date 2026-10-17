@@ -83,7 +83,7 @@ final class ConformanceReport: @unchecked Sendable {
         let report = JSONValue.object([
             "platform": .string(ConformanceCorpus.platform), "corpusSha256": .string(corpus.sha256), "corpusSource": .string(corpus.source),
             "generatedAt": .string(ISO8601DateFormatter().string(from: Date())), "assertions": .string(Self.assertions),
-            "cases": .array(cases),
+            "caseSensitiveFileSystem": .bool(ConformanceHarness.caseSensitiveFileSystem), "cases": .array(cases),
         ])
         write(report)
     }
