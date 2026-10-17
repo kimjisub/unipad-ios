@@ -90,6 +90,10 @@
 "hideUI" = "UI 숨기기";
 "watermark" = "워터마크";
 "proLightMode" = "프로 라이트 모드";
+"play_section_play_mode" = "연주 모드";
+"play_section_performance" = "효과";
+"play_section_display" = "화면";
+"play_section_tools" = "도구";
 
 /* Version */
 "update_available" = "업데이트 가능";
