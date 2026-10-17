@@ -160,7 +160,7 @@ final class AutoPlayRunner {
             var startTime = self.clock()
             var prevPracticeGuide = self.practiceGuide
 
-            while self.progress < autoPlay.elements.count && !Task.isCancelled {
+            while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
                 let currTime = self.clock()
 
                 // Detect mid-run practice mode toggle
@@ -242,10 +242,7 @@ final class AutoPlayRunner {
                                 for key in expired { guides.removeValue(forKey: key) }
                                 if throttle { self.lastGuideUpdateMs = currTime }
                             }
-                            for key in expired {
-                                self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
-                                self.listener?.onGuidePadOff(x: key / 256, y: key % 256)
-                            }
+                            for key in expired { self.turnOffGuide(key) }
                             for update in ledUpdates {
                                 self.listener?.onGuideLedUpdate(x: update.key / 256, y: update.key % 256, velocity: update.velocity)
                             }
@@ -339,6 +336,7 @@ final class AutoPlayRunner {
 
             // stop() already reset the UI; a cancelled run must not post another onEnd after it.
             guard !Task.isCancelled else { return }
+            self.turnOffRemainingGuides()
             self.task = nil
             self.listener?.onEnd()
         }
@@ -352,6 +350,23 @@ final class AutoPlayRunner {
         task = nil
         withGuides { $0.removeAll() }
         resetStepState()
+    }
+
+    /// The scan of the last step group reaches the end of the table before the user plays it.
+    private var awaitsLastStep: Bool {
+        !playmode && stepMode && practiceGuide && !_stepPendingPads.isEmpty
+    }
+
+    private func turnOffGuide(_ key: Int) {
+        listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
+        listener?.onGuidePadOff(x: key / 256, y: key % 256)
+    }
+
+    /// A run that ends on its own leaves no guide lit, on screen or on the launchpad.
+    private func turnOffRemainingGuides() {
+        let keys = drainGuides() + _stepPendingPads
+        _stepPendingPads.removeAll()
+        for key in keys { turnOffGuide(key) }
     }
 
     private func handleBeforeStartPlaying() {
@@ -401,10 +416,7 @@ final class AutoPlayRunner {
             }
         }
 
-        for key in removedKeys {
-            listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
-            listener?.onGuidePadOff(x: key / 256, y: key % 256)
-        }
+        for key in removedKeys { turnOffGuide(key) }
     }
 
     private func stepScanNext(autoPlay: AutoPlay) {
