@@ -84,6 +84,26 @@ extension PlayUsageRecordTests {
             #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
         }
 
+        /// Waits that add up past Int32.max are written as several lines the pack reader accepts,
+        /// so the pack reloads with the whole wait.
+        @Test func aWaitLongerThanTheReaderTakesIsSplit() async throws {
+            let pack = try MapperPack(autoPlay: "d 2147483647\nd 2147483647\nd 5\non 1 1\nd 2147483647\nd 1\n")
+            defer { pack.remove() }
+            let totalDelay = { pack.unipack.autoPlayTable?.elements.reduce(0) { sum, element in
+                if case .delay(let d) = element { sum + d } else { sum }
+            } }
+            let before = try #require(totalDelay())
+            let errorsBefore = pack.unipack.errorDetail
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "d 2147483647\nd 2147483647\nd 5\nt 1 1\nd 60\nd 2147483647\nd 1\n")
+            #expect(pack.unipack.errorDetail == errorsBefore, "the pack reader refused the mapped autoPlay")
+            #expect(totalDelay() == before + 60)
+        }
+
         @Test func autoMappingCancelledBeforeWritingLeavesThePack() async throws {
             let pack = try MapperPack()
             defer { pack.remove() }
@@ -140,8 +160,12 @@ private struct MapperPack {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("AutoMapping-\(UUID().uuidString)")
     let unipack: UniPackFolder
 
-    init(keySound: String = PlayUsageScenario.defaultKeySound, sounds: [String: URL] = [:]) throws {
-        try PlayUsageScenario.writePack(to: folder, keySound: keySound)
+    init(
+        keySound: String = PlayUsageScenario.defaultKeySound,
+        autoPlay: String = PlayUsageScenario.defaultAutoPlay,
+        sounds: [String: URL] = [:]
+    ) throws {
+        try PlayUsageScenario.writePack(to: folder, keySound: keySound, autoPlay: autoPlay)
         for (name, source) in sounds {
             try FileManager.default.copyItem(at: source, to: folder.appending(path: "sounds/\(name)"))
         }
