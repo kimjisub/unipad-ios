@@ -123,10 +123,15 @@ final class UniPackAutoMapper {
         try replacer.replace(autoPlayFile, with: result.joined(separator: "\n") + "\n")
     }
 
+    /// The header's sample rate divides the frame count: at 0 Hz the length is infinite and
+    /// converting it traps, at 20 Hz it is thousands of times too long.
     private nonisolated static func audioDurationMs(url: URL) throws -> Int {
         let audioFile = try AVAudioFile(forReading: url)
-        let duration = Double(audioFile.length) / audioFile.processingFormat.sampleRate * 1000
-        return Int(duration)
+        let sampleRate = audioFile.processingFormat.sampleRate
+        guard SoundFileLimits.sampleRates.contains(sampleRate) else {
+            throw SoundFileLimits.Violation.implausibleSampleRate(sampleRate)
+        }
+        return Int(Double(audioFile.length) / sampleRate * 1000)
     }
 }
 
