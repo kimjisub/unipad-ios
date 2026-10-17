@@ -20,6 +20,9 @@ nonisolated enum ReleaseTestSupport {
     @MainActor static func prepare() throws {
         guard let root else { return }
         let fm = FileManager.default
+        if UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token {
+            try removeStalePickerFixtures(keeping: token)
+        }
         guard !fm.fileExists(atPath: root.path) else { return }
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         let library = root.appendingPathComponent("UniPack")
@@ -44,6 +47,22 @@ nonisolated enum ReleaseTestSupport {
         // The system file picker exposes Documents, not the test's private workspace.
         if UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token {
             try fm.copyItem(at: archive, to: WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseFixture-\(token).zip"))
+        }
+    }
+
+    private static func removeStalePickerFixtures(keeping token: String) throws {
+        let fm = FileManager.default
+        let prefix = "ReleaseFixture-"
+        let currentName = "\(prefix)\(token).zip"
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey]
+        for url in try fm.contentsOfDirectory(at: WorkspaceManager.documentsDirectory,
+                                              includingPropertiesForKeys: Array(keys)) {
+            let name = url.lastPathComponent
+            guard name != currentName, name.hasPrefix(prefix), url.pathExtension == "zip",
+                  UUID(uuidString: String(url.deletingPathExtension().lastPathComponent.dropFirst(prefix.count))) != nil else { continue }
+            let values = try url.resourceValues(forKeys: keys)
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            try fm.removeItem(at: url)
         }
     }
 
