@@ -34,6 +34,11 @@ nonisolated struct LedTimingComparison {
 
     var orderedAndComplete: Bool { reordered == 0 && missing == 0 && extra == 0 }
 
+    /// A cutoff can leave an unobserved tail, but must never hide reordered or extra commands.
+    func hasUnexpectedDifferences(allowMissingTail: Bool) -> Bool {
+        reordered > 0 || extra > 0 || (!allowMissingTail && missing > 0)
+    }
+
     private var sorted: [Double] { latencies.map(\.ms).sorted() }
     var median: Double { Self.percentile(sorted, 50) }
     var p95: Double { Self.percentile(sorted, 95) }

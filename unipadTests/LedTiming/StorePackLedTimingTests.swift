@@ -90,9 +90,9 @@ final class StorePackLedTimingTests: XCTestCase {
             let measurement = LedTimingMeasurement(name: name, timeline: timeline, recording: recording)
             report(measurement.describe(), as: "\(name).txt")
             let comparison = measurement.packToDriver
-            let incomplete = measurement.assessesPackCompleteness && comparison.missing > 0
-            if recording.handedOver.isEmpty || !measurement.deliveredAsHandedOver || comparison.reordered > 0
-                || comparison.extra > 0 || incomplete || measurement.deliveredToMidi == false {
+            if recording.handedOver.isEmpty || !measurement.deliveredAsHandedOver
+                || comparison.hasUnexpectedDifferences(allowMissingTail: !measurement.assessesPackCompleteness)
+                || measurement.deliveredToMidi == false {
                 failed.append(name)
             }
         }
