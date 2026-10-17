@@ -64,7 +64,7 @@ nonisolated struct LedTimingMeasurement {
         if let cutoff = recording.cutoffMs {
             lines.append("  observation stopped at \(cutoff) ms; whole-pack completeness not assessed")
             lines.append("  partial pack -> driver: matched \(pack.matched), reordered \(pack.reordered), "
-                + "unmatched intended \(pack.missing), extra \(pack.extra), repaints \(recording.repaints)")
+                + "unmatched intended \(pack.missing), missing before last match \(pack.missingBeforeLastMatch), extra \(pack.extra), repaints \(recording.repaints)")
         } else {
             lines.append("  pack -> driver: matched \(pack.matched), reordered \(pack.reordered), missing \(pack.missing), extra \(pack.extra), "
                 + "covered \(recording.covered), overtaken by more than \(Int(LedTimingComparison.overtakeMs)) ms \(pack.overtaken), "
