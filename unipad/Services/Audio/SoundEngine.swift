@@ -346,12 +346,11 @@ final class SoundEngine {
             return input
         }
 
+        let outCapacity = try SoundFileLimits.resampledFrameCount(
+            input.frameLength, from: input.format.sampleRate, to: targetFormat.sampleRate)
         guard let converter = AVAudioConverter(from: input.format, to: targetFormat) else {
             throw SoundEngineError.converterCreationFailed
         }
-
-        let ratio = targetFormat.sampleRate / input.format.sampleRate
-        let outCapacity = AVAudioFrameCount((Double(input.frameLength) * ratio).rounded(.up)) + 1
         guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCapacity) else {
             throw SoundEngineError.bufferCreationFailed
         }

@@ -53,6 +53,27 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
+    /// A header that claims 20 Hz made a short sound resample into gigabytes at the device rate and
+    /// the app run out of memory; that sound is now skipped like any other it cannot decode.
+    @Test func aSoundWithAnImplausibleSampleRateIsSkippedAndTheNextOnePlays() async throws {
+        let implausible = try SoundEngineTestSupport.writeWav(sampleRate: 20, frames: 4_410)
+        let good = try SoundEngineTestSupport.writeWav(sampleRate: 44_100, frames: 4_410)
+        let pack = OnePadPack(chains: [[Sound(file: implausible, loop: 0), Sound(file: good, loop: 0)]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil, "one decodable sound is enough to open the pack")
+
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 0, "the 20 Hz sound was resampled and played")
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
+    @Test(arguments: [UInt32(44_100), 48_000])
+    func aPlainWavPlays(sampleRate: UInt32) async throws {
+        try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10))
+    }
+
     /// M4A (AAC) sounds are used by real packs although the format guide does not list them.
     @Test func anM4ASoundPlays() async throws {
         try await expectPlays(try fixture("aac-tone", "m4a"))

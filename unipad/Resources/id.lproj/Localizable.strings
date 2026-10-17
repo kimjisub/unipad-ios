@@ -90,6 +90,10 @@
 "hideUI" = "Sembunyikan UI";
 "watermark" = "Tanda air";
 "proLightMode" = "Mode Pro Light";
+"play_section_play_mode" = "Mode Bermain";
+"play_section_performance" = "Pertunjukan";
+"play_section_display" = "Tampilan";
+"play_section_tools" = "Alat";
 
 /* Version */
 "update_available" = "Pembaruan tersedia";
