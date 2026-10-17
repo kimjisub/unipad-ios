@@ -90,6 +90,10 @@
 "hideUI" = "Masquer l'interface";
 "watermark" = "Filigrane";
 "proLightMode" = "Mode Pro Light";
+"play_section_play_mode" = "Mode de jeu";
+"play_section_performance" = "Performance";
+"play_section_display" = "Affichage";
+"play_section_tools" = "Outils";
 
 /* Version */
 "update_available" = "Mise à jour disponible";
