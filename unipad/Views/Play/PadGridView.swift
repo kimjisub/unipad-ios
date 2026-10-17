@@ -363,12 +363,36 @@ class MultiTouchUIView: UIView {
     var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
     private var activeFingers: [AnyHashable: (row: Int, col: Int, id: UUID)] = [:]
+    /// Every finger on the view, on a pad or beside the pads.
+    private var fingersDown: Set<AnyHashable> = []
+    /// Fingers that were down when the screen rotated or resized. They now rest over a different
+    /// pad without having moved, so they play nothing until they are lifted.
+    private var fingersFromBeforeTheScreenChanged: Set<AnyHashable> = []
+    private var screenGeometryObservation: NSKeyValueObservation?
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let col = Int((point.x - gridOrigin.x) / cellWidth)
         let row = Int((point.y - gridOrigin.y) / cellHeight)
         guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
         return (row, col)
+    }
+
+    private var laidOutSize: CGSize?
+
+    // A 180° turn keeps the view's size, so no layout pass reports it; the scene's orientation does.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        screenGeometryObservation = window?.windowScene?.observe(\.effectiveGeometry, options: [.old, .new]) { [weak self] _, change in
+            guard let old = change.oldValue, let new = change.newValue,
+                  old.interfaceOrientation != new.interfaceOrientation else { return }
+            MainActor.assumeIsolated { self?.screenChanged() }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let laidOutSize, laidOutSize != bounds.size { screenChanged() }
+        laidOutSize = bounds.size
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -393,6 +417,7 @@ class MultiTouchUIView: UIView {
     // itself on screen, so tests can drive several fingers without constructing touches.
 
     func fingerDown(_ finger: AnyHashable, at point: CGPoint) {
+        fingersDown.insert(finger)
         guard let (row, col) = padAt(point) else { return }
         let id = UUID()
         activeFingers[finger] = (row, col, id)
@@ -400,6 +425,7 @@ class MultiTouchUIView: UIView {
     }
 
     func fingerMoved(_ finger: AnyHashable, to point: CGPoint) {
+        guard !fingersFromBeforeTheScreenChanged.contains(finger) else { return }
         let next = padAt(point)
         let prev = activeFingers[finger]
 
@@ -423,9 +449,18 @@ class MultiTouchUIView: UIView {
     }
 
     func fingerUp(_ finger: AnyHashable) {
+        fingersDown.remove(finger)
+        fingersFromBeforeTheScreenChanged.remove(finger)
         if let input = activeFingers.removeValue(forKey: finger) {
             onPadTouch?(input.row, input.col, false, input.id)
         }
+    }
+
+    /// Releases every held pad when the screen rotates or resizes under the fingers.
+    func screenChanged() {
+        fingersFromBeforeTheScreenChanged.formUnion(fingersDown)
+        for input in activeFingers.values { onPadTouch?(input.row, input.col, false, input.id) }
+        activeFingers.removeAll()
     }
 }
 

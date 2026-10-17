@@ -291,6 +291,43 @@ final class MultiTouchPlayTests: XCTestCase {
         }
     }
 
+    // The screen turns 180° or resizes under held fingers: each finger now rests over another pad
+    // without having moved. The pads they held are released, and those fingers start nothing until
+    // lifted. The scene geometry observer that calls `screenChanged` is covered by the UI test.
+    func testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing() async throws {
+        try await withScreen { screen in
+            let held = Pad(2, 2), mirrored = Pad(5, 5), beside = CGPoint(x: PlayScreen.cell * 8 + 4, y: 10)
+            screen.input {
+                screen.pads.fingerDown(1, at: PlayScreen.center(held))
+                screen.pads.fingerDown(2, at: beside)
+            }
+            XCTAssertEqual(screen.lit, [held])
+            screen.input { screen.pads.screenChanged() }
+            XCTAssertEqual(screen.sounding, [], "a held pad kept playing after the screen turned")
+            XCTAssertEqual(screen.lit, [], "a held pad stayed lit after the screen turned")
+            let moved = screen.input {
+                screen.pads.fingerMoved(1, to: PlayScreen.center(mirrored))
+                screen.pads.fingerMoved(2, to: PlayScreen.center(Pad(0, 7)))
+            }
+            XCTAssertEqual(moved, [], "a finger from before the turn started the pad now under it")
+            XCTAssertEqual(screen.lit, [])
+            let pressed = Pad(4, 6)
+            XCTAssertEqual(screen.input { screen.pads.fingerDown(3, at: PlayScreen.center(pressed)) }, [pressed],
+                           "a new finger plays while older ones rest")
+            screen.input {
+                screen.pads.fingerUp(1)
+                screen.pads.fingerUp(2)
+            }
+            XCTAssertEqual(screen.sounding, [pressed], "lifting a finger from before the turn stopped another pad")
+            screen.input { screen.pads.fingerUp(3) }
+            XCTAssertEqual(screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(mirrored)) }, [mirrored],
+                           "a finger pressed again after the turn plays")
+            screen.input { screen.pads.fingerUp(1) }
+            XCTAssertEqual(screen.sounding, [])
+            XCTAssertEqual(screen.lit, [])
+        }
+    }
+
     // I: the pad view also receives a finger that rests beside the pads.
     func testFingerOffThePadsIsSilentAndDoesNotDisturbPlaying() async throws {
         try await withScreen { screen in
