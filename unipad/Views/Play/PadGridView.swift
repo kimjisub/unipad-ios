@@ -362,7 +362,19 @@ class MultiTouchUIView: UIView {
     var columns: Int = 0
     var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
-    private var activeFingers: [AnyHashable: (row: Int, col: Int, id: UUID)] = [:]
+    private struct Finger {
+        /// Where this view saw the finger at its last touch event, in the view's coordinates.
+        var seenAt: CGPoint
+        var pad: (row: Int, col: Int, id: UUID)?
+        /// Down when the pads moved under it (the screen turned, the window resized). It now rests
+        /// over another pad without having moved, so it plays nothing until it is lifted.
+        var restsSinceThePadsMoved = false
+    }
+
+    /// Every finger on the view, on a pad or beside the pads.
+    private var fingers: [AnyHashable: Finger] = [:]
+    private var laidOutSize: CGSize?
+    private var screenGeometryObservation: NSKeyValueObservation?
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let col = Int((point.x - gridOrigin.x) / cellWidth)
@@ -371,12 +383,32 @@ class MultiTouchUIView: UIView {
         return (row, col)
     }
 
+    // A 180° turn keeps the view's size, so no layout pass reports it; the scene's orientation does.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        screenGeometryObservation = window?.windowScene?.observe(\.effectiveGeometry, options: [.old, .new]) { [weak self] _, change in
+            guard let old = change.oldValue, let new = change.newValue,
+                  old.interfaceOrientation != new.interfaceOrientation else { return }
+            MainActor.assumeIsolated { self?.screenChanged() }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let laidOutSize, laidOutSize != bounds.size { screenChanged() }
+        laidOutSize = bounds.size
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches { fingerDown(touch, at: touch.location(in: self)) }
     }
 
+    // A window that only narrows re-centres this view without resizing it, so neither observer
+    // above sees it. The system keeps a touch's previous position on the glass and measures it
+    // against where the view is now, so a view that moved shows up as a previous position that
+    // differs from where this view last saw the finger.
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches { fingerMoved(touch, to: touch.location(in: self)) }
+        for touch in touches { fingerMoved(touch, to: touch.location(in: self), from: touch.previousLocation(in: self)) }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -393,39 +425,54 @@ class MultiTouchUIView: UIView {
     // itself on screen, so tests can drive several fingers without constructing touches.
 
     func fingerDown(_ finger: AnyHashable, at point: CGPoint) {
-        guard let (row, col) = padAt(point) else { return }
-        let id = UUID()
-        activeFingers[finger] = (row, col, id)
-        onPadTouch?(row, col, true, id)
+        var state = Finger(seenAt: point)
+        if let (row, col) = padAt(point) { state.pad = press(row, col) }
+        fingers[finger] = state
     }
 
-    func fingerMoved(_ finger: AnyHashable, to point: CGPoint) {
-        let next = padAt(point)
-        let prev = activeFingers[finger]
-
-        if let prev, next == nil {
-            onPadTouch?(prev.row, prev.col, false, prev.id)
-            activeFingers.removeValue(forKey: finger)
+    /// `previous` is where the finger was at its last event, measured against where the view is
+    /// now; leaving it out means the view has not moved since.
+    func fingerMoved(_ finger: AnyHashable, to point: CGPoint, from previous: CGPoint? = nil) {
+        // A resting finger plays nothing until it is lifted, so it is not compared: its first move
+        // after the pads moved would read as the pads moving again and release the newer fingers.
+        if let previous, let seen = fingers[finger], !seen.restsSinceThePadsMoved,
+           abs(previous.x - seen.seenAt.x) > 1 || abs(previous.y - seen.seenAt.y) > 1 {
+            screenChanged()
+        }
+        var state = fingers[finger] ?? Finger(seenAt: point)
+        state.seenAt = point
+        guard !state.restsSinceThePadsMoved else {
+            fingers[finger] = state
             return
         }
-
-        guard let (row, col) = next else { return }
-        if let prev, (prev.row, prev.col) != (row, col) {
-            onPadTouch?(prev.row, prev.col, false, prev.id)
-            let id = UUID()
-            activeFingers[finger] = (row, col, id)
-            onPadTouch?(row, col, true, id)
-        } else if prev == nil {
-            let id = UUID()
-            activeFingers[finger] = (row, col, id)
-            onPadTouch?(row, col, true, id)
+        let next = padAt(point)
+        if let held = state.pad, next.map({ $0 != (held.row, held.col) }) ?? true {
+            onPadTouch?(held.row, held.col, false, held.id)
+            state.pad = nil
         }
+        if state.pad == nil, let (row, col) = next { state.pad = press(row, col) }
+        fingers[finger] = state
     }
 
     func fingerUp(_ finger: AnyHashable) {
-        if let input = activeFingers.removeValue(forKey: finger) {
-            onPadTouch?(input.row, input.col, false, input.id)
+        if let held = fingers.removeValue(forKey: finger)?.pad {
+            onPadTouch?(held.row, held.col, false, held.id)
         }
+    }
+
+    /// Releases every held pad when the screen rotates, resizes or moves under the fingers.
+    func screenChanged() {
+        for (finger, state) in fingers {
+            if let held = state.pad { onPadTouch?(held.row, held.col, false, held.id) }
+            fingers[finger]?.pad = nil
+            fingers[finger]?.restsSinceThePadsMoved = true
+        }
+    }
+
+    private func press(_ row: Int, _ col: Int) -> (row: Int, col: Int, id: UUID) {
+        let id = UUID()
+        onPadTouch?(row, col, true, id)
+        return (row, col, id)
     }
 }
 
