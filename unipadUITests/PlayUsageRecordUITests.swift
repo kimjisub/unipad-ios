@@ -31,7 +31,7 @@ final class PlayUsageRecordUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "play-usage")
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -57,7 +57,7 @@ final class PlayUsageRecordUITests: XCTestCase {
         UITestSupport.searchForPack(Self.packTitle, in: app)
         let list = app.scrollViews["main.packList"]
         let title = list.staticTexts.matching(NSPredicate(format: "label == %@", Self.packTitle)).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install test-fixtures/PlayUsage first")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the isolated PlayUsage pack must be prepared")
         // XCTest can report an offscreen title as hittable, then tap a different row while scrolling.
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
                       "fixture title never reached the visible pack list")

@@ -60,6 +60,39 @@ Build logs and the test result bundle are available in the run's
 `ios-check-results` artifact for seven days. This workflow does not upload to
 a store or change required checks.
 
+## UI tests
+
+UI tests are not part of the pull request checks. Run the whole `unipadUITests`
+target on an iPhone simulator before pushing a change, and attach the result
+to the pull request:
+
+```bash
+ci/ui-tests.sh <simulator-udid>
+```
+
+The script builds Debug without signing and runs every UI test on that
+simulator, one at a time. Its last line is the result, for example
+`UI tests: 87 passed, 0 failed, 0 skipped; 87 total; exit 0`. Any failed or
+skipped test, or a run without a complete result, gives a non-zero exit. The
+log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
+`UNIPAD_UI_TEST_OUTPUT` to use another folder).
+
+- Use iPhone 17 Pro or iPhone 16e: the layout checks compare against safe areas
+  measured independently on those screens.
+- Each test launch gets its own library and generates the packs it needs
+  (`unipad/App/ReleaseTestSupport.swift`, compiled out of Release builds), so
+  packs already on the simulator are neither used nor changed.
+- Help checks that need a real Escape key or VoiceOver run through
+  `ci/host-keys.sh`, which the script uses. It presses keys through the
+  simulator's HID input with a pinned, checksum-verified AXe release. VoiceOver
+  checks need Xcode 27 and iOS 27.
+- A full run takes about 80–90 minutes. To split it, pass test classes; the
+  parts together must name every class:
+
+  ```bash
+  ci/ui-tests.sh <simulator-udid> -only-testing:unipadUITests/PackWarningUITests -only-testing:unipadUITests/PlayChainLayoutTests
+  ```
+
 ## App Store destination check
 
 The separate **App Store link** workflow checks the update URL from

@@ -5,13 +5,14 @@ import XCTest
 /// ZIP SHA-256: 55d178d318096b02e3f3642703fa1fdf2754bcad2a26221a5ab2dbf410bf4c3a.
 /// Also install the bundled 8x8 Faded pack in Documents/UniPack. Other corpus cases
 /// share the Conformance title: do not install them alongside INF-002. Missing or
-/// ambiguous fixtures fail this required regression check.
+/// ambiguous fixtures fail this required regression check. The release suite stages both
+/// in an isolated library instead: INF-002 as written in the corpus, with silent sounds.
 final class PlayChainLayoutTests: XCTestCase {
     private let app = XCUIApplication()
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "chain-layout")
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }

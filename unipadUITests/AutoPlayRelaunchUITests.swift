@@ -1,6 +1,8 @@
 import XCTest
 
 /// Covers real Faded playback and step practice with the silent PlaybackStop fixture.
+/// The release suite stages both in an isolated library: PlaybackStop unchanged, and a silent
+/// Faded with the sample's grid and chains whose song ends after about 15 s.
 final class AutoPlayRelaunchUITests: XCTestCase {
     @MainActor
     func testGuideStartsAfterSongEndAndCanSwitchToAutoplay() {
@@ -9,7 +11,7 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "autoplay-relaunch")
         app.launch()
         UITestSupport.dismissSystemAlerts()
         let list = app.scrollViews["main.packList"]
@@ -52,7 +54,7 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "autoplay-relaunch")
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()

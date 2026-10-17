@@ -64,6 +64,14 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             FileManager.default.fileExists(atPath: "\(dir)/done-\(id)")
         }, evaluatedWith: nil)
         wait(for: [pressed], timeout: 30)
+        let response = try? String(contentsOfFile: "\(dir)/done-\(id)", encoding: .utf8)
+        let output = (try? String(contentsOfFile: "\(dir)/output-\(id)", encoding: .utf8)) ?? ""
+        let delivery = XCTAttachment(string: "request=\(keys)\nresponse=\(response ?? "missing")\n\(output)")
+        delivery.name = "host-key-delivery-\(id)"
+        delivery.lifetime = .keepAlways
+        add(delivery)
+        XCTAssertEqual(response?.trimmingCharacters(in: .whitespacesAndNewlines), "successful",
+                       "The host must deliver the key successfully: \(output)")
     }
 
     private var arrivals: String {
@@ -129,9 +137,23 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
 
     private static let ignoredEscape = "Escape reached the app but the help did not close"
 
-    private func assertOnlyHelpClosed(_ labels: Labels) {
+    /// The opener stays in XCTest's tree while the help hides it, so its
+    /// presence proves nothing; wait for the help itself to go away.
+    private func assertHelpClosed(_ step: String) {
+        let closed = app.buttons["midi.help.close"].waitForNonExistence(timeout: 5)
+        if !closed {
+            UITestSupport.attachScreenshot("\(step)-still-open", to: self)
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "\(step)-still-open-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
+        XCTAssertTrue(closed, Self.ignoredEscape)
         XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5), Self.ignoredEscape)
-        XCTAssertFalse(app.buttons["midi.help.close"].exists, Self.ignoredEscape)
+    }
+
+    private func assertOnlyHelpClosed(_ labels: Labels) {
+        assertHelpClosed("real-escape")
         XCTAssertTrue(app.buttons["midi.confirm"].exists, "Escape must close only the help")
         waitSixSeconds()
         XCTAssertTrue(app.buttons["midi.help.open"].exists, "the selection must stay after the help closes")
@@ -176,7 +198,10 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         let voiceOver = XCUIDevice.shared.voiceOverService
         let labels = openHelp(language: language)
         try voiceOver.enable()
-        var speech = try voiceOver.currentSpeech().utterance
+        // Enabling speaks nothing of its own; any current speech is an unrelated
+        // system announcement (e.g. "Port on right"), and without one reading it
+        // throws "No speech available". Start reading by moving instead.
+        var speech = try voiceOver.moveForward().utterance
         var transcript = [speech]
         // Enabling VoiceOver over an open help may start in its body; read back
         // to the fixed header first.
@@ -205,8 +230,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         }
         XCTAssertTrue(speech.contains(labels.close), "VoiceOver must be on the close button: \(speech)")
         pressEscape("voiceover-\(language)")
-        XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 5), Self.ignoredEscape)
-        XCTAssertFalse(app.buttons["midi.help.close"].exists, Self.ignoredEscape)
+        assertHelpClosed("voiceover-escape-\(language)")
         XCTAssertTrue(app.buttons["midi.confirm"].exists)
         let returned = try voiceOver.currentSpeech().utterance
         let focus = XCTAttachment(string: returned)

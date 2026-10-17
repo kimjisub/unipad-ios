@@ -101,7 +101,7 @@ class AppStoreLinkTests(unittest.TestCase):
         self.assertEqual(store.app_id(URL), '6760479102')
 
     def test_missing_source_or_declaration_writes_error_json(self):
-        with tempfile.TemporaryDirectory(dir=os.environ.get('PAPERCLIP_RUN_SCRATCH_DIR')) as folder:
+        with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as folder:
             source, output = Path(folder) / 'MainView.swift', Path(folder) / 'result.json'
             for contents in (None, 'struct MainView {}', 'static let appStoreURL = URL(string: "bad")!'):
                 if contents is not None:
@@ -112,7 +112,7 @@ class AppStoreLinkTests(unittest.TestCase):
                 self.assertEqual(json.loads(output.read_text())['verdict'], 'link_error')
 
     def test_simulator_failure_is_recorded_without_changing_verdict(self):
-        with tempfile.TemporaryDirectory(dir=os.environ.get('PAPERCLIP_RUN_SCRATCH_DIR')) as folder:
+        with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as folder:
             output = Path(folder) / 'result.json'
             with redirect_stdout(io.StringIO()), patch('app_store_link.urlopen', side_effect=[Response(FINAL), Response(
                     FINAL, json.dumps(LOOKUP).encode())]), patch('app_store_link.subprocess.run',
@@ -124,7 +124,7 @@ class AppStoreLinkTests(unittest.TestCase):
             self.assertEqual(run.call_args.args[0], ['xcrun', 'simctl', 'openurl', 'fake-udid', URL])
 
     def test_cli_network_failure_writes_json_and_returns_two(self):
-        with tempfile.TemporaryDirectory(dir=os.environ.get('PAPERCLIP_RUN_SCRATCH_DIR')) as folder:
+        with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as folder:
             output = Path(folder) / 'result.json'
             with redirect_stdout(io.StringIO()), patch('app_store_link.urlopen',
                                                        side_effect=TimeoutError('offline')):

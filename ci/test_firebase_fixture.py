@@ -10,7 +10,7 @@ import unittest
 
 class FirebaseFixtureTests(unittest.TestCase):
     def test_generates_fake_configuration_without_reading_existing_values(self):
-        with tempfile.TemporaryDirectory(dir=os.environ.get('PAPERCLIP_RUN_SCRATCH_DIR')) as directory:
+        with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as directory:
             output = Path(directory) / 'GoogleService-Info.plist'
             output.write_text('not a plist: must be replaced without reading')
             subprocess.run(

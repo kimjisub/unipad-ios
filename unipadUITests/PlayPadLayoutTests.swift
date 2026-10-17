@@ -29,7 +29,7 @@ final class PlayPadLayoutTests: XCTestCase {
     private func openFirstPack() throws {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let title = packTitles.element(boundBy: 0)
         title.tap()
         let play = app.buttons["Play"].firstMatch

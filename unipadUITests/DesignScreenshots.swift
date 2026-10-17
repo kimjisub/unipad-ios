@@ -141,7 +141,7 @@ final class DesignScreenshots: XCTestCase {
             } else {
                 title.tap()      // second tap on the row opens it
             }
-            sleep(3)
+            arrive(app.otherElements["playPadGrid"], "play")
             shot("06-play")
             dumpTree("00-tree-play")
         } else {
