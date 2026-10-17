@@ -6,6 +6,12 @@ default_platform(:ios)
 
 XCODEPROJ = "unipad.xcodeproj"
 SCHEME = "unipad"
+REPO_ROOT = File.expand_path("..", __dir__)
+GSP_PATH = File.join(REPO_ROOT, "unipad/GoogleService-Info.plist")
+# Store builds get their own DerivedData inside the checkout, so the Swift packages they
+# resolve (and the Crashlytics upload-symbols tool that ships with Firebase) belong to
+# this build, not to whatever older unipad-* folder sits in ~/Library/Developer/Xcode.
+RELEASE_DERIVED_DATA = File.join(REPO_ROOT, "build/DerivedData")
 
 # Builds the App Store Connect API key token from the env vars op-bootstrap exports.
 # The key travels as base64 content rather than a file, so no .p8 is ever written to disk.
@@ -17,6 +23,31 @@ def asc_api_key
     is_key_content_base64: true,
     in_house: false,
   )
+end
+
+# The upload-symbols tool from the Firebase package the build at derived_data resolved.
+def crashlytics_upload_symbols(derived_data)
+  tool = File.join(derived_data, "SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols")
+  UI.user_error!("Crashlytics upload-symbols not found at #{tool}; the build did not resolve Firebase there") unless File.executable?(tool)
+  tool
+end
+
+# Uploads the dSYM gym just produced. Any failure stops the lane before the store upload,
+# because a build shipped without its dSYM shows no crashes in Crashlytics.
+def upload_release_dsym
+  dsym = lane_context[SharedValues::DSYM_OUTPUT_PATH]
+  UI.user_error!("gym produced no dSYM (#{dsym.inspect}); nothing was uploaded to the store") unless dsym && File.exist?(dsym)
+  tool = crashlytics_upload_symbols(RELEASE_DERIVED_DATA)
+  UI.message("Crashlytics upload-symbols: #{tool}")
+  begin
+    upload_symbols_to_crashlytics(dsym_path: dsym, gsp_path: GSP_PATH, binary_path: tool)
+  rescue StandardError => e
+    UI.user_error!(<<~MSG)
+      Crashlytics dSYM upload failed: #{e.message}
+      Nothing was uploaded to the store. Fix the cause and rerun the lane. This build's dSYM alone:
+        #{[tool, "-gsp", GSP_PATH, "-p", "ios", dsym].shelljoin}
+    MSG
+  end
 end
 
 platform :ios do
@@ -76,21 +107,12 @@ platform :ios do
       destination: "generic/platform=iOS",
       # Automatic signing; the ASC API key lets Xcode manage the distribution profile in the cloud.
       xcargs: "-allowProvisioningUpdates",
+      derived_data_path: RELEASE_DERIVED_DATA,
     )
 
     # Crashlytics can only symbolicate iOS crashes if the dSYM was uploaded; the project has
-    # no Xcode run-script phase for it, so do it here. upload-symbols ships inside the
-    # Firebase SPM checkout of whichever DerivedData gym used.
-    begin
-      upload_symbols_to_crashlytics(
-        dsym_path: lane_context[SharedValues::DSYM_OUTPUT_PATH],
-        gsp_path: "unipad/GoogleService-Info.plist",
-        binary_path: Dir.glob(File.expand_path("~/Library/Developer/Xcode/DerivedData/unipad-*/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols")).first ||
-          "build/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols",
-      )
-    rescue StandardError => e
-      UI.important("Crashlytics dSYM upload skipped: #{e.message} — run upload-symbols by hand for this build")
-    end
+    # no Xcode run-script phase for it, so do it here.
+    upload_release_dsym
 
     if target == "appstore"
       upload_to_app_store(
