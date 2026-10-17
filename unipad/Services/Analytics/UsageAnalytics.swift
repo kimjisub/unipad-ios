@@ -19,8 +19,13 @@ enum UsageParam {
     static let durationBucket = "duration_bucket"
     static let trigger = "trigger"
     static let inputSource = "input_source"
+    static let orientation = "orientation"
+    static let screenShortSide = "screen_short_side"
+    static let windowMode = "window_mode"
 
-    static let allowed: Set<String> = [result, importSource, errorType, durationBucket, trigger, inputSource]
+    static let allowed: Set<String> = [
+        result, importSource, errorType, durationBucket, trigger, inputSource, orientation, screenShortSide, windowMode,
+    ]
 }
 
 enum UsageResult: String {

@@ -107,7 +107,7 @@ struct UniPackInterruptedInstallTests {
         defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sounds.path) }
 
         #expect(throws: (any Error).self, "the pack is left without its sounds and the import still succeeds") {
-            try FileManagerExtensions.removeDoubleFolder(at: pack)
+            try FileManagerExtensions.unwrapUniPackFolder(at: pack)
         }
     }
 }

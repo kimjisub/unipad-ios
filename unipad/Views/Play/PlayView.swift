@@ -20,6 +20,11 @@ struct PlayView: View {
         .background {
             Color.black.ignoresSafeArea()
         }
+        #if os(iOS)
+        .background {
+            WindowLayoutReader { vm.screenLayoutChanged($0) }
+        }
+        #endif
         .platformNavigationBarHidden(true)
         #if canImport(UIKit)
         .statusBarHidden(true)

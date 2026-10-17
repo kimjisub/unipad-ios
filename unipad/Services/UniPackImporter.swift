@@ -58,7 +58,7 @@ actor UniPackImporter {
 
             try extractZip(at: archive, to: staged.packFolder)
 
-            try FileManagerExtensions.removeDoubleFolder(at: staged.packFolder)
+            try FileManagerExtensions.unwrapUniPackFolder(at: staged.packFolder)
 
             // Validate the extracted unipack. load() runs checkFile + parseInfo; without it
             // loadDetail parsed nothing and criticalError was never set, so any ZIP passed.

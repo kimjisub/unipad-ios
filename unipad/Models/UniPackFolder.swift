@@ -212,6 +212,7 @@ nonisolated class UniPackFolder: UniPack {
             return
         }
         logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
+        let soundFinder = PackFileFinder()
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -267,8 +268,7 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("keySound : [\(s)] sounds directory not found"); continue
             }
 
-            let soundFile = soundsDir.appendingPathComponent(soundURL)
-            guard FileManager.default.fileExists(atPath: soundFile.path) else {
+            guard let soundFile = soundFinder.file(soundURL, in: soundsDir) else {
                 addErr("keySound : [\(s)] sound was not found"); continue
             }
 
@@ -492,6 +492,11 @@ nonisolated class UniPackFolder: UniPack {
         autoPlayTable = autoPlay
         var map = Array(repeating: [Int](repeating: 0, count: buttonY), count: buttonX)
         var currChain = 0
+        func moveToChain(_ c: Int) {
+            currChain = c
+            autoPlay.elements.append(.chain(c: currChain))
+            for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+        }
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -535,29 +540,25 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("autoPlay : [\(s)] format is incorrect"); continue
             }
 
+            // `touch` is `on` and `off` in one line: both count the pad's next sound and follow
+            // that sound's wormhole.
             switch option {
-            case "on", "o":
+            case "on", "o", "touch", "t":
                 autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
+                if option == "touch" || option == "t" {
+                    autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
+                }
                 let sound = soundGet(c: currChain, x: x, y: y, num: map[x][y])
                 map[x][y] += 1
                 if let sound, sound.wormhole != Sound.noWormhole {
-                    currChain = sound.wormhole
-                    autoPlay.elements.append(.chain(c: currChain))
-                    for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                    moveToChain(sound.wormhole)
                 }
 
             case "off", "f":
                 autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
 
-            case "touch", "t":
-                autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
-                autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
-                map[x][y] += 1
-
             case "chain", "c":
-                currChain = chainVal
-                autoPlay.elements.append(.chain(c: currChain))
-                for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                moveToChain(chainVal)
 
             case "delay", "d":
                 autoPlay.elements.append(.delay(delay: delay))

@@ -50,13 +50,7 @@ final class PlayOptionSectionTitleTests: XCTestCase {
 
     @MainActor
     private func openOptionPanel(_ language: Language) {
-        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "[\(language.code)] home never appeared")
-        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
-        title.tap()
-        let play = app.buttons[language.play].firstMatch
-        if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
-        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15), "[\(language.code)] pad grid never appeared")
+        UITestSupport.openPlaybackStopFixture(in: app, playButtonTitle: language.play)
         app.buttons["line.3.horizontal"].tap()
         XCTAssertTrue(app.buttons["rectangle.portrait.and.arrow.right"].waitForExistence(timeout: 5),
                       "[\(language.code)] option panel never opened")

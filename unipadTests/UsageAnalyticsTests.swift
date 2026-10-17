@@ -212,6 +212,7 @@ struct UsageAnalyticsTests {
 
         analytics.packImportSucceeded(source: .openIn)
         analytics.packImportFailed(source: .file, error: CocoaError(.fileReadNoPermission, userInfo: [NSFilePathErrorKey: "/tmp/pack.zip"]))
+        session.screenLayoutChanged(ScreenLayout(windowSize: CGSize(width: 1210, height: 834), screenSize: CGSize(width: 1210, height: 834)))
         session.loadStarted()
         clock.seconds += 7200
         session.loadSucceeded()
@@ -220,7 +221,8 @@ struct UsageAnalyticsTests {
 
         let categorical = Set(
             ["success", "failure", "cancelled", "file", "open_in", "store", "code", "pad", "autoplay", "screen", "midi",
-             "lt_1s", "1s_3s", "3s_10s", "10s_30s", "30s_2m", "2m_10m", "10m_30m", "30m_plus"]
+             "lt_1s", "1s_3s", "3s_10s", "10s_30s", "30s_2m", "2m_10m", "10m_30m", "30m_plus",
+             "landscape", "portrait", "lt_600dp", "600dp_839dp", "840dp_plus", "full_screen", "multi_window"]
         ).union([
             "invalid_pack", "corrupt_archive", "file_access", "storage", "not_found", "server", "network",
             "sound_engine", "unknown",
@@ -231,11 +233,94 @@ struct UsageAnalyticsTests {
         }
         #expect(sink.events(named: "pack_load")[0].parameters["duration_bucket"] == "30m_plus")
         #expect(sink.events(named: "play_first_input")[0].parameters["input_source"] == "midi")
+        #expect(sink.events(named: "play_end")[0].parameters["screen_short_side"] == "600dp_839dp")
     }
 
     @Test(arguments: [(0.0, "lt_1s"), (0.999, "lt_1s"), (1.0, "1s_3s"), (9.9, "3s_10s"), (599, "2m_10m"), (1800, "30m_plus")])
     func durationBuckets(seconds: TimeInterval, label: String) {
         #expect(DurationBucket.label(for: seconds) == label)
+    }
+
+    // MARK: - Screen layout
+
+    private func layout(_ width: CGFloat, _ height: CGFloat, screen: CGSize? = nil) -> ScreenLayout? {
+        ScreenLayout(windowSize: CGSize(width: width, height: height), screenSize: screen ?? CGSize(width: width, height: height))
+    }
+
+    @Test(arguments: [
+        (1, "lt_600dp"), (599, "lt_600dp"), (600, "600dp_839dp"), (839, "600dp_839dp"), (840, "840dp_plus"), (2000, "840dp_plus"),
+    ] as [(CGFloat, String)])
+    func shortSideBucketsMatchAndroid(points: CGFloat, bucket: String) {
+        #expect(ScreenLayout.ShortSide.of(points).rawValue == bucket)
+        #expect(layout(1280, points)?.shortSide.rawValue == bucket, "landscape window")
+        #expect(layout(points, 1280)?.shortSide.rawValue == bucket, "portrait window")
+    }
+
+    @Test func aWiderWindowIsLandscapeAndASquareOneIsPortrait() {
+        #expect(layout(801, 800)?.orientation == .landscape)
+        #expect(layout(800, 800)?.orientation == .portrait)
+        #expect(layout(800, 1280)?.orientation == .portrait)
+    }
+
+    @Test func anUndefinedSizeReportsNoLayout() {
+        #expect(layout(0, 800) == nil)
+        #expect(layout(1280, 0) == nil)
+        #expect(layout(0, 0, screen: CGSize(width: 1024, height: 768)) == nil)
+    }
+
+    @Test func aWindowSmallerThanItsScreenIsMultiWindow() {
+        let iPad = CGSize(width: 1376, height: 1032)
+        #expect(layout(1376, 1032, screen: iPad)?.window == .fullScreen)
+        #expect(layout(1032, 1376, screen: iPad)?.window == .fullScreen, "mid-rotation, the sides still cover the screen")
+        #expect(layout(1376, 1031.5, screen: iPad)?.window == .fullScreen, "half-point rounding")
+        #expect(layout(684, 1032, screen: iPad)?.window == .multiWindow, "split view half")
+        #expect(layout(1376, 900, screen: iPad)?.window == .multiWindow, "resizable window")
+        #expect(layout(874, 402, screen: CGSize(width: 874, height: 402))?.window == .fullScreen, "iPhone")
+    }
+
+    @Test func onlyTheThreeBucketNamesAreSent() {
+        #expect(layout(700, 1000, screen: CGSize(width: 1032, height: 1376))?.parameters == [
+            "orientation": "portrait", "screen_short_side": "600dp_839dp", "window_mode": "multi_window",
+        ])
+    }
+
+    @Test func playStartAndEndCarryTheLayoutAtThatMoment() {
+        let (sink, _, session) = makeSession()
+
+        session.screenLayoutChanged(layout(874, 402))
+        session.loadStarted()
+        session.loadSucceeded()
+        session.playTriggered(.pad(.screen))
+        session.screenLayoutChanged(layout(684, 1032, screen: CGSize(width: 1032, height: 1376)))
+        session.screenLayoutChanged(nil)
+        session.ended()
+
+        #expect(sink.events(named: "play_start").map(\.parameters) == [[
+            "trigger": "pad", "orientation": "landscape", "screen_short_side": "lt_600dp", "window_mode": "full_screen",
+        ]])
+        #expect(sink.events(named: "play_end").map(\.parameters) == [[
+            "duration_bucket": "lt_1s", "orientation": "portrait", "screen_short_side": "600dp_839dp", "window_mode": "multi_window",
+        ]])
+        for name in ["pack_load", "play_first_input"] {
+            #expect(sink.events(named: name).allSatisfy { $0.parameters["window_mode"] == nil }, "\(name)")
+        }
+    }
+
+    @Test func aLayoutChangeBeforeStartIsTheOneStartReports() {
+        let (sink, _, session) = makeSession()
+
+        session.loadStarted()
+        session.screenLayoutChanged(layout(402, 874))
+        session.loadSucceeded()
+        session.screenLayoutChanged(layout(1376, 1032))
+        session.screenLayoutChanged(layout(0, 1032))
+        session.playTriggered(.autoplay)
+        session.screenLayoutChanged(layout(1032, 1376))
+        session.playTriggered(.pad(.midi))
+
+        #expect(sink.events(named: "play_start").map(\.parameters) == [[
+            "trigger": "autoplay", "orientation": "landscape", "screen_short_side": "840dp_plus", "window_mode": "full_screen",
+        ]])
     }
 
     // MARK: - Collection settings

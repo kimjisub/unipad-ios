@@ -41,11 +41,6 @@ struct ConformanceDeps {
 }
 
 enum ConformanceHarness {
-    /// The canonical corpus's historical iOS annotations predate these two observation seams.
-    /// Keep its bytes and expectations intact; other unobserved cases remain unverified.
-    static let newlyObservableCases: Set<String> = [
-        "RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004",
-    ]
     // MARK: - Normalization
 
     static func hex8(_ color: Int) -> String {
@@ -137,8 +132,7 @@ enum ConformanceHarness {
 
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
-        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
-           !newlyObservableCases.contains(conformanceCase.id) { return .unverified(reason) }
+        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
         if conformanceCase.layer == "palette" {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
         }
