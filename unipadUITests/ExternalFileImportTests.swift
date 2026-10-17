@@ -52,7 +52,7 @@ final class ExternalFileImportTests: XCTestCase {
             .matching(NSPredicate(format: "label BEGINSWITH %@", fixtureName)).firstMatch
         if !file.waitForExistence(timeout: 3) {
             for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
-                if file.exists { break }
+                // Finish navigation before resolving files; transitions can expose the previous list.
                 // A folder's navigation title opens a menu instead of entering the folder.
                 let items = label == "Browse" ? app.buttons : app.cells
                 let item = items
