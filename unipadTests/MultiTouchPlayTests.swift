@@ -293,7 +293,7 @@ final class MultiTouchPlayTests: XCTestCase {
 
     // The screen turns 180° or resizes under held fingers: each finger now rests over another pad
     // without having moved. The pads they held are released, and those fingers start nothing until
-    // lifted. The scene geometry observer that calls `screenChanged` is covered by the UI test.
+    // lifted. How the view notices the pads moving is checked by the test below.
     func testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing() async throws {
         try await withScreen { screen in
             let held = Pad(2, 2), mirrored = Pad(5, 5), beside = CGPoint(x: PlayScreen.cell * 8 + 4, y: 10)
@@ -302,7 +302,7 @@ final class MultiTouchPlayTests: XCTestCase {
                 screen.pads.fingerDown(2, at: beside)
             }
             XCTAssertEqual(screen.lit, [held])
-            screen.input { screen.pads.screenChanged() }
+            screen.input { screen.pads.padsMoved() }
             XCTAssertEqual(screen.sounding, [], "a held pad kept playing after the screen turned")
             XCTAssertEqual(screen.lit, [], "a held pad stayed lit after the screen turned")
             let moved = screen.input {
@@ -325,6 +325,42 @@ final class MultiTouchPlayTests: XCTestCase {
             screen.input { screen.pads.fingerUp(1) }
             XCTAssertEqual(screen.sounding, [])
             XCTAssertEqual(screen.lit, [])
+        }
+    }
+
+    // An iPad window that only narrows keeps the pad view's size and re-centres it; a 180° turn
+    // keeps both size and frame. Either way the grid moves on the physical screen under a still
+    // finger, which the view notices on the next touch event.
+    func testPadsMovingOnTheScreenUnderAHeldFingerReleaseIt() async throws {
+        try await withScreen { screen in
+            let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+            let window = UIWindow(windowScene: scene)
+            window.frame = scene.coordinateSpace.bounds
+            window.addSubview(screen.pads)
+            defer { screen.pads.removeFromSuperview() }
+            let held = Pad(2, 2)
+            screen.input {
+                screen.pads.noticeThePadsMoving()
+                screen.pads.fingerDown(1, at: PlayScreen.center(held))
+            }
+            screen.input { screen.pads.noticeThePadsMoving() }
+            XCTAssertEqual(screen.lit, [held], "the pads were taken as moved while they stood still")
+            screen.pads.frame.origin.x += PlayScreen.cell * 1.5
+            let moved = screen.input {
+                screen.pads.noticeThePadsMoving()
+                screen.pads.fingerMoved(1, to: PlayScreen.center(Pad(2, 0)))
+            }
+            XCTAssertEqual(moved, [], "a finger resting while the pads moved started the pad now under it")
+            XCTAssertEqual(screen.sounding, [], "the held pad kept playing after the pads moved")
+            XCTAssertEqual(screen.lit, [])
+            screen.input { screen.pads.fingerUp(1) }
+            let pressed = Pad(4, 6)
+            XCTAssertEqual(screen.input {
+                screen.pads.noticeThePadsMoving()
+                screen.pads.fingerDown(1, at: PlayScreen.center(pressed))
+            }, [pressed], "a finger pressed after the pads moved plays")
+            screen.input { screen.pads.fingerUp(1) }
+            XCTAssertEqual(screen.sounding, [])
         }
     }
 
