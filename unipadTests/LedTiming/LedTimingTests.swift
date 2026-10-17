@@ -112,7 +112,8 @@ final class LedTimingTests: XCTestCase {
         )
         XCTAssertFalse(recording.toDriver.isEmpty)
         XCTAssertTrue(recording.handedOver.allSatisfy { $0.ms <= 625 }, "handover continued past give-up")
-        XCTAssertTrue(recording.toDriver.allSatisfy { $0.ms <= 625 }, "driver recording continued past give-up")
+        // T1 may be later while a batch accepted before the cutoff drains to the main actor.
+        XCTAssertEqual(recording.toDriver.count, recording.handedOver.count)
         assertDelivered(recording)
     }
 

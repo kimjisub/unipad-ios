@@ -76,7 +76,6 @@ final class LedPathRun {
     func run(releaseAllAtMs: Int64, giveUpAtMs: Int64) async throws -> LedPathRecording {
         vm.unipack = pack
         vm.initState()
-        vm.setupChainObserver()
         vm.proLightMode(true)
         XCTAssertFalse(vm.scbFeedbackLight.checked, "the feedback light would cover the pack's LEDs")
 
@@ -90,6 +89,11 @@ final class LedPathRun {
         let previousDriver = manager.driver
         let driver = RecordingDriver(clock: clock, channels: try XCTUnwrap(vm.channelManager))
         self.driver = driver
+        // Bracket the app's chain observer, including changes made by keyLED's `c` command.
+        // ChainObserver notifies in registration order. Depth keeps autoplay's outer repaint intact.
+        vm.chain.addObserver { [weak driver] _, _ in driver?.beginRepaint() }
+        vm.setupChainObserver()
+        vm.chain.addObserver { [weak driver] _, _ in driver?.endRepaint() }
         manager.overrideDriver(driver)
         defer { manager.overrideDriver(previousDriver) }
         if launchpad != nil {
@@ -102,7 +106,7 @@ final class LedPathRun {
             try await Task.sleep(for: .milliseconds(1500))
         }
 
-        let handover = HandoverRecorder(clock: clock, next: LedListenerAdapter(viewModel: vm))
+        let handover = HandoverRecorder(clock: clock, giveUpAtMs: giveUpAtMs, next: LedListenerAdapter(viewModel: vm))
         self.handover = handover
         let ledRunner = LedRunner(unipack: pack, listener: handover, chain: vm.chain)
         vm.ledRunner = ledRunner
@@ -128,9 +132,9 @@ final class LedPathRun {
         while (clock.now() ?? 0) < Double(giveUpAtMs) && animating(ledRunner) {
             try await Task.sleep(for: .milliseconds(20))
         }
-        // The last tick may still be on its way to the main actor.
-        try await Task.sleep(for: .milliseconds(50))
         ledRunner.stop()
+        // Drain batches accepted before the cutoff. HandoverRecorder rejects later ticks even if
+        // this task resumes late, but accepted batches still reach the real main-actor adapter.
         try await Task.sleep(for: .milliseconds(50))
         // MIDI sends leave by way of the main actor and MidiManager's send queue.
         if launchpad != nil { try await Task.sleep(for: .milliseconds(500)) }
@@ -171,7 +175,8 @@ private struct LedPathRunError: LocalizedError {
 private final class RecordingDriver: BaseMidiDriver {
     private let clock: LedRunClock
     private let channels: ChannelManager
-    private var inRepaint = false
+    private var repaintDepth = 0
+    private var inRepaint: Bool { repaintDepth > 0 }
     /// The driver the commands also go to, when the run sends MIDI.
     var forward: MidiDriver?
     private(set) var sent: [LedCommand] = []
@@ -198,10 +203,13 @@ private final class RecordingDriver: BaseMidiDriver {
 
     /// Commands sent inside `body` redraw the screen's state rather than carry an LED runner change.
     func repainting(_ body: () -> Void) {
-        inRepaint = true
-        defer { inRepaint = false }
+        beginRepaint()
+        defer { endRepaint() }
         body()
     }
+
+    func beginRepaint() { repaintDepth += 1 }
+    func endRepaint() { repaintDepth -= 1 }
 
     private func record(_ target: LedTarget, _ code: Int) {
         guard let at = clock.now() else { return }
@@ -227,25 +235,27 @@ nonisolated private final class HandoverRecorder: LedRunner.Listener, @unchecked
     private let lock = NSLock()
     private let clock: LedRunClock
     private let next: LedRunner.Listener
+    private let giveUpAtMs: Int64
     private var recorded: [LedCommand] = []
 
-    init(clock: LedRunClock, next: LedRunner.Listener) {
+    init(clock: LedRunClock, giveUpAtMs: Int64, next: LedRunner.Listener) {
         self.clock = clock
+        self.giveUpAtMs = giveUpAtMs
         self.next = next
     }
 
     var commands: [LedCommand] { lock.withLock { recorded } }
 
     func onLedBatch(_ events: [LedRunner.LedEvent]) {
-        if let at = clock.now() {
-            lock.withLock {
-                for event in events {
-                    switch event {
-                    case .padOn(let x, let y, _, let velocity): recorded.append(LedCommand(ms: at, target: LedTarget(x: x, y: y), code: velocity))
-                    case .padOff(let x, let y): recorded.append(LedCommand(ms: at, target: LedTarget(x: x, y: y), code: 0))
-                    case .chainOn(let c, _, let velocity): recorded.append(LedCommand(ms: at, target: LedTarget(x: -1, y: c), code: velocity))
-                    case .chainOff(let c): recorded.append(LedCommand(ms: at, target: LedTarget(x: -1, y: c), code: 0))
-                    }
+        // The intended timeline ends here too. Do not pass shutdown or late ticks on as pack LEDs.
+        guard let at = clock.now(), at <= Double(giveUpAtMs) else { return }
+        lock.withLock {
+            for event in events {
+                switch event {
+                case .padOn(let x, let y, _, let velocity): recorded.append(LedCommand(ms: at, target: LedTarget(x: x, y: y), code: velocity))
+                case .padOff(let x, let y): recorded.append(LedCommand(ms: at, target: LedTarget(x: x, y: y), code: 0))
+                case .chainOn(let c, _, let velocity): recorded.append(LedCommand(ms: at, target: LedTarget(x: -1, y: c), code: velocity))
+                case .chainOff(let c): recorded.append(LedCommand(ms: at, target: LedTarget(x: -1, y: c), code: 0))
                 }
             }
         }

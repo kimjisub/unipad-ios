@@ -95,7 +95,18 @@ final class StorePackLedTimingTests: XCTestCase {
     }
 
     static func measurementTimeline(in root: URL) throws -> IntendedLedTimeline {
-        timeline(for: LedTimingPackFiles.load(root))
+        let pack = LedTimingPackFiles.load(root)
+        guard !pack.criticalError else { throw MeasurementError.unreadablePack }
+        guard pack.autoPlayExist, pack.keyLedExist else { throw MeasurementError.missingAutoPlayOrKeyLed }
+        let timeline = timeline(for: pack)
+        guard !timeline.commands.isEmpty else { throw MeasurementError.noLedCommands }
+        return timeline
+    }
+
+    private enum MeasurementError: Error {
+        case unreadablePack
+        case missingAutoPlayOrKeyLed
+        case noLedCommands
     }
 
     /// The timeline LedPathRun is compared with: every pad released `tailMs` after autoplay ends, and

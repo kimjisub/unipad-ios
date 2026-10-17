@@ -5,6 +5,9 @@ import QuartzCore
 /// finds it by name and connects to it as to a USB one; the tool writes when each message the app
 /// sends arrives, the closest this test gets to the moment a command leaves the app (T2).
 ///
+/// MIDI timing supports packs up to 8x8. The MK2 driver aliases a ninth pad column to round LEDs,
+/// so larger grids need a different virtual device and decoder before their MIDI can be measured.
+///
 /// The app sends to the first MIDI destination when a device has no entity, as a virtual one does, so
 /// `connect` checks that a message really comes through before anything is measured.
 @MainActor
