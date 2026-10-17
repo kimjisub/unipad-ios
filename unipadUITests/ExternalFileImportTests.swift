@@ -47,17 +47,20 @@ final class ExternalFileImportTests: XCTestCase {
 
     private func importWithPicker() throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
+        let fixtureName = "ReleaseFixture-\(try XCTUnwrap(token))"
         let file = app.cells
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "ReleaseFixture-")).firstMatch
+            .matching(NSPredicate(format: "label BEGINSWITH %@", fixtureName)).firstMatch
         if !file.waitForExistence(timeout: 3) {
             for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
-                let item = app.descendants(matching: .any)
+                if file.exists { break }
+                // A folder's navigation title opens a menu instead of entering the folder.
+                let items = label == "Browse" ? app.buttons : app.cells
+                let item = items
                     .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
                 if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
             }
         }
-        // Every launch generates this same silent picker fixture. Its UUID is
-        // for filename isolation; the imported title below validates its content.
+        // Select this launch's archive and validate the generated pack's content.
         XCTAssertTrue(file.waitForExistence(timeout: 10), "generated picker fixture is missing")
         file.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 30))
