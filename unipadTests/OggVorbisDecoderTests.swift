@@ -5,6 +5,7 @@ import Testing
 @testable import unipad
 
 /// What the Ogg Vorbis decoder gives for a good file, a file cut short and damaged bytes.
+@Suite(.serialized)
 struct OggVorbisDecoderTests {
     /// 0.5 s of a 440 Hz tone at half scale, stereo, 44.1 kHz, encoded with libvorbis 1.3.7 with a
     /// new page every 8 packets, so the audio spans three pages after the headers.
@@ -27,9 +28,38 @@ struct OggVorbisDecoderTests {
         #expect(buffer.format.commonFormat == .pcmFormatFloat32)
         #expect(!buffer.format.isInterleaved)
         #expect(buffer.frameLength == 22_050)
+        #expect(buffer.frameCapacity == buffer.frameLength, "ordinary files need only their final PCM buffer")
         let left = try #require(buffer.floatChannelData?[0])
         let peak = (0..<Int(buffer.frameLength)).reduce(Float(0)) { max($0, abs(left[$1])) }
         #expect(abs(peak - 0.5) < 0.05, "peak \(peak): the tone did not come out as encoded")
+    }
+
+    /// 601 seconds of stereo 44.1 kHz silence, encoded with libvorbis 1.3.7 (quality -0.1).
+    /// Even a forged final granule must not bypass the limit on frames actually decoded.
+    @Test(arguments: [false, true])
+    func rejectsOverlongAudioEvenWhenItsLengthIsUnderreported(_ underreported: Bool) throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self)
+            .url(forResource: "vorbis-overlong", withExtension: "ogg"))
+        let url = try underreported ? write(oggWithFinalGranule(44_100, at: fixture), "underreported") : fixture
+        defer { if underreported { try? FileManager.default.removeItem(at: url) } }
+
+        #expect(throws: SoundFileLimits.Violation.tooLong) { try OggVorbisDecoder.decode(url) }
+    }
+
+    @Test func aSoundExactlyAtTheDurationLimitUsesOnePCMBuffer() throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self)
+            .url(forResource: "vorbis-at-limit", withExtension: "ogg"))
+        let buffer = try OggVorbisDecoder.decode(fixture)
+        #expect(buffer.frameLength == AVAudioFrameCount(SoundFileLimits.longestSound * 44_100))
+        #expect(buffer.frameCapacity == buffer.frameLength)
+    }
+
+    @Test func anUnderreportedShortFileStillDecodesAllItsAudio() throws {
+        let url = try write(oggWithFinalGranule(1, at: tone()), "short-granule")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let buffer = try OggVorbisDecoder.decode(url)
+        #expect(buffer.frameLength > 1, "the declared total is only an allocation hint")
+        #expect(buffer.frameLength <= 22_050)
     }
 
     @Test func recognisesOggByItsFirstBytesOnly() throws {
@@ -82,6 +112,22 @@ struct OggVorbisDecoderTests {
             }
         }
     }
+}
+
+/// Change only the last page's declared PCM position and recompute its Ogg CRC. The earlier audio
+/// pages still decode, so this exercises counting real frames rather than trusting ov_pcm_total.
+func oggWithFinalGranule(_ frames: UInt64, at url: URL) throws -> Data {
+    var bytes = try Data(contentsOf: url)
+    let page = try #require(bytes.range(of: Data("OggS".utf8), options: .backwards)).lowerBound
+    for i in 0..<8 { bytes[page + 6 + i] = UInt8(truncatingIfNeeded: frames >> (i * 8)) }
+    bytes.replaceSubrange((page + 22)..<(page + 26), with: [UInt8](repeating: 0, count: 4))
+    var crc: UInt32 = 0
+    for byte in bytes[page...] {
+        crc ^= UInt32(byte) << 24
+        for _ in 0..<8 { crc = (crc &<< 1) ^ (crc & 0x8000_0000 == 0 ? 0 : 0x04C1_1DB7) }
+    }
+    for i in 0..<4 { bytes[page + 22 + i] = UInt8(truncatingIfNeeded: crc >> (i * 8)) }
+    return bytes
 }
 
 private struct SplitMix64 {

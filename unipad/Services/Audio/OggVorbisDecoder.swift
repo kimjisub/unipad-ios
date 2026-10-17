@@ -24,46 +24,68 @@ enum OggVorbisDecoder {
     /// The whole sound as deinterleaved Float32, the layout `AVAudioFile.processingFormat` gives.
     /// A damaged page inside the audio is skipped; a file cut short plays up to the cut.
     static func decode(_ url: URL) throws -> AVAudioPCMBuffer {
-        var file = OggVorbis_File()
+        // libvorbis keeps pointers into this structure between calls, so its address must stay
+        // stable for the entire decode (a Swift inout address is only valid for one call).
+        let file = UnsafeMutablePointer<OggVorbis_File>.allocate(capacity: 1)
+        file.initialize(to: OggVorbis_File())
+        defer { file.deinitialize(count: 1); file.deallocate() }
         let opened = url.withUnsafeFileSystemRepresentation { path in
-            path.map { ov_fopen($0, &file) } ?? OV_EFAULT
+            path.map { ov_fopen($0, file) } ?? OV_EFAULT
         }
         guard opened == 0 else { throw DecodeError.unreadable(opened) }
-        defer { ov_clear(&file) }
+        defer { ov_clear(file) }
 
-        guard let info = ov_info(&file, -1)?.pointee, info.channels > 0, info.rate > 0,
+        guard let info = ov_info(file, -1)?.pointee, info.channels > 0, info.rate > 0,
               let format = AVAudioFormat(standardFormatWithSampleRate: Double(info.rate),
                                          channels: AVAudioChannelCount(info.channels)) else {
             throw DecodeError.unsupportedLayout
         }
+        guard SoundFileLimits.sampleRates.contains(format.sampleRate) else {
+            throw SoundFileLimits.Violation.implausibleSampleRate(format.sampleRate)
+        }
         let channelCount = Int(format.channelCount)
-
-        var samples = [[Float]](repeating: [], count: channelCount)
+        let maximumFrames = Int(SoundFileLimits.longestSound * format.sampleRate)
+        let declaredFrames = ov_pcm_total(file, -1)
+        guard declaredFrames <= maximumFrames else { throw SoundFileLimits.Violation.tooLong }
+        // Ordinary files decode directly into their final buffer. A truncated or forged file can
+        // underreport its total: grow only as needed, always within the actual frame limit.
+        let initialCapacity = declaredFrames > 0 ? Int(declaredFrames) : Int(readFrames)
+        guard var buffer = AVAudioPCMBuffer(pcmFormat: format,
+                                            frameCapacity: AVAudioFrameCount(initialCapacity)) else {
+            throw DecodeError.noAudio
+        }
+        var frameCount = 0
         var link: Int32 = 0
         while true {
             var pcm: UnsafeMutablePointer<UnsafeMutablePointer<Float>?>?
-            let frames = ov_read_float(&file, &pcm, readFrames, &link)
+            let frames = ov_read_float(file, &pcm, readFrames, &link)
             if frames == Int(OV_HOLE) { continue }
             guard frames > 0, let pcm else { break }
             // A chained file may switch layout at a link; the buffer holds one layout only.
-            guard let linkInfo = ov_info(&file, link)?.pointee,
+            guard let linkInfo = ov_info(file, link)?.pointee,
                   linkInfo.channels == info.channels, linkInfo.rate == info.rate else { break }
+            guard frames <= maximumFrames - frameCount else { throw SoundFileLimits.Violation.tooLong }
+            let needed = frameCount + frames
+            if needed > Int(buffer.frameCapacity) {
+                let capacity = min(maximumFrames, max(needed, Int(buffer.frameCapacity) * 2))
+                guard let grown = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(capacity)),
+                      let destination = grown.floatChannelData, let source = buffer.floatChannelData else {
+                    throw DecodeError.noAudio
+                }
+                for channel in 0..<channelCount {
+                    destination[channel].update(from: source[channel], count: frameCount)
+                }
+                buffer = grown
+            }
+            guard let channels = buffer.floatChannelData else { throw DecodeError.noAudio }
             for channel in 0..<channelCount {
-                samples[channel].append(contentsOf: UnsafeBufferPointer(start: pcm[channel], count: frames))
+                guard let source = pcm[channel] else { throw DecodeError.noAudio }
+                channels[channel].advanced(by: frameCount).update(from: source, count: frames)
             }
+            frameCount = needed
         }
-
-        guard let frameCount = AVAudioFrameCount(exactly: samples[0].count), frameCount > 0,
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
-              let channels = buffer.floatChannelData else {
-            throw DecodeError.noAudio
-        }
-        for channel in 0..<channelCount {
-            samples[channel].withUnsafeBufferPointer { source in
-                channels[channel].update(from: source.baseAddress!, count: source.count)
-            }
-        }
-        buffer.frameLength = frameCount
+        guard frameCount > 0 else { throw DecodeError.noAudio }
+        buffer.frameLength = AVAudioFrameCount(frameCount)
         return buffer
     }
 }

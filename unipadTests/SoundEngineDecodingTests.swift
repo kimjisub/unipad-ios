@@ -89,6 +89,21 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("vorbis-tone", "ogg"))
     }
 
+    @Test func anOverlongOggIsSilentAndAdvancesToTheNextSound() async throws {
+        let good = try SoundEngineTestSupport.writeSilentSound()
+        let pack = OnePadPack(chains: [[
+            Sound(file: try fixture("vorbis-overlong", "ogg"), loop: 0),
+            Sound(file: good, loop: 0),
+        ]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 0)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
     /// A damaged Ogg Vorbis file is silent where it stands, like any sound that cannot be decoded,
     /// and the pad's next press plays its next sound.
     @Test(arguments: OggDamage.allCases)
