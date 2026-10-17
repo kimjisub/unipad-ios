@@ -14,6 +14,7 @@
 		A1B2C3D4E5F60718293A4B62 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B66 /* FirebaseMessaging */; };
 		A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */; };
 		A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */; };
+		A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B6B /* CVorbis */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,6 +83,7 @@
 				A1B2C3D4E5F60718293A4B62 /* FirebaseMessaging in Frameworks */,
 				A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */,
 				A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */,
+				A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -149,6 +151,7 @@
 				A1B2C3D4E5F60718293A4B66 /* FirebaseMessaging */,
 				A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */,
 				A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */,
+				A1B2C3D4E5F60718293A4B6B /* CVorbis */,
 			);
 			productName = unipad;
 			productReference = 16CE2B902F5E6CE100402705 /* unipad.app */;
@@ -251,6 +254,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 16CE2B912F5E6CE100402705 /* Products */;
@@ -693,6 +697,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/XiphVorbis;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -734,6 +745,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseInstallations;
+		};
+		A1B2C3D4E5F60718293A4B6B /* CVorbis */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */;
+			productName = CVorbis;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

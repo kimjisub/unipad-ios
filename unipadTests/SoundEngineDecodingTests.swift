@@ -84,12 +84,60 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("mp3-tone-named-wav", "wav"))
     }
 
+    /// The format guide recommends Ogg Vorbis, which AVAudioFile cannot open.
+    @Test func anOggVorbisSoundPlays() async throws {
+        try await expectPlays(try fixture("vorbis-tone", "ogg"))
+    }
+
+    /// A damaged Ogg Vorbis file is silent where it stands, like any sound that cannot be decoded,
+    /// and the pad's next press plays its next sound.
+    @Test(arguments: OggDamage.allCases)
+    func aDamagedOggSoundStillAdvancesThePadToItsNextSound(_ damage: OggDamage) async throws {
+        let good = try SoundEngineTestSupport.writeSilentSound()
+        let damaged = try damage.write(from: try fixture("vorbis-tone", "ogg"))
+        let pack = OnePadPack(chains: [[Sound(file: damaged, loop: 0), Sound(file: good, loop: 0)]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 0)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
     private func expectPlays(_ file: URL) async throws {
         let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(OnePadPack(soundFile: file))
         defer { engine.destroy() }
         #expect(listener.failure == nil, "\(file.lastPathComponent) could not be decoded: \(String(describing: listener.failure))")
         engine.soundOn(x: 0, y: 0)
         #expect(engine.playsStarted == 1)
+    }
+}
+
+/// Ways an Ogg Vorbis file can be broken before its audio starts, so nothing in it can be played.
+enum OggDamage: CaseIterable, CustomTestStringConvertible {
+    case onlyTheCapturePattern
+    case identificationHeaderOverwritten
+    case cutInsideTheHeaders
+
+    var testDescription: String { "\(self)" }
+
+    func write(from fixture: URL) throws -> URL {
+        var bytes = try Data(contentsOf: fixture)
+        switch self {
+        case .onlyTheCapturePattern:
+            bytes = Data("OggS".utf8) + Data(repeating: 0xA5, count: 512)
+        case .identificationHeaderOverwritten:
+            // The "vorbis" signature and stream parameters follow the first page header (28 bytes).
+            bytes.replaceSubrange(28..<58, with: Data(repeating: 0xFF, count: 30))
+        case .cutInsideTheHeaders:
+            bytes = bytes.prefix(100)
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "OggDamage-\(self)-\(UUID().uuidString).ogg")
+        try bytes.write(to: url)
+        return url
     }
 }
 #endif
