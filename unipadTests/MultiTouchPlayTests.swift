@@ -54,8 +54,18 @@ final class MultiTouchPlayTests: XCTestCase {
             }
         }
 
-        static func center(_ pad: Pad) -> CGPoint {
-            CGPoint(x: (CGFloat(pad.col) + 0.5) * cell, y: (CGFloat(pad.row) + 0.5) * cell)
+        static func center(_ pad: Pad, cell: CGFloat? = nil, origin: CGPoint = .zero) -> CGPoint {
+            let cell = cell ?? Self.cell
+            return CGPoint(x: origin.x + (CGFloat(pad.col) + 0.5) * cell, y: origin.y + (CGFloat(pad.row) + 0.5) * cell)
+        }
+
+        /// What PlayView's `updateUIView` hands the pad view when the screen rotates or the window
+        /// is resized: a new cell size and grid origin, with the fingers already down kept.
+        func relayout(cell: CGFloat, origin: CGPoint) {
+            pads.frame = CGRect(x: 0, y: 0, width: origin.x + cell * 8, height: origin.y + cell * 8)
+            pads.cellWidth = cell
+            pads.cellHeight = cell
+            pads.gridOrigin = origin
         }
 
         /// Runs one touch event and returns the pads whose sound it started, in start order.
@@ -315,6 +325,52 @@ final class MultiTouchPlayTests: XCTestCase {
                 XCTAssertEqual(screen.sounding, [], "edge \(edge)")
                 XCTAssertEqual(screen.lit, [], "edge \(edge)")
             }
+        }
+    }
+
+    // A pad held while the screen rotates or the window is resized. The finger keeps the pad it
+    // pressed until it moves onto another pad or lifts; lifting it, or the system cancelling it,
+    // releases only that pad, and new fingers hit the pads where they are now drawn. Whether the
+    // system keeps or cancels a held touch through the change is checked on screen by
+    // PlayInputEdgeUITests.
+    func testHeldPadThroughALayoutChangeReleasesOnlyItself() async throws {
+        try await withScreen { screen in
+            let held = Pad(2, 2), next = Pad(5, 5)
+            screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(held)) }
+            let cell: CGFloat = 52, origin = CGPoint(x: 30, y: 6)
+            screen.relayout(cell: cell, origin: origin)
+            XCTAssertEqual(screen.sounding, [held], "the layout change stopped the held pad")
+            XCTAssertEqual(screen.lit, [held], "the layout change cleared the held pad")
+            XCTAssertEqual(screen.input { screen.pads.fingerMoved(1, to: PlayScreen.center(held, cell: cell, origin: origin)) }, [],
+                           "the finger is still on its pad")
+            XCTAssertEqual(screen.input { screen.pads.fingerDown(2, at: PlayScreen.center(next, cell: cell, origin: origin)) }, [next],
+                           "a new finger hits the pad drawn under it")
+            XCTAssertEqual(screen.lit, [held, next])
+            screen.input { screen.pads.fingerUp(1) }
+            XCTAssertEqual(screen.sounding, [next], "lifting the held finger touched another pad")
+            XCTAssertEqual(screen.lit, [next])
+            screen.input { screen.pads.fingerUp(2) }
+            XCTAssertEqual(screen.sounding, [])
+            XCTAssertEqual(screen.lit, [])
+        }
+    }
+
+    // The same, when the grid moved under a resting finger: its next move lands on the pad now under
+    // it, and a cancel after that leaves nothing playing or lit.
+    func testHeldPadMovedOntoTheRelaidGridThenCancelledLeavesNothing() async throws {
+        try await withScreen { screen in
+            let held = Pad(1, 6), underFinger = Pad(1, 5)
+            let point = PlayScreen.center(held)
+            screen.input { screen.pads.fingerDown(1, at: point) }
+            let cell = PlayScreen.cell, origin = CGPoint(x: cell, y: 0)
+            screen.relayout(cell: cell, origin: origin)
+            let started = screen.input { screen.pads.fingerMoved(1, to: CGPoint(x: point.x + 1, y: point.y)) }
+            XCTAssertEqual(started, [underFinger])
+            XCTAssertEqual(screen.sounding, [underFinger])
+            XCTAssertEqual(screen.lit, [underFinger])
+            screen.input { screen.pads.fingerUp(1) }
+            XCTAssertEqual(screen.sounding, [], "a repeat kept playing after the cancel")
+            XCTAssertEqual(screen.lit, [], "a pad stayed lit after the cancel")
         }
     }
 }
