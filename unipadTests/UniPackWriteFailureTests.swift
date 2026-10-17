@@ -8,7 +8,7 @@ import Testing
 /// When writing a pack fails partway, as it does when the device runs out of space, the import or
 /// download is reported as failed, its staging folder is deleted, and nothing else changes: the
 /// source archive, the packs already in the library and the user's own folders stay byte for byte.
-/// Once writing works again, the same pack installs under the usual name.
+/// Once writing works again, the same pack installs under the name of the file it came from.
 ///
 /// Each test makes writing fail at one point of the real importer or downloader. Folder writes are
 /// refused with an access rule that, like a full disk, still lets files be deleted, so the cleanup
@@ -57,7 +57,7 @@ struct UniPackWriteFailureTests {
         library.expectNothingChanged(since: before, source: source, archive: Self.zip)
 
         try NewFileBlock.clear(on: library.stagingRoot)
-        try await library.expectImportRetryInstalls(Self.zip, since: before)
+        try await library.expectImportRetryInstalls(Self.zip, as: "pack (2)", since: before)
     }
 
     @Test func failedSecondCopyOfTheArchiveChangesNothing() async throws {
@@ -85,7 +85,7 @@ struct UniPackWriteFailureTests {
         #expect(recorder.error != nil)
         library.expectNothingChanged(since: before, source: source, archive: Self.zip)
 
-        try await library.expectImportRetryInstalls(Self.zip, since: before)
+        try await library.expectImportRetryInstalls(Self.zip, as: "pack (2)", since: before)
     }
 
     @Test func failedWriteWhileUnpackingChangesNothing() async throws {
@@ -95,7 +95,7 @@ struct UniPackWriteFailureTests {
 
         try await expectUnpackingFails(source: source, since: before)
 
-        try await library.expectImportRetryInstalls(Self.zip, since: before)
+        try await library.expectImportRetryInstalls(Self.zip, as: "pack (2)", since: before)
     }
 
     @Test func failedSecondImportKeepsTheFirstOne() async throws {
@@ -103,11 +103,11 @@ struct UniPackWriteFailureTests {
         let first = try #require(await library.importData(TestZip.stored(WriteFailureLibrary.packFiles(title: "First")), ImportRecorder()).folder)
         let source = try library.source(Self.zip)
         let before = library.workspaceSnapshot()
-        #expect(before.keys.contains(first.lastPathComponent))
+        #expect(first.lastPathComponent == "pack (2)")
 
         try await expectUnpackingFails(source: source, since: before)
 
-        let retried = try await library.expectImportRetryInstalls(Self.zip, since: before)
+        let retried = try await library.expectImportRetryInstalls(Self.zip, as: "pack (3)", since: before)
         #expect(retried != first)
         #expect(library.snapshot(of: first) == WriteFailureLibrary.expectedSnapshot(title: "First"))
     }
@@ -322,14 +322,15 @@ struct WriteFailureLibrary {
         }
     }
 
-    /// Imports `zip` again with nothing in the way and expects it to be added as one new folder
-    /// beside everything that was there.
+    /// Imports `zip` again with nothing in the way and expects it to be added as one new folder,
+    /// named `name` after the imported file, beside everything that was there.
     @discardableResult
-    func expectImportRetryInstalls(_ zip: Data, since before: [String: String]) async throws -> URL {
+    func expectImportRetryInstalls(_ zip: Data, as name: String, since before: [String: String]) async throws -> URL {
         let recorder = ImportRecorder()
         let folder = try #require(await importData(zip, recorder).folder)
         #expect(recorder.error == nil)
-        let name = folder.lastPathComponent
+        #expect(folder.lastPathComponent == name)
+        #expect(folder.deletingLastPathComponent().path == workspace.path)
         #expect(before[name] == nil, "the retry replaced \(name)")
         #expect(snapshot(of: folder) == Self.expectedSnapshot(title: "Imported"))
         #expect(workspaceSnapshot().filter { $0.key != name && !$0.key.hasPrefix(name + "/") } == before)
