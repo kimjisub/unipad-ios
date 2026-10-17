@@ -146,6 +146,10 @@ final class LedPathRun {
             throw LedPathRunError("MidiManager replaced the recording driver during the run (a MIDI device connected or left)")
         }
 
+        guard midiArrivals == nil || !(manager.controller is MainMidiControllerAdapter) else {
+            throw LedPathRunError("the host's main menu took over MIDI during the recording; run with the isolated MIDI timing test host")
+        }
+
         return LedPathRecording(
             handedOver: handover.commands,
             cutoffMs: cutoffMs,
