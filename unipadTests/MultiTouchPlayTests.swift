@@ -293,7 +293,7 @@ final class MultiTouchPlayTests: XCTestCase {
 
     // The screen turns 180° or resizes under held fingers: each finger now rests over another pad
     // without having moved. The pads they held are released, and those fingers start nothing until
-    // lifted. The scene geometry observer that calls `screenChanged` is covered by the UI test.
+    // lifted. Noticing the turn itself needs a rotating window scene, which a unit test does not have.
     func testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing() async throws {
         try await withScreen { screen in
             let held = Pad(2, 2), mirrored = Pad(5, 5), beside = CGPoint(x: PlayScreen.cell * 8 + 4, y: 10)
@@ -322,6 +322,49 @@ final class MultiTouchPlayTests: XCTestCase {
             screen.input { screen.pads.fingerUp(3) }
             XCTAssertEqual(screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(mirrored)) }, [mirrored],
                            "a finger pressed again after the turn plays")
+            screen.input { screen.pads.fingerUp(1) }
+            XCTAssertEqual(screen.sounding, [])
+            XCTAssertEqual(screen.lit, [])
+        }
+    }
+
+    // An iPad window that only narrows re-centres the pad view without resizing it. A finger resting
+    // on a pad then reports a previous position that is not where the view last saw it.
+    func testPadsMovingUnderAStillFingerReleaseItAndStartNothing() async throws {
+        try await withScreen { screen in
+            let held = Pad(2, 2), other = Pad(3, 3)
+            screen.input {
+                screen.pads.fingerDown(1, at: PlayScreen.center(held))
+                screen.pads.fingerDown(2, at: PlayScreen.center(other))
+            }
+            let still = screen.input {
+                screen.pads.fingerMoved(1, to: PlayScreen.center(held), from: PlayScreen.center(held))
+            }
+            XCTAssertEqual(still, [])
+            XCTAssertEqual(screen.lit, [held, other], "a finger that stayed put was taken as the pads moving")
+            let dragged = Pad(2, 3)
+            XCTAssertEqual(screen.input {
+                screen.pads.fingerMoved(1, to: PlayScreen.center(dragged), from: PlayScreen.center(held))
+            }, [dragged], "dragging a finger across the pads stopped playing")
+
+            let shift = PlayScreen.cell * 1.5
+            let shiftedFrom = CGPoint(x: PlayScreen.center(dragged).x - shift, y: PlayScreen.center(dragged).y)
+            let moved = screen.input {
+                screen.pads.fingerMoved(1, to: CGPoint(x: shiftedFrom.x + 1, y: shiftedFrom.y), from: shiftedFrom)
+            }
+            XCTAssertEqual(moved, [], "a finger resting while the pads moved started the pad now under it")
+            XCTAssertEqual(screen.sounding, [], "a held pad kept playing after the pads moved")
+            XCTAssertEqual(screen.lit, [])
+            XCTAssertEqual(screen.input { screen.pads.fingerMoved(2, to: PlayScreen.center(Pad(0, 0))) }, [],
+                           "another finger from before the pads moved started a pad")
+
+            screen.input {
+                screen.pads.fingerUp(1)
+                screen.pads.fingerUp(2)
+            }
+            let pressed = Pad(4, 6)
+            XCTAssertEqual(screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(pressed)) }, [pressed],
+                           "a finger pressed after the pads moved plays")
             screen.input { screen.pads.fingerUp(1) }
             XCTAssertEqual(screen.sounding, [])
             XCTAssertEqual(screen.lit, [])
