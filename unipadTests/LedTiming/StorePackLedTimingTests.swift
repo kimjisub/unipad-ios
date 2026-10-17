@@ -17,7 +17,9 @@ import XCTest
 /// autoplay) and fails when the driver does not receive exactly what LedRunner handed over, or receives
 /// the pack's commands reordered, incomplete or with extra ones. With UNIPAD_LED_TIMING_MIDI set to the
 /// arrivals file of a running ci/virtual-launchpad.sh, the commands also go out as MIDI to that virtual
-/// Launchpad MK2, which must receive all of them in order. Reports go to UNIPAD_LED_TIMING_OUT
+/// Launchpad MK2, which must receive all of them in order. A run stopped at the give-up time reports
+/// unmatched intended commands as an incomplete observation, not a whole-pack missing-command verdict.
+/// Reordered/extra commands and every observed command's transport delivery are still checked. Reports go to UNIPAD_LED_TIMING_OUT
 /// (an existing folder; a simulator can write host paths) and to the test's attachments.
 @MainActor
 final class StorePackLedTimingTests: XCTestCase {
@@ -87,7 +89,10 @@ final class StorePackLedTimingTests: XCTestCase {
                 .run(releaseAllAtMs: releaseAll, giveUpAtMs: releaseAll + Self.giveUpAfterMs)
             let measurement = LedTimingMeasurement(name: name, timeline: timeline, recording: recording)
             report(measurement.describe(), as: "\(name).txt")
-            if !measurement.deliveredAsHandedOver || !measurement.packToDriver.orderedAndComplete || measurement.deliveredToMidi == false {
+            let comparison = measurement.packToDriver
+            let incomplete = measurement.assessesPackCompleteness && comparison.missing > 0
+            if recording.handedOver.isEmpty || !measurement.deliveredAsHandedOver || comparison.reordered > 0
+                || comparison.extra > 0 || incomplete || measurement.deliveredToMidi == false {
                 failed.append(name)
             }
         }

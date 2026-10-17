@@ -109,6 +109,7 @@ final class LedTimingTests: XCTestCase {
             keyLed: ["1 1 1 1": "o 1 1 a 5\nd 20\nc 2\nd 20\nf 1 1\n"],
             autoPlay: "o 1 1\n", releaseAll: 200, giveUp: 1000
         )
+        XCTAssertNil(recording.cutoffMs)
         XCTAssertEqual(recording.handedOver.count, 2)
         XCTAssertEqual(recording.toDriver.map(\.code), [5, 0])
         XCTAssertGreaterThanOrEqual(recording.repaints, 24)
@@ -120,6 +121,7 @@ final class LedTimingTests: XCTestCase {
             keyLed: ["2 2 2 0": "o 2 2 a 9\nd 50\n"],
             autoPlay: "c 2\no 2 2\nd 10\nc 1\n", releaseAll: 100, giveUp: 625
         )
+        XCTAssertEqual(recording.cutoffMs, 625)
         XCTAssertFalse(recording.toDriver.isEmpty)
         XCTAssertTrue(recording.handedOver.allSatisfy { $0.ms < 625 }, "handover continued past give-up")
         // T1 may be later while a batch accepted before the cutoff drains to the main actor.
@@ -147,8 +149,13 @@ final class LedTimingTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("LedTimingPath-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try LedTimingPackFiles.write(to: root, buttons: 8, keyLed: keyLed, autoPlay: autoPlay, chains: 2)
-        return try await LedPathRun(pack: LedTimingPackFiles.load(root), midiArrivals: LedTimingOptions.midiArrivals)
+        let timeline = IntendedLedTimeline.of(LedTimingPackFiles.load(root), releaseAllAtMs: releaseAll, giveUpAtMs: giveUp)
+        let recording = try await LedPathRun(pack: LedTimingPackFiles.load(root), midiArrivals: LedTimingOptions.midiArrivals)
             .run(releaseAllAtMs: releaseAll, giveUpAtMs: giveUp)
+        let measurement = LedTimingMeasurement(name: "observation window", timeline: timeline, recording: recording)
+        XCTAssertEqual(measurement.assessesPackCompleteness, recording.cutoffMs == nil)
+        if recording.cutoffMs != nil { XCTAssertTrue(measurement.describe().contains("whole-pack completeness not assessed")) }
+        return recording
     }
 
     private func assertDelivered(_ recording: LedPathRecording, file: StaticString = #filePath, line: UInt = #line) {
@@ -195,6 +202,7 @@ final class LedTimingTests: XCTestCase {
         print(report)
         add(XCTAttachment(string: report))
 
+        XCTAssertTrue(measurement.assessesPackCompleteness, report)
         XCTAssertGreaterThan(timeline.peakPerSecond, 5_000, "commands a second at peak")
         XCTAssertTrue(measurement.deliveredAsHandedOver, report)
         let result = measurement.packToDriver

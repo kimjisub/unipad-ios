@@ -48,6 +48,10 @@ nonisolated struct LedTimingMeasurement {
     /// Every command LedRunner handed over reached the driver, in the same order, and nothing else did.
     var deliveredAsHandedOver: Bool { Self.same(recording.handedOver, recording.toDriver) }
 
+    /// A forced cutoff can hide late commands at the observation boundary. It cannot establish
+    /// whole-pack completeness; transport delivery is still checked for every observed command.
+    var assessesPackCompleteness: Bool { recording.cutoffMs == nil }
+
     func describe() -> String {
         let pack = packToDriver
         var lines: [String] = []
@@ -57,9 +61,15 @@ nonisolated struct LedTimingMeasurement {
             + (timeline.delaylessEndlessAnimations > 0 ? ", \(timeline.delaylessEndlessAnimations) endless animations without delay" : ""))
         lines.append("  LedRunner -> driver: \(runnerToDriver.expected) handed over, \(runnerToDriver.arrived) arrived, "
             + "same order \(deliveredAsHandedOver), ms median \(Self.ms(runnerToDriver.median)) p95 \(Self.ms(runnerToDriver.p95)) max \(Self.ms(runnerToDriver.max))")
-        lines.append("  pack -> driver: matched \(pack.matched), reordered \(pack.reordered), missing \(pack.missing), extra \(pack.extra), "
-            + "covered \(recording.covered), overtaken by more than \(Int(LedTimingComparison.overtakeMs)) ms \(pack.overtaken), "
-            + "repaints \(recording.repaints), LEDs too long to compare \(pack.uncompared)")
+        if let cutoff = recording.cutoffMs {
+            lines.append("  observation stopped at \(cutoff) ms; whole-pack completeness not assessed")
+            lines.append("  partial pack -> driver: matched \(pack.matched), reordered \(pack.reordered), "
+                + "unmatched intended \(pack.missing), extra \(pack.extra), repaints \(recording.repaints)")
+        } else {
+            lines.append("  pack -> driver: matched \(pack.matched), reordered \(pack.reordered), missing \(pack.missing), extra \(pack.extra), "
+                + "covered \(recording.covered), overtaken by more than \(Int(LedTimingComparison.overtakeMs)) ms \(pack.overtaken), "
+                + "repaints \(recording.repaints), LEDs too long to compare \(pack.uncompared)")
+        }
         lines.append("  pack -> LedRunner handover ms: median \(Self.ms(packToRunner.median)), p95 \(Self.ms(packToRunner.p95)), max \(Self.ms(packToRunner.max))")
         lines.append("  T1-T0 ms: median \(Self.ms(pack.median)), p95 \(Self.ms(pack.p95)), max \(Self.ms(pack.max)), "
             + "build-up \(Self.ms(pack.buildUpPerMinute)) ms/min, median by tenth \(pack.medianByTenth.map(Self.ms).joined(separator: " "))")
@@ -81,7 +91,8 @@ nonisolated struct LedTimingMeasurement {
         lines.append("  \(Self.environment())")
         lines += runnerToDriver.differences.map { "  LedRunner -> driver differs: \($0)" }
         lines += (driverToMidi?.differences ?? []).map { "  driver -> virtual Launchpad differs: \($0)" }
-        lines += pack.differences.map { "  pack -> driver differs: \($0)" }
+        let comparisonLabel = assessesPackCompleteness ? "pack -> driver differs" : "partial observation differs"
+        lines += pack.differences.map { "  \(comparisonLabel): \($0)" }
         return lines.joined(separator: "\n")
     }
 

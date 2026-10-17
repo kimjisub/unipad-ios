@@ -21,6 +21,8 @@ nonisolated final class LedRunClock: @unchecked Sendable {
 nonisolated struct LedPathRecording {
     /// LedRunner's changes as commands, in the order and at the time it handed them over.
     let handedOver: [LedCommand]
+    /// A forced observation end; nil when every animation finished naturally.
+    let cutoffMs: Int64?
     /// Commands that carried an LED runner change, in the order the driver received them.
     let toDriver: [LedCommand]
     /// When each autoplay press reached the play screen, in order.
@@ -132,6 +134,7 @@ final class LedPathRun {
         while (clock.now() ?? 0) < Double(giveUpAtMs) && animating(ledRunner) {
             try await Task.sleep(for: .milliseconds(20))
         }
+        let cutoffMs = (clock.now() ?? 0) >= Double(giveUpAtMs) ? giveUpAtMs : nil
         ledRunner.stop()
         // Drain batches accepted before the cutoff. HandoverRecorder rejects later ticks even if
         // this task resumes late, but accepted batches still reach the real main-actor adapter.
@@ -145,6 +148,7 @@ final class LedPathRun {
 
         return LedPathRecording(
             handedOver: handover.commands,
+            cutoffMs: cutoffMs,
             toDriver: driver.sent,
             pressTimes: listener.presses,
             repaints: driver.repaints,
