@@ -221,6 +221,9 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 50) { failure in
             XCTAssertNil(failure)
         })
+        // Nothing has rendered yet, so this is the lookahead alone: 100 ms of 10 ms samples.
+        // The render loop below waits for each repeat and would hide a shorter one.
+        XCTAssertEqual(scheduler.buffersScheduled, 10, "repeats queued ahead before playback")
         let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 480))
         var samples: [Float] = []
         // Five sample lengths past the last repeat, so a late or extra repeat would still be rendered.
