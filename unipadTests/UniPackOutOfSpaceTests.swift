@@ -94,7 +94,7 @@ struct UniPackOutOfSpaceTests {
         #expect(recorder.error != nil)
         library.expectNothingChanged(since: before, source: source, archive: zip)
 
-        try await library.expectImportRetryInstalls(TestZip.stored(WriteFailureLibrary.packFiles(title: "Imported")), since: before)
+        try await library.expectImportRetryInstalls(TestZip.stored(WriteFailureLibrary.packFiles(title: "Imported")), as: "pack (2)", since: before)
     }
 
     /// The first part of the body fits and is written before the rest arrives, so the volume fills
