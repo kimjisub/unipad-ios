@@ -25,6 +25,20 @@ struct LedTimingComparisonTests {
         #expect(comparison.hasUnexpectedDifferences(allowMissingTail: false))
     }
 
+    @Test func cutoffRejectsAllOutputStoppingLongBeforeTheDeadline() {
+        let expected = (0..<600).map { command(Double($0 * 50), $0 % 2 == 0 ? 5 : 7) }
+        let comparison = LedTimingComparison(expected: expected, arrived: Array(expected.prefix(200)))
+        #expect(comparison.missing == 400)
+        #expect(comparison.hasUnexpectedDifferences(allowMissingTail: true))
+    }
+
+    @Test func cutoffAllowsALateLedNearTheDeadlineEvenWhenAnotherLedContinues() {
+        let expected = [command(0, 5), command(598, 7, x: 1), command(600, 9)]
+        let comparison = LedTimingComparison(expected: expected, arrived: [expected[0], expected[2]])
+        // The missing command can arrive after a 625 ms cutoff, despite another LED matching at 600 ms.
+        #expect(!comparison.hasUnexpectedDifferences(allowMissingTail: true))
+    }
+
     @Test func cutoffStillRejectsReorderedOrExtraCommands() {
         let expected = [command(0, 5), command(50, 7)]
         let reordered = LedTimingComparison(expected: expected, arrived: expected.reversed())
