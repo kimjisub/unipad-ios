@@ -314,9 +314,9 @@ final class PlaybackStopTests: XCTestCase {
     func testStoppingAutoplayReleasesInputPressedAfterOutOfRangeWormhole() async throws {
         let root = try pack(loop: 0)
         defer { try? FileManager.default.removeItem(at: root) }
-        try "1 1 1 a.wav 0 20\n".write(
+        try "1 1 1 a.wav 0 20\n1 1 2 a.wav 0\n".write(
             to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
-        try "on 1 1\non 1 1\ndelay 60000\n".write(
+        try "on 1 1\non 1 2\ndelay 60000\n".write(
             to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
         let vm = try await loaded(root)
         defer { vm.cleanup() }
