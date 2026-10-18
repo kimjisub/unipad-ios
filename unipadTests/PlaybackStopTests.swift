@@ -275,6 +275,79 @@ final class PlaybackStopTests: XCTestCase {
         }
     }
 
+    private func checkAutoplayOffAfterChainChange(wormhole: Int? = nil) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Autoplay Off\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        let suffix = wormhole.map { " \($0)" } ?? ""
+        try "1 1 1 a.wav 0\(suffix)\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let change = wormhole == nil ? "chain 2\n" : ""
+        try "on 1 1\n\(change)off 1 1\ndelay 60000\n".write(
+            to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.autoPlayRunner)
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "scripted off", until: { runner.progress >= 4 })
+        XCTAssertEqual(engine.playsStarted, 1)
+        XCTAssertTrue(runner.active, "check the scripted off before stop or song cleanup")
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "off must release the input from the previous chain")
+        XCTAssertNotEqual(vm.padItems[0][0]?.channel, .pressed)
+        print("AUTOPLAY OFF wormhole=\(String(describing: wormhole)) active=\(engine.activePlayIDs)")
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterExplicitChainChange() async throws {
+        try await checkAutoplayOffAfterChainChange()
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterWormhole() async throws {
+        try await checkAutoplayOffAfterChainChange(wormhole: 2)
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterOutOfRangeWormhole() async throws {
+        try await checkAutoplayOffAfterChainChange(wormhole: 20)
+    }
+
+    func testStoppingAutoplayReleasesInputPressedAfterOutOfRangeWormhole() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "1 1 1 a.wav 0 20\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try "on 1 1\non 1 1\ndelay 60000\n".write(
+            to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "second autoplay press", until: { engine.playsStarted == 2 })
+        XCTAssertFalse(engine.activePlayIDs.isEmpty)
+        vm.autoPlayNext()
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+    }
+
+    func testAutoplayModeChangesRespectLockedFeedbackLight() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Locked Light\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=false\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        XCTAssertTrue(vm.scbFeedbackLight.locked)
+        XCTAssertFalse(vm.scbFeedbackLight.checked)
+        vm.switchPlayMode(.autoPlay)
+        vm.switchPlayMode(.none)
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "turning autoplay off must respect the lock")
+        vm.switchPlayMode(.autoPlay)
+        vm.autoPlayResume()
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "resuming autoplay must respect the lock")
+        let runner = try XCTUnwrap(vm.autoPlayRunner)
+        try await wait(for: "song end", until: { runner.progress > 0 && !runner.active })
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "song end must respect the lock")
+    }
+
     private func holdScreen() { Thread.sleep(forTimeInterval: 0.8) }
 
     func testRepeatSupplyDoesNotWaitForTheScreen() async throws {
