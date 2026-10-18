@@ -289,13 +289,19 @@ private final class AutoPlayStandIn: AutoPlayRunner.Listener {
 
     func onStart() { clock.begin() }
 
-    func onPadTouchOn(x: Int, y: Int) {
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID) {
         presses.append(clock.now() ?? 0)
-        driver.repainting { vm.padTouch(x: x, y: y, isDown: true, trigger: .autoplay) }
+        driver.repainting { vm.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID) }
     }
 
-    func onPadTouchOff(x: Int, y: Int) {
-        driver.repainting { vm.padTouch(x: x, y: y, isDown: false, trigger: .autoplay) }
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
+        for inputID in inputIDs {
+            onPadTouchCancel(x: x, y: y, inputID: inputID)
+        }
+    }
+
+    func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
+        driver.repainting { vm.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID) }
     }
 
     func onChainChange(c: Int) {

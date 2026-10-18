@@ -127,8 +127,10 @@ final class UniPackAutoMapper {
     /// Use the same source limits as playback, so a skipped sound adds no wait.
     private nonisolated static func audioDurationMs(url: URL) throws -> Int {
         let audioFile = try AVAudioFile(forReading: url)
-        let sampleRate = audioFile.processingFormat.sampleRate
-        let frameCount = try SoundFileLimits.sourceFrameCount(audioFile.length, sampleRate: sampleRate)
+        let format = audioFile.processingFormat
+        let sampleRate = format.sampleRate
+        let frameCount = try SoundFileLimits.sourceFrameCount(
+            audioFile.length, sampleRate: sampleRate, channels: format.channelCount)
         return Int(Double(frameCount) / sampleRate * 1000)
     }
 }

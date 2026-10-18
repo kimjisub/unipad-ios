@@ -86,6 +86,24 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
+    @Test func anOversizedBufferIsSkippedAndTheNextSoundPlays() async throws {
+        let frames = UInt32(SoundFileLimits.maximumBufferBytes / (2 * 4)) + 1
+        let oversized = try SoundEngineTestSupport.writeWav(sampleRate: 384_000, frames: frames, channels: 2)
+        let good = try SoundEngineTestSupport.writeWav(sampleRate: 48_000, frames: 4_800)
+        defer {
+            try? FileManager.default.removeItem(at: oversized)
+            try? FileManager.default.removeItem(at: good)
+        }
+        let pack = OnePadPack(chains: [[Sound(file: oversized, loop: 0), Sound(file: good, loop: 0)]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 0)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
     @Test(arguments: [UInt32(44_100), 48_000])
     func aPlainWavPlays(sampleRate: UInt32) async throws {
         try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10))
