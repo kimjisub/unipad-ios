@@ -7,7 +7,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct PackDelayPlaybackTests {
-    static let tokens = [
+    nonisolated static let tokens = [
         "9223372036854775807", "-9223372036854775808",
         "2147483647", "-2147483648", "0", "25"
     ]
@@ -102,7 +102,7 @@ struct PackDelayPlaybackTests {
         try await wait { recorder.ended }
         #expect(recorder.presses == [0, 1])
         #expect(!runner.active)
-        if guide {
+        if guide || toggleGuide {
             #expect(recorder.guides.map(\.pad) == [0, 1])
             #expect(recorder.guides.map(\.target) == [start + total, start + total + 100])
         }
