@@ -148,6 +148,36 @@ struct LedRunnerTests {
         #expect(h.recorder.outputs == finishedOutputs, "completed finite LEDs keep their final state")
     }
 
+    @Test func finiteNegativeDurationLoopRunsOnlyOnePass() async throws {
+        try await checkNegativeDurationLoop(repeats: 3)
+    }
+
+    @Test func hugeNegativeDurationLoopFinishesInOneTick() async throws {
+        try await checkNegativeDurationLoop(repeats: 2_147_483_647)
+    }
+
+    private func checkNegativeDurationLoop(repeats: Int) async throws {
+        let h = try await start([0: LedAnimation(
+            ledEvents: [.on(x: 0, y: 0, color: 5, velocity: 5), .delay(delay: 10),
+                        .off(x: 0, y: 0), .delay(delay: -20),
+                        .on(x: 1, y: 1, color: 9, velocity: 9),
+                        .on(x: -1, y: 1, color: 9, velocity: 9)],
+            loop: repeats, num: 0
+        )])
+        defer { h.runner.stop() }
+
+        h.press()
+        #expect(h.recorder.outputs == ["padOn 0 0"], "the positive delay still waits")
+        h.tick(10)
+        #expect(h.recorder.outputs == ["padOn 0 0", "padOff 0 0", "padOn 1 1", "chainOn 1"])
+        h.tick()
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+        let finishedOutputs = h.recorder.outputs
+        h.runner.eventOff(x: 0, y: 0)
+        for _ in 0..<5 { h.tick() }
+        #expect(h.recorder.outputs == finishedOutputs, "completed finite LEDs keep their final state")
+    }
+
     @Test func timedFiniteLoopPlaysAllThreePasses() async throws {
         let h = try await start([0: LedAnimation(
             ledEvents: [.on(x: 0, y: 0, color: 5, velocity: 5), .delay(delay: 10),

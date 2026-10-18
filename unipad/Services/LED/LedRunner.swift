@@ -135,10 +135,10 @@ nonisolated final class LedRunner: @unchecked Sendable {
                     if state.index >= ledEvents.count {
                         state.loopProgress += 1
                         state.index = 0
-                        // Repeating a zero-duration pass leaves the same final LEDs at the same
-                        // instant. Finish finite animations now, without building a huge batch
+                        // Repeating a pass whose logical time does not advance leaves the same
+                        // final LEDs. Finish finite animations now, without building a huge batch
                         // while holding the lock shared with pad input. Endless loops keep yielding.
-                        if ledAnimation.loop > 0 && state.loopStartTime == state.delay {
+                        if ledAnimation.loop > 0, let loopStartTime = state.loopStartTime, state.delay <= loopStartTime {
                             state.isPlaying = false
                             break
                         }
