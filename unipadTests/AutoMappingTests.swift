@@ -84,6 +84,33 @@ extension PlayUsageRecordTests {
             #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
         }
 
+        @Test func aSoundOverTenMinutesGetsNoLength() async throws {
+            let long = try SoundEngineTestSupport.writeWav(sampleRate: 8_000, frames: 8_000 * 601)
+            defer { try? FileManager.default.removeItem(at: long) }
+            let pack = try MapperPack(keySound: "1 1 1 a.wav\n1 1 2 long.wav\n1 1 3 a.wav\n", sounds: ["long.wav": long])
+            defer { pack.remove() }
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
+        }
+
+        @Test func aSoundExceedingTheBufferBudgetGetsNoLength() async throws {
+            let frames = UInt32(SoundFileLimits.maximumBufferBytes / (2 * 4)) + 1
+            let oversized = try SoundEngineTestSupport.writeWav(sampleRate: 384_000, frames: frames, channels: 2)
+            defer { try? FileManager.default.removeItem(at: oversized) }
+            let pack = try MapperPack(keySound: "1 1 1 a.wav\n1 1 2 oversized.wav\n1 1 3 a.wav\n", sounds: ["oversized.wav": oversized])
+            defer { pack.remove() }
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
+        }
+
         /// Waits that add up past Int32.max are written as several lines the pack reader accepts,
         /// so the pack reloads with the whole wait.
         @Test func aWaitLongerThanTheReaderTakesIsSplit() async throws {
