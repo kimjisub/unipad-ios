@@ -100,7 +100,7 @@ struct PackDelayPlaybackTests {
         runner.practiceGuide = guide
         runner.launch()
         try await wait { recorder.ended }
-        #expect(recorder.presses == [0, 1])
+        #expect(recorder.presses == (guide ? [] : toggleGuide ? [0] : [0, 1]))
         #expect(!runner.active)
         if guide || toggleGuide {
             #expect(recorder.guides.map(\.pad) == [0, 1])
@@ -135,8 +135,10 @@ struct PackDelayPlaybackTests {
         runner.stepMode = true
         runner.playmode = false
         runner.launch()
-        try await wait { recorder.guides.count == 1 }
-        #expect(recorder.guides.map(\.pad) == [0])
+        // A negative leading wait keeps both pads in the same group, as on Android and web.
+        let firstGroup = totalDelay(token) < 0 ? [0, 1] : [0]
+        try await wait { recorder.guides.count == firstGroup.count }
+        #expect(recorder.guides.map(\.pad) == firstGroup)
         runner.stepPadPressed(x: 0, y: 0)
         try await wait { recorder.guides.count == 2 }
         #expect(recorder.guides.map(\.pad) == [0, 1])
