@@ -284,7 +284,7 @@ final class PlaybackStopTests: XCTestCase {
         try "1 1 1 a.wav 0\(suffix)\n".write(
             to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
         let change = wormhole == nil ? "chain 2\n" : ""
-        try "on 1 1\n\(change)off 1 1\ndelay 60000\n".write(
+        try "on 1 1\n\(change)off 1 1\ndelay 60000\noff 1 2\n".write(
             to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
         let vm = try await loaded(root)
         defer { vm.cleanup() }
