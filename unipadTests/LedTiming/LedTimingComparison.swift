@@ -13,6 +13,9 @@ nonisolated struct LedTimingComparison {
 
     /// Two LedRunner ticks: closer than this, two commands can share a tick and leave in either order.
     static let overtakeMs = 8.0
+    /// Only this fixed window before a forced cutoff can contain commands not yet handed over.
+    /// It never grows when output stops early or the measured latency is large.
+    static let cutoffWindowMs = 50.0
     /// The largest unmatched middle of one LED's sequences compared cell by cell (4 bytes a cell).
     private static let maxDiffCells = 25_000_000
     private static let maxReportedDifferences = 10
@@ -22,9 +25,7 @@ nonisolated struct LedTimingComparison {
     let matched: Int
     let reordered: Int
     let missing: Int
-    /// Missing commands no later than the latest matched intended time, across every LED.
-    /// Only commands after that point can be an unobserved tail at a forced cutoff.
-    let missingBeforeLastMatch: Int
+    private let missingTimes: [Double]
     let extra: Int
     /// Matched commands that arrived after one expected more than `overtakeMs` later, on any LED.
     let overtaken: Int
@@ -37,9 +38,15 @@ nonisolated struct LedTimingComparison {
 
     var orderedAndComplete: Bool { reordered == 0 && missing == 0 && extra == 0 }
 
-    /// A cutoff can leave an unobserved tail, but must never hide reordered or extra commands.
-    func hasUnexpectedDifferences(allowMissingTail: Bool) -> Bool {
-        reordered > 0 || extra > 0 || (allowMissingTail ? missingBeforeLastMatch : missing) > 0
+    /// A cutoff can hide commands due within the final fixed window only, on any LED.
+    /// Without a cutoff every missing command is a failure, including the natural end of a pack.
+    func unexpectedMissing(cutoffMs: Int64?) -> Int {
+        guard let cutoffMs else { return missing }
+        return missingTimes.filter { $0 < Double(cutoffMs) - Self.cutoffWindowMs }.count
+    }
+
+    func hasUnexpectedDifferences(cutoffMs: Int64?) -> Bool {
+        reordered > 0 || extra > 0 || uncompared > 0 || unexpectedMissing(cutoffMs: cutoffMs) > 0
     }
 
     private var sorted: [Double] { latencies.map(\.ms).sorted() }
@@ -134,8 +141,7 @@ nonisolated struct LedTimingComparison {
         self.matched = matched
         self.reordered = reordered
         self.missing = missing
-        let lastMatchedTime = latencies.map(\.t0).max() ?? -.infinity
-        self.missingBeforeLastMatch = missingTimes.filter { $0 <= lastMatchedTime }.count
+        self.missingTimes = missingTimes
         self.extra = extra
         self.overtaken = overtaken
         self.uncompared = uncompared

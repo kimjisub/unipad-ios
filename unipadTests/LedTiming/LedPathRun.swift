@@ -134,7 +134,8 @@ final class LedPathRun {
         while (clock.now() ?? 0) < Double(giveUpAtMs) && animating(ledRunner) {
             try await Task.sleep(for: .milliseconds(20))
         }
-        let cutoffMs = (clock.now() ?? 0) >= Double(giveUpAtMs) ? giveUpAtMs : nil
+        // The final sleep may resume after the deadline even though the last animation finished.
+        let cutoffMs = animating(ledRunner) ? giveUpAtMs : nil
         ledRunner.stop()
         // Drain batches accepted before the cutoff. HandoverRecorder rejects later ticks even if
         // this task resumes late, but accepted batches still reach the real main-actor adapter.

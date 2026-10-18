@@ -92,7 +92,7 @@ final class StorePackLedTimingTests: XCTestCase {
             report(measurement.describe(), as: "\(name).txt")
             let comparison = measurement.packToDriver
             if recording.handedOver.isEmpty || !measurement.deliveredAsHandedOver
-                || comparison.hasUnexpectedDifferences(allowMissingTail: !measurement.assessesPackCompleteness)
+                || comparison.hasUnexpectedDifferences(cutoffMs: recording.cutoffMs)
                 || measurement.deliveredToMidi == false {
                 failed.append(name)
             }

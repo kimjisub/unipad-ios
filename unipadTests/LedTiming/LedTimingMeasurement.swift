@@ -62,9 +62,11 @@ nonisolated struct LedTimingMeasurement {
         lines.append("  LedRunner -> driver: \(runnerToDriver.expected) handed over, \(runnerToDriver.arrived) arrived, "
             + "same order \(deliveredAsHandedOver), ms median \(Self.ms(runnerToDriver.median)) p95 \(Self.ms(runnerToDriver.p95)) max \(Self.ms(runnerToDriver.max))")
         if let cutoff = recording.cutoffMs {
-            lines.append("  observation stopped at \(cutoff) ms; whole-pack completeness not assessed")
+            lines.append("  observation stopped at \(cutoff) ms; whole-pack completeness not assessed; "
+                + "unobserved window \(Self.ms(Double(cutoff) - LedTimingComparison.cutoffWindowMs))..<\(cutoff) ms")
             lines.append("  partial pack -> driver: matched \(pack.matched), reordered \(pack.reordered), "
-                + "unmatched intended \(pack.missing), missing before last match \(pack.missingBeforeLastMatch), extra \(pack.extra), repaints \(recording.repaints)")
+                + "unmatched intended \(pack.missing), missing before cutoff window \(pack.unexpectedMissing(cutoffMs: cutoff)), extra \(pack.extra), repaints \(recording.repaints), "
+                + "LEDs too long to compare \(pack.uncompared)")
         } else {
             lines.append("  pack -> driver: matched \(pack.matched), reordered \(pack.reordered), missing \(pack.missing), extra \(pack.extra), "
                 + "covered \(recording.covered), overtaken by more than \(Int(LedTimingComparison.overtakeMs)) ms \(pack.overtaken), "
