@@ -127,6 +127,18 @@ enum UITestSupport {
         return !viewport.isEmpty && !frame.isEmpty && viewport.contains(frame)
     }
 
+    /// Search exposes a fixture even when a large lazy library has not created its row yet.
+    static func searchForPack(_ query: String, in app: XCUIApplication) {
+        let toggle = app.buttons["magnifyingglass"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10))
+        toggle.tap()
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(query)
+        field.typeText("\n")
+    }
+
     @discardableResult
     static func scrollIntoView(_ element: XCUIElement, in scrollView: XCUIElement,
                                app: XCUIApplication, maxSwipes: Int = 6) -> Bool {
@@ -223,6 +235,27 @@ enum UITestSupport {
         guard isOn() != on else { return }
         row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
+    }
+
+    /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
+    /// Documents/UniPack first; a missing fixture fails the check.
+    static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
+        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        title.tap()
+        let play = app.buttons[playButtonTitle].firstMatch
+        if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
+    }
+
+    /// iPadOS draws a "hidden windows / show all windows" pill after an app comes to the front.
+    /// It can remain until an app interaction dismisses it. Screenshots include it, so callers
+    /// dismiss it before waiting. Returns false when it is still there after the timeout.
+    static func waitForHiddenWindowsPillToGo(timeout: TimeInterval) -> Bool {
+        let pill = XCUIApplication(bundleIdentifier: "com.apple.springboard").images["macwindow.on.rectangle"]
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: pill)
+        return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
     }
 
     static func attachScreenshot(_ name: String, to testCase: XCTestCase) {

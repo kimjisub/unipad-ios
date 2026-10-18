@@ -177,6 +177,19 @@ struct PlayUsageRecordTests {
         }
     }
 
+    @Test func playStartAndEndCarryThePlayScreenWindowLayout() async throws {
+        try await PlayUsageScenario.run { s in
+            let screen = CGSize(width: 1376, height: 1032)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            try await s.loadReady()
+            s.press()
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: CGSize(width: 684, height: 1032), screenSize: screen))
+            s.vm.cleanup()
+            #expect(s.layouts(of: "play_start") == ["landscape 840dp_plus full_screen"])
+            #expect(s.layouts(of: "play_end") == ["portrait 600dp_839dp multi_window"])
+        }
+    }
+
     @Test func midiModeKeyDoesNotCountAsHuman() async throws {
         try await PlayUsageScenario.run { s in
             try await s.loadReady()

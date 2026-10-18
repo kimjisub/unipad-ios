@@ -152,7 +152,7 @@ struct UniPackImporterOverlapTests {
 }
 
 @MainActor
-private final class RecordingImportDelegate: UniPackImporter.Delegate, @unchecked Sendable {
+final class RecordingImportDelegate: UniPackImporter.Delegate, @unchecked Sendable {
     private let onStart: () -> Void
     var completedFolder: URL?
     var error: Error?

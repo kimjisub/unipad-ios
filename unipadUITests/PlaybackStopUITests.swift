@@ -13,14 +13,14 @@ final class PlaybackStopUITests: XCTestCase {
         UITestSupport.dismissSystemAlerts()
 
         for round in 0..<3 {
-            openPack()
+            UITestSupport.openPlaybackStopFixture(in: app)
             let grid = app.otherElements["playPadGrid"]
             for _ in 0..<4 { grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap() }
             if round == 0 { UITestSupport.attachScreenshot("01-repeated-input", to: self) }
             leave()
             if round == 0 { UITestSupport.attachScreenshot("02-home-after-sound", to: self) }
 
-            openPack()
+            UITestSupport.openPlaybackStopFixture(in: app)
             choose("Step")
             if round == 0 { UITestSupport.attachScreenshot("03-step-waiting", to: self) }
             grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).tap()
@@ -33,17 +33,6 @@ final class PlaybackStopUITests: XCTestCase {
             leave()
             if round == 0 { UITestSupport.attachScreenshot("07-home-after-step", to: self) }
         }
-    }
-
-    @MainActor
-    private func openPack() {
-        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
-        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
-        title.tap()
-        let play = app.buttons["Play"].firstMatch
-        if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
-        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
     }
 
     @MainActor

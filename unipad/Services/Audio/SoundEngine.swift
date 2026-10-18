@@ -341,12 +341,11 @@ final class SoundEngine {
             return input
         }
 
+        let outCapacity = try SoundFileLimits.resampledFrameCount(
+            input.frameLength, from: input.format.sampleRate, to: targetFormat.sampleRate)
         guard let converter = AVAudioConverter(from: input.format, to: targetFormat) else {
             throw SoundEngineError.converterCreationFailed
         }
-
-        let ratio = targetFormat.sampleRate / input.format.sampleRate
-        let outCapacity = AVAudioFrameCount((Double(input.frameLength) * ratio).rounded(.up)) + 1
         guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCapacity) else {
             throw SoundEngineError.bufferCreationFailed
         }
@@ -501,7 +500,10 @@ final class SoundEngine {
             return
         }
         guard let buffer = buffer(for: sound.id) else {
+            // A sound that could not be decoded is silent where it stands; the pad still moves on
+            // to its next line and the sound's wormhole still applies.
             logger.warning("soundOn(\(x),\(y)): buffer not loaded for sound id=\(sound.id)")
+            advance(past: sound, c: c, x: x, y: y)
             return
         }
 
@@ -564,6 +566,11 @@ final class SoundEngine {
         playsStarted += 1
         inputPlayback[input] = StartedPlayback(playID: playID, isInfinite: sound.loop == -1)
 
+        advance(past: sound, c: c, x: x, y: y)
+    }
+
+    /// Moves the pad to its next keySound line and follows `sound`'s wormhole.
+    private func advance(past sound: Sound, c: Int, x: Int, y: Int) {
         unipack.soundPush(c: c, x: x, y: y)
 
         if sound.wormhole != Sound.noWormhole {
