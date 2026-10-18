@@ -41,9 +41,13 @@ final class PlayViewModel {
             self.checked = checked
         }
 
-        func setChecked(_ value: Bool) {
+        func setChecked(_ value: Bool, notify: Bool = true) {
             guard !locked else { return }
-            forceSetChecked(value)
+            if notify {
+                forceSetChecked(value)
+            } else {
+                setCheckedSilently(value)
+            }
         }
 
         func forceSetChecked(_ value: Bool) {
@@ -627,22 +631,6 @@ final class PlayViewModel {
         setPadColor(x: x, y: y, color: .clear)
     }
 
-    func clearAllPadColors() {
-        guard let unipack else { return }
-        padColors = Array(
-            repeating: Array(repeating: .clear, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-        padLedColors = Array(
-            repeating: Array(repeating: .clear, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-        padItems = Array(
-            repeating: Array(repeating: nil, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-    }
-
     /// Convert a 32-bit ARGB value to a SwiftUI Color
     private static func colorFromARGB(_ argb: UInt32) -> Color {
         let a = Double((argb >> 24) & 0xFF) / 255.0
@@ -826,12 +814,7 @@ final class PlayViewModel {
             isAutoPlayPlaying = false
             scbAutoPlay.setCheckedSilently(false)
             autoPlayControlVisible = false
-            if let unipack, unipack.keyLedExist {
-                scbLed.setChecked(true)
-                scbFeedbackLight.setCheckedSilently(false)
-            } else {
-                scbFeedbackLight.setCheckedSilently(true)
-            }
+            restorePlaybackLights()
             refreshWatermark()
             return
         }
@@ -899,6 +882,13 @@ final class PlayViewModel {
         pauseAutoPlay()
     }
 
+    fileprivate func restorePlaybackLights() {
+        let hasLED = unipack?.keyLedExist == true
+        if hasLED { scbLed.setChecked(true) }
+        // Avoid the feedback callback's padInit while keeping hidden options locked.
+        scbFeedbackLight.setChecked(!hasLED, notify: false)
+    }
+
     private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
@@ -907,12 +897,7 @@ final class PlayViewModel {
         ledInit()
         runner.playmode = true
         isAutoPlayPlaying = true
-        if let unipack, unipack.keyLedExist {
-            scbLed.setChecked(true)
-            scbFeedbackLight.setCheckedSilently(false)
-        } else {
-            scbFeedbackLight.setCheckedSilently(true)
-        }
+        restorePlaybackLights()
         refreshWatermark()
         runner.beforeStartPlaying = true
     }
@@ -1246,7 +1231,6 @@ private final class LedListenerAdapter: LedRunner.Listener {
 @MainActor
 private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     private weak var viewModel: PlayViewModel?
-    private var padInputs: [AutoPlayRunner.Pad: UUID] = [:]
 
     init(viewModel: PlayViewModel) {
         self.viewModel = viewModel
@@ -1260,22 +1244,17 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         }
     }
 
-    func onPadTouchOn(x: Int, y: Int) {
-        guard let vm = viewModel else { return }
-        let pad = AutoPlayRunner.Pad(x: x, y: y, chain: vm.chain.value)
-        let inputID = padInputs[pad] ?? UUID()
-        padInputs[pad] = inputID
-        vm.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID)
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID) {
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID)
     }
 
-    func onPadTouchOff(x: Int, y: Int) {
-        guard let vm = viewModel else { return }
-        onPadTouchCancel(x: x, y: y, chain: vm.chain.value)
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
+        for inputID in inputIDs {
+            onPadTouchCancel(x: x, y: y, inputID: inputID)
+        }
     }
 
-    func onPadTouchCancel(x: Int, y: Int, chain: Int) {
-        let pad = AutoPlayRunner.Pad(x: x, y: y, chain: chain)
-        guard let inputID = padInputs.removeValue(forKey: pad) else { return }
+    func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
         viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID)
     }
 
@@ -1336,12 +1315,7 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         vm.isPracticeMode = false
         vm.scbAutoPlay.setCheckedSilently(false)
         vm.autoPlayControlVisible = false
-        if let unipack = vm.unipack, unipack.keyLedExist {
-            vm.scbLed.setChecked(true)
-            vm.scbFeedbackLight.setCheckedSilently(false)
-        } else {
-            vm.scbFeedbackLight.setCheckedSilently(true)
-        }
+        vm.restorePlaybackLights()
         vm.refreshWatermark()
     }
 }

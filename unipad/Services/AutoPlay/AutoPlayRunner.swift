@@ -35,9 +35,9 @@ final class AutoPlayRunner {
     @MainActor
     protocol Listener: AnyObject {
         func onStart()
-        func onPadTouchOn(x: Int, y: Int)
-        func onPadTouchOff(x: Int, y: Int)
-        func onPadTouchCancel(x: Int, y: Int, chain: Int)
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID)
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID])
+        func onPadTouchCancel(x: Int, y: Int, inputID: UUID)
         func onChainChange(c: Int)
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64)
         func onGuidePadOff(x: Int, y: Int)
@@ -51,18 +51,18 @@ final class AutoPlayRunner {
 
     private weak var listener: Listener?
 
-    struct Pad: Hashable {
+    private struct Pad: Hashable {
         let x: Int
         let y: Int
         let chain: Int
     }
-    private var heldPads: Set<Pad> = []
+    private var heldPads: [Pad: UUID] = [:]
 
     private func releaseHeldPads() {
         let pads = heldPads
         heldPads.removeAll()
-        for pad in pads {
-            listener?.onPadTouchCancel(x: pad.x, y: pad.y, chain: pad.chain)
+        for (pad, inputID) in pads {
+            listener?.onPadTouchCancel(x: pad.x, y: pad.y, inputID: inputID)
         }
     }
 
@@ -280,8 +280,10 @@ final class AutoPlayRunner {
                                     }
                                     self.unipack.soundPush(c: currChain, x: x, y: y, num: num)
                                     self.unipack.ledPush(c: currChain, x: x, y: y, num: num)
-                                    self.heldPads.insert(Pad(x: x, y: y, chain: currChain))
-                                    self.listener?.onPadTouchOn(x: x, y: y)
+                                    let pad = Pad(x: x, y: y, chain: self.chain.value)
+                                    let inputID = self.heldPads[pad] ?? UUID()
+                                    self.heldPads[pad] = inputID
+                                    self.listener?.onPadTouchOn(x: x, y: y, inputID: inputID)
                                 }
 
                             case .off(let x, let y, let currChain):
@@ -289,8 +291,12 @@ final class AutoPlayRunner {
                                     if self.chain.value != currChain {
                                         self.listener?.onChainChange(c: currChain)
                                     }
-                                    self.heldPads.remove(Pad(x: x, y: y, chain: currChain))
-                                    self.listener?.onPadTouchOff(x: x, y: y)
+                                    // Off names a physical pad, even after a wormhole or chain command.
+                                    // The runner owns press identities; the screen never rebuilds them
+                                    // from its current (possibly clamped) chain.
+                                    let inputs = self.heldPads.filter { $0.key.x == x && $0.key.y == y }
+                                    for pad in inputs.keys { self.heldPads.removeValue(forKey: pad) }
+                                    self.listener?.onPadTouchOff(x: x, y: y, inputIDs: Array(inputs.values))
                                 }
 
                             case .delay(let delay):
@@ -486,7 +492,7 @@ final class AutoPlayRunner {
 }
 
 extension AutoPlayRunner.Listener {
-    func onPadTouchCancel(x: Int, y: Int, chain: Int) {
-        onPadTouchOff(x: x, y: y)
+    func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
+        onPadTouchOff(x: x, y: y, inputIDs: [inputID])
     }
 }

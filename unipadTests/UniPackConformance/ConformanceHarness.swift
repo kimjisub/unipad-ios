@@ -306,16 +306,16 @@ enum ConformanceHarness {
             self.forward = forward
         }
         func onStart() {}
-        func onPadTouchOn(x: Int, y: Int) {
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID) {
             log.add(["autoOn", .int(x), .int(y)])
             forward(x, y, true)
         }
-        func onPadTouchOff(x: Int, y: Int) {
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
             log.add(["autoOff", .int(x), .int(y)])
             forward(x, y, false)
         }
         // The corpus records scripted off events; input cancellation is cleanup, not a script step.
-        func onPadTouchCancel(x: Int, y: Int, chain: Int) {
+        func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
             forward(x, y, false)
         }
         func onChainChange(c: Int) {
