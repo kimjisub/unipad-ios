@@ -13,6 +13,13 @@ GSP_PATH = File.join(REPO_ROOT, "unipad/GoogleService-Info.plist")
 # this build, not to whatever older unipad-* folder sits in ~/Library/Developer/Xcode.
 RELEASE_DERIVED_DATA = File.join(REPO_ROOT, "build/DerivedData")
 
+# gym reads the build settings with `xcodebuild -showBuildSettings`, which fastlane gives
+# 3 s and doubles over four tries (45 s in all). On a busy build machine that read alone
+# takes 40-60 s warm and nearly 3 minutes cold, and the lane would stop before compiling.
+# Allow 120 s, then 240 s; a caller's own values still win.
+ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] ||= "120"
+ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] ||= "1"
+
 # Builds the App Store Connect API key token from the env vars op-bootstrap exports.
 # The key travels as base64 content rather than a file, so no .p8 is ever written to disk.
 def asc_api_key
