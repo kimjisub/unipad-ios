@@ -55,15 +55,16 @@ enum SoundEngineTestSupport {
     }
 
     /// A 16-bit mono PCM WAV of `frames` silent frames whose header claims `sampleRate`, written
-    /// byte by byte so the header can say what no encoder would write.
-    static func writeWav(sampleRate: UInt32, frames: UInt32) throws -> URL {
+    /// byte by byte so the header can say what no encoder would write. `declaredFrames` can
+    /// exaggerate its length without adding sample data.
+    static func writeWav(sampleRate: UInt32, frames: UInt32, declaredFrames: UInt32? = nil) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "SoundEngineTestSupport-\(UUID().uuidString).wav")
         var data = Data()
         func append<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
         }
-        let dataSize = frames * 2
+        let dataSize = (declaredFrames ?? frames) * 2
         data.append(contentsOf: Array("RIFF".utf8)); append(UInt32(36 + dataSize))
         data.append(contentsOf: Array("WAVE".utf8))
         data.append(contentsOf: Array("fmt ".utf8)); append(UInt32(16))
@@ -71,7 +72,7 @@ enum SoundEngineTestSupport {
         append(sampleRate); append(sampleRate * 2) // byte rate
         append(UInt16(2)); append(UInt16(16)) // block align, bits per sample
         data.append(contentsOf: Array("data".utf8)); append(dataSize)
-        data.append(Data(count: Int(dataSize)))
+        data.append(Data(count: Int(frames) * 2))
         try data.write(to: url)
         return url
     }

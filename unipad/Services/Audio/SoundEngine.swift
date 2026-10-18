@@ -322,10 +322,10 @@ final class SoundEngine {
         return buffers[id]
     }
 
-    private static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
+    static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
         let audioFile = try AVAudioFile(forReading: url)
         let format = audioFile.processingFormat
-        let frameCount = AVAudioFrameCount(audioFile.length)
+        let frameCount = try SoundFileLimits.sourceFrameCount(audioFile.length, sampleRate: format.sampleRate)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw SoundEngineError.bufferCreationFailed
         }
