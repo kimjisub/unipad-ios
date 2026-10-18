@@ -124,15 +124,12 @@ final class UniPackAutoMapper {
         return stride(from: 0, to: milliseconds, by: longest).map { "d \(min(longest, milliseconds - $0))" }
     }
 
-    /// The header's sample rate divides the frame count: at 0 Hz the length is infinite and
-    /// converting it traps, at 20 Hz it is thousands of times too long.
+    /// Use the same source limits as playback, so a skipped sound adds no wait.
     private nonisolated static func audioDurationMs(url: URL) throws -> Int {
         let audioFile = try AVAudioFile(forReading: url)
         let sampleRate = audioFile.processingFormat.sampleRate
-        guard SoundFileLimits.sampleRates.contains(sampleRate) else {
-            throw SoundFileLimits.Violation.implausibleSampleRate(sampleRate)
-        }
-        return Int(Double(audioFile.length) / sampleRate * 1000)
+        let frameCount = try SoundFileLimits.sourceFrameCount(audioFile.length, sampleRate: sampleRate)
+        return Int(Double(frameCount) / sampleRate * 1000)
     }
 }
 
