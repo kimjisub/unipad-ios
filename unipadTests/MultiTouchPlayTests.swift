@@ -49,9 +49,7 @@ final class MultiTouchPlayTests: XCTestCase {
             pads.cellHeight = Self.cell
             pads.rows = 8
             pads.columns = 8
-            pads.onPadTouch = { [vm] row, col, isDown, inputID in
-                vm.padTouch(x: row, y: col, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
-            }
+            pads.onPadTouch = vm.screenPadTouch
         }
 
         static func center(_ pad: Pad) -> CGPoint {
