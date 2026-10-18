@@ -90,6 +90,10 @@
 "hideUI" = "Ocultar UI";
 "watermark" = "Marca de agua";
 "proLightMode" = "Modo Pro Light";
+"play_section_play_mode" = "Modo de juego";
+"play_section_performance" = "Interpretación";
+"play_section_display" = "Pantalla";
+"play_section_tools" = "Herramientas";
 
 /* Version */
 "update_available" = "Actualización disponible";

@@ -27,3 +27,12 @@ or the disappearance of rendered pads. UI tests cover player exit separately.
 The regression tests require the six cases to be measured and check that omitting
 the main-screen attach or autoplay cancellation changes the result to a failure.
 No new known differences are pinned to make these checks pass.
+
+`autoplayOff` stays on the play screen and invokes `PlayViewModel.switchPlayMode(.none)`.
+Scenarios using it send manual and autoplay inputs through `PlayViewModel.padTouch`,
+with separate input identities and the production runner's cancellation callbacks.
+`looping` reports coordinates for infinite sounds whose playback IDs are still
+active in the real `SoundEngine`; it does not infer liveness from input events.
+`RUN-RP-005` checks the two held sounds before autoplay is disabled, the surviving
+manual sound afterward, no later autoplay events, and silence after manual release.
+A self-check omits the screen's autoplay-off action and requires this case to fail.
