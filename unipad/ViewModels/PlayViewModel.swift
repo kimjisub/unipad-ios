@@ -565,6 +565,13 @@ final class PlayViewModel {
     private static let pressedVelocity = 3 // LED_RED
     private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
 
+    /// What the on-screen pad grid (`PadGridView.onPadTouch`) calls for each finger.
+    var screenPadTouch: (Int, Int, Bool, UUID) -> Void {
+        { x, y, isDown, inputID in
+            self.padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
+        }
+    }
+
     /// `trigger` says who pressed the pad; a release does the same whoever caused it.
     func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil) {
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
