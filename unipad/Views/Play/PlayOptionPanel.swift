@@ -20,7 +20,7 @@ struct PlayOptionPanel: View {
 
                 // PLAY MODE is the most frequently changed setting mid-session → promoted to top
                 if vm.scbAutoPlay.visible && !vm.scbAutoPlay.locked {
-                    sectionTitle(String(localized: "Play Mode"))
+                    sectionTitle(String(localized: "play_section_play_mode"))
                     playModeSegmented
                     if let unipack = vm.unipack, unipack.autoPlayExist {
                         // Auto Mapping is conceptually tied to AutoPlay — lifted out of Tools
@@ -201,7 +201,7 @@ struct PlayOptionPanel: View {
 
     private var performanceSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("PERFORMANCE")
+            sectionTitle(String(localized: "play_section_performance"))
             OptionSwitch(state: vm.scbFeedbackLight, label: String(localized: "feedbackLight"), tintColor: AppColors.playAccent)
             OptionSwitch(state: vm.scbLed, label: String(localized: "led"), tintColor: AppColors.playAccent)
             // NOTE: AutoPlay transport controls intentionally removed — the chrome column
@@ -211,7 +211,7 @@ struct PlayOptionPanel: View {
 
     private var displaySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("DISPLAY")
+            sectionTitle(String(localized: "play_section_display"))
             OptionSwitch(state: vm.scbHideUI, label: String(localized: "hideUI"), tintColor: AppColors.playAccent)
             OptionSwitch(state: vm.scbWatermark, label: String(localized: "watermark"), tintColor: AppColors.playAccent)
             OptionSwitch(state: vm.scbProLightMode, label: String(localized: "proLightMode"), tintColor: AppColors.playAccent)
@@ -220,7 +220,7 @@ struct PlayOptionPanel: View {
 
     private var toolsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("TOOLS")
+            sectionTitle(String(localized: "play_section_tools"))
             OptionSwitch(state: vm.scbTraceLog, label: String(localized: "traceLog"), tintColor: AppColors.playAccent) {
                 vm.traceLogInit()
             }

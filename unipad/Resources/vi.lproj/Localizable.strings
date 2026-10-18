@@ -90,6 +90,10 @@
 "hideUI" = "Ẩn UI";
 "watermark" = "Hình mờ";
 "proLightMode" = "Chế độ Pro Light";
+"play_section_play_mode" = "Chế độ chơi";
+"play_section_performance" = "Biểu diễn";
+"play_section_display" = "Hiển thị";
+"play_section_tools" = "Công cụ";
 
 /* Version */
 "update_available" = "Có bản cập nhật";
