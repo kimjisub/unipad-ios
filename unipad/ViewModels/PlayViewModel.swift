@@ -1191,7 +1191,8 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
 // MARK: - LED Listener Adapter
 
-private final class LedListenerAdapter: LedRunner.Listener {
+/// Internal so the LED timing test can record what LedRunner hands over before passing it on.
+final class LedListenerAdapter: LedRunner.Listener {
     private weak var viewModel: PlayViewModel?
 
     init(viewModel: PlayViewModel) {
