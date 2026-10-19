@@ -105,6 +105,8 @@ class Run:
         return child
 
     def stop(self, child):
+        if child.poll() is not None:
+            return
         # Record descendants before stopping the wrapper (compiler, simctl, log stream).
         rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid='], text=True, timeout=10)
         pairs = [tuple(map(int, row.split())) for row in rows.splitlines()]
@@ -238,6 +240,7 @@ class Run:
                 os.kill(self.device_pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
+            self.report.setdefault('stopped_device_pids', []).append(self.device_pid)
             self.device_pid = None
 
     def cleanup(self):

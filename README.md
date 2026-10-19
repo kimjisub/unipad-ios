@@ -88,6 +88,27 @@ checking a different source or expected app ID.
 
 ## Connecting a Launchpad
 
+For an automated simulator check, lend an iPhone simulator through your device
+harness and run:
+
+```bash
+python3 ci/virtual_launchpad_roundtrip.py --simulator <udid> \
+  --derived-data <scratch>/dd --output <scratch>/roundtrip
+```
+
+The output folder must be new. The command installs a separate Debug test app,
+checks the connected MK2 label, sends notes 81 and 82 after the play screen is
+ready, and requires each note's receipt and nonzero LED reply. It runs MIDI-first
+and screen-first sessions and checks one local `play_first_input` event per
+session. Firebase uses local stubs; their `AnalyticsLocal` marker is required.
+Logs, command/PID records, shared pack/preference snapshots, screenshots in the
+test result bundles, and `result.json` remain in the output folder. A failed
+check exits nonzero. `--without-device` is a negative control and must fail the
+connection wait. Each wait and the overall run are bounded (20 minutes by
+default); cleanup runs on success, failure, and interruption. Return the lent
+device through your harness when finished. This opt-in check does not verify
+physical USB, hardware latency, or models other than MK2.
+
 1. Connect your Launchpad to your device using a USB adapter or USB-C cable.
 2. Open UniPad. The app scans and connects to supported hardware automatically.
 3. If you want to change drivers manually, you can pick one from the in-app MIDI menu.
