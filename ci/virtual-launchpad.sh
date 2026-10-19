@@ -37,7 +37,9 @@ xcrun --sdk iphonesimulator clang -arch arm64 -arch x86_64 -mios-simulator-versi
   -Wl,-sectcreate,__TEXT,__info_plist,$build/Info.plist \
   -o $build/virtual-launchpad ${0:A:h}/virtual-launchpad.c
 codesign -s - -f $build/virtual-launchpad >/dev/null
-if (( $# == 5 )); then
+if [[ $seconds == --log ]]; then
+  xcrun simctl spawn $udid $build/virtual-launchpad --log
+elif (( $# == 5 )); then
   xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals ${4:A} ${5:A}
 else
   xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals

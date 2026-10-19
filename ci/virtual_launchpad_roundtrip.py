@@ -184,10 +184,11 @@ class Run:
             test_root = data / 'Documents/ReleaseTests' / token
             fixture(test_root)
             log = directory / 'app.log'
-            logger = self.start(self.sim + ['spawn', self.args.simulator, 'log', 'stream', '--level', 'info',
-                                          '--style', 'compact', '--predicate',
-                                          f'process == "unipad" AND (category == "AnalyticsLocal" OR category == "MIDI")'],
+            logger = self.start(['zsh', 'ci/virtual-launchpad.sh', self.args.simulator, '--log', str(log)],
                                 f'{order}/app.log')
+            self.wait(lambda: 'collector: pid=' in self.read(log), 60, 'log collector process', logger)
+            self.collector_pid = int(re.search(r'collector: pid=(\d+)', self.read(log))[1])
+            self.report['children'].append({'pid': self.collector_pid, 'kind': 'log-collector'})
             helper = None
             if not self.args.without_device:
                 helper = self.start(['zsh', 'ci/virtual-launchpad.sh', self.args.simulator, '300',
@@ -219,6 +220,7 @@ class Run:
                     self.report['waiting_for'] = str(error)
                 return test.poll() is not None
             self.wait(complete, 240, f'{order} UI and MIDI round trip')
+            self.stop_collector()
             self.stop(logger)
             if helper:
                 self.stop_device()
@@ -246,8 +248,18 @@ class Run:
             self.report.setdefault('stopped_device_pids', []).append(self.device_pid)
             self.device_pid = None
 
+    def stop_collector(self):
+        if getattr(self, 'collector_pid', None):
+            try:
+                os.kill(self.collector_pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            self.report.setdefault('stopped_collector_pids', []).append(self.collector_pid)
+            self.collector_pid = None
+
     def cleanup(self):
         self.stop_device()
+        self.stop_collector()
         for child in reversed(self.children):
             self.stop(child)
         if getattr(self, 'before', None) is not None:

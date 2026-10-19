@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <math.h>
+#include <string.h>
+#include <limits.h>
 
 static double secondsPerTick;
 static volatile sig_atomic_t stopped;
@@ -51,6 +53,20 @@ static void readProc(const MIDIPacketList *list, void *ref, void *src) {
 static CFStringRef cfs(const char *s) { return CFStringCreateWithCString(NULL, s, kCFStringEncodingUTF8); }
 
 int main(int argc, char **argv) {
+    // simctl-spawned processes are parented by the simulator's launchd, not simctl.
+    // Report the actual collector PID before exec so the caller can stop it directly.
+    if (argc == 2 && strcmp(argv[1], "--log") == 0) {
+        const char *root = getenv("SIMULATOR_ROOT");
+        char executable[PATH_MAX];
+        if (!root || snprintf(executable, sizeof(executable), "%s/usr/bin/log", root) >= (int)sizeof(executable)) return 2;
+        printf("collector: pid=%d\n", getpid());
+        fflush(stdout);
+        alarm(300);
+        execl(executable, "log", "stream", "--level", "info", "--style", "compact", "--predicate",
+              "process == \"unipad\" AND (category == \"AnalyticsLocal\" OR category == \"MIDI\")", NULL);
+        perror("starting log collector");
+        return 1;
+    }
     if (argc != 4 && argc != 6) {
         fprintf(stderr, "usage: virtual-launchpad <name> <seconds> <out-file> [<signal-file> <sent-file>]\n");
         return 2;
