@@ -169,6 +169,7 @@ class Run:
     def execute(self):
         self.report['commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         self.shared = self.container('kim.jisub.unipad', required=False)
+        self.report['shared_container_before'] = self.shared
         self.before = snapshot(self.shared)
         self.report['shared_before'] = self.before
         if self.container(self.bundle, required=False) is not None:
@@ -283,7 +284,11 @@ class Run:
             if not self.report['test_app_removed']:
                 raise RuntimeError('test app was not removed')
         if getattr(self, 'before', None) is not None:
-            self.report['shared_after'] = snapshot(self.shared)
+            # The shared app's container path can migrate too; compare its current data,
+            # not a now-missing former location.
+            shared_after = self.container('kim.jisub.unipad', required=False)
+            self.report['shared_container_after'] = shared_after
+            self.report['shared_after'] = snapshot(shared_after)
             self.report['shared_unchanged'] = self.before == self.report['shared_after']
             if not self.report['shared_unchanged']:
                 raise RuntimeError('shared UniPack listing or preferences changed')
