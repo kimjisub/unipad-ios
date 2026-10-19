@@ -22,7 +22,7 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         let connected = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@", "Connected: Launchpad MK2")).firstMatch
         XCTAssertTrue(connected.waitForExistence(timeout: 15), "waiting for virtual Launchpad MK2 connection")
-        let connection = XCTAttachment(screenshot: app.screenshot())
+        let connection = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         connection.name = "virtual-mk2-connected"
         connection.lifetime = .keepAlways
         add(connection)
@@ -52,7 +52,7 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         // A second MIDI burst is unnecessary: both notes already arrived. Keep the log stream
         // open through the later screen input before the script checks for duplicate events.
         sleep(1)
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "virtual-mk2-\(order)-first"
         screenshot.lifetime = .keepAlways
         add(screenshot)
