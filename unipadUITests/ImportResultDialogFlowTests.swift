@@ -54,10 +54,7 @@ final class ImportResultDialogFlowTests: XCTestCase {
 
     private func launch(_ language: Language) {
         app = XCUIApplication()
-        app.launchArguments = UITestSupport.launchArguments(language: language.code, locale: language.locale)
-        if !app.launchArguments.contains("-UniPadReleaseTest") {
-            app.launchArguments += ["-UniPadReleaseTest", UUID().uuidString]
-        }
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(language: language.code, locale: language.locale)
         app.launchArguments += ["-UniPadReleaseEmpty", "YES"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
