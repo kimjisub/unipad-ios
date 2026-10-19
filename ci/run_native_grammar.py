@@ -30,14 +30,19 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--grammar-version", required=True)
     parser.add_argument("--grammar-revision", required=True)
+    parser.add_argument("--purpose", choices=["verification", "baseline", "mutation"], default="verification")
+    parser.add_argument("--mutation-description")
     parser.add_argument("--only-testing", action="append")
     args = parser.parse_args()
+    if (args.purpose == "mutation") != bool(args.mutation_description):
+        parser.error("mutation runs require --mutation-description; other runs must omit it")
     args.out = args.out.resolve()
     args.derived_data = args.derived_data.resolve()
     args.case_sensitive_root = args.case_sensitive_root.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
     destination = f"platform=iOS Simulator,id={args.udid},arch=arm64"
     metadata = {"grammarVersion": args.grammar_version, "grammarRevision": args.grammar_revision,
+                "purpose": args.purpose, "mutationDescription": args.mutation_description,
                 "commit": capture(["git", "rev-parse", "HEAD"]),
                 "sourceStatus": capture(["git", "status", "--porcelain"]),
                 "sourceDiffSha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)).hexdigest(),
