@@ -19,7 +19,8 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         let home = app.buttons["gearshape"]
         XCTAssertTrue(home.waitForExistence(timeout: 30), "waiting for home")
         home.tap()
-        let connected = app.staticTexts["Connected: Launchpad MK2"]
+        let connected = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "Connected: Launchpad MK2")).firstMatch
         XCTAssertTrue(connected.waitForExistence(timeout: 15), "waiting for virtual Launchpad MK2 connection")
         let connection = XCTAttachment(screenshot: app.screenshot())
         connection.name = "virtual-mk2-connected"
