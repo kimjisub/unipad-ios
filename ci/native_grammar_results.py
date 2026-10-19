@@ -38,15 +38,26 @@ def summarize(tree, mapping, exit_code):
         complete = bool(tests) and all(t["runs"] for t in tests)
         if not tests:
             status = "unverified"
-        elif exit_code != 0 or "Failed" in values:
+        elif "Failed" in values:
             status = "failed"
-        elif not complete or not environment_known or any(v != "Passed" for v in values):
+        elif exit_code != 0 or not complete or not environment_known or any(v != "Passed" for v in values):
             status = "unverified"
         else:
             status = "passed"
         result[rule] = {"status": status, "tests": tests, "expectation": entry.get("expectation"),
                         "reason": entry.get("reason") if not complete else None}
     return result
+
+
+def write_report(tree, metadata, out):
+    """Write the same versioned report for live runs and saved-result exports."""
+    mapping = json.loads(Path(__file__).with_name("native_grammar_mapping.json").read_text())
+    report = {**metadata, "schemaVersion": 1, "platform": "ios", "source": "native-tests",
+              "generatedAt": datetime.now(timezone.utc).isoformat(),
+              "environment": tree.get("devices", []),
+              "rules": summarize(tree, mapping, metadata["exitCode"])}
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    return report
 
 
 def main():
@@ -57,12 +68,7 @@ def main():
     args = parser.parse_args()
     tree = json.loads(args.tests.read_text())
     metadata = json.loads(args.metadata.read_text())
-    mapping = json.loads(Path(__file__).with_name("native_grammar_mapping.json").read_text())
-    report = {"schemaVersion": 1, "platform": "ios", "source": "native-tests",
-              "generatedAt": datetime.now(timezone.utc).isoformat(), **metadata,
-              "environment": tree.get("devices", []),
-              "rules": summarize(tree, mapping, metadata["exitCode"])}
-    args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    write_report(tree, metadata, args.out)
 
 
 if __name__ == "__main__":

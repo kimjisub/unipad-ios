@@ -124,6 +124,11 @@ struct SoundEngineDecodingTests {
         let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(OnePadPack(soundFile: file))
         defer { engine.destroy() }
         #expect(listener.failure == nil, "\(file.lastPathComponent) could not be decoded: \(String(describing: listener.failure))")
+        guard requiresSignal else {
+            engine.soundOn(x: 0, y: 0)
+            #expect(engine.playsStarted == 1)
+            return
+        }
         // Inspect the existing engine only in tests, without adding a product audio hook. This
         // deliberately fails if that field changes: a missing observation is never a pass.
         let audio = try #require(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine)
@@ -135,13 +140,24 @@ struct SoundEngineDecodingTests {
                 }
             } then: { _ in continuation.resume() }
         }
-        defer { audio.mainMixerNode.removeTap(onBus: 0) }
-        engine.soundOn(x: 0, y: 0)
-        #expect(engine.playsStarted == 1)
-        let deadline = Date().addingTimeInterval(5)
-        if requiresSignal {
+        do {
+            engine.soundOn(x: 0, y: 0)
+            #expect(engine.playsStarted == 1)
+            let deadline = Date().addingTimeInterval(5)
             while !output.hasSignal, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
             #expect(output.hasSignal, "\(file.lastPathComponent): the real mixer never rendered nonzero PCM samples")
+        } catch {
+            await removeMixerTap(from: audio)
+            throw error
+        }
+        await removeMixerTap(from: audio)
+    }
+
+    private func removeMixerTap(from audio: AVAudioEngine) async {
+        await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run {
+                audio.mainMixerNode.removeTap(onBus: 0)
+            } then: { _ in continuation.resume() }
         }
     }
 }

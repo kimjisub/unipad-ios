@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from native_grammar_results import summarize
+from native_grammar_results import write_report
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,7 +26,8 @@ def capture(command):
 def tree_sha256(directory):
     """Bind every regular file's relative path and contents, in sorted path order."""
     digest = hashlib.sha256()
-    for path in sorted(p for p in directory.rglob("*") if p.is_file()):
+    for path in sorted((p for p in directory.rglob("*") if p.is_file()),
+                       key=lambda p: p.relative_to(directory).as_posix()):
         digest.update(path.relative_to(directory).as_posix().encode() + b"\0")
         file_digest = hashlib.sha256()
         with path.open("rb") as stream:
@@ -55,11 +56,12 @@ def main():
     args.case_sensitive_root = args.case_sensitive_root.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
     destination = f"platform=iOS Simulator,id={args.udid},arch=arm64"
+    source_diff = subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)
     metadata = {"grammarVersion": args.grammar_version, "grammarRevision": args.grammar_revision,
                 "purpose": args.purpose, "mutationDescription": args.mutation_description,
                 "commit": capture(["git", "rev-parse", "HEAD"]),
                 "sourceStatus": capture(["git", "status", "--porcelain"]),
-                "sourceDiffSha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)).hexdigest(),
+                "sourceDiffSha256": hashlib.sha256(source_diff).hexdigest(),
                 "xcode": capture(["xcodebuild", "-version"]), "host": capture(["sw_vers"]),
                 "caseSensitiveRoot": str(args.case_sensitive_root),
                 "startedAt": datetime.now(timezone.utc).isoformat(), "commands": [],
@@ -79,7 +81,7 @@ def main():
         "unipadUITests/ExternalImportFixtures/BesideReadme.zip", "unipadUITests/ExternalFileImportTests.swift",
     ]
     metadata["inputs"] = [{"path": name, "sha256": hashlib.sha256((ROOT / name).read_bytes()).hexdigest()} for name in inputs]
-    (args.out / "source.patch").write_bytes(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT))
+    (args.out / "source.patch").write_bytes(source_diff)
 
     def run(command, name):
         started = time.monotonic()
@@ -134,10 +136,7 @@ def main():
     metadata["exitCode"] = code
     (args.out / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
     (args.out / "tests.json").write_text(json.dumps(tree, indent=2) + "\n")
-    mapping = json.loads(Path(__file__).with_name("native_grammar_mapping.json").read_text())
-    report = {"schemaVersion": 1, "platform": "ios", "source": "native-tests", **metadata,
-              "environment": tree["devices"], "rules": summarize(tree, mapping, code)}
-    (args.out / "ios-native.json").write_text(json.dumps(report, indent=2) + "\n")
+    report = write_report(tree, metadata, args.out / "ios-native.json")
     print(json.dumps({key: value["status"] for key, value in report["rules"].items()}))
     return code
 

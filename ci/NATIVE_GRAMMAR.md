@@ -43,6 +43,8 @@ Test results and explicit attachments are retained; automatic simulator-wide
 diagnostic collection is disabled, including for intentional mutation failures.
 `--only-testing` can select smaller mutation checks; every missing linked test
 then remains unverified. It does not allocate or stop devices or create volumes.
+Only a failed linked test marks a rule failed. A nonzero run exit code with no
+failed linked test leaves the rule unverified, even if all its linked tests passed.
 Keep each attempt's directory and archive it before starting another attempt.
 Use `--purpose baseline` for unchanged product sources, or `--purpose mutation
 --mutation-description "..."` for an intentional defect. These attempts stay
@@ -55,7 +57,8 @@ Input fixture/source hashes and the shared corpus hash bind the expectations to
 the executed revision. The native rules do not use that corpus; their separate
 ZIP, filesystem and audio evidence is explicit. If the full unit suite runs the
 existing shared harness, its unchanged report is saved under `shared-conformance`.
-The raw result digest hashes sorted relative UTF-8 paths followed by a NUL byte
+The raw result digest sorts relative POSIX path strings lexicographically, then
+hashes each UTF-8 path followed by a NUL byte
 and each file's binary SHA-256 digest. Upload receipts can bind that digest to
 an attachment without editing any test outcome.
 The test tree supplies the actual device and OS. Reports are generated only from
