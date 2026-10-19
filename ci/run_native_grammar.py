@@ -23,6 +23,19 @@ def capture(command):
     return subprocess.check_output(command, cwd=ROOT, text=True).strip()
 
 
+def tree_sha256(directory):
+    """Bind every regular file's relative path and contents, in sorted path order."""
+    digest = hashlib.sha256()
+    for path in sorted(p for p in directory.rglob("*") if p.is_file()):
+        digest.update(path.relative_to(directory).as_posix().encode() + b"\0")
+        file_digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            while block := stream.read(1024 * 1024):
+                file_digest.update(block)
+        digest.update(file_digest.digest())
+    return digest.hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--udid", required=True)
@@ -51,6 +64,21 @@ def main():
                 "caseSensitiveRoot": str(args.case_sensitive_root),
                 "startedAt": datetime.now(timezone.utc).isoformat(), "commands": [],
                 "rawResults": "NativeGrammar.xcresult", "testTree": "tests.json"}
+    corpus = "unipadTests/UniPackConformance/corpus.json"
+    metadata["sharedCorpus"] = {
+        "path": corpus, "sha256": hashlib.sha256((ROOT / corpus).read_bytes()).hexdigest(),
+        "nativeRuleApplicability": "not-used",
+        "reason": "Native rules use ZIP bytes, filesystem reads and audio fixtures; A-01/A-02 remain in the shared report.",
+    }
+    inputs = [
+        "ci/native_grammar_mapping.json", "unipadTests/TestZip.swift",
+        "unipadTests/UniPackRootNameTests.swift", "unipadTests/UniPackArchiveNameTests.swift",
+        "unipadTests/UniPackArchiveLayoutTests.swift", "unipadTests/SoundEngineDecodingTests.swift",
+        "unipadTests/Fixtures/AudioFormats/aac-tone.m4a",
+        "unipadTests/Fixtures/AudioFormats/mp3-tone-named-wav.wav",
+        "unipadUITests/ExternalImportFixtures/BesideReadme.zip", "unipadUITests/ExternalFileImportTests.swift",
+    ]
+    metadata["inputs"] = [{"path": name, "sha256": hashlib.sha256((ROOT / name).read_bytes()).hexdigest()} for name in inputs]
     (args.out / "source.patch").write_bytes(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT))
 
     def run(command, name):
@@ -80,6 +108,7 @@ def main():
             raise RuntimeError("No test targets in xctestrun")
         for target in targets:
             target.setdefault("EnvironmentVariables", {})["UNIPACK_CASE_ROOT"] = str(args.case_sensitive_root)
+            target["EnvironmentVariables"]["UNIPACK_CONFORMANCE_OUT"] = str(args.out / "shared-conformance")
         # __TESTROOT__ must remain the build products directory.
         configured = products / "native-grammar-configured.xctestrun"
         configured.write_bytes(plistlib.dumps(config))
@@ -100,6 +129,8 @@ def main():
             (args.out / "export.log").write_text(exported.stderr)
             if exported.returncode == 0:
                 tree = json.loads(exported.stdout)
+            metadata["rawResultsSha256"] = tree_sha256(raw)
+            metadata["rawResultsHashAlgorithm"] = "SHA-256 of sorted relative UTF-8 paths + NUL + binary SHA-256 of each file"
     metadata["exitCode"] = code
     (args.out / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
     (args.out / "tests.json").write_text(json.dumps(tree, indent=2) + "\n")

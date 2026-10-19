@@ -51,6 +51,13 @@ separate from normal verification evidence.
 Each directory contains the build and test commands and exit codes, repository
 commit and source diff hash, source patch, Xcode/host version, configured
 xctestrun hash and file, raw `.xcresult`, exported test tree, and `ios-native.json`.
+Input fixture/source hashes and the shared corpus hash bind the expectations to
+the executed revision. The native rules do not use that corpus; their separate
+ZIP, filesystem and audio evidence is explicit. If the full unit suite runs the
+existing shared harness, its unchanged report is saved under `shared-conformance`.
+The raw result digest hashes sorted relative UTF-8 paths followed by a NUL byte
+and each file's binary SHA-256 digest. Upload receipts can bind that digest to
+an attachment without editing any test outcome.
 The test tree supplies the actual device and OS. Reports are generated only from
 xcresult, never from a manually assigned pass or an optimistic log match.
 Every mapped test must be present and passed, including argument and repetition

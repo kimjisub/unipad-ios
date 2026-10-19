@@ -1,5 +1,8 @@
 import unittest
+from pathlib import Path
+import tempfile
 from native_grammar_results import summarize
+from run_native_grammar import tree_sha256
 
 
 def case(name, result="Passed", children=None):
@@ -8,6 +11,22 @@ def case(name, result="Passed", children=None):
 
 
 class NativeGrammarResultsTests(unittest.TestCase):
+    def test_raw_bundle_digest_binds_names_and_contents_independently_of_creation_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first, second = root / "first", root / "second"
+            first.mkdir(); second.mkdir()
+            for name in ["a", "b"]:
+                (first / name).write_text(name)
+            for name in ["b", "a"]:
+                (second / name).write_text(name)
+            self.assertEqual(tree_sha256(first), tree_sha256(second))
+            (second / "b").write_text("changed")
+            self.assertNotEqual(tree_sha256(first), tree_sha256(second))
+            (second / "b").write_text("b")
+            (second / "b").rename(second / "c")
+            self.assertNotEqual(tree_sha256(first), tree_sha256(second))
+
     def report(self, nodes, code=0, devices=None):
         return summarize({"testNodes": nodes, "devices": [{"deviceId": "sim", "osVersion": "27.0"}] if devices is None else devices},
                          {"F-06": {"tests": ["Suite/one()", "Suite/two()"]}}, code)
