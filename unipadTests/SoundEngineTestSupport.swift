@@ -54,25 +54,29 @@ enum SoundEngineTestSupport {
         return url
     }
 
-    /// A 16-bit mono PCM WAV of `frames` silent frames whose header claims `sampleRate`, written
-    /// byte by byte so the header can say what no encoder would write.
-    static func writeWav(sampleRate: UInt32, frames: UInt32) throws -> URL {
+    /// A sparse 16-bit PCM WAV of `frames` silent frames whose header claims `sampleRate`, written
+    /// byte by byte so the header can say what no encoder would write. `declaredFrames` can
+    /// exaggerate its length without adding sample data.
+    static func writeWav(sampleRate: UInt32, frames: UInt32, channels: UInt16 = 1, declaredFrames: UInt32? = nil) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "SoundEngineTestSupport-\(UUID().uuidString).wav")
         var data = Data()
         func append<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
         }
-        let dataSize = frames * 2
+        let blockAlign = channels * 2
+        let dataSize = UInt32(min(UInt64(declaredFrames ?? frames) * UInt64(blockAlign), UInt64(UInt32.max) - 36))
         data.append(contentsOf: Array("RIFF".utf8)); append(UInt32(36 + dataSize))
         data.append(contentsOf: Array("WAVE".utf8))
         data.append(contentsOf: Array("fmt ".utf8)); append(UInt32(16))
-        append(UInt16(1)); append(UInt16(1)) // PCM, mono
-        append(sampleRate); append(sampleRate * 2) // byte rate
-        append(UInt16(2)); append(UInt16(16)) // block align, bits per sample
+        append(UInt16(1)); append(channels) // PCM, channel count
+        append(sampleRate); append(UInt32(clamping: UInt64(sampleRate) * UInt64(blockAlign))) // byte rate
+        append(blockAlign); append(UInt16(16)) // block align, bits per sample
         data.append(contentsOf: Array("data".utf8)); append(dataSize)
-        data.append(Data(count: Int(dataSize)))
         try data.write(to: url)
+        let file = try FileHandle(forWritingTo: url)
+        defer { try? file.close() }
+        try file.truncate(atOffset: UInt64(data.count) + UInt64(frames) * UInt64(blockAlign))
         return url
     }
 
