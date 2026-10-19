@@ -7,9 +7,17 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
     func testRoundTrip() throws {
         continueAfterFailure = false
         let env = ProcessInfo.processInfo.environment
-        let directory = URL(fileURLWithPath: try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_DIR"]))
+        let keys = ["UNIPAD_MIDI_ROUNDTRIP_DIR", "UNIPAD_MIDI_ROUNDTRIP_TOKEN", "UNIPAD_MIDI_ROUNDTRIP_ORDER"]
+        guard keys.contains(where: { env[$0] != nil }) else {
+            throw XCTSkip("Run ci/virtual_launchpad_roundtrip.py to configure the virtual MIDI check")
+        }
+        let path = try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_DIR"])
         let token = try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_TOKEN"])
         let order = try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_ORDER"])
+        XCTAssertTrue(path.hasPrefix("/"), "round-trip directory must be an absolute path")
+        XCTAssertNotNil(UUID(uuidString: token), "round-trip token must identify an isolated fixture")
+        XCTAssertTrue(["midi", "screen"].contains(order), "round-trip order must be midi or screen")
+        let directory = URL(fileURLWithPath: path)
         let app = XCUIApplication()
         app.launchArguments = ["-UniPadFirebaseLocalOnly", "YES", "-UniPadReleaseTest", token,
                                "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
