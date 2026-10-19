@@ -3,7 +3,8 @@
     "tests": [
       "UniPackRootNameTests/executionDirectoryDistinguishesLetterCase()",
       "UniPackRootNameTests/uppercaseRootNamesLoadTheActualPack()",
-      "UniPackRootNameTests/similarNamesDoNotReplaceRequiredFiles(name:)"
+      "UniPackRootNameTests/infoWithAnExtensionDoesNotReplaceInfo()",
+      "UniPackRootNameTests/pluralKeySoundsDoesNotReplaceKeySound()"
     ],
     "expectation": "Case-sensitive probe; INFO, KEYSOUND, AUTOPLAY, SOUNDS, KEYLED load actual pack data; info.txt and keySounds do not replace required files."
   },
@@ -21,7 +22,9 @@
   },
   "F-06": {
     "tests": [
-      "UniPackArchiveNameTests/rawArchiveNamesResolveTheSameSound(encoding:)"
+      "UniPackArchiveNameTests/flaggedUTF8NamesResolveTheSound()",
+      "UniPackArchiveNameTests/unflaggedUTF8NamesResolveTheSound()",
+      "UniPackArchiveNameTests/unflaggedCP949NamesResolveTheSound()"
     ],
     "expectation": "Flagged UTF-8, unflagged valid UTF-8, and unflagged non-UTF-8 CP949 raw ZIP names resolve the same sound name and bytes through real import and start the engine."
   },

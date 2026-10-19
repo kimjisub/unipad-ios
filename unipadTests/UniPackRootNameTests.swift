@@ -61,8 +61,15 @@ struct UniPackRootNameTests {
         #expect(pack.autoPlayTable?.elements.count == 3)
     }
 
-    @Test(arguments: ["info.txt", "keySounds"])
-    func similarNamesDoNotReplaceRequiredFiles(name: String) throws {
+    @Test func infoWithAnExtensionDoesNotReplaceInfo() throws {
+        try similarNamesDoNotReplaceRequiredFiles(name: "info.txt")
+    }
+
+    @Test func pluralKeySoundsDoesNotReplaceKeySound() throws {
+        try similarNamesDoNotReplaceRequiredFiles(name: "keySounds")
+    }
+
+    private func similarNamesDoNotReplaceRequiredFiles(name: String) throws {
         let folder = try root()
         defer { try? FileManager.default.removeItem(at: folder) }
         try probe(folder)

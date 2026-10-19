@@ -4,8 +4,19 @@ import Testing
 
 @MainActor
 struct UniPackArchiveNameTests {
-    @Test(arguments: ["flagged-utf8", "unflagged-utf8", "unflagged-cp949"])
-    func rawArchiveNamesResolveTheSameSound(encoding: String) async throws {
+    @Test func flaggedUTF8NamesResolveTheSound() async throws {
+        try await rawArchiveNamesResolveTheSameSound(encoding: "flagged-utf8")
+    }
+
+    @Test func unflaggedUTF8NamesResolveTheSound() async throws {
+        try await rawArchiveNamesResolveTheSameSound(encoding: "unflagged-utf8")
+    }
+
+    @Test func unflaggedCP949NamesResolveTheSound() async throws {
+        try await rawArchiveNamesResolveTheSameSound(encoding: "unflagged-cp949")
+    }
+
+    private func rawArchiveNamesResolveTheSameSound(encoding: String) async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "ArchiveNames-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
