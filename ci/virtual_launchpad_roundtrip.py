@@ -92,7 +92,10 @@ class Run:
         self.handles = []
         self.report = {'command': __import__('sys').argv, 'checks': [], 'children': [],
                        'scope': 'virtual MK2; no physical USB, hardware latency, or other models'}
-        self.bundle = 'io.unipad.tests.midiloop.t' + uuid.uuid4().hex
+        # Stable across invocations so changing a bundle ID does not rebuild every package.
+        # A pre-existing installation is preserved and rejected before doing any device work.
+        self.bundle = 'io.unipad.tests.virtual-midi'
+        self.owns_app = False
         self.sim = ['xcrun', 'simctl']
 
     def start(self, command, name, env=None):
@@ -166,6 +169,9 @@ class Run:
         self.shared = self.container('kim.jisub.unipad', required=False)
         self.before = snapshot(self.shared)
         self.report['shared_before'] = self.before
+        if self.container(self.bundle, required=False) is not None:
+            raise RuntimeError('test app already installed; refusing to replace its data')
+        self.owns_app = True
         base = ['xcodebuild', '-project', 'unipad.xcodeproj', '-scheme', 'unipad',
                 '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={self.args.simulator},arch=arm64',
                 '-derivedDataPath', str(self.args.derived_data.resolve()),
@@ -176,12 +182,15 @@ class Run:
         self.command(base + ['build-for-testing'], 'build.log', 600)
         app = self.args.derived_data.resolve() / 'Build/Products/Debug-iphonesimulator/unipad.app'
         self.command(self.sim + ['install', self.args.simulator, str(app)], 'install.log')
-        data = Path(self.container(self.bundle))
         for order in ['midi', 'screen']:
             directory = self.output / order
             directory.mkdir()
             token = str(uuid.uuid4())
+            # XCTest can migrate the data container when reinstalling the app. Never retain
+            # its old absolute path across test-without-building invocations.
+            data = Path(self.container(self.bundle))
             test_root = data / 'Documents/ReleaseTests' / token
+            self.report.setdefault('fixture_containers', {})[order] = str(data)
             fixture(test_root)
             log = directory / 'app.log'
             logger = self.start(['zsh', 'ci/virtual-launchpad.sh', self.args.simulator, '--log', str(log)],
@@ -262,7 +271,7 @@ class Run:
         self.stop_collector()
         for child in reversed(self.children):
             self.stop(child)
-        if getattr(self, 'before', None) is not None:
+        if self.owns_app:
             # Uninstall only the unique app installed by this run; shared app data is read-only.
             for bundle in [self.bundle + '.xctrunner', self.bundle]:
                 subprocess.run(self.sim + ['terminate', self.args.simulator, bundle], capture_output=True, timeout=15)
@@ -271,6 +280,7 @@ class Run:
                                                   for bundle in [self.bundle, self.bundle + '.xctrunner'])
             if not self.report['test_app_removed']:
                 raise RuntimeError('test app was not removed')
+        if getattr(self, 'before', None) is not None:
             self.report['shared_after'] = snapshot(self.shared)
             self.report['shared_unchanged'] = self.before == self.report['shared_after']
             if not self.report['shared_unchanged']:
@@ -313,7 +323,9 @@ def main():
             run.report['result'] = 'failed'
             run.save()
             status = 1
-    print(json.dumps(run.report, indent=2))
+    print(json.dumps({key: run.report[key] for key in [
+        'result', 'error', 'cleanup_error', 'checks', 'shared_unchanged', 'test_app_removed'
+    ] if key in run.report}, indent=2))
     return status
 
 
