@@ -5,6 +5,79 @@ import XCTest
 
 @MainActor
 final class ReleaseTestSupportTests: XCTestCase {
+    func testPickerPreparationRemovesOnlyOldGeneratedArchivesAndDoesNotAccumulate() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let fm = FileManager.default
+        let documents = WorkspaceManager.documentsDirectory
+        let oldArchives = (0..<3).map { _ in
+            documents.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        }
+        let userFolder = documents.appendingPathComponent("UniPack/\(UUID().uuidString)")
+        let preserved = [
+            documents.appendingPathComponent("ReleaseFixture-user-\(UUID().uuidString).zip"),
+            userFolder.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip"),
+        ]
+        let directory = documents.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        let symbolicLink = documents.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        try fm.createDirectory(at: userFolder, withIntermediateDirectories: true)
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        for url in oldArchives + preserved { try Data("keep".utf8).write(to: url) }
+        try fm.createSymbolicLink(at: symbolicLink, withDestinationURL: preserved[0])
+        var roots: [URL] = []
+        var currentArchives: [URL] = []
+        defer {
+            for url in oldArchives + preserved + roots + currentArchives + [symbolicLink, userFolder, directory] {
+                try? fm.removeItem(at: url)
+            }
+        }
+        defaults.set(true, forKey: "UniPadReleaseEmpty")
+        defaults.set(true, forKey: "UniPadReleaseFile")
+        for _ in 0..<2 {
+            let token = UUID().uuidString
+            defaults.set(token, forKey: "UniPadReleaseTest")
+            roots.append(try XCTUnwrap(ReleaseTestSupport.root))
+            let current = documents.appendingPathComponent("ReleaseFixture-\(token).zip")
+            currentArchives.append(current)
+            try ReleaseTestSupport.prepare()
+            let firstContents = try Data(contentsOf: current)
+            try ReleaseTestSupport.prepare() // Relaunching the same test keeps its picker file.
+            XCTAssertEqual(try Data(contentsOf: current), firstContents)
+            for url in oldArchives + currentArchives.dropLast() {
+                XCTAssertFalse(fm.fileExists(atPath: url.path), url.lastPathComponent)
+            }
+            for url in preserved { XCTAssertEqual(try Data(contentsOf: url), Data("keep".utf8)) }
+            XCTAssertTrue(fm.fileExists(atPath: directory.path))
+            XCTAssertEqual(try fm.destinationOfSymbolicLink(atPath: symbolicLink.path), preserved[0].path)
+        }
+    }
+
+    func testPreparationWithoutPickerArgumentsDoesNotDeleteFiles() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let fm = FileManager.default
+        let archive = WorkspaceManager.documentsDirectory
+            .appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        try Data("keep".utf8).write(to: archive)
+        defer { try? fm.removeItem(at: archive) }
+        defaults.set(true, forKey: "UniPadReleaseEmpty")
+        for token in [nil, "", "not-a-uuid", UUID().uuidString] as [String?] {
+            defaults.set(token, forKey: "UniPadReleaseTest")
+            let root = ReleaseTestSupport.root
+            defer { if let root { try? fm.removeItem(at: root) } }
+            for fileEnabled in [false, true] {
+                if root != nil && fileEnabled { continue }
+                defaults.set(fileEnabled, forKey: "UniPadReleaseFile")
+                try ReleaseTestSupport.prepare()
+                XCTAssertEqual(try Data(contentsOf: archive), Data("keep".utf8))
+            }
+        }
+    }
+
     func testWorkspaceSelectsSeparateLibraryForValidToken() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "UniPadReleaseTest")
