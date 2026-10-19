@@ -9,6 +9,7 @@
 # file when started with TEST_RUNNER_UNIPAD_LED_TIMING_MIDI=<arrivals-file>.
 # Optional <signal-file> <sent-file>: once the signal exists, send notes 81/82 with
 # releases in order and record them separately. The three-argument timing mode is unchanged.
+# <udid> --log <log-file> instead runs a bounded collector that reports its simulator PID.
 set -euo pipefail
 
 if (( $# != 3 && $# != 5 )); then

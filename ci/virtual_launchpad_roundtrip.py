@@ -136,9 +136,11 @@ class Run:
                 child.wait(timeout=10)
 
     def wait(self, predicate, seconds, description, child=None):
+        self.report['active_wait'] = description
         deadline = min(self.deadline, time.monotonic() + seconds)
         while time.monotonic() < deadline:
             if predicate():
+                self.report.pop('active_wait', None)
                 return
             if child is not None and child.poll() is not None:
                 raise RuntimeError(f'{description}: process exited {child.returncode}')
@@ -301,6 +303,8 @@ def main():
     args = parser.parse_args()
     run = Run(args)
     def interrupted(sig, frame):
+        if sig == signal.SIGALRM:
+            raise TimeoutError(f'overall {args.timeout}s limit while waiting for {run.report.get("active_wait", "setup")}')
         raise InterruptedError(f'interrupted by signal {sig}')
     signal.signal(signal.SIGINT, interrupted)
     signal.signal(signal.SIGTERM, interrupted)
