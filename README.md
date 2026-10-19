@@ -51,6 +51,7 @@ GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
 available iPhone simulator. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
+The same checks also run after changes are merged into `main`.
 
 The job needs no repository secrets or signing credentials. It replaces the
 Firebase plist only in its disposable checkout with clearly fake values from
