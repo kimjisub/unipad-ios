@@ -1,6 +1,7 @@
 #if DEBUG || UNIPAD_RELEASE_TESTS
 import Foundation
 import AVFoundation
+import Security
 
 /// Compiled only by the release-check command, never by a store/archive build.
 /// Every UI test gets its own library and database. Existing simulator packs are left intact.
@@ -42,6 +43,11 @@ nonisolated enum ReleaseTestSupport {
         }
         let download = root.appendingPathComponent("download")
         try makePack(at: download, title: "Downloaded Fixture")
+        if UserDefaults.standard.bool(forKey: "UniPadReleaseSlowDownload") {
+            var padding = Data(count: 4 * 1024 * 1024)
+            _ = padding.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!) }
+            try padding.write(to: download.appendingPathComponent("padding"))
+        }
         let archive = root.appendingPathComponent("ReleaseFixture.zip")
         try ZipHelper.zipDirectory(source: download, destination: archive)
         // The system file picker exposes Documents, not the test's private workspace.
@@ -94,6 +100,9 @@ nonisolated enum ReleaseTestSupport {
 
 /// Fail closed: an unexpected request fails the test instead of reaching a live server.
 private final class ReleaseURLProtocol: URLProtocol, @unchecked Sendable {
+    private let deliveryLock = NSLock()
+    private var delivery: Task<Void, Never>?
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -119,6 +128,11 @@ private final class ReleaseURLProtocol: URLProtocol, @unchecked Sendable {
                 contentType = "text/html"
             default: throw URLError(.unsupportedURL)
             }
+            if url.host == "release.invalid", url.path == "/pack.zip",
+               UserDefaults.standard.bool(forKey: "UniPadReleaseSlowDownload") {
+                deliverSlowly(body, url: url)
+                return
+            }
             let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
                                            headerFields: ["Content-Type": contentType, "Content-Length": String(body.count)])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -128,7 +142,40 @@ private final class ReleaseURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: error)
         }
     }
-    override func stopLoading() {}
+    private func deliverSlowly(_ body: Data, url: URL) {
+        let offset = request.value(forHTTPHeaderField: "Range")
+            .flatMap { Int($0.dropFirst("bytes=".count).dropLast()) } ?? 0
+        let headers = ["Content-Type": "application/zip", "Accept-Ranges": "bytes", "ETag": "\"fixture\"",
+                       "Content-Length": String(body.count - offset),
+                       "Content-Range": "bytes \(offset)-\(body.count - 1)/\(body.count)"]
+        let response = HTTPURLResponse(url: url, statusCode: offset > 0 ? 206 : 200,
+                                       httpVersion: "HTTP/1.1", headerFields: headers)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        deliveryLock.withLock {
+            delivery = Task { [self] in
+                do {
+                    var position = offset
+                    while position < body.count {
+                        try await Task.sleep(for: .milliseconds(400))
+                        try Task.checkCancellation()
+                        let end = min(position + 128 * 1024, body.count)
+                        client?.urlProtocol(self, didLoad: body.subdata(in: position..<end))
+                        position = end
+                        if offset == 0, position >= body.count / 2,
+                           UserDefaults.standard.bool(forKey: "UniPadReleaseInterruptDownload") {
+                            client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                            return
+                        }
+                    }
+                    client?.urlProtocolDidFinishLoading(self)
+                } catch { /* Cancellation must stop delivering bytes. */ }
+            }
+        }
+    }
+
+    override func stopLoading() {
+        deliveryLock.withLock { delivery?.cancel(); delivery = nil }
+    }
 }
 
 nonisolated struct ReleaseStore: FirestoreServiceProtocol {
