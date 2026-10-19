@@ -41,6 +41,9 @@ The runner builds with warnings treated as errors, then runs all unit tests and
 `--only-testing` can select smaller mutation checks; every missing linked test
 then remains unverified. It does not allocate or stop devices or create volumes.
 Keep each attempt's directory and archive it before starting another attempt.
+Use `--purpose baseline` for unchanged product sources, or `--purpose mutation
+--mutation-description "..."` for an intentional defect. These attempts stay
+separate from normal verification evidence.
 
 Each directory contains the build and test commands and exit codes, repository
 commit and source diff hash, source patch, Xcode/host version, configured

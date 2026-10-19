@@ -12,6 +12,7 @@ from pathlib import Path
 import plistlib
 import subprocess
 import sys
+import time
 
 from native_grammar_results import summarize
 
@@ -53,9 +54,11 @@ def main():
     (args.out / "source.patch").write_bytes(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT))
 
     def run(command, name):
+        started = time.monotonic()
         with (args.out / (name + ".log")).open("w") as log:
             result = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
-        metadata["commands"].append({"argv": command, "exitCode": result.returncode})
+        metadata["commands"].append({"argv": command, "exitCode": result.returncode,
+                                     "durationSeconds": time.monotonic() - started})
         (args.out / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
         return result.returncode
 
