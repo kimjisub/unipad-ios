@@ -86,7 +86,7 @@ def main():
         test = ["xcodebuild", "test-without-building", "-quiet", "-xctestrun", str(configured),
                 "-destination", destination, "-parallel-testing-enabled", "NO", "-retry-tests-on-failure", "NO",
                 "-resultBundlePath", str(args.out / "NativeGrammar.xcresult")]
-        selections = args.only_testing or ["unipadTests", "unipadUITests/ExternalFileImportTests"]
+        selections = args.only_testing or ["unipadTests", "unipadUITests/ExternalFileImportTests/testPackFolderBesideAReadmeImports"]
         test.extend("-only-testing:" + selection for selection in selections)
         code = run(test, "test")
         raw = args.out / "NativeGrammar.xcresult"

@@ -37,7 +37,8 @@ python3 -m unittest discover -s ci -v
 ```
 
 The runner builds with warnings treated as errors, then runs all unit tests and
-`ExternalFileImportTests`, without parallel execution or automatic retries.
+`ExternalFileImportTests.testPackFolderBesideAReadmeImports`, without parallel
+execution or automatic retries.
 `--only-testing` can select smaller mutation checks; every missing linked test
 then remains unverified. It does not allocate or stop devices or create volumes.
 Keep each attempt's directory and archive it before starting another attempt.
