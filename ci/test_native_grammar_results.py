@@ -34,5 +34,6 @@ class NativeGrammarResultsTests(unittest.TestCase):
         self.assertEqual(self.report([case("Suite/one()"), case("Suite/two()")])["F-06"]["status"], "passed")
 
     def test_empty_mapping_never_confirms_an_unimplemented_format(self):
-        result = summarize({"testNodes": [], "devices": [{"deviceId": "sim", "osVersion": "27.0"}]}, {"A-03": {"tests": []}}, 0)
-        self.assertEqual(result["A-03"]["status"], "unverified")
+        for code in [0, 65]:
+            result = summarize({"testNodes": [], "devices": [{"deviceId": "sim", "osVersion": "27.0"}]}, {"A-03": {"tests": []}}, code)
+            self.assertEqual(result["A-03"]["status"], "unverified")

@@ -36,7 +36,9 @@ def summarize(tree, mapping, exit_code):
         tests = [{"name": name, "runs": observed.get(name, [])} for name in entry["tests"]]
         values = [value for test in tests for run in test["runs"] for value in outcomes(run)]
         complete = bool(tests) and all(t["runs"] for t in tests)
-        if exit_code != 0 or "Failed" in values:
+        if not tests:
+            status = "unverified"
+        elif exit_code != 0 or "Failed" in values:
             status = "failed"
         elif not complete or not environment_known or any(v != "Passed" for v in values):
             status = "unverified"
