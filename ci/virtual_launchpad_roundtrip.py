@@ -6,6 +6,7 @@ Usage: python3 ci/virtual_launchpad_roundtrip.py --simulator UDID --output DIR
 The caller must acquire/release UDID through its device harness. Runs in the
 foreground; all children are owned, bounded, and stopped by recorded PID on exit.
 Installs a separate test app, uses an isolated fixture library, then uninstalls it.
+Closes the normal app first so it cannot react to the injected MIDI notes.
 The normal app's Documents/UniPack and preferences are compared before/after.
 
 Does NOT verify physical USB, real hardware latency, or models other than MK2.
@@ -32,9 +33,33 @@ def packets(text):
     result = []
     for line in text.splitlines():
         fields = line.split()
-        if len(fields) == 4:
-            result.append((float(fields[0]), *(int(v, 16) for v in fields[1:])))
+        if len(fields) < 4:
+            continue
+        when = float(fields[0])
+        status, data = None, []
+        for field in fields[1:]:
+            byte = int(field, 16)
+            if byte >= 0xF8:  # Realtime messages do not cancel running status.
+                continue
+            if byte >= 0x80:
+                status, data = byte, []
+            elif status is not None:
+                data.append(byte)
+                if len(data) == 2:
+                    if status & 0xF0 in (0x80, 0x90, 0xB0):
+                        result.append((when, status, *data))
+                    data = []
     return result
+
+
+def scoped_log(text, bundle):
+    """The simulator may have another UniPad process. Never combine its input/events."""
+    pids = set(re.findall(r'unipad\[(\d+):[^\]]+\].*\[' + re.escape(bundle)
+                          + r':AnalyticsLocal\] user_property platform=ios', text))
+    if len(pids) != 1:
+        raise ValueError(f'waiting for exactly one local-only test app process, got {sorted(pids)}')
+    pid = int(next(iter(pids)))
+    return '\n'.join(line for line in text.splitlines() if f'unipad[{pid}:' in line), pid
 
 
 def assess(log, sent, received, order):
@@ -169,6 +194,15 @@ class Run:
     def execute(self):
         self.report['commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         self.shared = self.container('kim.jisub.unipad', required=False)
+        if self.shared is not None:
+            command = self.sim + ['terminate', self.args.simulator, 'kim.jisub.unipad']
+            stopped = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.report['close_shared_app'] = {'command': command, 'exit_code': stopped.returncode,
+                                                'stderr': stopped.stderr}
+            if stopped.returncode and not any(message in stopped.stderr.lower()
+                                              for message in ['not running', 'nothing to terminate']):
+                raise RuntimeError('could not close the shared app before injecting MIDI: ' + stopped.stderr)
+            self.shared = self.container('kim.jisub.unipad', required=False)
         self.report['shared_container_before'] = self.shared
         self.before = snapshot(self.shared)
         self.report['shared_before'] = self.before
@@ -223,6 +257,8 @@ class Run:
                 text = self.read(log)
                 sent, received = self.read(directory / 'sent.txt'), self.read(directory / 'arrivals.txt')
                 try:
+                    text, app_pid = scoped_log(text, self.bundle)
+                    self.report.setdefault('app_pids', {})[order] = app_pid
                     # The MIDI-first scenario checks screen input later; all MIDI requirements
                     # must already be true when it is allowed to tap the screen.
                     assess(text, sent, received, order)
@@ -241,7 +277,8 @@ class Run:
                 raise RuntimeError(f'{order} UI failed ({test.returncode}); {self.report.get("waiting_for", "connection wait")}; see ui.log')
             if not (directory / 'ui-complete').exists():
                 raise ValueError(f'{order}: UI completion marker missing')
-            assess(self.read(log), self.read(directory / 'sent.txt'), self.read(directory / 'arrivals.txt'), order)
+            own_log, _ = scoped_log(self.read(log), self.bundle)
+            assess(own_log, self.read(directory / 'sent.txt'), self.read(directory / 'arrivals.txt'), order)
             self.report['checks'].append({'order': order, 'local_only': True, 'result': 'passed'})
             self.save()
 
@@ -274,6 +311,11 @@ class Run:
         self.stop_collector()
         for child in reversed(self.children):
             self.stop(child)
+        for pid in set(self.report.get('app_pids', {}).values()):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         if self.owns_app:
             # Uninstall only the unique app installed by this run; shared app data is read-only.
             for bundle in [self.bundle + '.xctrunner', self.bundle]:

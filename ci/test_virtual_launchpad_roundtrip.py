@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import sys
 import tempfile
-from virtual_launchpad_roundtrip import assess, Run, snapshot
+from virtual_launchpad_roundtrip import assess, Run, snapshot, scoped_log
 
 
 class RoundTripVerdictTests(unittest.TestCase):
@@ -22,6 +22,20 @@ class RoundTripVerdictTests(unittest.TestCase):
         log, sent, received = self.evidence()
         assess(log, sent, received, 'midi')
         assess(log.replace('input_source=midi', 'input_source=screen'), sent, received, 'screen')
+
+    def test_accepts_multiple_messages_in_one_arrival_packet(self):
+        log, sent, _ = self.evidence()
+        assess(log, sent, '1.1 B0 68 00 90 51 05 52 00\n2.1 90 52 09 51 00\n', 'midi')
+
+    def test_ignores_another_app_process_but_rejects_a_restarted_test_app(self):
+        log, sent, received = self.evidence()
+        own = '\n'.join(f'unipad[123:abc] [test.bundle:AnalyticsLocal] {line}' for line in log.splitlines())
+        other = own.replace('123:', '456:').replace('test.bundle:', 'other.bundle:')
+        scoped, pid = scoped_log(own + '\n' + other, 'test.bundle')
+        self.assertEqual(pid, 123)
+        assess(scoped, sent, received, 'midi')
+        with self.assertRaises(ValueError):
+            scoped_log(own + '\n' + own.replace('123:', '789:'), 'test.bundle')
 
     def test_rejects_duplicate_or_wrong_first_input(self):
         log, sent, received = self.evidence()

@@ -96,7 +96,8 @@ python3 ci/virtual_launchpad_roundtrip.py --simulator <udid> \
   --derived-data <scratch>/dd --output <scratch>/roundtrip
 ```
 
-The output folder must be new. The command installs a separate Debug test app,
+The output folder must be new. The command closes the normal app before sending
+test notes, installs a separate Debug test app,
 checks the connected MK2 label, sends notes 81 and 82 after the play screen is
 ready, and requires each note's receipt and nonzero LED reply. It runs MIDI-first
 and screen-first sessions and checks one local `play_first_input` event per
