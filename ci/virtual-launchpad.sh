@@ -21,6 +21,8 @@ arrivals=${3:A}
 
 build=$(mktemp -d "${arrivals:h}/virtual-launchpad.XXXXXX")
 trap 'rm -rf $build' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 cat > $build/Info.plist <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

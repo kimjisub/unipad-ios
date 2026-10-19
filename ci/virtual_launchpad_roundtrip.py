@@ -156,9 +156,9 @@ class Run:
         proc = subprocess.run(self.sim + ['get_app_container', self.args.simulator, bundle, 'data'],
                               text=True, capture_output=True, timeout=30)
         if proc.returncode:
-            if required:
-                raise RuntimeError(proc.stderr)
-            return None
+            if not required and ('No such file or directory' in proc.stderr or 'is not installed' in proc.stderr):
+                return None
+            raise RuntimeError(proc.stderr)
         return proc.stdout.strip()
 
     def execute(self):
@@ -255,7 +255,8 @@ class Run:
             for bundle in [self.bundle + '.xctrunner', self.bundle]:
                 subprocess.run(self.sim + ['terminate', self.args.simulator, bundle], capture_output=True, timeout=15)
                 subprocess.run(self.sim + ['uninstall', self.args.simulator, bundle], capture_output=True, timeout=30)
-            self.report['test_app_removed'] = self.container(self.bundle, required=False) is None
+            self.report['test_app_removed'] = all(self.container(bundle, required=False) is None
+                                                  for bundle in [self.bundle, self.bundle + '.xctrunner'])
             if not self.report['test_app_removed']:
                 raise RuntimeError('test app was not removed')
             self.report['shared_after'] = snapshot(self.shared)
