@@ -277,6 +277,22 @@ struct PadGridView: View {
 
 // MARK: - Multi-touch Handler
 
+/// The (row, column) of the pad under `point`, or nil off the grid. Rounds down so a point just
+/// left of or above the grid falls outside it, as one just right of or below it does.
+private func padCell(
+    at point: CGPoint,
+    gridOrigin: CGPoint,
+    cellWidth: CGFloat,
+    cellHeight: CGFloat,
+    rows: Int,
+    columns: Int
+) -> (Int, Int)? {
+    let col = Int(((point.x - gridOrigin.x) / cellWidth).rounded(.down))
+    let row = Int(((point.y - gridOrigin.y) / cellHeight).rounded(.down))
+    guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
+    return (row, col)
+}
+
 private struct MultiTouchModifier: ViewModifier {
     let gridOrigin: CGPoint
     let cellWidth: CGFloat
@@ -377,10 +393,7 @@ class MultiTouchUIView: UIView {
     private var screenGeometryObservation: NSKeyValueObservation?
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
-        let col = Int((point.x - gridOrigin.x) / cellWidth)
-        let row = Int((point.y - gridOrigin.y) / cellHeight)
-        guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
-        return (row, col)
+        padCell(at: point, gridOrigin: gridOrigin, cellWidth: cellWidth, cellHeight: cellHeight, rows: rows, columns: columns)
     }
 
     // A 180° turn keeps the view's size, so no layout pass reports it; the scene's orientation does.
@@ -519,11 +532,8 @@ class MultiTouchNSView: NSView {
     private var activeCell: (row: Int, col: Int, id: UUID)?
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
-        let flippedY = bounds.height - point.y
-        let col = Int((point.x - gridOrigin.x) / cellWidth)
-        let row = Int((flippedY - gridOrigin.y) / cellHeight)
-        guard row >= 0, row < rows, col >= 0, col < columns else { return nil }
-        return (row, col)
+        let flipped = CGPoint(x: point.x, y: bounds.height - point.y)
+        return padCell(at: flipped, gridOrigin: gridOrigin, cellWidth: cellWidth, cellHeight: cellHeight, rows: rows, columns: columns)
     }
 
     override func mouseDown(with event: NSEvent) {

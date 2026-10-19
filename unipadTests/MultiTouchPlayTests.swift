@@ -49,9 +49,7 @@ final class MultiTouchPlayTests: XCTestCase {
             pads.cellHeight = Self.cell
             pads.rows = 8
             pads.columns = 8
-            pads.onPadTouch = { [vm] row, col, isDown, inputID in
-                vm.padTouch(x: row, y: col, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
-            }
+            pads.onPadTouch = vm.screenPadTouch
         }
 
         static func center(_ pad: Pad) -> CGPoint {
@@ -291,6 +289,25 @@ final class MultiTouchPlayTests: XCTestCase {
         }
     }
 
+    // D, off the grid: a finger dragged less than one pad past the left or top edge releases its
+    // pad too. The view keeps reporting a held finger's position outside its bounds, as UIKit does.
+    func testDraggingSlightlyPastTheLeftOrTopEdgeReleasesThePad() async throws {
+        try await withScreen { screen in
+            let nudge = PlayScreen.cell * 0.3
+            let exits = [(Pad(3, 0), CGPoint(x: -nudge, y: PlayScreen.center(Pad(3, 0)).y)),
+                         (Pad(0, 5), CGPoint(x: PlayScreen.center(Pad(0, 5)).x, y: -nudge)),
+                         (Pad(0, 0), CGPoint(x: -nudge, y: -nudge))]
+            for (pad, outside) in exits {
+                screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(pad)) }
+                XCTAssertEqual(screen.lit, [pad])
+                XCTAssertEqual(screen.input { screen.pads.fingerMoved(1, to: outside) }, [], "leaving \(pad)")
+                XCTAssertEqual(screen.sounding, [], "leaving \(pad)")
+                XCTAssertEqual(screen.lit, [], "leaving \(pad)")
+                screen.input { screen.pads.fingerUp(1) }
+            }
+        }
+    }
+
     // The screen turns 180° or resizes under held fingers: each finger now rests over another pad
     // without having moved. The pads they held are released, and those fingers start nothing until
     // lifted. Noticing the turn itself needs a rotating window scene, which a unit test does not have.
@@ -409,7 +426,9 @@ final class MultiTouchPlayTests: XCTestCase {
             let edges = [
                 CGPoint(x: grid + 4, y: grid / 2),
                 CGPoint(x: grid / 2, y: grid + 4),
-                CGPoint(x: grid + 4, y: grid + 4)
+                CGPoint(x: grid + 4, y: grid + 4),
+                CGPoint(x: -4, y: grid / 2),
+                CGPoint(x: grid / 2, y: -4)
             ]
             for (index, edge) in edges.enumerated() {
                 let finger = 100 + index
