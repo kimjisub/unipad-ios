@@ -1,4 +1,5 @@
 #if DEBUG || UNIPAD_RELEASE_TESTS
+import AVFoundation
 import Foundation
 import XCTest
 @testable import unipad
@@ -134,7 +135,7 @@ final class ReleaseTestSupportTests: XCTestCase {
             let root = try XCTUnwrap(ReleaseTestSupport.root)
             defer { try? FileManager.default.removeItem(at: root) }
             try ReleaseTestSupport.prepare()
-            for folder in ["Release", "PlaybackStop", "Faded"] {
+            for folder in ["Release", "Faded"] {
                 let path = root.appendingPathComponent("UniPack/\(folder)")
                 let pack = UniPackFolder(rootFolder: path)
                 pack.load()
@@ -145,7 +146,51 @@ final class ReleaseTestSupportTests: XCTestCase {
                 XCTAssertEqual(events.count, enabled && folder == "Faded" ? 1_000_003 : 3)
                 XCTAssertEqual(pack.soundCount, 3)
             }
+            let playbackStop = UniPackFolder(rootFolder: root.appendingPathComponent("UniPack/PlaybackStop"))
+            playbackStop.load()
+            playbackStop.loadDetail()
+            XCTAssertFalse(playbackStop.criticalError)
+            XCTAssertNil(playbackStop.errorDetail)
         }
+    }
+
+    /// Checks reach "Playback Stop Fixture" from the release suite's library or, outside it, from
+    /// the shared library holding the repository fixture; both must be the same pack.
+    func testReleasePlaybackStopPackMatchesRepositoryFixture() throws {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../unipadUITests/Fixtures/PlaybackStop").standardizedFileURL
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try ReleaseTestSupport.makePlaybackStopPack(at: folder)
+        func files(in root: URL) throws -> [String] {
+            try FileManager.default.subpathsOfDirectory(atPath: root.path)
+                .filter { !$0.hasPrefix(".") && !$0.contains("/.") }.sorted()
+        }
+        XCTAssertEqual(try files(in: folder), try files(in: fixture))
+        for name in ReleaseTestSupport.playbackStopFiles.keys.sorted() {
+            XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8),
+                           try String(contentsOf: fixture.appendingPathComponent(name), encoding: .utf8), name)
+        }
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertNil(pack.errorDetail)
+        XCTAssertEqual(pack.title, "Playback Stop Fixture")
+        XCTAssertEqual(pack.chain, 1)
+
+        // The generated sound is written as float samples and the fixture's as 16-bit integers,
+        // so the files differ byte for byte; what playback depends on must still match.
+        let generated = try AVAudioFile(forReading: folder.appendingPathComponent("sounds/a.wav"))
+        let stored = try AVAudioFile(forReading: fixture.appendingPathComponent("sounds/a.wav"))
+        XCTAssertEqual(generated.length, stored.length)
+        XCTAssertEqual(generated.fileFormat.sampleRate, stored.fileFormat.sampleRate)
+        XCTAssertEqual(generated.fileFormat.channelCount, stored.fileFormat.channelCount)
+        // The exit checks tap the first pad and leave a few seconds later; they only cover leaving
+        // during playback while that pad is still sounding.
+        let firstPad = try XCTUnwrap(pack.soundTable?[0][0][0]?.first)
+        let seconds = Double(firstPad.loop + 1) * Double(stored.length) / stored.fileFormat.sampleRate
+        XCTAssertGreaterThan(seconds, 60)
     }
 
     func testPreparationAndDownloadKeepUserLibraryUntouched() async throws {
