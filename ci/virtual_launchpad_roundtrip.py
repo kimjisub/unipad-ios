@@ -168,7 +168,9 @@ class Run:
         self.report['shared_before'] = self.before
         base = ['xcodebuild', '-project', 'unipad.xcodeproj', '-scheme', 'unipad',
                 '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={self.args.simulator},arch=arm64',
-                '-derivedDataPath', str(self.args.derived_data.resolve()), '-parallel-testing-enabled', 'NO',
+                '-derivedDataPath', str(self.args.derived_data.resolve()),
+                '-clonedSourcePackagesDirPath', str(self.args.derived_data.resolve().parent / 'packages'),
+                '-onlyUsePackageVersionsFromResolvedFile', '-parallel-testing-enabled', 'NO',
                 'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO', 'UNIPAD_WARNINGS_AS_ERRORS=YES',
                 f'PRODUCT_BUNDLE_IDENTIFIER={self.bundle}']
         self.command(base + ['build-for-testing'], 'build.log', 600)
@@ -211,6 +213,7 @@ class Run:
                     # The MIDI-first scenario checks screen input later; all MIDI requirements
                     # must already be true when it is allowed to tap the screen.
                     assess(text, sent, received, order)
+                    self.report.pop('waiting_for', None)
                     (directory / 'midi-complete').touch()
                 except ValueError as error:
                     self.report['waiting_for'] = str(error)
