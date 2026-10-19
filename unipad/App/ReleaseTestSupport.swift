@@ -29,17 +29,14 @@ nonisolated enum ReleaseTestSupport {
         let library = root.appendingPathComponent("UniPack")
         try fm.createDirectory(at: library, withIntermediateDirectories: true)
         if !UserDefaults.standard.bool(forKey: "UniPadReleaseEmpty") {
-            for (folder, title) in [("Release", "Release Fixture - Tests"),
-                                    ("PlaybackStop", "Playback Stop Fixture"),
-                                    ("Faded", "Faded - Tests")] {
-                let needsLongVoice = folder == "PlaybackStop" ||
-                    (folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat"))
-                let repeats = needsLongVoice ? 10_000 : 0
+            for (folder, title) in [("Release", "Release Fixture - Tests"), ("Faded", "Faded - Tests")] {
+                let repeats = folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat") ? 10_000 : 0
                 let loadingLEDLines = folder == "Faded" &&
                     UserDefaults.standard.bool(forKey: "UniPadReleaseThemeLoading") ? 1_000_000 : 0
                 try makePack(at: library.appendingPathComponent(folder), title: title,
                              firstPadRepeats: repeats, loadingLEDLines: loadingLEDLines)
             }
+            try makePlaybackStopPack(at: library.appendingPathComponent("PlaybackStop"))
         }
         let download = root.appendingPathComponent("download")
         try makePack(at: download, title: "Downloaded Fixture")
@@ -87,8 +84,29 @@ nonisolated enum ReleaseTestSupport {
             .write(to: root.appendingPathComponent("keyLed/1 1 1 1"), atomically: true, encoding: .utf8)
         try "on 1 1\non 1 2\ndelay 60000\noff 1 1\noff 1 2\nchain 2\non 1 1\ndelay 60000\noff 1 1\n"
             .write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        try writeSilence(to: root.appendingPathComponent("sounds/silence.wav"))
+    }
+
+    /// The same pack as unipadUITests/Fixtures/PlaybackStop, which checks outside the release
+    /// suite read from the shared library: one chain, three single-pad groups along the top row.
+    static let playbackStopFiles = [
+        "info": "title=Playback Stop Fixture\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\n",
+        "keySound": "1 1 1 a.wav 50\n1 1 2 a.wav 3\n",
+        "autoPlay": "on 1 1\noff 1 1\ndelay 10000\non 1 2\noff 1 2\ndelay 10000\non 1 3\noff 1 3\n",
+    ]
+
+    static func makePlaybackStopPack(at root: URL) throws {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("sounds"), withIntermediateDirectories: true)
+        for (name, contents) in playbackStopFiles {
+            try contents.write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        try writeSilence(to: root.appendingPathComponent("sounds/a.wav"))
+    }
+
+    /// 10 ms of silence, so fixture packs never make sound.
+    private static func writeSilence(to url: URL) throws {
         let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
-        let file = try AVAudioFile(forWriting: root.appendingPathComponent("sounds/silence.wav"), settings: format.settings)
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480)!
         buffer.frameLength = 480
         for channel in 0..<Int(format.channelCount) {

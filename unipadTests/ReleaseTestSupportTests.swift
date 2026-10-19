@@ -134,7 +134,7 @@ final class ReleaseTestSupportTests: XCTestCase {
             let root = try XCTUnwrap(ReleaseTestSupport.root)
             defer { try? FileManager.default.removeItem(at: root) }
             try ReleaseTestSupport.prepare()
-            for folder in ["Release", "PlaybackStop", "Faded"] {
+            for folder in ["Release", "Faded"] {
                 let path = root.appendingPathComponent("UniPack/\(folder)")
                 let pack = UniPackFolder(rootFolder: path)
                 pack.load()
@@ -146,6 +146,32 @@ final class ReleaseTestSupportTests: XCTestCase {
                 XCTAssertEqual(pack.soundCount, 3)
             }
         }
+    }
+
+    /// Checks reach "Playback Stop Fixture" from the release suite's library or, outside it, from
+    /// the shared library holding the repository fixture; both must be the same pack.
+    func testReleasePlaybackStopPackMatchesRepositoryFixture() throws {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../unipadUITests/Fixtures/PlaybackStop").standardizedFileURL
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try ReleaseTestSupport.makePlaybackStopPack(at: folder)
+        func files(in root: URL) throws -> [String] {
+            try FileManager.default.subpathsOfDirectory(atPath: root.path)
+                .filter { !$0.hasPrefix(".") && !$0.contains("/.") }.sorted()
+        }
+        XCTAssertEqual(try files(in: folder), try files(in: fixture))
+        for name in ReleaseTestSupport.playbackStopFiles.keys.sorted() {
+            XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8),
+                           try String(contentsOf: fixture.appendingPathComponent(name), encoding: .utf8), name)
+        }
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertNil(pack.errorDetail)
+        XCTAssertEqual(pack.title, "Playback Stop Fixture")
+        XCTAssertEqual(pack.chain, 1)
     }
 
     func testPreparationAndDownloadKeepUserLibraryUntouched() async throws {
