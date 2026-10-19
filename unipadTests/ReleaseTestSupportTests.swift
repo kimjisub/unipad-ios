@@ -1,4 +1,5 @@
 #if DEBUG || UNIPAD_RELEASE_TESTS
+import AVFoundation
 import Foundation
 import XCTest
 @testable import unipad
@@ -145,6 +146,11 @@ final class ReleaseTestSupportTests: XCTestCase {
                 XCTAssertEqual(events.count, enabled && folder == "Faded" ? 1_000_003 : 3)
                 XCTAssertEqual(pack.soundCount, 3)
             }
+            let playbackStop = UniPackFolder(rootFolder: root.appendingPathComponent("UniPack/PlaybackStop"))
+            playbackStop.load()
+            playbackStop.loadDetail()
+            XCTAssertFalse(playbackStop.criticalError)
+            XCTAssertNil(playbackStop.errorDetail)
         }
     }
 
@@ -172,6 +178,19 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertNil(pack.errorDetail)
         XCTAssertEqual(pack.title, "Playback Stop Fixture")
         XCTAssertEqual(pack.chain, 1)
+
+        // The generated sound is written as float samples and the fixture's as 16-bit integers,
+        // so the files differ byte for byte; what playback depends on must still match.
+        let generated = try AVAudioFile(forReading: folder.appendingPathComponent("sounds/a.wav"))
+        let stored = try AVAudioFile(forReading: fixture.appendingPathComponent("sounds/a.wav"))
+        XCTAssertEqual(generated.length, stored.length)
+        XCTAssertEqual(generated.fileFormat.sampleRate, stored.fileFormat.sampleRate)
+        XCTAssertEqual(generated.fileFormat.channelCount, stored.fileFormat.channelCount)
+        // The exit checks tap the first pad and leave a few seconds later; they only cover leaving
+        // during playback while that pad is still sounding.
+        let firstPad = try XCTUnwrap(pack.soundTable?[0][0][0]?.first)
+        let seconds = Double(firstPad.loop + 1) * Double(stored.length) / stored.fileFormat.sampleRate
+        XCTAssertGreaterThan(seconds, 60)
     }
 
     func testPreparationAndDownloadKeepUserLibraryUntouched() async throws {

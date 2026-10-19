@@ -89,9 +89,11 @@ nonisolated enum ReleaseTestSupport {
 
     /// The same pack as unipadUITests/Fixtures/PlaybackStop, which checks outside the release
     /// suite read from the shared library: one chain, three single-pad groups along the top row.
+    /// The first pad repeats its sound for about 100 s, so a check that taps it and then leaves
+    /// still exits while the sound is playing.
     static let playbackStopFiles = [
         "info": "title=Playback Stop Fixture\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\n",
-        "keySound": "1 1 1 a.wav 50\n1 1 2 a.wav 3\n",
+        "keySound": "1 1 1 a.wav 10000\n1 1 2 a.wav 3\n",
         "autoPlay": "on 1 1\noff 1 1\ndelay 10000\non 1 2\noff 1 2\ndelay 10000\non 1 3\noff 1 3\n",
     ]
 
