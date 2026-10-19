@@ -365,7 +365,10 @@ final class PlaybackStopTests: XCTestCase {
 
     /// The engine renders offline, one sample length per call, on the main thread itself: the screen
     /// stays busy for the whole render and nothing hinges on how fast the simulator plays audio.
-    /// Before each call the next repeat only has to be queued, which the scheduler does on its own queue.
+    /// Before each call the repeat after the one about to render has to be queued too, which the scheduler
+    /// does on its own queue: a player node that runs out of buffers at the end of a render plays a buffer
+    /// queued after that one render late. Real-time playback keeps 100 ms queued ahead for this; the loop
+    /// below renders as soon as repeats arrive, so it waits for that one instead.
     func testFiniteRepeatsRenderWithoutGapsWhileTheScreenIsBusy() throws {
         let engine = AVAudioEngine()
         let node = AVAudioPlayerNode()
@@ -395,10 +398,11 @@ final class PlaybackStopTests: XCTestCase {
         // Five sample lengths past the last repeat, so a late or extra repeat would still be rendered.
         for step in 0..<55 {
             if step < 50 {
+                let needed = min(50, step + 2)
                 let deadline = Date().addingTimeInterval(Self.silenceLimit)
-                while scheduler.buffersScheduled <= step {
+                while scheduler.buffersScheduled < needed {
                     guard Date() < deadline else {
-                        return XCTFail("repeat \(step + 1) was not queued within \(Int(Self.silenceLimit)) s")
+                        return XCTFail("repeat \(needed) was not queued within \(Int(Self.silenceLimit)) s")
                     }
                     Thread.sleep(forTimeInterval: 0.001)
                 }
