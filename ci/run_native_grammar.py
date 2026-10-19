@@ -65,11 +65,13 @@ def main():
     build = ["xcodebuild", "build-for-testing", "-quiet", "-project", "unipad.xcodeproj", "-scheme", "unipad",
              "-configuration", "Debug", "-destination", destination, "-derivedDataPath", str(args.derived_data),
              "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "UNIPAD_WARNINGS_AS_ERRORS=YES"]
+    build_started = time.time()
     code = run(build, "build")
     tree = {"testNodes": [], "devices": []}
     if code == 0:
         products = args.derived_data / "Build/Products"
-        candidates = [p for p in products.glob("*.xctestrun") if not p.name.startswith("native-grammar-")]
+        candidates = [p for p in products.glob("*.xctestrun")
+                      if not p.name.startswith("native-grammar-") and p.stat().st_mtime >= build_started]
         if len(candidates) != 1:
             raise RuntimeError(f"Expected exactly one built xctestrun: {candidates}")
         config = plistlib.loads(candidates[0].read_bytes())
@@ -84,7 +86,7 @@ def main():
         metadata["xctestrunSha256"] = hashlib.sha256(configured.read_bytes()).hexdigest()
         (args.out / "configured.xctestrun").write_bytes(configured.read_bytes())
         test = ["xcodebuild", "test-without-building", "-quiet", "-xctestrun", str(configured),
-                "-destination", destination, "-parallel-testing-enabled", "NO", "-retry-tests-on-failure", "NO",
+                "-destination", destination, "-parallel-testing-enabled", "NO", "-test-iterations", "1",
                 "-resultBundlePath", str(args.out / "NativeGrammar.xcresult")]
         selections = args.only_testing or ["unipadTests", "unipadUITests/ExternalFileImportTests/testPackFolderBesideAReadmeImports"]
         test.extend("-only-testing:" + selection for selection in selections)

@@ -19,7 +19,7 @@ struct UniPackArchiveNameTests {
     private func rawArchiveNamesResolveTheSameSound(encoding: String) async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "ArchiveNames-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "packs"), withIntermediateDirectories: true)
         let name = "소리.wav"
         // CP949 BC D2 B8 AE is '소리'; these bytes are not valid UTF-8.
         let cp949 = Data("sounds/".utf8) + Data([0xBC, 0xD2, 0xB8, 0xAE]) + Data(".wav".utf8)
