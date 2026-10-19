@@ -86,7 +86,7 @@ def main():
         metadata["xctestrunSha256"] = hashlib.sha256(configured.read_bytes()).hexdigest()
         (args.out / "configured.xctestrun").write_bytes(configured.read_bytes())
         test = ["xcodebuild", "test-without-building", "-quiet", "-xctestrun", str(configured),
-                "-destination", destination, "-parallel-testing-enabled", "NO", "-test-iterations", "1",
+                "-destination", destination, "-parallel-testing-enabled", "NO",
                 "-resultBundlePath", str(args.out / "NativeGrammar.xcresult")]
         selections = args.only_testing or ["unipadTests", "unipadUITests/ExternalFileImportTests/testPackFolderBesideAReadmeImports"]
         test.extend("-only-testing:" + selection for selection in selections)
