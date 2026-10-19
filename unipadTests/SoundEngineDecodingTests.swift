@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import AVFoundation
 import Testing
 @testable import unipad
 
@@ -106,7 +107,7 @@ struct SoundEngineDecodingTests {
 
     @Test(arguments: [UInt32(44_100), 48_000])
     func aPlainWavPlays(sampleRate: UInt32) async throws {
-        try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10))
+        try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10), requiresSignal: false)
     }
 
     /// M4A (AAC) sounds are used by real packs although the format guide does not list them.
@@ -119,12 +120,48 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("mp3-tone-named-wav", "wav"))
     }
 
-    private func expectPlays(_ file: URL) async throws {
+    private func expectPlays(_ file: URL, requiresSignal: Bool = true) async throws {
         let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(OnePadPack(soundFile: file))
         defer { engine.destroy() }
         #expect(listener.failure == nil, "\(file.lastPathComponent) could not be decoded: \(String(describing: listener.failure))")
+        // Inspect the existing engine only in tests, without adding a product audio hook. This
+        // deliberately fails if that field changes: a missing observation is never a pass.
+        let audio = try #require(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine)
+        let output = RenderedAudio()
+        await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run {
+                audio.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
+                    output.record(buffer)
+                }
+            } then: { _ in continuation.resume() }
+        }
+        defer { audio.mainMixerNode.removeTap(onBus: 0) }
         engine.soundOn(x: 0, y: 0)
         #expect(engine.playsStarted == 1)
+        let deadline = Date().addingTimeInterval(5)
+        if requiresSignal {
+            while !output.hasSignal, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(output.hasSignal, "\(file.lastPathComponent): the real mixer never rendered nonzero PCM samples")
+        }
+    }
+}
+
+private final class RenderedAudio: @unchecked Sendable {
+    private let lock = NSLock()
+    private var signal = false
+    var hasSignal: Bool { lock.lock(); defer { lock.unlock() }; return signal }
+    func record(_ buffer: AVAudioPCMBuffer) {
+        guard let channels = buffer.floatChannelData else { return }
+        var audible = false
+        for channel in 0..<Int(buffer.format.channelCount) {
+            for frame in 0..<Int(buffer.frameLength) where abs(channels[channel][frame]) > 0.0001 {
+                audible = true
+                break
+            }
+        }
+        lock.lock()
+        signal = signal || audible
+        lock.unlock()
     }
 }
 #endif
