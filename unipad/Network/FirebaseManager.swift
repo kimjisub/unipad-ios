@@ -308,9 +308,9 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
 
 // MARK: - Firebase Runtime
 
-/// Keeps unit test runs, and Debug or release-check runs launched with `-UniPadFirebaseLocalOnly YES`,
-/// away from the production Firebase project: Firebase is not configured and every service is a
-/// local stub. Store builds ignore both launch arguments.
+/// Keeps unit tests and opted-in Debug/release-check installs away from production Firebase.
+/// The local-only choice survives notification and Home Screen launches without arguments.
+/// Launch with `-UniPadFirebaseLocalOnly NO` or reinstall to clear it. Store builds ignore it.
 enum FirebaseRuntime {
     static let localOnlyLaunchArgument = "UniPadFirebaseLocalOnly"
 
@@ -329,7 +329,11 @@ enum FirebaseRuntime {
 
     static func resolveLocalOnly(defaults: UserDefaults, allowsOverride: Bool) -> Bool {
         guard allowsOverride else { return false }
-        return defaults.bool(forKey: localOnlyLaunchArgument)
+        // The argument domain takes precedence over the saved value. Copy the resolved choice
+        // into the persistent domain so a later system launch retains it, including explicit NO.
+        let localOnly = defaults.bool(forKey: localOnlyLaunchArgument)
+        defaults.set(localOnly, forKey: localOnlyLaunchArgument)
+        return localOnly
     }
 
     /// For UI tests: a local-only run presents the installation-ID model with the stub, not
