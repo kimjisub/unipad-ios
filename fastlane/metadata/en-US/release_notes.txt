@@ -1,1 +1,14 @@
-Improved audio reliability and theme labels, and added usage metrics to help improve pack loading and playback.
+New: Connection and light help. On the Launchpad selection screen, open it to see what to check when your Launchpad isn't listed, connects but shows no lights, or the app closes, with notes for the model you picked and a link to the maker's guide.
+
+Also in this update:
+- Launchpad S and Mini (first generation) on CoreFW now show the right red and green colours.
+- In small packs, every chain button fits on screen and can be tapped.
+- A pad dragged just past the left or top edge now stops when you lift your finger.
+- AutoPlay and step practice can be started again after they finish, and step practice waits for you to play its last step.
+- Stopping AutoPlay or changing modes no longer leaves a looping sound playing or releases the pad you are holding.
+- After a phone call, AutoPlay continues when you return to UniPad and its sound comes back.
+- Opening a pack, plugging in headphones or coming back after a call no longer stalls the screen.
+- More packs play as their makers intended: sound names that differ only in upper/lower case, ZIPs with a readme beside the pack, and a pad whose sound can't be read now moves on to its next sound.
+- Packs with broken or extreme sound files or numbers are handled safely instead of freezing or closing the app.
+- Pack warnings now say what is wrong, packs from the Files app keep their file name, and a failed store download stays marked "Failed".
+- Option panel section titles appear in your language.
