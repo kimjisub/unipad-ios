@@ -36,3 +36,25 @@ active in the real `SoundEngine`; it does not infer liveness from input events.
 `RUN-RP-005` checks the two held sounds before autoplay is disabled, the surviving
 manual sound afterward, no later autoplay events, and silence after manual release.
 A self-check omits the screen's autoplay-off action and requires this case to fail.
+
+`watchStops` observes the real engine's `activePlayIDs` before and after each pad
+press or release. Each started ID is associated with its original chain, pad and
+file; an ID removed by that action emits `soundStop`, before a replacement's
+`sound` event. A release is not itself evidence of a stop. These cases advance no
+virtual time, so the existing `playbackCompletionDelivery` seam holds finite
+completion callbacks until shutdown. Scheduling and stopping still use the real
+audio engine, and failure callbacks are delivered normally. This prevents a slow
+simulator from naturally finishing a 10 ms sample between two actions that the
+scenario places at the same instant. It observes engine voice state, not captured
+audio or a physical speaker.
+
+Chain-selection scenarios now install `PlayViewModel.setupChainObserver` on the
+same pack and chain as the sound and LED runners. The `chain` step invokes
+`PlayViewModel.selectChain`; a sound's delayed wormhole reaches that same observer.
+The harness does not duplicate queue-reset logic. The checks compare both sound
+and LED selections after selecting the same chain again, and the sound selection
+after returning through a wormhole.
+
+`RUN-S-008`, `RUN-S-009`, `RUN-S-010`, `RUN-S-012`, and `RUN-S-013` must all produce
+measured results. Self-checks omit sound release or the screen's chain observer
+and require the corresponding cases to fail against their unchanged expectations.
