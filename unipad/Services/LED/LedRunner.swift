@@ -66,7 +66,11 @@ nonisolated final class LedRunner: @unchecked Sendable {
         // States that survived stop() (LED toggled off and on) re-anchor to the new start;
         // resuming from their old `delay` replayed the whole backlog in one burst.
         lock.lockWithDeadlockDetection()
-        for state in ledAnimationStates { state.delay = 0 }
+        for state in ledAnimationStates {
+            state.delay = 0
+            // A resumed partial pass cannot tell us the duration of a complete pass.
+            state.loopStartTime = nil
+        }
         lock.unlock()
 
         loopTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -118,10 +122,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
             if state.isPlaying && !state.isShutdown {
                 if state.delay == 0 { state.delay = currTime }
 
-                // Android LedRunner.kt: an animation with no events (empty keyLed file) stops at
-                // once instead of re-spinning every tick, and a delay-less animation gets the same
-                // per-tick budget (events x loops + 1) rather than one pass per tick, so a
-                // `loop 5` file finishes in the same 4 ms on all three platforms.
+                // An empty keyLed file stops at once instead of re-spinning every tick.
                 guard let ledAnimation = state.ledAnimation, !ledAnimation.ledEvents.isEmpty else {
                     state.isPlaying = false
                     continue
@@ -134,6 +135,13 @@ nonisolated final class LedRunner: @unchecked Sendable {
                     if state.index >= ledEvents.count {
                         state.loopProgress += 1
                         state.index = 0
+                        // Repeating a pass whose logical time does not advance leaves the same
+                        // final LEDs. Finish finite animations now, without building a huge batch
+                        // while holding the lock shared with pad input. Endless loops keep yielding.
+                        if ledAnimation.loop > 0, let loopStartTime = state.loopStartTime, state.delay <= loopStartTime {
+                            state.isPlaying = false
+                            break
+                        }
                     }
 
                     if ledAnimation.loop != 0 && ledAnimation.loop <= state.loopProgress {
@@ -153,6 +161,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
 
                     guard state.delay <= currTime else { break }
 
+                    if state.index == 0 { state.loopStartTime = state.delay }
                     let event = ledEvents[state.index]
                     switch event {
                     case .on(let x, let y, let color, let velocity):
@@ -342,6 +351,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
         let chainAtCreation: Int
         var index: Int = 0
         var delay: Int64 = 0
+        var loopStartTime: Int64?
         var isPlaying: Bool = true
         var isShutdown: Bool = false
         var remove: Bool = false

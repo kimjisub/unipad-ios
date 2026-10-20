@@ -1,10 +1,84 @@
 #if DEBUG || UNIPAD_RELEASE_TESTS
+import AVFoundation
 import Foundation
 import XCTest
 @testable import unipad
 
 @MainActor
 final class ReleaseTestSupportTests: XCTestCase {
+    func testPickerPreparationRemovesOnlyOldGeneratedArchivesAndDoesNotAccumulate() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let fm = FileManager.default
+        let documents = WorkspaceManager.documentsDirectory
+        let oldArchives = (0..<3).map { _ in
+            documents.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        }
+        let userFolder = documents.appendingPathComponent("UniPack/\(UUID().uuidString)")
+        let preserved = [
+            documents.appendingPathComponent("ReleaseFixture-user-\(UUID().uuidString).zip"),
+            userFolder.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip"),
+        ]
+        let directory = documents.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        let symbolicLink = documents.appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        try fm.createDirectory(at: userFolder, withIntermediateDirectories: true)
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        for url in oldArchives + preserved { try Data("keep".utf8).write(to: url) }
+        try fm.createSymbolicLink(at: symbolicLink, withDestinationURL: preserved[0])
+        var roots: [URL] = []
+        var currentArchives: [URL] = []
+        defer {
+            for url in oldArchives + preserved + roots + currentArchives + [symbolicLink, userFolder, directory] {
+                try? fm.removeItem(at: url)
+            }
+        }
+        defaults.set(true, forKey: "UniPadReleaseEmpty")
+        defaults.set(true, forKey: "UniPadReleaseFile")
+        for _ in 0..<2 {
+            let token = UUID().uuidString
+            defaults.set(token, forKey: "UniPadReleaseTest")
+            roots.append(try XCTUnwrap(ReleaseTestSupport.root))
+            let current = documents.appendingPathComponent("ReleaseFixture-\(token).zip")
+            currentArchives.append(current)
+            try ReleaseTestSupport.prepare()
+            let firstContents = try Data(contentsOf: current)
+            try ReleaseTestSupport.prepare() // Relaunching the same test keeps its picker file.
+            XCTAssertEqual(try Data(contentsOf: current), firstContents)
+            for url in oldArchives + currentArchives.dropLast() {
+                XCTAssertFalse(fm.fileExists(atPath: url.path), url.lastPathComponent)
+            }
+            for url in preserved { XCTAssertEqual(try Data(contentsOf: url), Data("keep".utf8)) }
+            XCTAssertTrue(fm.fileExists(atPath: directory.path))
+            XCTAssertEqual(try fm.destinationOfSymbolicLink(atPath: symbolicLink.path), preserved[0].path)
+        }
+    }
+
+    func testPreparationWithoutPickerArgumentsDoesNotDeleteFiles() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let fm = FileManager.default
+        let archive = WorkspaceManager.documentsDirectory
+            .appendingPathComponent("ReleaseFixture-\(UUID().uuidString).zip")
+        try Data("keep".utf8).write(to: archive)
+        defer { try? fm.removeItem(at: archive) }
+        defaults.set(true, forKey: "UniPadReleaseEmpty")
+        for token in [nil, "", "not-a-uuid", UUID().uuidString] as [String?] {
+            defaults.set(token, forKey: "UniPadReleaseTest")
+            let root = ReleaseTestSupport.root
+            defer { if let root { try? fm.removeItem(at: root) } }
+            for fileEnabled in [false, true] {
+                if root != nil && fileEnabled { continue }
+                defaults.set(fileEnabled, forKey: "UniPadReleaseFile")
+                try ReleaseTestSupport.prepare()
+                XCTAssertEqual(try Data(contentsOf: archive), Data("keep".utf8))
+            }
+        }
+    }
+
     func testWorkspaceSelectsSeparateLibraryForValidToken() {
         let defaults = UserDefaults.standard
         let previous = defaults.object(forKey: "UniPadReleaseTest")
@@ -61,7 +135,7 @@ final class ReleaseTestSupportTests: XCTestCase {
             let root = try XCTUnwrap(ReleaseTestSupport.root)
             defer { try? FileManager.default.removeItem(at: root) }
             try ReleaseTestSupport.prepare()
-            for folder in ["Release", "PlaybackStop", "Faded"] {
+            for folder in ["Release", "Faded"] {
                 let path = root.appendingPathComponent("UniPack/\(folder)")
                 let pack = UniPackFolder(rootFolder: path)
                 pack.load()
@@ -72,7 +146,51 @@ final class ReleaseTestSupportTests: XCTestCase {
                 XCTAssertEqual(events.count, enabled && folder == "Faded" ? 1_000_003 : 3)
                 XCTAssertEqual(pack.soundCount, 3)
             }
+            let playbackStop = UniPackFolder(rootFolder: root.appendingPathComponent("UniPack/PlaybackStop"))
+            playbackStop.load()
+            playbackStop.loadDetail()
+            XCTAssertFalse(playbackStop.criticalError)
+            XCTAssertNil(playbackStop.errorDetail)
         }
+    }
+
+    /// Checks reach "Playback Stop Fixture" from the release suite's library or, outside it, from
+    /// the shared library holding the repository fixture; both must be the same pack.
+    func testReleasePlaybackStopPackMatchesRepositoryFixture() throws {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../unipadUITests/Fixtures/PlaybackStop").standardizedFileURL
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try ReleaseTestSupport.makePlaybackStopPack(at: folder)
+        func files(in root: URL) throws -> [String] {
+            try FileManager.default.subpathsOfDirectory(atPath: root.path)
+                .filter { !$0.hasPrefix(".") && !$0.contains("/.") }.sorted()
+        }
+        XCTAssertEqual(try files(in: folder), try files(in: fixture))
+        for name in ReleaseTestSupport.playbackStopFiles.keys.sorted() {
+            XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8),
+                           try String(contentsOf: fixture.appendingPathComponent(name), encoding: .utf8), name)
+        }
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertNil(pack.errorDetail)
+        XCTAssertEqual(pack.title, "Playback Stop Fixture")
+        XCTAssertEqual(pack.chain, 1)
+
+        // The generated sound is written as float samples and the fixture's as 16-bit integers,
+        // so the files differ byte for byte; what playback depends on must still match.
+        let generated = try AVAudioFile(forReading: folder.appendingPathComponent("sounds/a.wav"))
+        let stored = try AVAudioFile(forReading: fixture.appendingPathComponent("sounds/a.wav"))
+        XCTAssertEqual(generated.length, stored.length)
+        XCTAssertEqual(generated.fileFormat.sampleRate, stored.fileFormat.sampleRate)
+        XCTAssertEqual(generated.fileFormat.channelCount, stored.fileFormat.channelCount)
+        // The exit checks tap the first pad and leave a few seconds later; they only cover leaving
+        // during playback while that pad is still sounding.
+        let firstPad = try XCTUnwrap(pack.soundTable?[0][0][0]?.first)
+        let seconds = Double(firstPad.loop + 1) * Double(stored.length) / stored.fileFormat.sampleRate
+        XCTAssertGreaterThan(seconds, 60)
     }
 
     func testPreparationAndDownloadKeepUserLibraryUntouched() async throws {

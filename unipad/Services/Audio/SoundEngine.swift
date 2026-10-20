@@ -50,7 +50,7 @@ final class SoundEngine {
 
     private enum Input: Hashable {
         case identified(UUID)
-        // MIDI and autoplay have paired pad events, without a touch identity.
+        // MIDI has paired pad events without a touch identity.
         case pad(Int, Int)
     }
     private struct StartedPlayback {
@@ -322,10 +322,11 @@ final class SoundEngine {
         return buffers[id]
     }
 
-    private static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
+    static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
         let audioFile = try AVAudioFile(forReading: url)
         let format = audioFile.processingFormat
-        let frameCount = AVAudioFrameCount(audioFile.length)
+        let frameCount = try SoundFileLimits.sourceFrameCount(
+            audioFile.length, sampleRate: format.sampleRate, channels: format.channelCount)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw SoundEngineError.bufferCreationFailed
         }
@@ -341,12 +342,11 @@ final class SoundEngine {
             return input
         }
 
+        let outCapacity = try SoundFileLimits.resampledFrameCount(
+            input.frameLength, from: input.format.sampleRate, to: targetFormat.sampleRate, channels: targetFormat.channelCount)
         guard let converter = AVAudioConverter(from: input.format, to: targetFormat) else {
             throw SoundEngineError.converterCreationFailed
         }
-
-        let ratio = targetFormat.sampleRate / input.format.sampleRate
-        let outCapacity = AVAudioFrameCount((Double(input.frameLength) * ratio).rounded(.up)) + 1
         guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCapacity) else {
             throw SoundEngineError.bufferCreationFailed
         }

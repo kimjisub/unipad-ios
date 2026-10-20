@@ -147,13 +147,45 @@ enum UITestSupport {
             guard scrollView.exists, element.exists else { return false }
             let viewport = scrollView.frame.intersection(app.windows.firstMatch.frame)
             guard !viewport.isEmpty else { return false }
-            if element.frame.midY < viewport.midY {
+            if let shift = nearbyShift(of: element.frame, into: viewport) {
+                drag(scrollView, by: shift, within: viewport)
+            } else if element.frame.midY < viewport.midY {
                 scrollView.swipeDown(velocity: .slow)
             } else {
                 scrollView.swipeUp(velocity: .slow)
             }
         }
         return isFullyVisible(element, in: app, within: scrollView)
+    }
+
+    /// How far the content must move up (negative: down) to bring a partly hidden element fully
+    /// into `viewport`, or nil when it is too far away for one short drag. A swipe moves a list
+    /// by about a screen, so an element just past the edge jumps to the other side of the middle
+    /// and the next swipe throws it back past the same edge.
+    private static func nearbyShift(of frame: CGRect, into viewport: CGRect) -> CGFloat? {
+        let margin: CGFloat = 16
+        let shift: CGFloat
+        if frame.maxY > viewport.maxY {
+            shift = frame.maxY - viewport.maxY + margin
+        } else if frame.minY < viewport.minY {
+            shift = frame.minY - viewport.minY - margin
+        } else {
+            return nil
+        }
+        return abs(shift) <= viewport.height * 0.6 ? shift : nil
+    }
+
+    /// Drags the content of `scrollView` up by `distance` points and holds before lifting the
+    /// finger, so the list stops where it was dragged instead of coasting on.
+    private static func drag(_ scrollView: XCUIElement, by distance: CGFloat, within viewport: CGRect) {
+        // The list only starts to follow the finger after it has moved a few points.
+        let touchSlop: CGFloat = 12
+        let travel = distance + (distance > 0 ? touchSlop : -touchSlop)
+        let origin = scrollView.coordinate(withNormalizedOffset: .zero)
+        let x = viewport.midX - scrollView.frame.minX
+        let start = origin.withOffset(CGVector(dx: x, dy: viewport.midY - scrollView.frame.minY + travel / 2))
+        let end = origin.withOffset(CGVector(dx: x, dy: viewport.midY - scrollView.frame.minY - travel / 2))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
     }
 
     /// The home screen's download and import cards. They sit in the middle of an
@@ -239,12 +271,12 @@ enum UITestSupport {
 
     /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
     /// Documents/UniPack first; a missing fixture fails the check.
-    static func openPlaybackStopFixture(in app: XCUIApplication) {
+    static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
         title.tap()
-        let play = app.buttons["Play"].firstMatch
+        let play = app.buttons[playButtonTitle].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
         XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
     }

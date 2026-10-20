@@ -51,6 +51,7 @@ GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
 available iPhone simulator. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
+The same checks also run after changes are merged into `main`.
 
 The job needs no repository secrets or signing credentials. It replaces the
 Firebase plist only in its disposable checkout with clearly fake values from
@@ -59,6 +60,33 @@ stubs. App configuration, version, and behavior in normal builds are unchanged.
 Build logs and the test result bundle are available in the run's
 `ios-check-results` artifact for seven days. This workflow does not upload to
 a store or change required checks.
+
+## Play input checks on a Mac
+
+Before pushing play-input test changes, run the UI target on an iPhone and an
+iPad simulator, in addition to the build and unit checks above. Use a lent
+simulator's identifier as `SIMULATOR_UDID`:
+
+```sh
+xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+  -only-testing:unipadUITests -parallel-testing-enabled NO \
+  -collect-test-diagnostics never
+```
+
+`PlayInputEdgeUITests` is included by the whole UI target. On iPhone, exclude
+`unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain`
+with `-skip-testing:`; run it on iPad, where pointer interaction is supported.
+The suite generates its own looping packs and compares held and released pad
+pixels through rotation, pointer input and both `squareButton` settings.
+`MultiTouchPlayTests.testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing`
+and `testPadsMovingUnderAStillFingerReleaseItAndStartNothing` separately check
+sound requests and feedback through the pad view's input handlers.
+
+A second gesture during a held press is refused by XCUITest, so pointer/touch
+mixing and a margin held while tapping a chain remain unverified on screen.
+Resizing an iPad window during a held press is also unverified. Direct handler
+tests do not establish those screen paths or audible sound quality.
 
 ## App Store destination check
 

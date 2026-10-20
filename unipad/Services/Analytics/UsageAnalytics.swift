@@ -73,6 +73,9 @@ enum UsageErrorType: String {
     case notFound = "not_found"
     case server
     case network
+    case networkTimeout = "network_timeout"
+    case networkLost = "network_lost"
+    case networkOffline = "network_offline"
     case soundEngine = "sound_engine"
     case unknown
 
@@ -88,6 +91,7 @@ enum UsageErrorType: String {
             case .criticalError: return .invalidPack
             case .httpError(let status): return status == 404 ? .notFound : .server
             case .writeFailed: return .storage
+            case .invalidResponse: return .server
             case .emptyResponse, .cancelled: return .network
             }
         case let error as APIError:
@@ -96,8 +100,13 @@ enum UsageErrorType: String {
             case .invalidResponse, .decodingFailed: return .server
             case .invalidURL, .networkError: return .network
             }
-        case is URLError:
-            return .network
+        case let error as URLError:
+            switch error.code {
+            case .timedOut: return .networkTimeout
+            case .networkConnectionLost: return .networkLost
+            case .notConnectedToInternet: return .networkOffline
+            default: return .network
+            }
         case let error as CocoaError:
             return error.code == .fileWriteOutOfSpace ? .storage : .fileAccess
         default:
