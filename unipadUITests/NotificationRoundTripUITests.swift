@@ -67,9 +67,18 @@ final class NotificationRoundTripUITests: XCTestCase {
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
             message.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "notification did not bring the app forward")
+            // In the collapsed Notification Center stack, the first tap expands the card.
+            // Open that expanded card through its button; never activate/launch the app here.
+            if !app.wait(for: .runningForeground, timeout: 3), message.exists {
+                UITestSupport.attachScreenshot("notification-\(mode)-expanded", to: self)
+                let open = springboard.buttons.matching(identifier: "ShortLook.Platter.Content.Seamless")
+                    .matching(NSPredicate(format: "label CONTAINS %@", "UniPad \(mode) \(token)")).firstMatch
+                XCTAssertTrue(UITestSupport.waitUntilHittable(open, timeout: 10), "\(mode) notification card did not expand")
+                open.tap()
+            }
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "\(mode) notification did not bring the app forward")
             XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 20),
-                          "pack list did not appear after notification")
+                          "pack list did not appear after \(mode) notification")
             UITestSupport.attachScreenshot("notification-\(mode)-pack-list", to: self)
             try Data().write(to: directory.appendingPathComponent("returned-\(mode)"), options: .atomic)
         }
