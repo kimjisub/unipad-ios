@@ -1,5 +1,6 @@
 """Offline regression checks for the virtual MIDI verdict (no device needed)."""
 import unittest
+from unittest.mock import patch, Mock
 import argparse
 from pathlib import Path
 import sys
@@ -73,6 +74,63 @@ class RoundTripVerdictTests(unittest.TestCase):
 
 
 class SafetyTests(unittest.TestCase):
+    def test_preserves_existing_installations_before_a_build_failure(self):
+        app = 'io.unipad.tests.virtual-midi'
+        for existing in [{app}, {app + '.xctrunner'}, {app, app + '.xctrunner'}, set()]:
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as temporary:
+                run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30,
+                                             simulator='test-device', derived_data=Path(temporary) / 'dd'))
+                installed = set(existing)
+
+                def container(bundle, required=True):
+                    return '/existing/' + bundle if bundle in installed else None
+
+                def external(command, **kwargs):
+                    if 'uninstall' in command:
+                        installed.discard(command[-1])
+                    return Mock(returncode=0)
+
+                with patch.object(run, 'container', side_effect=container), \
+                        patch.object(run, 'command', side_effect=RuntimeError('build failed')) as build, \
+                        patch('virtual_launchpad_roundtrip.subprocess.run', side_effect=external) as commands, \
+                        patch('virtual_launchpad_roundtrip.subprocess.check_output', return_value='test-commit'):
+                    with self.assertRaises(RuntimeError) as failure:
+                        run.execute()
+                    run.cleanup()
+                self.assertEqual(installed, existing)
+                self.assertFalse(any('uninstall' in call.args[0] for call in commands.call_args_list))
+                self.assertEqual(build.call_count, 0 if existing else 1)
+                self.assertIn('already installed' if existing else 'build failed', str(failure.exception))
+
+    def test_failed_install_removes_only_the_app_it_left_installed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30,
+                                         simulator='test-device', derived_data=Path(temporary) / 'dd'))
+            installed = set()
+
+            def command(command, name, seconds=180):
+                if name == 'install.log':
+                    installed.add(run.bundle)
+                    raise RuntimeError('install failed after copying the app')
+
+            def external(command, **kwargs):
+                if 'uninstall' in command:
+                    installed.remove(command[-1])
+                return Mock(returncode=0)
+
+            with patch.object(run, 'container', side_effect=lambda bundle, required=True:
+                              '/installed/' + bundle if bundle in installed else None), \
+                    patch.object(run, 'command', side_effect=command), \
+                    patch('virtual_launchpad_roundtrip.subprocess.run', side_effect=external) as commands, \
+                    patch('virtual_launchpad_roundtrip.subprocess.check_output', return_value='test-commit'):
+                with self.assertRaisesRegex(RuntimeError, 'install failed'):
+                    run.execute()
+                run.cleanup()
+            self.assertEqual(installed, set())
+            removed = [call.args[0][-1] for call in commands.call_args_list if 'uninstall' in call.args[0]]
+            self.assertEqual(removed, [run.bundle])
+            self.assertTrue(run.report['test_app_removed'])
+
     def test_timeout_names_the_wait_and_cleanup_reaps_child(self):
         with tempfile.TemporaryDirectory() as temporary:
             run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30))
