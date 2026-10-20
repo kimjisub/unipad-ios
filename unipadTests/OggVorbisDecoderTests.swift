@@ -54,6 +54,18 @@ struct OggVorbisDecoderTests {
         #expect(buffer.frameCapacity == buffer.frameLength)
     }
 
+    /// Silence encoded at 44.1 kHz, with the identification rate changed to 192 kHz: its claimed
+    /// duration is under ten minutes, but its decoded stereo PCM exceeds the shared 256 MiB budget.
+    @Test(arguments: [false, true])
+    func rejectsAnOversizedBufferEvenWhenItsLengthIsUnderreported(_ underreported: Bool) throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self)
+            .url(forResource: "vorbis-over-budget", withExtension: "ogg"))
+        let url = try underreported ? write(oggWithFinalGranule(1, at: fixture), "underreported-budget") : fixture
+        defer { if underreported { try? FileManager.default.removeItem(at: url) } }
+
+        #expect(throws: SoundFileLimits.Violation.bufferTooLarge) { try OggVorbisDecoder.decode(url) }
+    }
+
     @Test func anUnderreportedShortFileStillDecodesAllItsAudio() throws {
         let url = try write(oggWithFinalGranule(1, at: tone()), "short-granule")
         defer { try? FileManager.default.removeItem(at: url) }

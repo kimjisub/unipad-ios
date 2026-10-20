@@ -124,10 +124,11 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("vorbis-tone", "ogg"))
     }
 
-    @Test func anOverlongOggIsSilentAndAdvancesToTheNextSound() async throws {
+    @Test(arguments: ["vorbis-overlong", "vorbis-over-budget"])
+    func anOversizedOggIsSilentAndAdvancesToTheNextSound(_ name: String) async throws {
         let good = try SoundEngineTestSupport.writeSilentSound()
         let pack = OnePadPack(chains: [[
-            Sound(file: try fixture("vorbis-overlong", "ogg"), loop: 0),
+            Sound(file: try fixture(name, "ogg"), loop: 0),
             Sound(file: good, loop: 0),
         ]])
         let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)

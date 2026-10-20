@@ -45,11 +45,15 @@ enum OggVorbisDecoder {
         }
         let channelCount = Int(format.channelCount)
         let maximumFrames = Int(SoundFileLimits.longestSound * format.sampleRate)
+        let maximumCapacity = min(maximumFrames, Int(SoundFileLimits.maximumBufferBytes
+            / UInt64(channelCount) / UInt64(MemoryLayout<Float>.size)))
         let declaredFrames = ov_pcm_total(file, -1)
         guard declaredFrames <= maximumFrames else { throw SoundFileLimits.Violation.tooLong }
         // Ordinary files decode directly into their final buffer. A truncated or forged file can
         // underreport its total: grow only as needed, always within the actual frame limit.
         let initialCapacity = declaredFrames > 0 ? Int(declaredFrames) : Int(readFrames)
+        _ = try SoundFileLimits.sourceFrameCount(AVAudioFramePosition(initialCapacity),
+            sampleRate: format.sampleRate, channels: format.channelCount)
         guard var buffer = AVAudioPCMBuffer(pcmFormat: format,
                                             frameCapacity: AVAudioFrameCount(initialCapacity)) else {
             throw DecodeError.noAudio
@@ -66,8 +70,10 @@ enum OggVorbisDecoder {
                   linkInfo.channels == info.channels, linkInfo.rate == info.rate else { break }
             guard frames <= maximumFrames - frameCount else { throw SoundFileLimits.Violation.tooLong }
             let needed = frameCount + frames
+            _ = try SoundFileLimits.sourceFrameCount(AVAudioFramePosition(needed),
+                sampleRate: format.sampleRate, channels: format.channelCount)
             if needed > Int(buffer.frameCapacity) {
-                let capacity = min(maximumFrames, max(needed, Int(buffer.frameCapacity) * 2))
+                let capacity = min(maximumCapacity, max(needed, Int(buffer.frameCapacity) * 2))
                 guard let grown = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(capacity)),
                       let destination = grown.floatChannelData, let source = buffer.floatChannelData else {
                     throw DecodeError.noAudio
