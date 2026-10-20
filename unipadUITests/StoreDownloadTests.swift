@@ -50,4 +50,51 @@ final class StoreDownloadTests: XCTestCase {
         UITestSupport.attachScreenshot(done ? "store-download-installed" : "store-download-not-installed", to: self)
         XCTAssertTrue(done, "the pack was not installed within \(Int(Self.installTimeout)) s")
     }
+
+    @MainActor
+    func testInterruptedDownloadRecovers() throws {
+        try downloadSlowFixture(interrupt: true, visitHome: false)
+    }
+
+    @MainActor
+    func testDownloadContinuesDuringBriefHomeVisit() throws {
+        try downloadSlowFixture(interrupt: false, visitHome: true)
+    }
+
+    @MainActor
+    private func downloadSlowFixture(interrupt: Bool, visitHome: Bool) throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = UITestSupport.englishLaunchArguments() + [
+            "-UniPadReleaseTest", UUID().uuidString,
+            "-UniPadReleaseSlowDownload", "YES",
+            "-UniPadReleaseInterruptDownload", interrupt ? "YES" : "NO",
+        ]
+        app.launch()
+        defer { app.terminate() }
+        UITestSupport.dismissSystemAlerts()
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
+        let list = UITestSupport.openStore(in: app, testCase: self)
+        let row = UITestSupport.storeRows(in: list)
+            .containing(NSPredicate(format: "label == %@", "Downloaded Fixture")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        app.buttons["Download"].firstMatch.tap()
+        let decline = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons
+            .matching(NSPredicate(format: "label IN %@", ["Don't Allow", "허용 안 함"])).firstMatch
+        if decline.waitForExistence(timeout: 3) { decline.tap() }
+        let progress = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '%' AND label CONTAINS 'MB'")).firstMatch
+        XCTAssertTrue(progress.waitForExistence(timeout: 15))
+        UITestSupport.attachScreenshot("slow-download-in-progress", to: self)
+        if visitHome {
+            XCUIDevice.shared.press(.home)
+            // Stay away for five seconds while the fixture sends the remaining bytes.
+            let unreachable = NSPredicate(value: false)
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: unreachable, object: app)], timeout: 5)
+            app.activate()
+        }
+        let done = row.staticTexts["Downloaded"].waitForExistence(timeout: 30)
+        UITestSupport.attachScreenshot(done ? "slow-download-installed" : "slow-download-failed", to: self)
+        XCTAssertTrue(done, "download did not recover and install")
+    }
 }

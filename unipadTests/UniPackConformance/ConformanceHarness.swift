@@ -36,6 +36,7 @@ struct ConformanceDeps {
         screen.removeMidiController()
     }
     var stopAutoPlay: @MainActor (AutoPlayRunner) -> Void = { $0.stop() }
+    var turnOffAutoPlay: @MainActor (PlayViewModel) -> Void = { $0.switchPlayMode(.none) }
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
 }
@@ -298,21 +299,25 @@ enum ConformanceHarness {
         let log: EventLog
         let clock: AutoPlayClock
         let chain: ChainObserver
-        let forward: (Int, Int, Bool) -> Void
-        init(log: EventLog, clock: AutoPlayClock, chain: ChainObserver, forward: @escaping (Int, Int, Bool) -> Void) {
+        let forward: (Int, Int, Bool, [UUID]) -> Void
+        init(log: EventLog, clock: AutoPlayClock, chain: ChainObserver, forward: @escaping (Int, Int, Bool, [UUID]) -> Void) {
             self.log = log
             self.clock = clock
             self.chain = chain
             self.forward = forward
         }
         func onStart() {}
-        func onPadTouchOn(x: Int, y: Int) {
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID) {
             log.add(["autoOn", .int(x), .int(y)])
-            forward(x, y, true)
+            forward(x, y, true, [inputID])
         }
-        func onPadTouchOff(x: Int, y: Int) {
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
             log.add(["autoOff", .int(x), .int(y)])
-            forward(x, y, false)
+            forward(x, y, false, inputIDs)
+        }
+        // The corpus records scripted off events; input cancellation is cleanup, not a script step.
+        func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
+            forward(x, y, false, [inputID])
         }
         func onChainChange(c: Int) {
             log.recordsChain = false
@@ -336,7 +341,9 @@ enum ConformanceHarness {
     @MainActor
     private static func runScenario(_ conformanceCase: ConformanceCase, pack: UniPack, root: URL, deps: ConformanceDeps) async throws -> ConformanceActual {
         let log = EventLog()
-        let chain = ChainObserver()
+        // Cases that turn autoplay off stay on the play screen and use its real input/transport path.
+        let screen = conformanceCase.scenario.contains { $0["do"]?.string == "autoplayOff" } ? PlayViewModel() : nil
+        let chain = screen?.chain ?? ChainObserver()
         chain.range = 0...max(pack.chain - 1, 0)
         chain.addObserver { current, _ in
             if log.recordsChain { log.add(["chain", .int(current)]) }
@@ -356,6 +363,12 @@ enum ConformanceHarness {
 
         let loading = TestSoundLoadListener()
         let engine = SoundEngine(unipack: pack, chain: chain, loadingListener: loading)
+        screen?.unipack = pack
+        screen?.soundEngine = engine
+        screen?.ledRunner = led
+        // Only infinite voices are indexed; liveness always comes from the real engine's play IDs.
+        var loopingPads: [Int: (x: Int, y: Int)] = [:]
+        var manualInputs: [String: UUID] = [:]
         var engineDestroyed = false
         let autoClock = AutoPlayClock()
         var autoPlay: AutoPlayRunner?
@@ -371,19 +384,38 @@ enum ConformanceHarness {
             engine.destroy()
         }
 
-        func touch(_ x: Int, _ y: Int, _ down: Bool) {
+        func touch(_ x: Int, _ y: Int, _ down: Bool, inputID: UUID? = nil) {
+            let key = "\(x),\(y)"
+            let identity: UUID?
+            if screen != nil, inputID == nil {
+                if down { manualInputs[key] = UUID() }
+                identity = manualInputs[key]
+                if !down { manualInputs.removeValue(forKey: key) }
+            } else { identity = inputID }
             if down {
                 let playing = chain.value
                 let head = pack.soundGet(c: playing, x: x, y: y)
                 let before = engine.playsStarted
-                engine.soundOn(x: x, y: y)
+                let previousIDs = engine.activePlayIDs
+                if let screen {
+                    screen.padTouch(x: x, y: y, isDown: true,
+                                    trigger: inputID == nil ? .pad(.screen) : .autoplay, inputID: identity)
+                } else { engine.soundOn(x: x, y: y) }
                 if engine.playsStarted > before, let head {
                     log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root)), .int(head.loop)])
                 }
-                deps.ledEventOn(led, x, y)
+                if head?.loop == -1 {
+                    for id in engine.activePlayIDs.subtracting(previousIDs) { loopingPads[id] = (x, y) }
+                }
+                if screen == nil { deps.ledEventOn(led, x, y) }
             } else {
-                engine.soundOff(x: x, y: y)
-                led.eventOff(x: x, y: y)
+                if let screen {
+                    screen.padTouch(x: x, y: y, isDown: false,
+                                    trigger: inputID == nil ? .pad(.screen) : .autoplay, inputID: identity)
+                } else {
+                    engine.soundOff(x: x, y: y)
+                    led.eventOff(x: x, y: y)
+                }
             }
         }
 
@@ -409,15 +441,31 @@ enum ConformanceHarness {
                     touch(x, y, false)
                 case "autoplay":
                     let toPads = step["toPads"] == .bool(true)
-                    let listener = AutoRecorder(log: log, clock: autoClock, chain: chain) { x, y, down in
-                        if toPads { touch(x, y, down) }
+                    let listener = AutoRecorder(log: log, clock: autoClock, chain: chain) { x, y, down, ids in
+                        guard toPads else { return }
+                        if screen != nil {
+                            for id in ids { touch(x, y, down, inputID: id) }
+                        } else { touch(x, y, down) }
                     }
                     autoRecorder = listener
                     let runner = AutoPlayRunner(unipack: pack, listener: listener, chain: chain,
                                                 clock: { autoClock.now }, sleep: { _ in await autoClock.sleep() })
                     autoPlay = runner
-                    runner.launch()
+                    if let screen {
+                        screen.autoPlayRunner = runner
+                        screen.switchPlayMode(.autoPlay)
+                    } else { runner.launch() }
                     try await autoClock.settle()
+                case "autoplayOff":
+                    guard let screen else { throw ConformanceError.harness("autoplayOff requires a play screen") }
+                    deps.turnOffAutoPlay(screen)
+                    autoClock.wake()
+                    if autoPlay?.active == false { autoClock.ended = true }
+                case "looping":
+                    let active = engine.activePlayIDs
+                    let pads = loopingPads.filter { active.contains($0.key) }.map(\.value)
+                        .sorted { ($0.x, $0.y) < ($1.x, $1.y) }
+                    for pad in pads { log.add(["looping", .int(pad.x), .int(pad.y)]) }
                 case "chain":
                     log.recordsChain = false
                     chain.setValue(step["c"]?.int ?? 0)

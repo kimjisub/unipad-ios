@@ -16,9 +16,13 @@ final class AutoPlayRunner {
     private let clock: () -> Int64
     private let sleep: @MainActor (UInt64) async throws -> Void
 
-    var playmode: Bool = true
+    var playmode: Bool = true {
+        didSet { if !playmode { releaseHeldPads() } }
+    }
     var beforeStartPlaying: Bool = true
-    var practiceGuide: Bool = false
+    var practiceGuide: Bool = false {
+        didSet { if practiceGuide { releaseHeldPads() } }
+    }
     var stepMode: Bool = false
 
     private(set) var progress: Int = 0 {
@@ -31,8 +35,9 @@ final class AutoPlayRunner {
     @MainActor
     protocol Listener: AnyObject {
         func onStart()
-        func onPadTouchOn(x: Int, y: Int)
-        func onPadTouchOff(x: Int, y: Int)
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID)
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID])
+        func onPadTouchCancel(x: Int, y: Int, inputID: UUID)
         func onChainChange(c: Int)
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64)
         func onGuidePadOff(x: Int, y: Int)
@@ -45,6 +50,21 @@ final class AutoPlayRunner {
     }
 
     private weak var listener: Listener?
+
+    private struct Pad: Hashable {
+        let x: Int
+        let y: Int
+        let chain: Int
+    }
+    private var heldPads: [Pad: UUID] = [:]
+
+    private func releaseHeldPads() {
+        let pads = heldPads
+        heldPads.removeAll()
+        for (pad, inputID) in pads {
+            listener?.onPadTouchCancel(x: pad.x, y: pad.y, inputID: inputID)
+        }
+    }
 
     private struct GuideEvent {
         let timeMs: Int64
@@ -160,7 +180,7 @@ final class AutoPlayRunner {
             var startTime = self.clock()
             var prevPracticeGuide = self.practiceGuide
 
-            while self.progress < autoPlay.elements.count && !Task.isCancelled {
+            while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
                 let currTime = self.clock()
 
                 // Detect mid-run practice mode toggle
@@ -242,10 +262,7 @@ final class AutoPlayRunner {
                                 for key in expired { guides.removeValue(forKey: key) }
                                 if throttle { self.lastGuideUpdateMs = currTime }
                             }
-                            for key in expired {
-                                self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
-                                self.listener?.onGuidePadOff(x: key / 256, y: key % 256)
-                            }
+                            for key in expired { self.turnOffGuide(key) }
                             for update in ledUpdates {
                                 self.listener?.onGuideLedUpdate(x: update.key / 256, y: update.key % 256, velocity: update.velocity)
                             }
@@ -263,7 +280,10 @@ final class AutoPlayRunner {
                                     }
                                     self.unipack.soundPush(c: currChain, x: x, y: y, num: num)
                                     self.unipack.ledPush(c: currChain, x: x, y: y, num: num)
-                                    self.listener?.onPadTouchOn(x: x, y: y)
+                                    let pad = Pad(x: x, y: y, chain: self.chain.value)
+                                    let inputID = self.heldPads[pad] ?? UUID()
+                                    self.heldPads[pad] = inputID
+                                    self.listener?.onPadTouchOn(x: x, y: y, inputID: inputID)
                                 }
 
                             case .off(let x, let y, let currChain):
@@ -271,7 +291,12 @@ final class AutoPlayRunner {
                                     if self.chain.value != currChain {
                                         self.listener?.onChainChange(c: currChain)
                                     }
-                                    self.listener?.onPadTouchOff(x: x, y: y)
+                                    // Off names a physical pad, even after a wormhole or chain command.
+                                    // The runner owns press identities; the screen never rebuilds them
+                                    // from its current (possibly clamped) chain.
+                                    let inputs = self.heldPads.filter { $0.key.x == x && $0.key.y == y }
+                                    for pad in inputs.keys { self.heldPads.removeValue(forKey: pad) }
+                                    self.listener?.onPadTouchOff(x: x, y: y, inputIDs: Array(inputs.values))
                                 }
 
                             case .delay(let delay):
@@ -339,6 +364,8 @@ final class AutoPlayRunner {
 
             // stop() already reset the UI; a cancelled run must not post another onEnd after it.
             guard !Task.isCancelled else { return }
+            self.releaseHeldPads()
+            self.turnOffRemainingGuides()
             self.task = nil
             self.listener?.onEnd()
         }
@@ -350,8 +377,26 @@ final class AutoPlayRunner {
         if let task { previousRun = task }
         task?.cancel()
         task = nil
+        releaseHeldPads()
         withGuides { $0.removeAll() }
         resetStepState()
+    }
+
+    /// The scan of the last step group reaches the end of the table before the user plays it.
+    private var awaitsLastStep: Bool {
+        !playmode && stepMode && practiceGuide && !_stepPendingPads.isEmpty
+    }
+
+    private func turnOffGuide(_ key: Int) {
+        listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
+        listener?.onGuidePadOff(x: key / 256, y: key % 256)
+    }
+
+    /// A run that ends on its own leaves no guide lit, on screen or on the launchpad.
+    private func turnOffRemainingGuides() {
+        let keys = drainGuides() + _stepPendingPads
+        _stepPendingPads.removeAll()
+        for key in keys { turnOffGuide(key) }
     }
 
     private func handleBeforeStartPlaying() {
@@ -362,6 +407,7 @@ final class AutoPlayRunner {
     }
 
     func progressOffset(_ offset: Int) {
+        releaseHeldPads()
         let target = progress + offset
         let count = unipack.autoPlayTable?.elements.count ?? 0
         progress = max(0, min(target, count))
@@ -401,10 +447,7 @@ final class AutoPlayRunner {
             }
         }
 
-        for key in removedKeys {
-            listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
-            listener?.onGuidePadOff(x: key / 256, y: key % 256)
-        }
+        for key in removedKeys { turnOffGuide(key) }
     }
 
     private func stepScanNext(autoPlay: AutoPlay) {
@@ -446,4 +489,10 @@ final class AutoPlayRunner {
         _stepPendingPads = newPending
     }
 
+}
+
+extension AutoPlayRunner.Listener {
+    func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
+        onPadTouchOff(x: x, y: y, inputIDs: [inputID])
+    }
 }

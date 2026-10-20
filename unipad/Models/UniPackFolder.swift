@@ -212,6 +212,7 @@ nonisolated class UniPackFolder: UniPack {
             return
         }
         logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
+        let soundFinder = PackFileFinder()
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -227,9 +228,9 @@ nonisolated class UniPackFolder: UniPack {
                 continue
             }
 
-            guard let c = Int(split[0]).map({ $0 - 1 }),
-                  let x = Int(split[1]).map({ $0 - 1 }),
-                  let y = Int(split[2]).map({ $0 - 1 }) else {
+            guard let c = Self.packInt(split[0]).map({ $0 - 1 }),
+                  let x = Self.packInt(split[1]).map({ $0 - 1 }),
+                  let y = Self.packInt(split[2]).map({ $0 - 1 }) else {
                 addErr("keySound : [\(s)] format is incorrect")
                 continue
             }
@@ -239,14 +240,14 @@ nonisolated class UniPackFolder: UniPack {
             var wormhole = Sound.noWormhole
 
             if split.count >= 5 {
-                guard let loopRaw = Int(split[4]) else {
+                guard let loopRaw = Self.packInt(split[4]) else {
                     addErr("keySound : [\(s)] format is incorrect")
                     continue
                 }
                 loop = loopRaw - 1
             }
             if split.count >= 6 {
-                guard let wormholeRaw = Int(split[5]) else {
+                guard let wormholeRaw = Self.packInt(split[5]) else {
                     addErr("keySound : [\(s)] format is incorrect")
                     continue
                 }
@@ -267,8 +268,7 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("keySound : [\(s)] sounds directory not found"); continue
             }
 
-            let soundFile = soundsDir.appendingPathComponent(soundURL)
-            guard FileManager.default.fileExists(atPath: soundFile.path) else {
+            guard let soundFile = soundFinder.file(soundURL, in: soundsDir) else {
                 addErr("keySound : [\(s)] sound was not found"); continue
             }
 
@@ -313,15 +313,15 @@ nonisolated class UniPackFolder: UniPack {
             let split1 = fileName.split(whereSeparator: { $0.isWhitespace }).map(String.init)
             guard split1.count > 2 else { continue }
 
-            guard let c = Int(split1[0]).map({ $0 - 1 }),
-                  let x = Int(split1[1]).map({ $0 - 1 }),
-                  let y = Int(split1[2]).map({ $0 - 1 }) else {
+            guard let c = Self.packInt(split1[0]).map({ $0 - 1 }),
+                  let x = Self.packInt(split1[1]).map({ $0 - 1 }),
+                  let y = Self.packInt(split1[2]).map({ $0 - 1 }) else {
                 addErr("keyLed : [\(fileName)] format is incorrect"); continue
             }
 
             var loop = 1
             if split1.count >= 4 {
-                guard let loopRaw = Int(split1[3]) else {
+                guard let loopRaw = Self.packInt(split1[3]) else {
                     addErr("keyLed : [\(fileName)] format is incorrect"); continue
                 }
                 loop = loopRaw
@@ -363,7 +363,7 @@ nonisolated class UniPackFolder: UniPack {
                     var velToken: String?
 
                     if xToken == "*" || xToken == "mc" {
-                        guard (4...5).contains(split2.count), let py = Int(split2[2]) else {
+                        guard (4...5).contains(split2.count), let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         // Round LEDs are 1...32; index 32 is reserved for the logo token.
@@ -393,7 +393,7 @@ nonisolated class UniPackFolder: UniPack {
                             colorToken = split2[3]
                         }
                     } else {
-                        guard (4...5).contains(split2.count), let px = Int(xToken), let py = Int(split2[2]) else {
+                        guard (4...5).contains(split2.count), let px = Self.packInt(xToken), let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = px - 1
@@ -407,7 +407,7 @@ nonisolated class UniPackFolder: UniPack {
 
                     // Once a velocity is supplied it must parse; never fall back to color-only.
                     if let vStr = velToken {
-                        guard let velocity = Int(vStr) else {
+                        guard let velocity = Self.packInt(vStr) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledVelocity = velocity
@@ -434,7 +434,7 @@ nonisolated class UniPackFolder: UniPack {
                     var ledY: Int
 
                     if xToken == "*" || xToken == "mc" {
-                        guard split2.count >= 3, let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         guard (1...32).contains(py) else { continue }
@@ -444,7 +444,7 @@ nonisolated class UniPackFolder: UniPack {
                         ledX = -1
                         ledY = 32
                     } else {
-                        guard split2.count >= 3, let px = Int(xToken), let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let px = Self.packInt(xToken), let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = px - 1
@@ -454,13 +454,13 @@ nonisolated class UniPackFolder: UniPack {
                     ledList.append(.off(x: ledX, y: ledY))
 
                 case "delay", "d":
-                    guard let delayValue = Int(split2[1]) else {
+                    guard let delayValue = Self.packInt(split2[1]) else {
                         addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                     }
                     ledList.append(.delay(delay: delayValue))
 
                 case "chain", "c":
-                    guard let chainValue = Int(split2[1]) else {
+                    guard let chainValue = Self.packInt(split2[1]) else {
                         addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                     }
                     ledList.append(.chain(chain: chainValue - 1))
@@ -500,6 +500,11 @@ nonisolated class UniPackFolder: UniPack {
         autoPlayTable = autoPlay
         var map = Array(repeating: [Int](repeating: 0, count: buttonY), count: buttonX)
         var currChain = 0
+        func moveToChain(_ c: Int) {
+            currChain = c
+            autoPlay.elements.append(.chain(c: currChain))
+            for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+        }
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -512,8 +517,8 @@ nonisolated class UniPackFolder: UniPack {
 
             switch option {
             case "on", "o", "off", "f", "touch", "t":
-                guard let px = Int(split[safe: 1] ?? "").map({ $0 - 1 }),
-                      let py = Int(split[safe: 2] ?? "").map({ $0 - 1 }) else {
+                guard let px = Self.packInt(split[safe: 1]).map({ $0 - 1 }),
+                      let py = Self.packInt(split[safe: 2]).map({ $0 - 1 }) else {
                     addErr("autoPlay : [\(s)] format is incorrect"); continue
                 }
                 x = px; y = py
@@ -525,7 +530,7 @@ nonisolated class UniPackFolder: UniPack {
                 }
 
             case "chain", "c":
-                guard let cv = Int(split[safe: 1] ?? "").map({ $0 - 1 }) else {
+                guard let cv = Self.packInt(split[safe: 1]).map({ $0 - 1 }) else {
                     addErr("autoPlay : [\(s)] format is incorrect"); continue
                 }
                 chainVal = cv
@@ -534,7 +539,7 @@ nonisolated class UniPackFolder: UniPack {
                 }
 
             case "delay", "d":
-                guard let dv = Int(split[safe: 1] ?? "") else {
+                guard let dv = Self.packInt(split[safe: 1]) else {
                     addErr("autoPlay : [\(s)] format is incorrect"); continue
                 }
                 delay = dv
@@ -543,29 +548,25 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("autoPlay : [\(s)] format is incorrect"); continue
             }
 
+            // `touch` is `on` and `off` in one line: both count the pad's next sound and follow
+            // that sound's wormhole.
             switch option {
-            case "on", "o":
+            case "on", "o", "touch", "t":
                 autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
+                if option == "touch" || option == "t" {
+                    autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
+                }
                 let sound = soundGet(c: currChain, x: x, y: y, num: map[x][y])
                 map[x][y] += 1
                 if let sound, sound.wormhole != Sound.noWormhole {
-                    currChain = sound.wormhole
-                    autoPlay.elements.append(.chain(c: currChain))
-                    for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                    moveToChain(sound.wormhole)
                 }
 
             case "off", "f":
                 autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
 
-            case "touch", "t":
-                autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
-                autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
-                map[x][y] += 1
-
             case "chain", "c":
-                currChain = chainVal
-                autoPlay.elements.append(.chain(c: currChain))
-                for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                moveToChain(chainVal)
 
             case "delay", "d":
                 autoPlay.elements.append(.delay(delay: delay))
@@ -579,6 +580,13 @@ nonisolated class UniPackFolder: UniPack {
     }
 
     // MARK: - Utility
+
+    /// A number field of keySound, keyLED or autoPlay, read as Android's `toInt()` reads it: a signed
+    /// decimal that fits in 32 bits. A larger value is a format error rather than a number outside the
+    /// pack, and turning it into a 0-based index (`- 1`) cannot overflow.
+    private static func packInt(_ token: String?) -> Int? {
+        token.flatMap { Int32($0) }.map(Int.init)
+    }
 
     private static func folderSize(_ url: URL) -> Int64 {
         let fm = FileManager.default
