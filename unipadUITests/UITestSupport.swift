@@ -274,6 +274,9 @@ enum UITestSupport {
     static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
+        if !title.exists {
+            searchForPack("Playback Stop Fixture", in: app)
+        }
         XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
         title.tap()
         let play = app.buttons[playButtonTitle].firstMatch
