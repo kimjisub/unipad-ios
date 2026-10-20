@@ -81,13 +81,27 @@ struct UsageAnalyticsTests {
         (UniPackDownloader.DownloadError.writeFailed, .storage),
         (APIError.httpError(statusCode: 404), .notFound),
         (APIError.decodingFailed, .server),
-        (URLError(.notConnectedToInternet), .network),
+        (URLError(.notConnectedToInternet), .networkOffline),
         (CocoaError(.fileReadNoPermission), .fileAccess),
         (CocoaError(.fileWriteOutOfSpace), .storage),
         (NSError(domain: "other", code: 1), .unknown),
     ])
     func errorClassification(error: Error, expected: UsageErrorType) {
         #expect(UsageErrorType.classify(error) == expected)
+    }
+
+    @Test(arguments: [
+        (URLError.timedOut, "network_timeout"),
+        (.networkConnectionLost, "network_lost"),
+        (.notConnectedToInternet, "network_offline"),
+        (.cannotFindHost, "network"),
+    ])
+    func networkFailuresKeepTheirReason(code: URLError.Code, category: String) {
+        let sink = RecordingAnalytics()
+        UsageAnalytics(sink: sink).packImportFailed(source: .store, error: URLError(code))
+        #expect(sink.events.map(\.parameters) == [
+            ["result": "failure", "import_source": "store", "error_type": category],
+        ])
     }
 
     // MARK: - Pack load and play
@@ -225,7 +239,7 @@ struct UsageAnalyticsTests {
              "landscape", "portrait", "lt_600dp", "600dp_839dp", "840dp_plus", "full_screen", "multi_window"]
         ).union([
             "invalid_pack", "corrupt_archive", "file_access", "storage", "not_found", "server", "network",
-            "sound_engine", "unknown",
+            "network_timeout", "network_lost", "network_offline", "sound_engine", "unknown",
         ])
         for event in sink.events {
             #expect(Set(event.parameters.keys).isSubset(of: UsageParam.allowed))
