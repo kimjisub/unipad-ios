@@ -99,7 +99,8 @@ The output directory must be new. The command builds and installs a separate
 Debug test app with fake Firebase configuration, then removes it on exit.
 It downloads a local fixture, accepts the fresh notification permission prompt,
 requires the prompt to disappear, and opens synthetic notifications from
-Notification Center both while the app is in the background and after termination.
+Notification Center's Open swipe action both while the app is in the background
+and after termination.
 Screenshots and assertions require the app to return to its pack list. Runtime
 logs must show a new local-only process with no local-only launch argument.
 Commands, exit codes, runtime logs and `UI.xcresult` are saved in the output
