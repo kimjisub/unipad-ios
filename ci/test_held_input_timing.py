@@ -1,5 +1,4 @@
 """Run the UI helper's timing decisions without a simulator or synthesized input."""
-import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -31,7 +30,7 @@ for (name, started, completed, duration, returned, expected) in cases {
 }
 exit(failures == 0 ? 0 : 1)
 """
-        with tempfile.TemporaryDirectory(dir=os.environ.get("PAPERCLIP_RUN_SCRATCH_DIR")) as scratch:
+        with tempfile.TemporaryDirectory() as scratch:
             scratch = Path(scratch)
             (scratch / "main.swift").write_text(probe)
             executable = scratch / "timing-check"
