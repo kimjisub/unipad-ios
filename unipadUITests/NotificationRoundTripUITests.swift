@@ -75,6 +75,13 @@ final class NotificationRoundTripUITests: XCTestCase {
                     .matching(NSPredicate(format: "label CONTAINS %@", "UniPad \(mode) \(token)")).firstMatch
                 XCTAssertTrue(UITestSupport.waitUntilHittable(open, timeout: 10), "\(mode) notification card did not expand")
                 open.tap()
+                // The system can reveal an explicit Open action instead of opening the card.
+                // That action still belongs to the notification, not an app launch fallback.
+                let action = springboard.buttons.matching(NSPredicate(format: "label IN %@", ["Open", "열기"])).firstMatch
+                if !app.wait(for: .runningForeground, timeout: 3), action.waitForExistence(timeout: 3) {
+                    UITestSupport.attachScreenshot("notification-\(mode)-open-action", to: self)
+                    action.tap()
+                }
             }
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "\(mode) notification did not bring the app forward")
             XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 20),
