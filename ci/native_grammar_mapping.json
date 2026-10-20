@@ -29,9 +29,17 @@
     "expectation": "Flagged UTF-8, unflagged valid UTF-8, and unflagged non-UTF-8 CP949 raw ZIP names resolve the same sound name and bytes through real import and start the engine."
   },
   "A-03": {
-    "tests": [],
-    "expectation": "Valid OGG Vorbis renders nonzero PCM; corrupt OGG is handled safely.",
-    "reason": "No OGG decoder or native valid/corrupt OGG tests in this source revision. Not confirmed."
+    "tests": [
+      "SoundEngineDecodingTests/anOggVorbisSoundPlays()",
+      "SoundEngineDecodingTests/anOversizedOggIsSilentAndAdvancesToTheNextSound(_:)",
+      "SoundEngineDecodingTests/aDamagedOggSoundStillAdvancesThePadToItsNextSound(_:)",
+      "OggVorbisDecoderTests/decodesTheWholeToneInTheFilesLayout()",
+      "OggVorbisDecoderTests/rejectsOverlongAudioEvenWhenItsLengthIsUnderreported(_:)",
+      "OggVorbisDecoderTests/rejectsAnOversizedBufferEvenWhenItsLengthIsUnderreported(_:)",
+      "OggVorbisDecoderTests/aCodebookClaimingMillionsOfEntriesFailsWithoutCrashing()",
+      "OggVorbisDecoderTests/damagedBytesNeverCrashTheDecoder()"
+    ],
+    "expectation": "Valid OGG Vorbis renders nonzero PCM at the real engine mixer; corrupt and oversized OGG is safely skipped; actual decoded length and PCM allocation are bounded."
   },
   "A-04": {
     "tests": [
