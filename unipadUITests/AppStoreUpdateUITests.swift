@@ -51,7 +51,8 @@ final class AppStoreUpdateUITests: XCTestCase {
         quit.tap()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 10))
         if app.buttons["Play"].firstMatch.exists { title.tap() }
-        XCTAssertEqual(prompt.exists, updateExpected)
+        if updateExpected { XCTAssertTrue(prompt.waitForExistence(timeout: 5)) }
+        else { XCTAssertFalse(prompt.exists) }
         UITestSupport.attachScreenshot("\(response)-home-after-return", to: self)
         let archive = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "Normal", withExtension: "zip"))
         app.open(archive)
@@ -61,7 +62,8 @@ final class AppStoreUpdateUITests: XCTestCase {
         UITestSupport.attachScreenshot("\(response)-import-complete", to: self)
         app.buttons["main.importResult.ok"].tap()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 10))
-        XCTAssertEqual(prompt.exists, updateExpected)
+        if updateExpected { XCTAssertTrue(prompt.waitForExistence(timeout: 5)) }
+        else { XCTAssertFalse(prompt.exists) }
         XCTAssertTrue(app.buttons["main.guide.import"].exists)
         XCTAssertTrue(app.buttons["main.guide.download"].exists)
     }

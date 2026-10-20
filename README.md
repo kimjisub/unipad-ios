@@ -139,7 +139,8 @@ The existing home-screen update link uses Apple's public [lookup API](https://pe
 for app `6760479102`. It reads the account's actual [StoreKit storefront](https://developer.apple.com/documentation/storekit/storefront),
 converts its ISO alpha-3 country code to alpha-2, and never substitutes the device's
 language, region, or another country's store. Missing or unrecognized countries
-leave the link hidden. Storefront changes cancel outstanding work, remove the
+leave the link hidden. The previous prompt is hidden while StoreKit resolves
+the current storefront and installation. Storefront changes cancel outstanding work, remove the
 saved result, and reject responses from the old country.
 
 Only a verified production [AppTransaction](https://developer.apple.com/documentation/storekit/apptransaction/shared)

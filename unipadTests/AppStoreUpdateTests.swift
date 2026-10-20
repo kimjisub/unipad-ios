@@ -104,6 +104,19 @@ struct AppStoreUpdateTests {
         #expect(probe.calls.count == 2)
     }
 
+    @Test func hidesThePreviousPromptWhileResolvingTheCurrentStorefront() async {
+        let probe = Probe(data: payload())
+        let checker = make(probe)
+        await checker.refresh().value
+        #expect(checker.updateAvailable)
+        probe.country = nil
+        let pending = checker.refresh()
+        #expect(!checker.updateAvailable)
+        await pending.value
+        #expect(checker.state == .unavailable)
+        #expect(probe.calls == ["KR"])
+    }
+
     @Test func neverUsesAnotherCountrysCacheOrAnUnknownCountry() async {
         let probe = Probe(data: payload())
         let checker = make(probe)

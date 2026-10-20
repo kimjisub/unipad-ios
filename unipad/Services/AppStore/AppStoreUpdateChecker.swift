@@ -82,6 +82,10 @@ final class AppStoreUpdateChecker {
 
     private func startCheck(readCountry: @escaping () async -> String?) -> Task<Void, Never> {
         if let task { return task }
+        // The current account country is not known yet, even if yesterday's lookup is fresh.
+        state = .unavailable
+        validUntil = nil
+        expirationTask?.cancel()
         let requestedGeneration = generation
         let checking = Task { [weak self] in
             guard let self else { return }
