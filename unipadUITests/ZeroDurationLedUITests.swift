@@ -5,13 +5,17 @@ final class ZeroDurationLedUITests: XCTestCase {
     func testHugeFiniteLoopsLeavePlaybackResponsive() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "zero-duration-led")
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
         UITestSupport.searchForPack("Zero Duration LED Fixture", in: app)
         let list = app.scrollViews["main.packList"]
         let title = list.staticTexts["Zero Duration LED Fixture"].firstMatch
         guard title.waitForExistence(timeout: 10) else {
+            if UITestSupport.isReleaseSuite {
+                XCTFail("the zero-duration LED fixture must be prepared")
+                return
+            }
             throw XCTSkip("install test-fixtures/ZeroDurationLED first")
         }
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20))

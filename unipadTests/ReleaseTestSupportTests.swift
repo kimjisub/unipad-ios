@@ -6,6 +6,35 @@ import XCTest
 
 @MainActor
 final class ReleaseTestSupportTests: XCTestCase {
+    func testZeroDurationLEDLibraryMatchesRepositoryFixture() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("zero-duration-led", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let library = root.appendingPathComponent("UniPack")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: library.path), ["ZeroDurationLED"])
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("test-fixtures/ZeroDurationLED")
+        let staged = library.appendingPathComponent("ZeroDurationLED")
+        for name in ["info", "keySound", "keyLed/1 1 1 2147483647", "keyLed/1 1 2 2147483647", "keyLed/1 1 3 2147483647"] {
+            XCTAssertEqual(try Data(contentsOf: staged.appendingPathComponent(name)),
+                           try Data(contentsOf: source.appendingPathComponent(name)), name)
+        }
+        let pack = UniPackFolder(rootFolder: staged)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertEqual(pack.title, "Zero Duration LED Fixture")
+        XCTAssertEqual([pack.buttonX, pack.buttonY, pack.chain], [8, 8, 2])
+        XCTAssertEqual(pack.soundCount, 0)
+    }
+
     func testPlayUsageLibraryPreparesTheScreenScenariosPack() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]

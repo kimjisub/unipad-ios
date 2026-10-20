@@ -79,6 +79,19 @@ nonisolated enum ReleaseTestSupport {
                 try makePack(at: faded, title: "Alan Walker - Faded", producer: "Otarygen, 김지섭, K1A2", chains: 6)
                 let song = (1...6).map { "chain \($0)\non 1 1\ndelay 1250\noff 1 1\non 1 2\ndelay 1250\noff 1 2\n" }
                 try song.joined().write(to: faded.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+            case "zero-duration-led":
+                let pack = library.appendingPathComponent("ZeroDurationLED")
+                try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
+                // Keep the public extreme-repeat fixture unchanged, including its empty sound map.
+                for (name, contents) in [
+                    ("info", "title=Zero Duration LED Fixture\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=2\n"),
+                    ("keySound", ""),
+                    ("keyLed/1 1 1 2147483647", "o 1 1 a 5\nf 1 1\n"),
+                    ("keyLed/1 1 2 2147483647", "o 1 2 a 9\nd 0\n"),
+                    ("keyLed/1 1 3 2147483647", "o 1 3 a 5\nd 10\nf 1 3\nd -20\n")
+                ] {
+                    try contents.write(to: pack.appendingPathComponent(name), atomically: true, encoding: .utf8)
+                }
             case "deletion":
                 try makePack(at: library.appendingPathComponent("Deletion"), title: "UI Test Pack")
             case "warning-sound", "warning-info", "warning-none":
