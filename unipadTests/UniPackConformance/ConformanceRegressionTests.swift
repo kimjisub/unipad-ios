@@ -5,7 +5,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
-    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005"])
+    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005", "RUN-S-008", "RUN-S-009", "RUN-S-010", "RUN-S-012", "RUN-S-013"])
     func playbackCasesAreMeasured(id: String) async throws {
         let corpus = try ConformanceCorpus.load()
         let sample = try #require(corpus.cases.first { $0.id == id })
