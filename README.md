@@ -79,7 +79,14 @@ These checks generate their own packs without a shared library setup. On iPhone,
 with `-skip-testing:`; run it on iPad, where pointer interaction is supported.
 The suite generates its own looping packs and compares held and released pad
 pixels through rotation, pointer input and both `squareButton` settings. Rotation
-must cancel the held pad before the finger is lifted. The whole UI target also
+must cancel the held pad before the finger is lifted. Each scheduled step records both
+start and completion using a monotonic clock. Rotation and captures must complete before
+gesture invocation plus its requested duration minus 0.25 seconds, and before the
+command returns. A late observation fails instead of establishing held-input coverage.
+The result bundle keeps the timing records and the actual before/after rotation
+captures taken during the hold. `python3 -m unittest discover -s ci -v` also checks
+that the shared timing decision rejects a capture completed after release while the
+gesture command is still waiting to return. The whole UI target also
 includes these checks, but its other suites need their own fixture setup.
 `MultiTouchPlayTests.testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing`
 and `testPadsMovingUnderAStillFingerReleaseItAndStartNothing` separately check

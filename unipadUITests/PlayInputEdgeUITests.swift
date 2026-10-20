@@ -8,8 +8,10 @@ import XCTest
 ///
 /// XCUITest has no API to hold one input while sending another, but it waits for a gesture by
 /// running the main run loop, so a step on a run loop timer runs while an earlier press is still
-/// down. Every such step is checked to have run before that press returned, and a picture
-/// of the pads taken in the middle shows the press really held. Pictures and rotation work there;
+/// down. Every step must finish before invocation + the requested hold duration minus a
+/// safety margin, as well as before the command returns. A late capture fails even when the
+/// command has not returned yet. Pictures show that the press really held. Pictures and rotation
+/// work there;
 /// a second gesture does not ("only one gesture can be performed at a time"), so these are not
 /// covered on screen: two fingers, a pointer held with a finger in either order, and a finger
 /// resting on the margin while a chain button is tapped. MultiTouchPlayTests covers two inputs
@@ -37,10 +39,14 @@ final class PlayInputEdgeUITests: XCTestCase {
         let idle = try settledPads()
         let held = (row: 2, col: 2)
         var heldBefore: [String] = [], heldAfter: [String] = []
-        try whileHolding({ pad(held.row, held.col).press(forDuration: 5) }, steps: [
-            Step(1.0, "picture before rotating") { heldBefore = try self.litPads(comparedWith: idle) },
+        try whileHolding(for: 5, { duration in pad(held.row, held.col).press(forDuration: duration) }, steps: [
+            Step(1.0, "picture before rotating") {
+                heldBefore = try self.litPads(comparedWith: idle, attachment: "before-rotation-while-held")
+            },
             Step(1.5, "rotate") { XCUIDevice.shared.orientation = .landscapeRight },
-            Step(3.5, "picture after rotating") { heldAfter = try self.litPads(comparedWith: idle) },
+            Step(3.5, "picture after rotating") {
+                heldAfter = try self.litPads(comparedWith: idle, attachment: "after-rotation-while-held")
+            },
         ])
         XCTAssertEqual(heldBefore, ["3,3"], "the press was not down before the screen rotated")
         XCTAssertEqual(XCUIDevice.shared.orientation, .landscapeRight)
@@ -57,7 +63,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         openPack("Input Edges")
         let idle = try settledPads()
         var during: [String] = []
-        try whileHolding({ self.pad(4, 4).click(forDuration: 4, thenDragTo: self.pad(4, 4)) }, steps: [
+        try whileHolding(for: 4, { duration in self.pad(4, 4).click(forDuration: duration, thenDragTo: self.pad(4, 4)) }, steps: [
             Step(1.5, "picture") { during = try self.litPads(comparedWith: idle) },
         ])
         XCTAssertEqual(during, ["5,5"], "a held pointer press did not light its pad alone")
@@ -108,7 +114,7 @@ final class PlayInputEdgeUITests: XCTestCase {
 
     @MainActor
     private final class StepLog {
-        var ran: [String: TimeInterval] = [:]
+        var timings: [String: HeldInputTiming] = [:]
         var failures: [Error] = []
     }
 
@@ -118,34 +124,41 @@ final class PlayInputEdgeUITests: XCTestCase {
         init(_ run: @escaping () -> Void) { self.run = run }
     }
 
-    /// Runs `hold`, a gesture that blocks until it ends, and each step at its offset from the
-    /// start while the gesture is still running. Fails when a step ran only after it ended, since
-    /// then the hold did not overlap the step.
+    /// Uses the requested duration, not the gesture command's return time, to bound observations.
+    /// Invocation is earlier than the synthesized touch-down, so this deadline is conservative.
+    /// If rotation or capture runs late, fail rather than claiming it occurred under a held input.
     @MainActor
-    private func whileHolding(_ hold: @MainActor () -> Void,
+    private func whileHolding(for duration: TimeInterval,
+                              _ hold: @MainActor (TimeInterval) -> Void,
                               steps: [Step]) throws {
-        let start = Date()
+        let start = ProcessInfo.processInfo.systemUptime
         let log = StepLog()
-        for step in steps {
+        let timers = steps.map { step in
             let fire = Fire {
                 MainActor.assumeIsolated {
-                    log.ran[step.name] = Date().timeIntervalSince(start)
+                    let started = ProcessInfo.processInfo.systemUptime - start
                     do { try step.run() } catch { log.failures.append(error) }
+                    log.timings[step.name] = HeldInputTiming(
+                        started: started, completed: ProcessInfo.processInfo.systemUptime - start)
                 }
             }
-            // A timer, unlike a main-queue block, also fires while another step is itself waiting
-            // for a gesture, so a step can hold a second input.
-            RunLoop.main.add(Timer(timeInterval: step.at, repeats: false) { _ in fire.run() }, forMode: .common)
+            let timer = Timer(timeInterval: step.at, repeats: false) { _ in fire.run() }
+            RunLoop.main.add(timer, forMode: .common)
+            return timer
         }
-        hold()
-        let ended = Date().timeIntervalSince(start)
-        // Let steps the run loop could not reach during the hold run, so they are reported.
-        let last = steps.map(\.at).max() ?? 0
-        if last > ended { RunLoop.current.run(until: start.addingTimeInterval(last + 0.5)) }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        defer { timers.forEach { $0.invalidate() } }
+        hold(duration)
+        let returned = ProcessInfo.processInfo.systemUptime - start
         for step in steps {
-            let at = try XCTUnwrap(log.ran[step.name], "step \(step.name) never ran")
-            XCTAssertLessThan(at, ended, "step \(step.name) ran at \(at) s, after the held input ended at \(ended) s")
+            let timing = try XCTUnwrap(log.timings[step.name], "step \(step.name) did not complete during the hold")
+            let detail = "\(step.name): started=\(timing.started), completed=\(timing.completed), "
+                + "release deadline=\(duration - HeldInputTiming.releaseMargin), command returned=\(returned) s"
+            let attachment = XCTAttachment(string: detail)
+            attachment.name = "held-input-timing-\(step.name)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertTrue(timing.finishedWhileHeld(duration: duration, commandReturned: returned),
+                          "Cannot establish that the step completed before release: \(detail)")
         }
         if let error = log.failures.first { throw error }
     }
@@ -191,8 +204,15 @@ final class PlayInputEdgeUITests: XCTestCase {
 
     /// Pads lit now, as "row,column" from 1. One picture, so a press is caught while it is held.
     @MainActor
-    private func litPads(comparedWith idle: PadPixels) throws -> [String] {
-        try PadPixels(grid.screenshot()).changedPads(comparedWith: idle)
+    private func litPads(comparedWith idle: PadPixels, attachment name: String? = nil) throws -> [String] {
+        let screenshot = grid.screenshot()
+        if let name {
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        return try PadPixels(screenshot).changedPads(comparedWith: idle)
     }
 
     /// The pads' pixels once two consecutive shots agree, so a fading press is not compared.
@@ -219,7 +239,7 @@ final class PlayInputEdgeUITests: XCTestCase {
     @MainActor
     private func expectOnlyPadLitWhilePressed(_ row: Int, _ col: Int, comparedWith idle: PadPixels, after change: String) throws {
         var lit: [String] = []
-        try whileHolding({ self.pad(row, col).press(forDuration: 2.5) }, steps: [
+        try whileHolding(for: 2.5, { duration in self.pad(row, col).press(forDuration: duration) }, steps: [
             Step(1.2, "picture of the new press") { lit = try self.litPads(comparedWith: idle) },
         ])
         XCTAssertEqual(lit, ["\(row + 1),\(col + 1)"], "a new press after \(change) lit other pads")
