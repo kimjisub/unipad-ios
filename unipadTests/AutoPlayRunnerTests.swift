@@ -12,8 +12,8 @@ final class AutoPlayRunnerTests: XCTestCase {
         var litGuides: Set<Int> = []
         func onStart() { starts += 1 }
         func onEnd() { ends += 1; onFinish?() }
-        func onPadTouchOn(x: Int, y: Int) {}
-        func onPadTouchOff(x: Int, y: Int) {}
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID) {}
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {}
         func onChainChange(c: Int) {}
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
             guidePads.append(x * 256 + y)

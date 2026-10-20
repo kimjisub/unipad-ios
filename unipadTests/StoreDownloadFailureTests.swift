@@ -26,7 +26,7 @@ struct StoreDownloadFailureTests {
 
     private func makeViewModel() -> StoreViewModel {
         let vm = StoreViewModel { [session, stagingRoot] in
-            UniPackDownloader(session: session, stagingRoot: stagingRoot)
+            UniPackDownloader(session: session, stagingRoot: stagingRoot, waitBeforeRetry: { _ in })
         }
         vm.storeItems = [StoreViewModel.StoreItem(
             id: "missing", title: "Missing", producerName: "Tests",

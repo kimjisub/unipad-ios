@@ -114,6 +114,111 @@ struct LedRunnerTests {
         return Harness(runner: runner, recorder: recorder, clock: clock, chain: chain)
     }
 
+    @Test(arguments: [false, true])
+    func finiteZeroDurationLoopRunsOnlyOnePass(zeroDelay: Bool) async throws {
+        try await checkZeroDurationLoop(repeats: 3, zeroDelay: zeroDelay)
+    }
+
+    @Test(arguments: [false, true])
+    func hugeZeroDurationLoopFinishesInOneTick(zeroDelay: Bool) async throws {
+        try await checkZeroDurationLoop(repeats: 2_147_483_647, zeroDelay: zeroDelay)
+    }
+
+    private func checkZeroDurationLoop(repeats: Int, zeroDelay: Bool) async throws {
+        var events: [LedAnimation.LedEvent] = [
+            .on(x: 0, y: 0, color: 5, velocity: 5), .off(x: 0, y: 0),
+            .on(x: 1, y: 1, color: 9, velocity: 9),
+            .on(x: -1, y: 0, color: 5, velocity: 5), .off(x: -1, y: 0),
+            .on(x: -1, y: 1, color: 9, velocity: 9)
+        ]
+        if zeroDelay { events.insert(.delay(delay: 0), at: 1) }
+        let h = try await start([0: LedAnimation(ledEvents: events, loop: repeats, num: 0)])
+        defer { h.runner.stop() }
+
+        h.press()
+        #expect(h.recorder.outputs == [
+            "padOn 0 0", "padOff 0 0", "padOn 1 1",
+            "chainOn 0", "chainOff 0", "chainOn 1"
+        ])
+        h.tick()
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+        let finishedOutputs = h.recorder.outputs
+        h.runner.eventOff(x: 0, y: 0)
+        for _ in 0..<5 { h.tick() }
+        #expect(h.recorder.outputs == finishedOutputs, "completed finite LEDs keep their final state")
+    }
+
+    @Test func finiteNegativeDurationLoopRunsOnlyOnePass() async throws {
+        try await checkNegativeDurationLoop(repeats: 3)
+    }
+
+    @Test func hugeNegativeDurationLoopFinishesInOneTick() async throws {
+        try await checkNegativeDurationLoop(repeats: 2_147_483_647)
+    }
+
+    private func checkNegativeDurationLoop(repeats: Int) async throws {
+        let h = try await start([0: LedAnimation(
+            ledEvents: [.on(x: 0, y: 0, color: 5, velocity: 5), .delay(delay: 10),
+                        .off(x: 0, y: 0), .delay(delay: -20),
+                        .on(x: 1, y: 1, color: 9, velocity: 9),
+                        .on(x: -1, y: 1, color: 9, velocity: 9)],
+            loop: repeats, num: 0
+        )])
+        defer { h.runner.stop() }
+
+        h.press()
+        #expect(h.recorder.outputs == ["padOn 0 0"], "the positive delay still waits")
+        h.tick(10)
+        #expect(h.recorder.outputs == ["padOn 0 0", "padOff 0 0", "padOn 1 1", "chainOn 1"])
+        h.tick()
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+        let finishedOutputs = h.recorder.outputs
+        h.runner.eventOff(x: 0, y: 0)
+        for _ in 0..<5 { h.tick() }
+        #expect(h.recorder.outputs == finishedOutputs, "completed finite LEDs keep their final state")
+    }
+
+    @Test func timedFiniteLoopPlaysAllThreePasses() async throws {
+        let h = try await start([0: LedAnimation(
+            ledEvents: [.on(x: 0, y: 0, color: 5, velocity: 5), .delay(delay: 10),
+                        .off(x: 0, y: 0), .delay(delay: 10)],
+            loop: 3, num: 0
+        )])
+        defer { h.runner.stop() }
+
+        h.press()
+        #expect(h.recorder.outputs == ["padOn 0 0"])
+        for pass in 0..<3 {
+            h.tick(10)
+            #expect(h.recorder.outputs == Array(repeating: ["padOn 0 0", "padOff 0 0"], count: pass + 1).flatMap { $0 })
+            h.tick(10)
+            if pass < 2 {
+                #expect(h.recorder.outputs.last == "padOn 0 0")
+            }
+        }
+        h.tick()
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+        #expect(h.recorder.outputs == Array(repeating: ["padOn 0 0", "padOff 0 0"], count: 3).flatMap { $0 })
+    }
+
+    @Test func resumedPartialPassDoesNotSkipTimedRepeats() async throws {
+        let h = try await start([0: LedAnimation(
+            ledEvents: [.on(x: 0, y: 0, color: 5, velocity: 5), .delay(delay: 10), .off(x: 0, y: 0)],
+            loop: 3, num: 0
+        )])
+        defer { h.runner.stop() }
+
+        h.press()
+        h.runner.stop()
+        h.runner.launch()
+        h.tick(0)
+        h.tick(10)
+        h.tick(10)
+        h.tick()
+        #expect(h.recorder.outputs == Array(repeating: ["padOn 0 0", "padOff 0 0"], count: 3).flatMap { $0 })
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+    }
+
     @Test func slowLoopGoesDarkOnRelease() async throws {
         let h = try await start([0: Self.slowLoop])
         defer { h.runner.stop() }

@@ -99,39 +99,39 @@ final class UniPackAutoMapper {
                 pendingDelay += d
 
             case .press(let x, let y, let sound):
-                if pendingDelay > 0 {
-                    result.append("d \(pendingDelay)")
-                    pendingDelay = 0
-                }
+                result += delayLines(pendingDelay)
+                pendingDelay = 0
 
                 let duration = sound.flatMap { try? audioDurationMs(url: $0) } ?? 0
                 result.append("t \(x + 1) \(y + 1)")
-                if duration > 0 {
-                    result.append("d \(duration)")
-                }
+                result += delayLines(duration)
 
                 pressed += 1
                 await progress(pressed)
             }
         }
 
-        if pendingDelay > 0 {
-            result.append("d \(pendingDelay)")
-        }
+        result += delayLines(pendingDelay)
 
         try Task.checkCancellation()
         try replacer.replace(autoPlayFile, with: result.joined(separator: "\n") + "\n")
     }
 
-    /// The header's sample rate divides the frame count: at 0 Hz the length is infinite and
-    /// converting it traps, at 20 Hz it is thousands of times too long.
+    /// The pack reader takes a delay only up to Int32.max, so a longer wait is written as several
+    /// `d` lines adding up to it. A wait of 0 or less writes nothing.
+    private nonisolated static func delayLines(_ milliseconds: Int) -> [String] {
+        let longest = Int(Int32.max)
+        return stride(from: 0, to: milliseconds, by: longest).map { "d \(min(longest, milliseconds - $0))" }
+    }
+
+    /// Use the same source limits as playback, so a skipped sound adds no wait.
     private nonisolated static func audioDurationMs(url: URL) throws -> Int {
         let audioFile = try AVAudioFile(forReading: url)
-        let sampleRate = audioFile.processingFormat.sampleRate
-        guard SoundFileLimits.sampleRates.contains(sampleRate) else {
-            throw SoundFileLimits.Violation.implausibleSampleRate(sampleRate)
-        }
-        return Int(Double(audioFile.length) / sampleRate * 1000)
+        let format = audioFile.processingFormat
+        let sampleRate = format.sampleRate
+        let frameCount = try SoundFileLimits.sourceFrameCount(
+            audioFile.length, sampleRate: sampleRate, channels: format.channelCount)
+        return Int(Double(frameCount) / sampleRate * 1000)
     }
 }
 
