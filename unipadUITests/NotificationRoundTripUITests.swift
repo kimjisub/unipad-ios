@@ -47,6 +47,7 @@ final class NotificationRoundTripUITests: XCTestCase {
                 XCUIDevice.shared.press(.home)
                 XCTAssertTrue(app.wait(for: .runningBackgroundSuspended, timeout: 15) || app.state == .runningBackground)
             }
+            XCUIDevice.shared.orientation = .portrait
             try Data().write(to: directory.appendingPathComponent("ready-\(mode)"), options: .atomic)
             let pushed = directory.appendingPathComponent("pushed-\(mode)")
             let delivered = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -61,7 +62,11 @@ final class NotificationRoundTripUITests: XCTestCase {
             let message = springboard.staticTexts["UniPad \(mode) \(token)"].firstMatch
             XCTAssertTrue(message.waitForExistence(timeout: 15), "synthetic notification missing from Notification Center")
             UITestSupport.attachScreenshot("notification-\(mode)-received", to: self)
-            message.tap()
+            let hierarchy = XCTAttachment(string: springboard.debugDescription)
+            hierarchy.name = "notification-\(mode)-elements"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+            message.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "notification did not bring the app forward")
             XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 20),
                           "pack list did not appear after notification")

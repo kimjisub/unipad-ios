@@ -63,6 +63,7 @@ class Check:
         self.report = {'command': __import__('sys').argv, 'commands': [], 'result': 'failed',
                        'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                        'scope': 'synthetic simulator notifications only; no real APNs/FCM delivery'}
+        (self.output / 'source.patch').write_text(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=ROOT, text=True))
         self.sim = ['xcrun', 'simctl']
         self.ui = None
         self.owns_app = False
