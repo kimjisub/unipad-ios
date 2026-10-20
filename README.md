@@ -63,22 +63,24 @@ a store or change required checks.
 
 ## Play input checks on a Mac
 
-Before pushing play-input test changes, run the UI target on an iPhone and an
-iPad simulator, in addition to the build and unit checks above. Use a lent
+Before pushing play-input test changes, run the input edge UI checks on an iPhone
+and an iPad simulator, in addition to the build and unit checks above. Use a lent
 simulator's identifier as `SIMULATOR_UDID`:
 
 ```sh
 xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
   -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
-  -only-testing:unipadUITests -parallel-testing-enabled NO \
+  -only-testing:unipadUITests/PlayInputEdgeUITests -parallel-testing-enabled NO \
   -collect-test-diagnostics never
 ```
 
-`PlayInputEdgeUITests` is included by the whole UI target. On iPhone, exclude
+These checks generate their own packs without a shared library setup. On iPhone, exclude
 `unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain`
 with `-skip-testing:`; run it on iPad, where pointer interaction is supported.
 The suite generates its own looping packs and compares held and released pad
-pixels through rotation, pointer input and both `squareButton` settings.
+pixels through rotation, pointer input and both `squareButton` settings. Rotation
+must cancel the held pad before the finger is lifted. The whole UI target also
+includes these checks, but its other suites need their own fixture setup.
 `MultiTouchPlayTests.testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing`
 and `testPadsMovingUnderAStillFingerReleaseItAndStartNothing` separately check
 sound requests and feedback through the pad view's input handlers.

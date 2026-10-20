@@ -44,10 +44,9 @@ final class PlayInputEdgeUITests: XCTestCase {
         ])
         XCTAssertEqual(heldBefore, ["3,3"], "the press was not down before the screen rotated")
         XCTAssertEqual(XCUIDevice.shared.orientation, .landscapeRight)
-        // The system may cancel the touch when the screen rotates; either way the pad it held
-        // must be the only one lit while it lasts.
-        XCTAssertTrue(heldAfter == ["3,3"] || heldAfter == [], "pads lit while held after rotating: \(heldAfter)")
-        UITestSupport.attachScreenshot("rotated-held-\(heldAfter.isEmpty ? "cancelled" : "kept")", to: self)
+        // Screen changes release held pads and ignore those fingers until they are lifted.
+        XCTAssertEqual(heldAfter, [], "turning the screen did not release the held pad")
+        UITestSupport.attachScreenshot("rotated-held-cancelled", to: self)
         try expectNoPadLit(comparedWith: idle, after: "lifting the pad held through the rotation")
         try expectOnlyPadLitWhilePressed(5, 6, comparedWith: idle, after: "rotating")
     }
