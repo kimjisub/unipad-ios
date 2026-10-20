@@ -120,7 +120,7 @@ class Run:
         # Stable across invocations so changing a bundle ID does not rebuild every package.
         # A pre-existing installation is preserved and rejected before doing any device work.
         self.bundle = 'io.unipad.tests.virtual-midi'
-        self.owns_app = False
+        self.install_attempts = set()
         self.sim = ['xcrun', 'simctl']
 
     def start(self, command, name, env=None):
@@ -193,6 +193,9 @@ class Run:
 
     def execute(self):
         self.report['commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        for bundle in [self.bundle, self.bundle + '.xctrunner']:
+            if self.container(bundle, required=False) is not None:
+                raise RuntimeError(f'{bundle} already installed; refusing to replace its data')
         self.shared = self.container('kim.jisub.unipad', required=False)
         if self.shared is not None:
             command = self.sim + ['terminate', self.args.simulator, 'kim.jisub.unipad']
@@ -206,9 +209,6 @@ class Run:
         self.report['shared_container_before'] = self.shared
         self.before = snapshot(self.shared)
         self.report['shared_before'] = self.before
-        if self.container(self.bundle, required=False) is not None:
-            raise RuntimeError('test app already installed; refusing to replace its data')
-        self.owns_app = True
         base = ['xcodebuild', '-project', 'unipad.xcodeproj', '-scheme', 'unipad',
                 '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={self.args.simulator},arch=arm64',
                 '-derivedDataPath', str(self.args.derived_data.resolve()),
@@ -218,6 +218,7 @@ class Run:
                 f'PRODUCT_BUNDLE_IDENTIFIER={self.bundle}']
         self.command(base + ['build-for-testing'], 'build.log', 600)
         app = self.args.derived_data.resolve() / 'Build/Products/Debug-iphonesimulator/unipad.app'
+        self.install_attempts.add(self.bundle)
         self.command(self.sim + ['install', self.args.simulator, str(app)], 'install.log')
         for order in ['midi', 'screen']:
             directory = self.output / order
@@ -249,6 +250,8 @@ class Run:
             environment = dict(os.environ)
             for key, value in {'DIR': str(directory), 'TOKEN': token, 'ORDER': order}.items():
                 environment['TEST_RUNNER_UNIPAD_MIDI_ROUNDTRIP_' + key] = value
+            # XCTest installs the runner; cleanup also covers a failed test launch.
+            self.install_attempts.add(self.bundle + '.xctrunner')
             test = self.start(base + ['test-without-building', '-only-testing:unipadUITests/VirtualLaunchpadRoundTripUITests',
                                      '-collect-test-diagnostics', 'never', '-resultBundlePath', str(directory / 'UI.xcresult')],
                               f'{order}/ui.log', environment)
@@ -316,11 +319,15 @@ class Run:
                 os.kill(pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
-        if self.owns_app:
-            # Uninstall only the unique app installed by this run; shared app data is read-only.
+        if self.install_attempts:
+            # Both identifiers were absent at preflight. Remove only installations
+            # left by a command that this run actually attempted, including partial failures.
             for bundle in [self.bundle + '.xctrunner', self.bundle]:
+                if bundle not in self.install_attempts or self.container(bundle, required=False) is None:
+                    continue
                 subprocess.run(self.sim + ['terminate', self.args.simulator, bundle], capture_output=True, timeout=15)
                 subprocess.run(self.sim + ['uninstall', self.args.simulator, bundle], capture_output=True, timeout=30)
+                self.report.setdefault('removed_test_bundles', []).append(bundle)
             self.report['test_app_removed'] = all(self.container(bundle, required=False) is None
                                                   for bundle in [self.bundle, self.bundle + '.xctrunner'])
             if not self.report['test_app_removed']:

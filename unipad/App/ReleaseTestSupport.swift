@@ -28,6 +28,17 @@ nonisolated enum ReleaseTestSupport {
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         let library = root.appendingPathComponent("UniPack")
         try fm.createDirectory(at: library, withIntermediateDirectories: true)
+        if let jump = UserDefaults.standard.string(forKey: "UniPadReleaseWormhole"),
+           ["2", "40"].contains(jump) {
+            let pack = library.appendingPathComponent("Wormhole")
+            try makePack(at: pack, title: "Wormhole \(jump)")
+            try "title=Wormhole \(jump)\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=1\n"
+                .write(to: pack.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+            try "1 1 1 silence.wav 1 \(jump)\n1 1 2 silence.wav\n"
+                .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+            try "on 1 1\ndelay 1000\non 1 2\n"
+                .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        }
         if !UserDefaults.standard.bool(forKey: "UniPadReleaseEmpty") {
             for (folder, title) in [("Release", "Release Fixture - Tests"), ("Faded", "Faded - Tests")] {
                 let repeats = folder == "Release" && UserDefaults.standard.bool(forKey: "UniPadReleaseRepeat") ? 10_000 : 0
@@ -35,6 +46,9 @@ nonisolated enum ReleaseTestSupport {
                     UserDefaults.standard.bool(forKey: "UniPadReleaseThemeLoading") ? 1_000_000 : 0
                 try makePack(at: library.appendingPathComponent(folder), title: title,
                              firstPadRepeats: repeats, loadingLEDLines: loadingLEDLines)
+            }
+            if UserDefaults.standard.bool(forKey: "UniPadReleaseInputEdges") {
+                try makeInputEdgePacks(in: library)
             }
             try makePlaybackStopPack(at: library.appendingPathComponent("PlaybackStop"))
         }
@@ -50,6 +64,33 @@ nonisolated enum ReleaseTestSupport {
         // The system file picker exposes Documents, not the test's private workspace.
         if UserDefaults.standard.bool(forKey: "UniPadReleaseFile"), let token {
             try fm.copyItem(at: archive, to: WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseFixture-\(token).zip"))
+        }
+    }
+
+    /// Packs for the play screen's input edge checks. "Input Edges" loops a silent sample forever
+    /// on every pad of both chains and has no LEDs, so each pressed pad shows the feedback light
+    /// only while held. The "Grid" packs are one grid size with and without `squareButton`.
+    static func makeInputEdgePacks(in library: URL) throws {
+        let fm = FileManager.default
+        let packs: [(folder: String, title: String, rows: Int, columns: Int, chains: Int, square: Bool)] = [
+            ("InputEdges", "Input Edges", 8, 8, 2, true),
+            ("Grid8x8Square", "Grid 8x8 square", 8, 8, 1, true),
+            ("Grid8x8Rect", "Grid 8x8 rect", 8, 8, 1, false),
+            ("Grid4x3Square", "Grid 4x3 square", 4, 3, 1, true),
+            ("Grid4x3Rect", "Grid 4x3 rect", 4, 3, 1, false),
+        ]
+        for pack in packs {
+            let root = library.appendingPathComponent(pack.folder)
+            try makePack(at: root, title: pack.title)
+            try "title=\(pack.title)\nproducerName=Tests\nbuttonX=\(pack.rows)\nbuttonY=\(pack.columns)\nchain=\(pack.chains)\nsquareButton=\(pack.square)\n"
+                .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+            let keySound = (1...pack.chains).flatMap { chain in
+                (1...pack.rows).flatMap { x in (1...pack.columns).map { y in "\(chain) \(x) \(y) silence.wav 0\n" } }
+            }
+            try keySound.joined().write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+            for name in ["keyLed", "autoPlay"] {
+                try fm.removeItem(at: root.appendingPathComponent(name))
+            }
         }
     }
 

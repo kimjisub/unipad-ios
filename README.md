@@ -61,6 +61,42 @@ Build logs and the test result bundle are available in the run's
 `ios-check-results` artifact for seven days. This workflow does not upload to
 a store or change required checks.
 
+## Play input checks on a Mac
+
+Before pushing play-input test changes, run the input edge UI checks on an iPhone
+and an iPad simulator, in addition to the build and unit checks above. Use a lent
+simulator's identifier as `SIMULATOR_UDID`:
+
+```sh
+xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+  -only-testing:unipadUITests/PlayInputEdgeUITests -parallel-testing-enabled NO \
+  -collect-test-diagnostics never
+```
+
+These checks generate their own packs without a shared library setup. On iPhone, exclude
+`unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain`
+with `-skip-testing:`; run it on iPad, where pointer interaction is supported.
+The suite generates its own looping packs and compares held and released pad
+pixels through rotation, pointer input and both `squareButton` settings. Rotation
+must cancel the held pad before the finger is lifted. Each scheduled step records both
+start and completion using a monotonic clock. Rotation and captures must complete before
+gesture invocation plus its requested duration minus 0.25 seconds, and before the
+command returns. A late observation fails instead of establishing held-input coverage.
+The result bundle keeps the timing records and the actual before/after rotation
+captures taken during the hold. `python3 -m unittest discover -s ci -v` also checks
+that the shared timing decision rejects a capture completed after release while the
+gesture command is still waiting to return. The whole UI target also
+includes these checks, but its other suites need their own fixture setup.
+`MultiTouchPlayTests.testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing`
+and `testPadsMovingUnderAStillFingerReleaseItAndStartNothing` separately check
+sound requests and feedback through the pad view's input handlers.
+
+A second gesture during a held press is refused by XCUITest, so pointer/touch
+mixing and a margin held while tapping a chain remain unverified on screen.
+Resizing an iPad window during a held press is also unverified. Direct handler
+tests do not establish those screen paths or audible sound quality.
+
 ## App Store destination check
 
 The separate **App Store link** workflow checks the update URL from
