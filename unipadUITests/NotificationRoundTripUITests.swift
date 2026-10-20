@@ -48,6 +48,11 @@ final class NotificationRoundTripUITests: XCTestCase {
                 XCTAssertTrue(app.wait(for: .runningBackgroundSuspended, timeout: 15) || app.state == .runningBackground)
             }
             XCUIDevice.shared.orientation = .portrait
+            // Open the retained list before delivery, avoiding the banner-to-center transition.
+            let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.01))
+            let bottom = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.9))
+            top.press(forDuration: 0.1, thenDragTo: bottom)
+            XCTAssertTrue(springboard.otherElements["combined-list-view"].waitForExistence(timeout: 10))
             try Data().write(to: directory.appendingPathComponent("ready-\(mode)"), options: .atomic)
             let pushed = directory.appendingPathComponent("pushed-\(mode)")
             let delivered = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -55,34 +60,28 @@ final class NotificationRoundTripUITests: XCTestCase {
             }, object: nil)
             XCTAssertEqual(XCTWaiter().wait(for: [delivered], timeout: 30), .completed, "simctl push failed")
 
-            // Notification Center retains the notification even when its transient banner is gone.
-            let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.01))
-            let bottom = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.9))
-            top.press(forDuration: 0.1, thenDragTo: bottom)
-            let message = springboard.staticTexts["UniPad \(mode) \(token)"].firstMatch
-            XCTAssertTrue(message.waitForExistence(timeout: 15), "synthetic notification missing from Notification Center")
+            let message = "UniPad \(mode) \(token)"
+            let card = springboard.buttons.matching(identifier: "ListCell")
+                .matching(NSPredicate(format: "label CONTAINS %@", message)).firstMatch
+            XCTAssertTrue(card.waitForExistence(timeout: 15), "synthetic notification missing from Notification Center")
+            var previous = CGRect.null
+            var stableSince = ProcessInfo.processInfo.systemUptime
+            let stable = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let frame = card.frame
+                let now = ProcessInfo.processInfo.systemUptime
+                if frame != previous {
+                    previous = frame
+                    stableSince = now
+                }
+                return card.isHittable && now - stableSince >= 1
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter().wait(for: [stable], timeout: 10), .completed, "notification card did not settle")
             UITestSupport.attachScreenshot("notification-\(mode)-received", to: self)
             let hierarchy = XCTAttachment(string: springboard.debugDescription)
             hierarchy.name = "notification-\(mode)-elements"
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
-            message.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            // In the collapsed Notification Center stack, the first tap expands the card.
-            // Open that expanded card through its button; never activate/launch the app here.
-            if !app.wait(for: .runningForeground, timeout: 3), message.exists {
-                UITestSupport.attachScreenshot("notification-\(mode)-expanded", to: self)
-                let open = springboard.buttons.matching(identifier: "ShortLook.Platter.Content.Seamless")
-                    .matching(NSPredicate(format: "label CONTAINS %@", "UniPad \(mode) \(token)")).firstMatch
-                XCTAssertTrue(UITestSupport.waitUntilHittable(open, timeout: 10), "\(mode) notification card did not expand")
-                open.tap()
-                // The system can reveal an explicit Open action instead of opening the card.
-                // That action still belongs to the notification, not an app launch fallback.
-                let action = springboard.buttons.matching(NSPredicate(format: "label IN %@", ["Open", "열기"])).firstMatch
-                if !app.wait(for: .runningForeground, timeout: 3), action.waitForExistence(timeout: 3) {
-                    UITestSupport.attachScreenshot("notification-\(mode)-open-action", to: self)
-                    action.tap()
-                }
-            }
+            card.tap()
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "\(mode) notification did not bring the app forward")
             XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 20),
                           "pack list did not appear after \(mode) notification")
