@@ -10,6 +10,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import signal
 import subprocess
@@ -17,7 +18,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = 'io.unipad.tests.notifications'
+BUNDLE = 'io.unipad.tests.notifications.unipad'
 
 
 def stop_process(process):
@@ -66,6 +67,7 @@ class Check:
         (self.output / 'source.patch').write_text(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=ROOT, text=True))
         self.sim = ['xcrun', 'simctl']
         self.ui = None
+        self.runner_bundle = None
         self.owns_app = False
 
     def save(self):
@@ -103,9 +105,21 @@ class Check:
                 '-clonedSourcePackagesDirPath', str(self.args.derived_data.resolve().parent / 'packages'),
                 '-onlyUsePackageVersionsFromResolvedFile', '-parallel-testing-enabled', 'NO',
                 'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO', 'UNIPAD_WARNINGS_AS_ERRORS=YES',
-                f'PRODUCT_BUNDLE_IDENTIFIER={BUNDLE}']
+                # Expand per target: a global constant gives the app and both test bundles
+                # the same identifier, making notification routing ambiguous.
+                'PRODUCT_BUNDLE_IDENTIFIER=io.unipad.tests.notifications.$(PRODUCT_NAME:rfc1034identifier)']
         self.command(base + ['build-for-testing'], 'build.log', timeout=900)
         app = self.args.derived_data.resolve() / 'Build/Products/Debug-iphonesimulator/unipad.app'
+        runner = app.parent / 'unipadUITests-Runner.app'
+        products = [app, app / 'PlugIns/unipadTests.xctest', runner,
+                    runner / 'PlugIns/unipadUITests.xctest']
+        identifiers = [plistlib.loads((product / 'Info.plist').read_bytes())['CFBundleIdentifier']
+                       for product in products]
+        self.report['bundle_identifiers'] = dict(zip(['app', 'unit_tests', 'ui_runner', 'ui_tests'], identifiers))
+        self.runner_bundle = identifiers[2]
+        if identifiers[0] != BUNDLE or len(set(identifiers)) != 4 or not all(
+                value.startswith('io.unipad.tests.notifications.') for value in identifiers):
+            raise ValueError(f'expected four separate test bundle identifiers: {identifiers}')
         # Even the negative control must never configure the production Firebase project.
         self.command(['python3', 'ci/firebase_fixture.py', str(app / 'GoogleService-Info.plist')], 'fake-config.log')
         self.owns_app = True
@@ -158,7 +172,7 @@ class Check:
     def cleanup(self):
         self.stop_ui()
         if self.owns_app:
-            for bundle in [BUNDLE + '.xctrunner', BUNDLE]:
+            for bundle in [self.runner_bundle, BUNDLE]:
                 self.command(self.sim + ['terminate', self.args.simulator, bundle], f'terminate-{bundle}.log', required=False)
                 self.command(self.sim + ['uninstall', self.args.simulator, bundle], f'uninstall-{bundle}.log')
             self.report['test_app_removed'] = True
