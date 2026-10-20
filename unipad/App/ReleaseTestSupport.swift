@@ -32,8 +32,7 @@ nonisolated enum ReleaseTestSupport {
            ["2", "40"].contains(jump) {
             let pack = library.appendingPathComponent("Wormhole")
             try makePack(at: pack, title: "Wormhole \(jump)")
-            try "title=Wormhole \(jump)\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=1\n"
-                .write(to: pack.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+            try writeInfo(to: pack, title: "Wormhole \(jump)", chains: 1)
             try "1 1 1 silence.wav 1 \(jump)\n1 1 2 silence.wav\n"
                 .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
             try "on 1 1\ndelay 1000\non 1 2\n"
@@ -49,6 +48,9 @@ nonisolated enum ReleaseTestSupport {
             }
             if UserDefaults.standard.bool(forKey: "UniPadReleaseInputEdges") {
                 try makeInputEdgePacks(in: library)
+            }
+            if UserDefaults.standard.bool(forKey: "UniPadReleaseChainLayout") {
+                try makeChainLayoutPacks(in: library)
             }
             try makePlaybackStopPack(at: library.appendingPathComponent("PlaybackStop"))
         }
@@ -71,7 +73,6 @@ nonisolated enum ReleaseTestSupport {
     /// on every pad of both chains and has no LEDs, so each pressed pad shows the feedback light
     /// only while held. The "Grid" packs are one grid size with and without `squareButton`.
     static func makeInputEdgePacks(in library: URL) throws {
-        let fm = FileManager.default
         let packs: [(folder: String, title: String, rows: Int, columns: Int, chains: Int, square: Bool)] = [
             ("InputEdges", "Input Edges", 8, 8, 2, true),
             ("Grid8x8Square", "Grid 8x8 square", 8, 8, 1, true),
@@ -82,15 +83,42 @@ nonisolated enum ReleaseTestSupport {
         for pack in packs {
             let root = library.appendingPathComponent(pack.folder)
             try makePack(at: root, title: pack.title)
-            try "title=\(pack.title)\nproducerName=Tests\nbuttonX=\(pack.rows)\nbuttonY=\(pack.columns)\nchain=\(pack.chains)\nsquareButton=\(pack.square)\n"
-                .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+            try writeInfo(to: root, title: pack.title, rows: pack.rows, columns: pack.columns,
+                          chains: pack.chains, square: pack.square)
             let keySound = (1...pack.chains).flatMap { chain in
                 (1...pack.rows).flatMap { x in (1...pack.columns).map { y in "\(chain) \(x) \(y) silence.wav 0\n" } }
             }
             try keySound.joined().write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
-            for name in ["keyLed", "autoPlay"] {
-                try fm.removeItem(at: root.appendingPathComponent(name))
-            }
+            try removeLightsAndAutoPlay(from: root)
+        }
+    }
+
+    /// Packs for the chain button layout checks, in the shapes those checks were written for.
+    /// "Chain Layout 8x8" is shaped like the bundled Faded pack: 8x8, 6 chains, with LEDs and
+    /// autoplay. "Chain Layout 4x3" is shaped like conformance case INF-002: 4x3 and 24 chains,
+    /// the largest count a pack may have, with one sound on the last chain and no LEDs or autoplay.
+    static func makeChainLayoutPacks(in library: URL) throws {
+        let eight = library.appendingPathComponent("ChainLayout8x8")
+        try makePack(at: eight, title: "Chain Layout 8x8")
+        try writeInfo(to: eight, title: "Chain Layout 8x8", chains: 6, square: true)
+
+        let small = library.appendingPathComponent("ChainLayout4x3")
+        try makePack(at: small, title: "Chain Layout 4x3")
+        try writeInfo(to: small, title: "Chain Layout 4x3", rows: 4, columns: 3, chains: 24, square: true)
+        try "24 1 1 silence.wav\n".write(to: small.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try removeLightsAndAutoPlay(from: small)
+    }
+
+    private static func writeInfo(to root: URL, title: String, rows: Int = 8, columns: Int = 8,
+                                  chains: Int, square: Bool? = nil) throws {
+        var info = "title=\(title)\nproducerName=Tests\nbuttonX=\(rows)\nbuttonY=\(columns)\nchain=\(chains)\n"
+        if let square { info += "squareButton=\(square)\n" }
+        try info.write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+    }
+
+    private static func removeLightsAndAutoPlay(from root: URL) throws {
+        for name in ["keyLed", "autoPlay"] {
+            try FileManager.default.removeItem(at: root.appendingPathComponent(name))
         }
     }
 
@@ -114,8 +142,7 @@ nonisolated enum ReleaseTestSupport {
         let fm = FileManager.default
         try fm.createDirectory(at: root.appendingPathComponent("sounds"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
-        try "title=\(title)\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=2\n"
-            .write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        try writeInfo(to: root, title: title, chains: 2)
         try "1 1 1 silence.wav \(firstPadRepeats)\n1 1 2 silence.wav 0\n2 1 1 silence.wav 0\n"
             .write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
         // Real parser work keeps the loading screen observable without sleeping in app code.

@@ -1,14 +1,15 @@
 import XCTest
 
-/// Install Fixtures/PlaybackStop in Documents/unipack before running. Missing content fails the
-/// check rather than silently skipping a stop/exit regression. All audio in this fixture is silent.
+/// Opens the Playback Stop fixture in a library of its own, so packs on the simulator cannot hide
+/// it. Missing content fails the check rather than silently skipping a stop/exit regression. All
+/// audio in this fixture is silent.
 final class PlaybackStopUITests: XCTestCase {
     private let app = XCUIApplication()
 
     @MainActor
     func testRepeatedInputExitAndPracticeModeSwitchesStayResponsive() {
         continueAfterFailure = false
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
 

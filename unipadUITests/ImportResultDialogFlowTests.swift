@@ -12,8 +12,7 @@
 //  FirstPackGuideTests for where that folder is).
 //
 //  Every launch starts from its own empty test library, so the imported copies
-//  never reach the simulator's real library, where tests that open
-//  "Alan Walker - Faded" by title (PlayChainLayoutTests) need it to be unique.
+//  never reach the simulator's real library.
 //
 
 import XCTest
