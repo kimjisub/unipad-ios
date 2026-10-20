@@ -13,11 +13,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
+#include <math.h>
+#include <string.h>
+#include <limits.h>
+
+static double secondsPerTick;
+static volatile sig_atomic_t stopped;
+static void stop(int sig) { (void)sig; stopped = 1; }
+
+static OSStatus sendNote(MIDIEndpointRef source, FILE *sent, Byte note, Byte velocity) {
+    MIDIPacketList list;
+    MIDIPacket *packet = MIDIPacketListInit(&list);
+    Byte bytes[] = {0x90, note, velocity};
+    MIDIPacketListAdd(&list, sizeof(list), packet, 0, sizeof(bytes), bytes);
+    double now = (double)mach_absolute_time() * secondsPerTick;
+    OSStatus status = MIDIReceived(source, &list);
+    fprintf(sent, "%.6f 90 %02X %02X\n", now, note, velocity);
+    fflush(sent);
+    return status;
+}
 
 static FILE *out;
-static double secondsPerTick;
 
 static void readProc(const MIDIPacketList *list, void *ref, void *src) {
+    (void)ref;
+    (void)src;
     double now = (double)mach_absolute_time() * secondsPerTick;
     const MIDIPacket *packet = &list->packet[0];
     for (UInt32 i = 0; i < list->numPackets; i++) {
@@ -32,10 +53,30 @@ static void readProc(const MIDIPacketList *list, void *ref, void *src) {
 static CFStringRef cfs(const char *s) { return CFStringCreateWithCString(NULL, s, kCFStringEncodingUTF8); }
 
 int main(int argc, char **argv) {
-    if (argc != 4) {
-        fprintf(stderr, "usage: virtual-launchpad <name> <seconds> <out-file>\n");
+    // simctl-spawned processes are parented by the simulator's launchd, not simctl.
+    // Report the actual collector PID before exec so the caller can stop it directly.
+    if (argc == 2 && strcmp(argv[1], "--log") == 0) {
+        const char *root = getenv("SIMULATOR_ROOT");
+        char executable[PATH_MAX];
+        if (!root || snprintf(executable, sizeof(executable), "%s/usr/bin/log", root) >= (int)sizeof(executable)) return 2;
+        printf("collector: pid=%d\n", getpid());
+        fflush(stdout);
+        alarm(300);
+        execl(executable, "log", "stream", "--level", "info", "--style", "compact", "--predicate",
+              "process == \"unipad\" AND (category == \"AnalyticsLocal\" OR category == \"MIDI\")", NULL);
+        perror("starting log collector");
+        return 1;
+    }
+    if (argc != 4 && argc != 6) {
+        fprintf(stderr, "usage: virtual-launchpad <name> <seconds> <out-file> [<signal-file> <sent-file>]\n");
         return 2;
     }
+    double duration = atof(argv[2]);
+    if (!isfinite(duration) || duration <= 0 || duration > 3600) return 2;
+    printf("started: pid=%d\n", getpid());
+    fflush(stdout);
+    signal(SIGTERM, stop);
+    signal(SIGINT, stop);
     mach_timebase_info_data_t timebase;
     mach_timebase_info(&timebase);
     secondsPerTick = (double)timebase.numer / timebase.denom / 1e9;
@@ -44,6 +85,8 @@ int main(int argc, char **argv) {
         perror(argv[3]);
         return 1;
     }
+    FILE *sent = argc == 6 ? fopen(argv[5], "w") : NULL;
+    if (argc == 6 && !sent) { perror(argv[5]); fclose(out); return 1; }
 
     MIDIClientRef client = 0;
     MIDIEndpointRef source = 0, destination = 0;
@@ -54,18 +97,31 @@ int main(int argc, char **argv) {
         fprintf(stderr, "creating the MIDI endpoints failed: %d\n", (int)status);
         return 1;
     }
-    printf("ready: %s for %s s, arrivals in %s\n", argv[1], argv[2], argv[3]);
+    printf("ready: pid=%d %s for %s s, arrivals in %s\n", getpid(), argv[1], argv[2], argv[3]);
     fflush(stdout);
 
-    useconds_t remaining = (useconds_t)(atof(argv[2]) * 1e6);
-    while (remaining > 0) {
-        useconds_t step = remaining < 100000 ? remaining : 100000;
-        usleep(step);
-        remaining -= step;
+    double deadline = (double)mach_absolute_time() * secondsPerTick + duration;
+    int next = 0;
+    double nextAt = 0;
+    int result = 0;
+    while (!stopped && (double)mach_absolute_time() * secondsPerTick < deadline) {
+        double now = (double)mach_absolute_time() * secondsPerTick;
+        if (sent && next < 4 && access(argv[4], F_OK) == 0 && now >= nextAt) {
+            // Note-on velocity zero is the MK2 driver's release message.
+            if (sendNote(source, sent, next < 2 ? 81 : 82, next % 2 == 0 ? 127 : 0) != noErr) {
+                fprintf(stderr, "MIDIReceived failed at step %d\n", next);
+                result = 1;
+                break;
+            }
+            next++;
+            nextAt = now + 0.3;
+        }
+        usleep(10000);
     }
     MIDIEndpointDispose(destination);
     MIDIEndpointDispose(source);
     MIDIClientDispose(client);
     fclose(out);
-    return 0;
+    if (sent) fclose(sent);
+    return result;
 }

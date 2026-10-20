@@ -272,6 +272,14 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("keySound : [\(s)] sound was not found"); continue
             }
 
+            // The sound still plays and moves to the nearest chain the pack has. A chain it lacks
+            // would become autoPlay's current chain, and practice would light that chain's button
+            // past the end of the round button table.
+            if wormhole != Sound.noWormhole && !(0..<chain).contains(wormhole) {
+                addErr("keySound : [\(s)] wormhole is incorrect")
+                wormhole = min(max(wormhole, 0), chain - 1)
+            }
+
             var sound = Sound(file: soundFile, loop: loop, wormhole: wormhole)
 
             if table[c][x][y] == nil {

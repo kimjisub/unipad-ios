@@ -1,0 +1,157 @@
+"""Offline regression checks for the virtual MIDI verdict (no device needed)."""
+import unittest
+from unittest.mock import patch, Mock
+import argparse
+from pathlib import Path
+import sys
+import tempfile
+from virtual_launchpad_roundtrip import assess, Run, snapshot, scoped_log
+
+
+class RoundTripVerdictTests(unittest.TestCase):
+    def evidence(self):
+        # Unified-log times and mach times are separate clocks; TX/RX share mach time.
+        log = ('user_property platform=ios\n'
+               'MIDI IN: cmd=9 sig=-112 note=81 vel=127\n'
+               'MIDI IN: cmd=9 sig=-112 note=81 vel=0\n'
+               'MIDI IN: cmd=9 sig=-112 note=82 vel=127\n'
+               'MIDI IN: cmd=9 sig=-112 note=82 vel=0\n'
+               'event play_first_input input_source=midi play_session_id=one\n')
+        return log, '1.0 90 51 7F\n1.2 90 51 00\n2.0 90 52 7F\n2.2 90 52 00\n', '1.1 90 51 05\n2.1 90 52 09\n'
+
+    def test_accepts_both_input_orders(self):
+        log, sent, received = self.evidence()
+        assess(log, sent, received, 'midi')
+        assess(log.replace('input_source=midi', 'input_source=screen'), sent, received, 'screen')
+
+    def test_accepts_multiple_messages_in_one_arrival_packet(self):
+        log, sent, _ = self.evidence()
+        assess(log, sent, '1.1 B0 68 00 90 51 05 52 00\n2.1 90 52 09 51 00\n', 'midi')
+
+    def test_ignores_another_app_process_but_rejects_a_restarted_test_app(self):
+        log, sent, received = self.evidence()
+        own = '\n'.join(f'unipad[123:abc] [test.bundle:AnalyticsLocal] {line}' for line in log.splitlines())
+        other = own.replace('123:', '456:').replace('test.bundle:', 'other.bundle:')
+        scoped, pid = scoped_log(own + '\n' + other, 'test.bundle')
+        self.assertEqual(pid, 123)
+        assess(scoped, sent, received, 'midi')
+        with self.assertRaises(ValueError):
+            scoped_log(own + '\n' + own.replace('123:', '789:'), 'test.bundle')
+
+    def test_rejects_duplicate_or_wrong_first_input(self):
+        log, sent, received = self.evidence()
+        for invalid in [log + log, log.replace('input_source=midi', 'input_source=screen')]:
+            with self.assertRaises(ValueError):
+                assess(invalid, sent, received, 'midi')
+
+    def test_rejects_send_only_missing_release_or_missing_app_input(self):
+        log, sent, received = self.evidence()
+        for invalid in [log.replace('note=82 vel=127', 'note=83 vel=127'),
+                        log.replace('note=81 vel=0', 'note=83 vel=0')]:
+            with self.assertRaises(ValueError):
+                assess(invalid, sent, received, 'midi')
+        with self.assertRaises(ValueError):
+            assess(log, sent.splitlines()[0], received, 'midi')
+
+    def test_rejects_zero_unrelated_and_earlier_lights(self):
+        log, sent, _ = self.evidence()
+        for invalid in ['0.5 90 51 05\n0.6 90 52 09\n',
+                        '1.1 90 51 00\n2.1 90 52 00\n',
+                        '1.1 90 53 05\n2.1 90 54 09\n',
+                        '1.1 90 51 05\n1.2 90 52 09\n']:
+            with self.assertRaises(ValueError):
+                assess(log, sent, invalid, 'midi')
+
+    def test_requires_local_only_analytics(self):
+        log, sent, received = self.evidence()
+        with self.assertRaises(ValueError):
+            assess(log.replace('user_property platform=ios', ''), sent, received, 'midi')
+
+    def test_rejects_reordered_app_input(self):
+        log, sent, received = self.evidence()
+        with self.assertRaises(ValueError):
+            assess(log.replace('note=81 vel=0', 'note=82 vel=0'), sent, received, 'midi')
+
+
+class SafetyTests(unittest.TestCase):
+    def test_preserves_existing_installations_before_a_build_failure(self):
+        app = 'io.unipad.tests.virtual-midi'
+        for existing in [{app}, {app + '.xctrunner'}, {app, app + '.xctrunner'}, set()]:
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as temporary:
+                run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30,
+                                             simulator='test-device', derived_data=Path(temporary) / 'dd'))
+                installed = set(existing)
+
+                def container(bundle, required=True):
+                    return '/existing/' + bundle if bundle in installed else None
+
+                def external(command, **kwargs):
+                    if 'uninstall' in command:
+                        installed.discard(command[-1])
+                    return Mock(returncode=0)
+
+                with patch.object(run, 'container', side_effect=container), \
+                        patch.object(run, 'command', side_effect=RuntimeError('build failed')) as build, \
+                        patch('virtual_launchpad_roundtrip.subprocess.run', side_effect=external) as commands, \
+                        patch('virtual_launchpad_roundtrip.subprocess.check_output', return_value='test-commit'):
+                    with self.assertRaises(RuntimeError) as failure:
+                        run.execute()
+                    run.cleanup()
+                self.assertEqual(installed, existing)
+                self.assertFalse(any('uninstall' in call.args[0] for call in commands.call_args_list))
+                self.assertEqual(build.call_count, 0 if existing else 1)
+                self.assertIn('already installed' if existing else 'build failed', str(failure.exception))
+
+    def test_failed_install_removes_only_the_app_it_left_installed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30,
+                                         simulator='test-device', derived_data=Path(temporary) / 'dd'))
+            installed = set()
+
+            def command(command, name, seconds=180):
+                if name == 'install.log':
+                    installed.add(run.bundle)
+                    raise RuntimeError('install failed after copying the app')
+
+            def external(command, **kwargs):
+                if 'uninstall' in command:
+                    installed.remove(command[-1])
+                return Mock(returncode=0)
+
+            with patch.object(run, 'container', side_effect=lambda bundle, required=True:
+                              '/installed/' + bundle if bundle in installed else None), \
+                    patch.object(run, 'command', side_effect=command), \
+                    patch('virtual_launchpad_roundtrip.subprocess.run', side_effect=external) as commands, \
+                    patch('virtual_launchpad_roundtrip.subprocess.check_output', return_value='test-commit'):
+                with self.assertRaisesRegex(RuntimeError, 'install failed'):
+                    run.execute()
+                run.cleanup()
+            self.assertEqual(installed, set())
+            removed = [call.args[0][-1] for call in commands.call_args_list if 'uninstall' in call.args[0]]
+            self.assertEqual(removed, [run.bundle])
+            self.assertTrue(run.report['test_app_removed'])
+
+    def test_timeout_names_the_wait_and_cleanup_reaps_child(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30))
+            child = run.start([sys.executable, '-c', 'import time; time.sleep(60)'], 'child.log')
+            try:
+                with self.assertRaisesRegex(TimeoutError, 'waiting for readiness'):
+                    run.wait(lambda: False, 0.1, 'readiness')
+            finally:
+                run.cleanup()
+            self.assertIsNotNone(child.poll())
+
+    def test_snapshot_detects_pack_and_setting_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / 'Documents/UniPack'
+            library.mkdir(parents=True)
+            before = snapshot(root)
+            (library / 'unexpected').mkdir()
+            self.assertNotEqual(before, snapshot(root))
+            (library / 'unexpected').rmdir()
+            prefs = root / 'Library/Preferences/kim.jisub.unipad.plist'
+            prefs.parent.mkdir(parents=True)
+            prefs.write_bytes(b'changed')
+            self.assertNotEqual(before, snapshot(root))
