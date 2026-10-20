@@ -7,8 +7,10 @@ final class FirebaseRuntimeTests: XCTestCase {
     private func withDefaults(_ body: (UserDefaults, String) -> Void) {
         let suite = "FirebaseRuntimeTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
+        // The argument domain is shared by the whole test process; put its launch values back.
+        let launchArguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
         defer {
-            defaults.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
+            defaults.setVolatileDomain(launchArguments, forName: UserDefaults.argumentDomain)
             defaults.removePersistentDomain(forName: suite)
         }
         body(defaults, suite)
