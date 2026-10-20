@@ -317,11 +317,20 @@ enum FirebaseRuntime {
     static let isLocalOnly: Bool = {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return true }
 #if DEBUG || UNIPAD_RELEASE_TESTS
-        return UserDefaults.standard.bool(forKey: localOnlyLaunchArgument)
+        let localOnly = resolveLocalOnly(defaults: .standard, allowsOverride: true)
+        let hasOverride = ProcessInfo.processInfo.arguments.contains("-\(localOnlyLaunchArgument)")
+        Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "FirebaseRuntime")
+            .notice("local_only=\(localOnly ? "YES" : "NO", privacy: .public) launch_override=\(hasOverride ? "YES" : "NO", privacy: .public)")
+        return localOnly
 #else
         return false
 #endif
     }()
+
+    static func resolveLocalOnly(defaults: UserDefaults, allowsOverride: Bool) -> Bool {
+        guard allowsOverride else { return false }
+        return defaults.bool(forKey: localOnlyLaunchArgument)
+    }
 
     /// For UI tests: a local-only run presents the installation-ID model with the stub, not
     /// Firebase, behind it.
