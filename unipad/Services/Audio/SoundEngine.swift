@@ -50,7 +50,7 @@ final class SoundEngine {
 
     private enum Input: Hashable {
         case identified(UUID)
-        // MIDI and autoplay have paired pad events, without a touch identity.
+        // MIDI has paired pad events without a touch identity.
         case pad(Int, Int)
     }
     private struct StartedPlayback {
@@ -322,7 +322,7 @@ final class SoundEngine {
         return buffers[id]
     }
 
-    private static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
+    static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
         let audioFile: AVAudioFile
         do {
             audioFile = try AVAudioFile(forReading: url)
@@ -330,7 +330,8 @@ final class SoundEngine {
             return try OggVorbisDecoder.decode(url)
         }
         let format = audioFile.processingFormat
-        let frameCount = AVAudioFrameCount(audioFile.length)
+        let frameCount = try SoundFileLimits.sourceFrameCount(
+            audioFile.length, sampleRate: format.sampleRate, channels: format.channelCount)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw SoundEngineError.bufferCreationFailed
         }
@@ -347,7 +348,7 @@ final class SoundEngine {
         }
 
         let outCapacity = try SoundFileLimits.resampledFrameCount(
-            input.frameLength, from: input.format.sampleRate, to: targetFormat.sampleRate)
+            input.frameLength, from: input.format.sampleRate, to: targetFormat.sampleRate, channels: targetFormat.channelCount)
         guard let converter = AVAudioConverter(from: input.format, to: targetFormat) else {
             throw SoundEngineError.converterCreationFailed
         }

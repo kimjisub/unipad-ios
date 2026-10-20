@@ -5,8 +5,8 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
-    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004"])
-    func formerlyUnobservedPlaybackCasesAreMeasured(id: String) async throws {
+    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005"])
+    func playbackCasesAreMeasured(id: String) async throws {
         let corpus = try ConformanceCorpus.load()
         let sample = try #require(corpus.cases.first { $0.id == id })
         let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)
@@ -42,6 +42,19 @@ struct ConformanceRegressionTests {
             return
         }
         #expect(sample.classify(value).status == "fail", "an uncancelled task must emit later presses on virtual time")
+    }
+
+    @Test func omittingAutoplayOffFailsTheHeldLoopCase() async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == "RUN-RP-005" })
+        var deps = ConformanceDeps()
+        deps.turnOffAutoPlay = { _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("autoplay off was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "omitting the screen's autoplay-off action must leave its endless sound playing")
     }
 
     @Test func anEmptyCaseFilterIsNotAPartialRun() {

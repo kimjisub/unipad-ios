@@ -2,12 +2,14 @@ name: iOS checks
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-checks-${{ github.event.pull_request.number }}
+  group: ios-checks-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:

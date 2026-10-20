@@ -182,6 +182,172 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(vm.chain.value, 0)
     }
 
+    private func checkAutoplayRelease(
+        loop: Int = 0,
+        manualPad: (Int, Int)? = nil,
+        identifiedManual: Bool = true,
+        script: String = "on 1 1\ndelay 60000\noff 1 1\n",
+        autoplayPresses: Int = 1,
+        stop: (PlayViewModel) -> Void
+    ) async throws {
+        let root = try pack(loop: loop)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Autoplay Release\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        try "1 1 1 a.wav \(loop)\n1 1 2 a.wav 0\n2 1 1 a.wav \(loop)\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try script.write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        // Keep short finite samples observable even if simulator scheduling is delayed.
+        engine.playbackCompletionDelivery = { _, _, _ in }
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "autoplay press", until: { engine.playsStarted == autoplayPresses })
+        let autoplayIDs = engine.activePlayIDs
+        XCTAssertEqual(autoplayIDs.count, autoplayPresses)
+        let manualTrigger: PlayTrigger = .pad(identifiedManual ? .screen : .midi)
+        let manualID = identifiedManual ? UUID() : nil
+        if let (x, y) = manualPad {
+            vm.padTouch(x: x, y: y, isDown: true, trigger: manualTrigger, inputID: manualID)
+        }
+        let beforeStop = engine.activePlayIDs
+        let manualIDs = beforeStop.subtracting(autoplayIDs)
+        let chainBeforeStop = vm.chain.value
+        stop(vm)
+        XCTAssertEqual(vm.chain.value, chainBeforeStop)
+        let expected = loop == 0 ? manualIDs : beforeStop
+        print("AUTOPLAY RELEASE loop=\(loop) manual=\(manualPad != nil) before=\(autoplayIDs) after=\(engine.activePlayIDs)")
+        XCTAssertEqual(engine.activePlayIDs, expected)
+        if let (x, y) = manualPad {
+            XCTAssertEqual(manualIDs.count, 1)
+            vm.padTouch(x: x, y: y, isDown: false, trigger: manualTrigger, inputID: manualID)
+            XCTAssertTrue(engine.activePlayIDs.isDisjoint(with: manualIDs))
+        }
+    }
+
+    func testStoppingAutoplayReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.stopAutoPlay() }
+    }
+
+    func testTurningAutoplayOffReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesAnotherHeldPad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 1)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesManualPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesControllerPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0), identifiedManual: false) { $0.switchPlayMode(.none) }
+    }
+
+    func testPausingAutoplayPreservesManualPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0)) { $0.autoPlayPause() }
+    }
+
+    func testSkippingAutoplayReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.autoPlayNext() }
+    }
+
+    func testEnteringGuideModeReleasesAutoplaySound() async throws {
+        try await checkAutoplayRelease { $0.switchPlayMode(.guidePlay) }
+    }
+
+    func testSkippingAutoplayPreservesAnotherHeldPad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 1)) { $0.autoPlayNext() }
+    }
+
+    func testStoppingAutoplayReleasesHeldPadsAcrossChains() async throws {
+        try await checkAutoplayRelease(
+            script: "on 1 1\nchain 2\non 1 1\ndelay 60000\n", autoplayPresses: 2
+        ) { $0.stopAutoPlay() }
+    }
+
+    func testStoppingAutoplayPreservesFiniteAndOneShotSounds() async throws {
+        for loop in [1, 50] {
+            try await checkAutoplayRelease(loop: loop) { $0.stopAutoPlay() }
+            try await checkAutoplayRelease(loop: loop) { $0.switchPlayMode(.none) }
+        }
+    }
+
+    private func checkAutoplayOffAfterChainChange(wormhole: Int? = nil) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Autoplay Off\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        let suffix = wormhole.map { " \($0)" } ?? ""
+        try "1 1 1 a.wav 0\(suffix)\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let change = wormhole == nil ? "chain 2\n" : ""
+        try "on 1 1\n\(change)off 1 1\ndelay 60000\noff 1 2\n".write(
+            to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.autoPlayRunner)
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "scripted off", until: { runner.progress >= 4 })
+        XCTAssertEqual(engine.playsStarted, 1)
+        XCTAssertTrue(runner.active, "check the scripted off before stop or song cleanup")
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "off must release the input from the previous chain")
+        XCTAssertNotEqual(vm.padItems[0][0]?.channel, .pressed)
+        print("AUTOPLAY OFF wormhole=\(String(describing: wormhole)) active=\(engine.activePlayIDs)")
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterExplicitChainChange() async throws {
+        try await checkAutoplayOffAfterChainChange()
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterWormhole() async throws {
+        try await checkAutoplayOffAfterChainChange(wormhole: 2)
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterOutOfRangeWormhole() async throws {
+        try await checkAutoplayOffAfterChainChange(wormhole: 20)
+    }
+
+    func testStoppingAutoplayReleasesInputPressedAfterOutOfRangeWormhole() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "1 1 1 a.wav 0 20\n1 1 2 a.wav 0\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try "on 1 1\non 1 2\ndelay 60000\n".write(
+            to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "second autoplay press", until: { engine.playsStarted == 2 })
+        XCTAssertFalse(engine.activePlayIDs.isEmpty)
+        vm.autoPlayNext()
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+    }
+
+    func testAutoplayModeChangesRespectLockedFeedbackLight() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Locked Light\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=false\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        XCTAssertTrue(vm.scbFeedbackLight.locked)
+        XCTAssertFalse(vm.scbFeedbackLight.checked)
+        vm.switchPlayMode(.autoPlay)
+        vm.switchPlayMode(.none)
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "turning autoplay off must respect the lock")
+        vm.switchPlayMode(.autoPlay)
+        vm.autoPlayResume()
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "resuming autoplay must respect the lock")
+        let runner = try XCTUnwrap(vm.autoPlayRunner)
+        try await wait(for: "song end", until: { runner.progress > 0 && !runner.active })
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "song end must respect the lock")
+    }
+
     private func holdScreen() { Thread.sleep(forTimeInterval: 0.8) }
 
     func testRepeatSupplyDoesNotWaitForTheScreen() async throws {
@@ -199,7 +365,10 @@ final class PlaybackStopTests: XCTestCase {
 
     /// The engine renders offline, one sample length per call, on the main thread itself: the screen
     /// stays busy for the whole render and nothing hinges on how fast the simulator plays audio.
-    /// Before each call the next repeat only has to be queued, which the scheduler does on its own queue.
+    /// Before each call the repeat after the one about to render has to be queued too, which the scheduler
+    /// does on its own queue: a player node that runs out of buffers at the end of a render plays a buffer
+    /// queued after that one render late. Real-time playback keeps 100 ms queued ahead for this; the loop
+    /// below renders as soon as repeats arrive, so it waits for that one instead.
     func testFiniteRepeatsRenderWithoutGapsWhileTheScreenIsBusy() throws {
         let engine = AVAudioEngine()
         let node = AVAudioPlayerNode()
@@ -229,10 +398,11 @@ final class PlaybackStopTests: XCTestCase {
         // Five sample lengths past the last repeat, so a late or extra repeat would still be rendered.
         for step in 0..<55 {
             if step < 50 {
+                let needed = min(50, step + 2)
                 let deadline = Date().addingTimeInterval(Self.silenceLimit)
-                while scheduler.buffersScheduled <= step {
+                while scheduler.buffersScheduled < needed {
                     guard Date() < deadline else {
-                        return XCTFail("repeat \(step + 1) was not queued within \(Int(Self.silenceLimit)) s")
+                        return XCTFail("repeat \(needed) was not queued within \(Int(Self.silenceLimit)) s")
                     }
                     Thread.sleep(forTimeInterval: 0.001)
                 }
