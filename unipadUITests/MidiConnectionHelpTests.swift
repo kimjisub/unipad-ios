@@ -62,10 +62,44 @@ final class MidiConnectionHelpTests: XCTestCase {
     @MainActor
     func testSelectingModelStopsAutomaticReturn() {
         let model = app.buttons["Launchpad Mini MK3"].firstMatch
-        XCTAssertTrue(model.waitForExistence(timeout: 2))
-        model.tap()
+        XCTAssertTrue(model.waitForExistence(timeout: 2),
+                      "Test setup failed: model screen did not appear before automatic return")
+        let confirm = app.buttons["midi.confirm"]
+        UITestSupport.attachScreenshot("model-before-selection", to: self)
+        guard model.isHittable, confirm.exists else {
+            XCTFail("Test setup failed: automatic return left no model available for input")
+            return
+        }
+        let modelFrame: CGRect
+        let countdown: String
+        do {
+            modelFrame = try model.snapshot().frame
+            countdown = try confirm.snapshot().label
+        } catch {
+            XCTFail("Test setup failed: model screen disappeared while preparing input: \(error)")
+            return
+        }
+        // Leave time for XCTest to deliver the tap; do not restart the countdown.
+        guard countdown.range(of: #"\([2-5]\)"#, options: .regularExpression) != nil else {
+            XCTFail("Test setup failed: insufficient automatic-return time before input: \(countdown)")
+            return
+        }
+        // Resolve the target before delivery. If automatic return wins the race,
+        // a screen tap still completes and the preparation failure below explains it.
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: modelFrame.midX, dy: modelFrame.midY)).tap()
+        guard confirm.exists, model.exists else {
+            UITestSupport.attachScreenshot("model-input-too-late", to: self)
+            XCTFail("Test setup failed: automatic return finished before model input was accepted")
+            return
+        }
+        // The first scroll view is the selected-device preview, outside the model grid.
+        let preview = app.scrollViews.element(boundBy: 0).staticTexts["Launchpad Mini MK3"].firstMatch
+        XCTAssertTrue(preview.exists, "Test setup failed: input was not confirmed as Launchpad Mini MK3 selection")
+        XCTAssertEqual(confirm.label, "OK", "Model selection failed: automatic-return countdown was not cancelled")
+        UITestSupport.attachScreenshot("model-after-selection", to: self)
         waitSixSeconds()
-        XCTAssertTrue(model.exists)
+        XCTAssertTrue(model.exists, "Confirmed model selection did not stop automatic return")
         UITestSupport.attachScreenshot("explicit-selection-after-six-seconds", to: self)
     }
 
