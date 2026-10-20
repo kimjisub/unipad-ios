@@ -24,6 +24,17 @@ nonisolated enum ReleaseTestSupport {
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         let library = root.appendingPathComponent("UniPack")
         try fm.createDirectory(at: library, withIntermediateDirectories: true)
+        if let jump = UserDefaults.standard.string(forKey: "UniPadReleaseWormhole"),
+           ["2", "40"].contains(jump) {
+            let pack = library.appendingPathComponent("Wormhole")
+            try makePack(at: pack, title: "Wormhole \(jump)")
+            try "title=Wormhole \(jump)\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=1\n"
+                .write(to: pack.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+            try "1 1 1 silence.wav 1 \(jump)\n1 1 2 silence.wav\n"
+                .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+            try "on 1 1\ndelay 1000\non 1 2\n"
+                .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        }
         if !UserDefaults.standard.bool(forKey: "UniPadReleaseEmpty") {
             for (folder, title) in [("Release", "Release Fixture - Tests"),
                                     ("PlaybackStop", "Playback Stop Fixture"),
