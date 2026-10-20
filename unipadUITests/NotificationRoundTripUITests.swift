@@ -82,6 +82,13 @@ final class NotificationRoundTripUITests: XCTestCase {
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
             card.tap()
+            // A selected notification can wait behind the simulator's lock screen. Dismiss it
+            // with the Home indicator; this cannot launch a terminated app by itself.
+            if !app.wait(for: .runningForeground, timeout: 3) {
+                UITestSupport.attachScreenshot("notification-\(mode)-unlock", to: self)
+                springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
+                    .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)))
+            }
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "\(mode) notification did not bring the app forward")
             XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 20),
                           "pack list did not appear after \(mode) notification")
