@@ -421,6 +421,43 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(scheduler.buffersScheduled, 50)
     }
 
+    /// Records what the scheduler asks of a player node without attaching it to an engine.
+    private nonisolated final class RecordingPlayerNode: AVAudioPlayerNode, @unchecked Sendable {
+        private let lock = NSLock()
+        private var types: [AVAudioPlayerNodeCompletionCallbackType] = []
+        var callbackTypes: [AVAudioPlayerNodeCompletionCallbackType] { lock.withLock { types } }
+
+        override func scheduleBuffer(
+            _ buffer: AVAudioPCMBuffer,
+            at when: AVAudioTime?,
+            options: AVAudioPlayerNodeBufferOptions = [],
+            completionCallbackType callbackType: AVAudioPlayerNodeCompletionCallbackType,
+            completionHandler: AVAudioPlayerNodeCompletionHandler? = nil
+        ) {
+            lock.withLock { types.append(callbackType) }
+        }
+
+        override func play() {}
+        override func stop() {}
+    }
+
+    /// A played-back callback arms a timer inside the player node, and the node's next stop() waits
+    /// for that timer's default-priority thread. The next pad press reusing the node stops it from
+    /// the screen's thread, so the last repeat must not ask for one.
+    func testLastFiniteRepeatDoesNotWaitForPlayedBackAudio() throws {
+        let node = RecordingPlayerNode()
+        let scheduler = FiniteRepeatScheduler()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480))
+        buffer.frameLength = 480
+        XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 2) { _ in })
+        defer { scheduler.stop(node) }
+        XCTAssertEqual(
+            node.callbackTypes, [.dataConsumed, .dataRendered],
+            "raw types \(node.callbackTypes.map(\.rawValue)); 0 consumed, 1 rendered, 2 played back"
+        )
+    }
+
     func testHugeRepeatCountCanBeStoppedWithoutSchedulingEveryRepeat() async throws {
         let root = try pack(loop: Int.max)
         defer { try? FileManager.default.removeItem(at: root) }

@@ -678,7 +678,9 @@ nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
         voice.remaining -= 1
         let final = voice.remaining == 0
         scheduled += 1
-        voice.node.scheduleBuffer(voice.buffer, at: nil, options: [], completionCallbackType: final ? .dataPlayedBack : .dataConsumed) { [weak self, weak voice] _ in
+        // Not .dataPlayedBack: that arms a player-node timer, and every later stop() of the node
+        // (the next pad press reusing it) waits on a semaphore for the timer's default-QoS thread.
+        voice.node.scheduleBuffer(voice.buffer, at: nil, options: [], completionCallbackType: final ? .dataRendered : .dataConsumed) { [weak self, weak voice] _ in
             self?.queue.async { [weak self, weak voice] in
                 guard let self, let voice else { return }
                 let key = ObjectIdentifier(voice.node)
