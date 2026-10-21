@@ -84,6 +84,35 @@ extension PlayUsageRecordTests {
             #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
         }
 
+        /// `AVAudioFile` cannot open Ogg Vorbis, which playback decodes itself: the 0.5 s tone
+        /// gets its wait like a WAV does.
+        @Test func anOggVorbisSoundGetsItsLength() async throws {
+            let tone = try #require(Bundle(for: OnePadPack.self).url(forResource: "vorbis-tone", withExtension: "ogg"))
+            let pack = try MapperPack(keySound: "1 1 1 a.wav\n1 1 2 tone.ogg\n1 1 3 a.wav\n", sounds: ["tone.ogg": tone])
+            defer { pack.remove() }
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 500\nd 400\nt 1 3\nd 60\n")
+        }
+
+        /// Playback refuses these Ogg Vorbis sounds, so they add no wait: one declaring 601 s, and
+        /// one whose declared length at 192 kHz exceeds the buffer budget.
+        @Test(arguments: ["vorbis-overlong", "vorbis-over-budget"])
+        func anOggVorbisSoundPlaybackRefusesGetsNoLength(fixture: String) async throws {
+            let refused = try #require(Bundle(for: OnePadPack.self).url(forResource: fixture, withExtension: "ogg"))
+            let pack = try MapperPack(keySound: "1 1 1 a.wav\n1 1 2 refused.ogg\n1 1 3 a.wav\n", sounds: ["refused.ogg": refused])
+            defer { pack.remove() }
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 400\nt 1 3\nd 60\n")
+        }
+
         @Test func aSoundOverTenMinutesGetsNoLength() async throws {
             let long = try SoundEngineTestSupport.writeWav(sampleRate: 8_000, frames: 8_000 * 601)
             defer { try? FileManager.default.removeItem(at: long) }
