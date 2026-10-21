@@ -267,6 +267,7 @@ final class SoundEngine {
             // per file); decoding per keySound line multiplied load time and memory on packs that
             // reuse a sample.
             var byFile: [URL: AVAudioPCMBuffer] = [:]
+            var budget = SoundFileLimits.PackBudget()
             outer: for i in 0..<unipack.chain {
                 for j in 0..<unipack.buttonX {
                     for k in 0..<unipack.buttonY {
@@ -278,8 +279,7 @@ final class SoundEngine {
                                 if let cached = byFile[sound.file] {
                                     playBuffer = cached
                                 } else {
-                                    let rawBuffer = try Self.loadAudioBuffer(from: sound.file)
-                                    playBuffer = try Self.convertIfNeeded(rawBuffer, to: playbackFormat)
+                                    playBuffer = try Self.decode(sound.file, as: playbackFormat, within: &budget)
                                     byFile[sound.file] = playBuffer
                                 }
                                 self.buffersLock.lock()
@@ -322,21 +322,60 @@ final class SoundEngine {
         return buffers[id]
     }
 
-    static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
+    /// Decodes `url` in `playbackFormat`. A sound that would take the pack past `budget` is refused
+    /// by the length its header claims, before anything is allocated for it.
+    static func decode(_ url: URL, as playbackFormat: AVAudioFormat, within budget: inout SoundFileLimits.PackBudget) throws -> AVAudioPCMBuffer {
+        let spent = budget
+        let source = try loadAudioBuffer(from: url) { format, frames in
+            let claimed = try SoundFileLimits.resampledFrameCount(
+                frames, from: format.sampleRate, to: playbackFormat.sampleRate, channels: playbackFormat.channelCount)
+            try spent.check(claimed, channels: playbackFormat.channelCount)
+        }
+        let playBuffer = try convertIfNeeded(source, to: playbackFormat)
+        // The allocated capacity, not the frames it holds, is what the buffer keeps in memory.
+        try budget.spend(playBuffer.frameCapacity, channels: playBuffer.format.channelCount)
+        return playBuffer
+    }
+
+    /// `admit` sees the format and the frame count the header claims before the buffer is allocated.
+    static func loadAudioBuffer(
+        from url: URL,
+        admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void = { _, _ in }
+    ) throws -> AVAudioPCMBuffer {
         let audioFile: AVAudioFile
         do {
             audioFile = try AVAudioFile(forReading: url)
         } catch _ where OggVorbisDecoder.isOgg(url) {
-            return try OggVorbisDecoder.decode(url)
+            return try fitted(OggVorbisDecoder.decode(url, admitting: admit))
         }
         let format = audioFile.processingFormat
         let frameCount = try SoundFileLimits.sourceFrameCount(
             audioFile.length, sampleRate: format.sampleRate, channels: format.channelCount)
+        try admit(format, frameCount)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw SoundEngineError.bufferCreationFailed
         }
         try audioFile.read(into: buffer)
-        return buffer
+        return try fitted(buffer)
+    }
+
+    /// A compressed file's header can claim far more than it holds: MP3s cut from a song keep the
+    /// whole song's length, and the buffer sized by that claim stayed allocated behind a few seconds
+    /// of sound.
+    private static func fitted(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        guard buffer.frameLength < buffer.frameCapacity else { return buffer }
+        guard let fitted = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: max(buffer.frameLength, 1)) else {
+            throw SoundEngineError.bufferCreationFailed
+        }
+        fitted.frameLength = buffer.frameLength
+        let source = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
+        let target = UnsafeMutableAudioBufferListPointer(fitted.mutableAudioBufferList)
+        for (from, to) in zip(source, target) {
+            if let destination = to.mData, let origin = from.mData {
+                memcpy(destination, origin, Int(min(from.mDataByteSize, to.mDataByteSize)))
+            }
+        }
+        return fitted
     }
 
     private static func convertIfNeeded(_ input: AVAudioPCMBuffer, to targetFormat: AVAudioFormat) throws -> AVAudioPCMBuffer {

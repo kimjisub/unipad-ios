@@ -52,6 +52,46 @@ struct SoundSourceLengthTests {
         }
     }
 
+    /// MP3s cut from a song can keep the song's length in their header: the buffer was sized by the
+    /// claim and kept at that size behind the few frames the file holds.
+    @Test func anMP3ClaimingMinutesKeepsOnlyTheFramesItHolds() throws {
+        let url = try SoundEngineTestSupport.writeMP3(claimingPackets: 20_000)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = try AVAudioFile(forReading: url)
+        #expect(file.length > 20_000_000, "the header's length was not believed; nothing to fit")
+        let buffer = try SoundEngine.loadAudioBuffer(from: url)
+        #expect(buffer.frameLength > 0)
+        #expect(buffer.frameLength < 20_000)
+        #expect(buffer.frameCapacity == buffer.frameLength)
+    }
+
+    /// An Ogg file's last page states its length; one stating nine minutes over half a second of
+    /// tone kept a buffer of nine minutes.
+    @Test func anOggClaimingMinutesKeepsOnlyTheFramesItHolds() throws {
+        let tone = try #require(Bundle(for: OnePadPack.self).url(forResource: "vorbis-tone", withExtension: "ogg"))
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "SoundSourceLengthTests-\(UUID().uuidString).ogg")
+        try oggWithFinalGranule(44_100 * 540, at: tone).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let buffer = try SoundEngine.loadAudioBuffer(from: url)
+        #expect(buffer.frameLength == 22_050)
+        #expect(buffer.frameCapacity == buffer.frameLength)
+    }
+
+    /// The pack's limit is applied to what the header claims, before the decoded buffer exists.
+    @Test(arguments: [("vorbis-at-limit", "ogg"), ("mp3-tone-named-wav", "wav")])
+    func theClaimIsCheckedBeforeDecoding(_ name: String, _ ext: String) throws {
+        let url = try #require(Bundle(for: OnePadPack.self).url(forResource: name, withExtension: ext))
+        var claimed: AVAudioFrameCount?
+        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+            try SoundEngine.loadAudioBuffer(from: url) { _, frames in
+                claimed = frames
+                throw SoundFileLimits.Violation.packTooLarge
+            }
+        }
+        #expect((claimed ?? 0) > 0)
+    }
+
     @Test func anOrdinarySoundStillDecodes() throws {
         let url = try SoundEngineTestSupport.writeWav(sampleRate: 48_000, frames: 4_800)
         defer { try? FileManager.default.removeItem(at: url) }

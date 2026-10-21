@@ -80,6 +80,48 @@ enum SoundEngineTestSupport {
         return url
     }
 
+    /// Silence of `seconds` at 8 kHz mono AAC: a few KB on disk that decode to hundreds of MB at the
+    /// device rate.
+    static func writeSilentAAC(seconds: Int) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "SoundEngineTestSupport-\(UUID().uuidString).m4a")
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 8_000,
+            AVNumberOfChannelsKey: 1,
+        ])
+        let chunk = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 8_000 * 10))
+        chunk.frameLength = chunk.frameCapacity
+        for _ in 0..<(seconds / 10) {
+            try file.write(from: chunk)
+        }
+        return url
+    }
+
+    /// The bundled MP3 tone with the Info header of a song `claimingPackets` MP3 frames long, as
+    /// MP3s cut from a song keep it. Both its frame and byte counts are scaled: a byte count that
+    /// matches the file makes the decoder count the frames itself.
+    static func writeMP3(claimingPackets: UInt32) throws -> URL {
+        let fixture = try #require(Bundle(for: OnePadPack.self).url(forResource: "mp3-tone-named-wav", withExtension: "wav"))
+        var data = try Data(contentsOf: fixture)
+        let info = try #require(data.range(of: Data("Info".utf8))).upperBound
+        func field(_ index: Int) -> UInt32 {
+            data[info + 4 * index..<info + 4 * index + 4].reduce(0) { $0 << 8 | UInt32($1) }
+        }
+        func setField(_ index: Int, _ value: UInt32) {
+            withUnsafeBytes(of: value.bigEndian) { data.replaceSubrange(info + 4 * index..<info + 4 * index + 4, with: $0) }
+        }
+        // Flags, then the frame count and the byte count when flags 1 and 2 are set.
+        #expect(field(0) & 3 == 3, "the Info header carries no frame or byte count")
+        let packets = field(1)
+        setField(2, field(2) / packets * claimingPackets)
+        setField(1, claimingPackets)
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "SoundEngineTestSupport-\(UUID().uuidString).mp3")
+        try data.write(to: url)
+        return url
+    }
+
     /// Starts a real engine on `pack` and waits until it has finished loading the sounds.
     static func loadedEngine(_ pack: UniPack, chain: ChainObserver? = nil) async throws -> (SoundEngine, TestSoundLoadListener) {
         let listener = TestSoundLoadListener()
