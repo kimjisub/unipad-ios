@@ -105,6 +105,37 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
+    /// Every 10-minute silence passed the per-sound limits as a few KB of AAC or Ogg and took about
+    /// 230 MB decoded; a pack of them filled the memory until the system killed the app. The sounds
+    /// past the pack's limit are now skipped like any other that cannot be decoded.
+    @Test(arguments: ["m4a", "ogg"])
+    func soundsPastThePackMemoryLimitAreSkippedAndTheRestPlay(_ ext: String) async throws {
+        let silence = ext == "ogg"
+            ? try fixture("vorbis-at-limit", "ogg")
+            : try SoundEngineTestSupport.writeSilentAAC(seconds: 590)
+        let copies = try (0..<3).map { index in
+            let copy = FileManager.default.temporaryDirectory
+                .appending(path: "SoundEngineDecodingTests-\(UUID().uuidString)-\(index).\(ext)")
+            try FileManager.default.copyItem(at: silence, to: copy)
+            return copy
+        }
+        let good = try SoundEngineTestSupport.writeWav(sampleRate: 48_000, frames: 4_800)
+        defer {
+            for url in copies + [good] { try? FileManager.default.removeItem(at: url) }
+            if ext != "ogg" { try? FileManager.default.removeItem(at: silence) }
+        }
+        let pack = OnePadPack(chains: [copies.map { Sound(file: $0, loop: 0) } + [Sound(file: good, loop: 0)]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+
+        // Two fit at 44.1 and 48 kHz (SoundFileLimitsTests); the third is past the limit.
+        for expected in [1, 2, 2, 3] {
+            engine.soundOn(x: 0, y: 0)
+            #expect(engine.playsStarted == expected)
+        }
+    }
+
     @Test(arguments: [UInt32(44_100), 48_000])
     func aPlainWavPlays(sampleRate: UInt32) async throws {
         try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10), requiresSignal: false)
