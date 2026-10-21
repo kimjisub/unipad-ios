@@ -181,6 +181,38 @@ an invalid link: simulators lack the App Store app and may open Safari instead.
 changing the verdict. `--source <file>` and `--expected-id <number>` allow
 checking a different source or expected app ID.
 
+## Notification simulator check
+
+Acquire an iPhone simulator through your device harness, then run:
+
+```bash
+python3 ci/notification_roundtrip.py --simulator <udid> \
+  --derived-data <scratch>/dd --output <scratch>/notifications
+```
+
+The output directory must be new. The command builds and installs a separate
+Debug test app with fake Firebase configuration, then removes it on exit.
+It downloads a local fixture, accepts the fresh notification permission prompt,
+requires the prompt to disappear, and opens synthetic notifications from
+Notification Center's Open swipe action both while the app is in the background
+and after termination.
+Screenshots and assertions require the app to return to home with the launch
+splash gone and home taking touches: the pack list after the background return,
+and the test app's own empty library after the cold launch, which the system
+starts without the test's library argument. Runtime logs must show a new
+local-only process with no local-only launch argument. `--timeout` (default 300
+seconds) bounds the UI test. Commands, exit codes, runtime logs and `UI.xcresult`
+are saved in the output directory. Return the simulator through your harness
+immediately afterward.
+This checks simulator notification handling, not real APNs or Firebase delivery.
+The UI test skips unless invoked through this command.
+
+In Debug and builds compiled with `UNIPAD_RELEASE_TESTS`, launching once with
+`-UniPadFirebaseLocalOnly YES` saves the choice for subsequent launches from
+notifications or the Home Screen. `-UniPadFirebaseLocalOnly NO` clears it;
+uninstalling the app also resets it. Normal Release/store builds ignore both
+the saved choice and launch arguments. Unit test hosts always use local stubs.
+
 ## Connecting a Launchpad
 
 For an automated simulator check, lend an iPhone simulator through your device

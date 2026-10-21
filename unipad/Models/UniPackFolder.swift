@@ -307,7 +307,9 @@ nonisolated class UniPackFolder: UniPack {
 
         let sortedFiles = files
             .filter { !$0.hasDirectoryPath }
-            .sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
+            .map { (key: Self.keyLedOrderKey($0.lastPathComponent), file: $0) }
+            .sorted { $0.key.lexicographicallyPrecedes($1.key) }
+            .map(\.file)
 
         for file in sortedFiles {
             let fileName = file.lastPathComponent.trimmingCharacters(in: .whitespaces)
@@ -587,6 +589,14 @@ nonisolated class UniPackFolder: UniPack {
     /// pack, and turning it into a 0-based index (`- 1`) cannot overflow.
     private static func packInt(_ token: String?) -> Int? {
         token.flatMap { Int32($0) }.map(Int.init)
+    }
+
+    /// Where a keyLed file goes in its pad's queue, the order Android and the web use: the name composed
+    /// (NFC), lower-cased, as UTF-16 code units. Names in composed and decomposed form then sort alike,
+    /// and characters past U+FFFF sort by their surrogates rather than by code point, as `<` would.
+    /// Files with equal keys keep the order the folder listed them in.
+    private static func keyLedOrderKey(_ fileName: String) -> [UInt16] {
+        Array(fileName.precomposedStringWithCanonicalMapping.lowercased().utf16)
     }
 
     private static func folderSize(_ url: URL) -> Int64 {
