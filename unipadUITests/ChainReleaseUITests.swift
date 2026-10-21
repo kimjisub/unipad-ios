@@ -1,8 +1,8 @@
 import CryptoKit
 import XCTest
 
-/// The release suite stages the unchanged ChainRelease delayed archive in an isolated library
-/// and requires a pass. Elsewhere, install it in Documents/UniPack; a missing pack skips the check.
+/// Every launch stages the unchanged ChainRelease delayed archive in an isolated library and
+/// requires a pass.
 /// One actual simulator finger holds the first pad through the pack's 100 ms chain move.
 /// Audio stop targets are independently checked by ChainReleaseTests, not inferred here.
 final class ChainReleaseUITests: XCTestCase {
@@ -10,19 +10,14 @@ final class ChainReleaseUITests: XCTestCase {
     func testOneFingerThroughPackChainMoveAndRelease() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        let archive = UITestSupport.isReleaseSuite ? try Self.approvedArchive() : nil
+        let archive = try Self.approvedArchive()
         app.launchArguments += UITestSupport.englishLaunchArguments(library: "chain-release", archive: archive)
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
         UITestSupport.searchForPack("Chain Release", in: app)
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Chain Release v1 delayed")).firstMatch
-        let installed = title.waitForExistence(timeout: 10)
-        if archive != nil {
-            XCTAssertTrue(installed, "the release suite must stage Chain Release v1 delayed")
-        } else if !installed {
-            throw XCTSkip("Chain Release v1 delayed is not installed in Documents/UniPack; chain release UI was not checked")
-        }
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the isolated library must stage Chain Release v1 delayed")
         title.tap()
         let play = app.buttons["Play"].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }

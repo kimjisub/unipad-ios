@@ -15,18 +15,20 @@ enum UITestSupport {
     /// same whatever language the simulator was left in.
     static func englishLaunchArguments(library: String = "standard", token: String = UUID().uuidString,
                                        file: Bool = false, archive: Data? = nil,
-                                       isolated: Bool = isReleaseSuite, themeLoading: Bool = false) -> [String] {
+                                       isolated: Bool? = nil, themeLoading: Bool = false) -> [String] {
         launchArguments(language: "en", locale: "en_US", library: library, token: token, file: file,
                         archive: archive, isolated: isolated, themeLoading: themeLoading)
     }
 
-    /// Every launch argument a test passes to the app, each key once. With `isolated` the app
-    /// prepares its own library under `token` (see ReleaseTestSupport); the whole suite always
-    /// runs isolated, and tests that need a particular library ask for it outside the suite too.
+    /// Every launch argument a test passes to the app, each key once. An isolated launch
+    /// prepares its own library under `token` (see ReleaseTestSupport). The whole suite always
+    /// runs isolated; outside it, a launch is isolated when it asks for a particular library, a
+    /// prepared file or an archive, so those requests are never dropped onto the real library.
     static func launchArguments(language: String, locale: String, library: String = "standard",
                                 token: String = UUID().uuidString, file: Bool = false,
-                                archive: Data? = nil, isolated: Bool = isReleaseSuite,
+                                archive: Data? = nil, isolated: Bool? = nil,
                                 themeLoading: Bool = false) -> [String] {
+        let isolated = isolated ?? (isReleaseSuite || library != "standard" || file || archive != nil)
         var arguments = [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",

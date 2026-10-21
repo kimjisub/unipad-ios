@@ -11,13 +11,7 @@ final class ZeroDurationLedUITests: XCTestCase {
         UITestSupport.searchForPack("Zero Duration LED Fixture", in: app)
         let list = app.scrollViews["main.packList"]
         let title = list.staticTexts["Zero Duration LED Fixture"].firstMatch
-        guard title.waitForExistence(timeout: 10) else {
-            if UITestSupport.isReleaseSuite {
-                XCTFail("the zero-duration LED fixture must be prepared")
-                return
-            }
-            throw XCTSkip("install test-fixtures/ZeroDurationLED first")
-        }
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the zero-duration LED fixture must be prepared")
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20))
         title.tap()
         let play = app.buttons["Play"].firstMatch
