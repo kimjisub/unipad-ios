@@ -421,6 +421,115 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(scheduler.buffersScheduled, 50)
     }
 
+    /// Records what the scheduler asks of a player node without attaching it to an engine.
+    private nonisolated final class RecordingPlayerNode: AVAudioPlayerNode, @unchecked Sendable {
+        private let lock = NSLock()
+        private var types: [AVAudioPlayerNodeCompletionCallbackType] = []
+        var callbackTypes: [AVAudioPlayerNodeCompletionCallbackType] { lock.withLock { types } }
+
+        override func scheduleBuffer(
+            _ buffer: AVAudioPCMBuffer,
+            at when: AVAudioTime?,
+            options: AVAudioPlayerNodeBufferOptions = [],
+            completionCallbackType callbackType: AVAudioPlayerNodeCompletionCallbackType,
+            completionHandler: AVAudioPlayerNodeCompletionHandler? = nil
+        ) {
+            lock.withLock { types.append(callbackType) }
+        }
+
+        override func play() {}
+        override func stop() {}
+    }
+
+    /// A played-back callback arms a timer inside the player node, and the node's next stop() waits
+    /// for that timer's default-priority thread. The next pad press reusing the node stops it from
+    /// the screen's thread, so the last repeat must not ask for one.
+    func testLastFiniteRepeatDoesNotWaitForPlayedBackAudio() throws {
+        let node = RecordingPlayerNode()
+        let scheduler = FiniteRepeatScheduler()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480))
+        buffer.frameLength = 480
+        XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 2) { _ in })
+        defer { scheduler.stop(node) }
+        XCTAssertEqual(
+            node.callbackTypes, [.dataConsumed, .dataRendered],
+            "raw types \(node.callbackTypes.map(\.rawValue)); 0 consumed, 1 rendered, 2 played back"
+        )
+    }
+
+    /// The final mix of the real-time engine, recorded while a three-play sound ends and the next pad
+    /// takes over its freed player node. The last repeat has to reach the mix in full before the node is
+    /// handed on, and the reused node has to play the next sound in full.
+    func testLastRepeatPlaysInFullBeforeTheNextPadReusesItsVoice() async throws {
+        let root = try pack(loop: 3)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        try writeLevel(0.125, frames: 4_800, format: format, to: root.appendingPathComponent("sounds/a.wav"))
+        try writeLevel(0.25, frames: 4_800, format: format, to: root.appendingPathComponent("sounds/b.wav"))
+        try "1 1 1 a.wav 3\n1 1 2 b.wav 1\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let audio = try XCTUnwrap(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine)
+        let mix = MixRecording()
+        await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run {
+                audio.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in mix.record(buffer) }
+            } then: { _ in continuation.resume() }
+        }
+        defer { AudioSessionWorker.shared.run { audio.mainMixerNode.removeTap(onBus: 0) } }
+        let rate = audio.mainMixerNode.outputFormat(forBus: 0).sampleRate
+        func busyNodes() -> [Int] {
+            let ids = Mirror(reflecting: engine).children.first { $0.label == "nodePlayID" }?.value as? [Int] ?? []
+            return ids.indices.filter { ids[$0] != 0 }
+        }
+
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+        let repeatingNode = busyNodes()
+        try await wait(for: "three plays", until: { engine.activeVoiceCount == 0 })
+        vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+        XCTAssertEqual(busyNodes(), repeatingNode, "the next pad did not reuse the freed player node")
+        try await wait(for: "the next pad", until: { engine.activeVoiceCount == 0 })
+        try await wait(for: "the mix after both sounds", until: { mix.silentFramesAfterLastSound(below: 0.01) >= Int(rate * 0.2) })
+
+        let samples = mix.samples
+        let isRepeated: (Float) -> Bool = { abs($0 - 0.125) < 0.02 }
+        let isNext: (Float) -> Bool = { abs($0 - 0.25) < 0.02 }
+        // Measured as one unbroken stretch, so a cut or a gap shortens it. The next sound's rise passes
+        // through the repeated level on a sample of its own, which a plain count would add.
+        let repeatedStart = try XCTUnwrap(samples.firstIndex(where: isRepeated))
+        let repeatedEnd = samples[repeatedStart...].firstIndex { !isRepeated($0) } ?? samples.endIndex
+        let nextStart = try XCTUnwrap(samples[repeatedEnd...].firstIndex(where: isNext))
+        let next = samples[nextStart...].filter(isNext).count
+        let pause = Double(nextStart - repeatedEnd) / rate
+        let report = "MIX rate=\(rate) node=\(repeatingNode) unbrokenRepeatedFrames=\(repeatedEnd - repeatedStart) expected=\(Int(rate * 0.3)) nextFrames=\(next) expected=\(Int(rate * 0.1)) pauseBeforeNextMs=\(Int(pause * 1000))"
+        print(report)
+        add(XCTAttachment(string: report))
+        let wav = FileManager.default.temporaryDirectory.appendingPathComponent("mix-\(UUID().uuidString).wav")
+        try mix.write(to: wav, sampleRate: rate)
+        defer { try? FileManager.default.removeItem(at: wav) }
+        let recording = XCTAttachment(contentsOfFile: wav)
+        recording.name = "final-mix.wav"
+        recording.lifetime = .keepAlways
+        add(recording)
+
+        XCTAssertEqual(repeatingNode.count, 1)
+        XCTAssertEqual(Double(repeatedEnd - repeatedStart), rate * 0.3, accuracy: rate * 0.003, "the three plays did not reach the mix whole and unbroken")
+        XCTAssertEqual(Double(next), rate * 0.1, accuracy: rate * 0.003, "the reused node did not play the next sound in full")
+    }
+
+    private func writeLevel(_ level: Float, frames: AVAudioFrameCount, format: AVAudioFormat, to url: URL) throws {
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for channel in 0..<Int(format.channelCount) {
+            for frame in 0..<Int(frames) { buffer.floatChannelData?[channel][frame] = level }
+        }
+        try? FileManager.default.removeItem(at: url)
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
+    }
+
     func testHugeRepeatCountCanBeStoppedWithoutSchedulingEveryRepeat() async throws {
         let root = try pack(loop: Int.max)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -524,5 +633,35 @@ final class PlaybackStopTests: XCTestCase {
             XCTAssertFalse(runner.active)
             print("STOP step round=\(round) returned")
         }
+    }
+}
+
+/// The first channel of everything a tap hands over, in order.
+private nonisolated final class MixRecording: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [Float] = []
+    var samples: [Float] { lock.withLock { recorded } }
+
+    func record(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        let frames = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+        lock.withLock { recorded.append(contentsOf: frames) }
+    }
+
+    /// Zero until something louder than `threshold` has been recorded.
+    func silentFramesAfterLastSound(below threshold: Float) -> Int {
+        lock.withLock {
+            guard let last = recorded.lastIndex(where: { abs($0) >= threshold }) else { return 0 }
+            return recorded.count - last - 1
+        }
+    }
+
+    func write(to url: URL, sampleRate: Double) throws {
+        let mono = samples
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(1, mono.count))) else { return }
+        buffer.frameLength = AVAudioFrameCount(mono.count)
+        mono.withUnsafeBufferPointer { buffer.floatChannelData?[0].update(from: $0.baseAddress!, count: mono.count) }
+        try AVAudioFile(forWriting: url, settings: format.settings).write(from: buffer)
     }
 }
