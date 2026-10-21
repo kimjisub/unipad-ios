@@ -2,10 +2,11 @@
 //  PlayPadLayoutTests.swift
 //  unipadUITests
 //
-//  Opens the first installed pack and checks the play screen's layout with real
-//  input: the pad grid sits on the window's centre line, the chain column and the
-//  menu stay clear of each other and reachable, and pads answer where they are
-//  drawn. Needs a pack in the library; ios_shots.sh installs one.
+//  Opens a fixture pack with LEDs and two chains in a library of its own and
+//  checks the play screen's layout with real input: the pad grid sits on the
+//  window's centre line, the chain column and the menu stay clear of each other
+//  and reachable, and pads answer where they are drawn. The simulator's own packs
+//  are not used, so the menu always has the LED switch this check turns off.
 //
 //  Pad presses are attached as screenshots rather than asserted on. The trace
 //  log is switched on and the LEDs off first, so each dot in the last shot marks
@@ -21,27 +22,18 @@ final class PlayPadLayoutTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = true
         app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
 
-    private func openFirstPack() throws {
-        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
-        let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
-        let title = packTitles.element(boundBy: 0)
-        title.tap()
-        let play = app.buttons["Play"].firstMatch
-        if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
-    }
-
     @MainActor
     func testPadsAreCentredAndReachable() throws {
-        try openFirstPack()
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
+        UITestSupport.openPack(titled: "Release Fixture - Tests", in: app,
+                               missingMessage: "the LED fixture pack was not prepared")
 
         let grid = app.otherElements["playPadGrid"]
-        XCTAssertTrue(grid.waitForExistence(timeout: 30), "pad grid never appeared")
         let menu = app.buttons["line.3.horizontal"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10), "menu button never appeared")
         sleep(1)
