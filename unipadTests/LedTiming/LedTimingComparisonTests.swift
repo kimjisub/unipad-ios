@@ -1,6 +1,15 @@
 import Testing
 
 struct LedTimingComparisonTests {
+    @Test func anUncomparedMiddleStillFailsInsideTheCutoffWindow() {
+        let expected = (0..<5001).map { _ in command(99, 5) }
+        let arrived = (0..<5001).map { _ in command(99, 7) }
+        let comparison = LedTimingComparison(expected: expected, arrived: arrived)
+        #expect(comparison.uncompared == 1)
+        #expect(comparison.unexpectedMissing(cutoffMs: 100) == 0)
+        #expect(comparison.hasUnexpectedDifferences(cutoffMs: 100))
+    }
+
     private func command(_ ms: Double, _ code: Int, x: Int = 0) -> LedCommand {
         LedCommand(ms: ms, target: LedTarget(x: x, y: 0), code: code)
     }

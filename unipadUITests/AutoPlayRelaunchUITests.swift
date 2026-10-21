@@ -1,8 +1,6 @@
 import XCTest
 
-/// Covers real Faded playback and step practice with the silent PlaybackStop fixture.
-/// The release suite stages both in an isolated library: PlaybackStop unchanged, and a silent
-/// Faded with the sample's grid and chains whose song ends after about 15 s.
+/// Covers autoplay completion, restart, and step practice with the silent PlaybackStop fixture.
 final class AutoPlayRelaunchUITests: XCTestCase {
     @MainActor
     func testGuideStartsAfterSongEndAndCanSwitchToAutoplay() {
@@ -11,13 +9,14 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments(library: "autoplay-relaunch")
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
         let list = app.scrollViews["main.packList"]
         XCTAssertTrue(list.waitForExistence(timeout: 30))
-        let title = list.staticTexts.matching(NSPredicate(format: "label == %@", "Alan Walker - Faded")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "Install the real Faded sample pack before this check")
+        UITestSupport.searchForPack("Playback Stop Fixture", in: app)
+        let title = list.staticTexts["Playback Stop Fixture"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the Playback Stop fixture was not prepared")
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20))
         title.tap()
         let play = app.buttons["Play"].firstMatch
@@ -27,6 +26,7 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         XCTAssertTrue(menu.waitForExistence(timeout: 30))
         choose("Autoplay", app: app)
         UITestSupport.attachScreenshot("autoplay-01-first-start", to: self)
+        // The short fixture reaches its natural end without exceeding the suite deadline.
         waitForSongEnd(app)
         UITestSupport.attachScreenshot("autoplay-02-first-end", to: self)
 
@@ -54,14 +54,14 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments(library: "autoplay-relaunch")
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
         UITestSupport.searchForPack("Playback Stop Fixture", in: app)
         let title = app.staticTexts["Playback Stop Fixture"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "Install Fixtures/PlaybackStop before this check")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the Playback Stop fixture was not prepared")
         title.tap()
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 10))

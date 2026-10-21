@@ -16,6 +16,15 @@ FAKE_PROBE_BUILD = ('if [ "$1" = --sdk ]; then\n'
                     'fi\n')
 
 
+ROOT = Path(__file__).resolve().parents[1]
+NOT_RUN = [
+    "-skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests",
+    "-skip-testing:unipadUITests/LedAutoplayUITests",
+    "-skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt",
+    "-skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain",
+]
+
+
 class UIHostKeysTests(unittest.TestCase):
     def key_delivery(self, exit_code, state=0, wake_exit=0):
         root = Path(__file__).resolve().parents[1]
@@ -192,10 +201,22 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertEqual(probe["fixtures"], "1")
         self.assertIn("-only-testing:unipadUITests", probe["args"])
         self.assertIn("UNIPAD_WARNINGS_AS_ERRORS=YES", probe["args"])
-        self.assertFalse(any(arg.startswith("-skip-testing:") for arg in probe["args"]))
+        self.assertEqual([arg for arg in probe["args"] if arg.startswith("-skip-testing:")], NOT_RUN)
         self.assertIn("id=leased-device", probe["args"])
         self.assertEqual(result.stdout.strip().splitlines()[-1],
                          "UI tests: 3 passed, 0 failed, 0 skipped; 3 total; exit 0")
+
+    def test_every_check_left_out_still_exists_and_has_a_reason(self):
+        script = (ROOT / "ci/ui-tests.sh").read_text().splitlines()
+        tests = ROOT / "unipadUITests"
+        for entry in NOT_RUN:
+            index = next(i for i, line in enumerate(script) if line.strip() == entry)
+            self.assertTrue(script[index - 1].strip().startswith("#"), f"{entry} needs a reason above it")
+            parts = entry.split("/")[1:]
+            source = (tests / f"{parts[0]}.swift").read_text()
+            self.assertIn(f"class {parts[0]}", source)
+            if len(parts) > 1:
+                self.assertIn(f"func {parts[1]}(", source)
 
     def test_selected_classes_replace_the_whole_target(self):
         result, probe = self.run_script(args=["-only-testing:unipadUITests/PackWarningUITests"])

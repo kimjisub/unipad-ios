@@ -61,13 +61,16 @@ nonisolated struct LedTimingMeasurement {
             + (timeline.delaylessEndlessAnimations > 0 ? ", \(timeline.delaylessEndlessAnimations) endless animations without delay" : ""))
         lines.append("  LedRunner -> driver: \(runnerToDriver.expected) handed over, \(runnerToDriver.arrived) arrived, "
             + "same order \(deliveredAsHandedOver), ms median \(Self.ms(runnerToDriver.median)) p95 \(Self.ms(runnerToDriver.p95)) max \(Self.ms(runnerToDriver.max))")
+        let comparisonLabel: String
         if let cutoff = recording.cutoffMs {
+            comparisonLabel = "partial observation differs"
             lines.append("  observation stopped at \(cutoff) ms; whole-pack completeness not assessed; "
                 + "unobserved window \(Self.ms(Double(cutoff) - LedTimingComparison.cutoffWindowMs))..<\(cutoff) ms")
             lines.append("  partial pack -> driver: matched \(pack.matched), reordered \(pack.reordered), "
                 + "unmatched intended \(pack.missing), missing before cutoff window \(pack.unexpectedMissing(cutoffMs: cutoff)), extra \(pack.extra), repaints \(recording.repaints), "
                 + "LEDs too long to compare \(pack.uncompared)")
         } else {
+            comparisonLabel = "pack -> driver differs"
             lines.append("  pack -> driver: matched \(pack.matched), reordered \(pack.reordered), missing \(pack.missing), extra \(pack.extra), "
                 + "covered \(recording.covered), overtaken by more than \(Int(LedTimingComparison.overtakeMs)) ms \(pack.overtaken), "
                 + "repaints \(recording.repaints), LEDs too long to compare \(pack.uncompared)")
@@ -93,7 +96,6 @@ nonisolated struct LedTimingMeasurement {
         lines.append("  \(Self.environment())")
         lines += runnerToDriver.differences.map { "  LedRunner -> driver differs: \($0)" }
         lines += (driverToMidi?.differences ?? []).map { "  driver -> virtual Launchpad differs: \($0)" }
-        let comparisonLabel = assessesPackCompleteness ? "pack -> driver differs" : "partial observation differs"
         lines += pack.differences.map { "  \(comparisonLabel): \($0)" }
         return lines.joined(separator: "\n")
     }

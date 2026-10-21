@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import AVFoundation
 import Testing
 @testable import unipad
 
@@ -106,7 +107,7 @@ struct SoundEngineDecodingTests {
 
     @Test(arguments: [UInt32(44_100), 48_000])
     func aPlainWavPlays(sampleRate: UInt32) async throws {
-        try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10))
+        try await expectPlays(try SoundEngineTestSupport.writeWav(sampleRate: sampleRate, frames: sampleRate / 10), requiresSignal: false)
     }
 
     /// M4A (AAC) sounds are used by real packs although the format guide does not list them.
@@ -119,12 +120,128 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("mp3-tone-named-wav", "wav"))
     }
 
-    private func expectPlays(_ file: URL) async throws {
+    /// The format guide recommends Ogg Vorbis, which AVAudioFile cannot open.
+    @Test func anOggVorbisSoundPlays() async throws {
+        try await expectPlays(try fixture("vorbis-tone", "ogg"))
+    }
+
+    @Test(arguments: ["vorbis-overlong", "vorbis-over-budget"])
+    func anOversizedOggIsSilentAndAdvancesToTheNextSound(_ name: String) async throws {
+        let good = try SoundEngineTestSupport.writeSilentSound()
+        let pack = OnePadPack(chains: [[
+            Sound(file: try fixture(name, "ogg"), loop: 0),
+            Sound(file: good, loop: 0),
+        ]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 0)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
+    /// A damaged Ogg Vorbis file is silent where it stands, like any sound that cannot be decoded,
+    /// and the pad's next press plays its next sound.
+    @Test(arguments: OggDamage.allCases)
+    func aDamagedOggSoundStillAdvancesThePadToItsNextSound(_ damage: OggDamage) async throws {
+        let good = try SoundEngineTestSupport.writeSilentSound()
+        let damaged = try damage.write(from: try fixture("vorbis-tone", "ogg"))
+        let pack = OnePadPack(chains: [[Sound(file: damaged, loop: 0), Sound(file: good, loop: 0)]])
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 0)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
+    private func expectPlays(_ file: URL, requiresSignal: Bool = true) async throws {
         let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(OnePadPack(soundFile: file))
         defer { engine.destroy() }
         #expect(listener.failure == nil, "\(file.lastPathComponent) could not be decoded: \(String(describing: listener.failure))")
-        engine.soundOn(x: 0, y: 0)
-        #expect(engine.playsStarted == 1)
+        guard requiresSignal else {
+            engine.soundOn(x: 0, y: 0)
+            #expect(engine.playsStarted == 1)
+            return
+        }
+        // Inspect the existing engine only in tests, without adding a product audio hook. This
+        // deliberately fails if that field changes: a missing observation is never a pass.
+        let audio = try #require(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine)
+        let output = RenderedAudio()
+        await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run {
+                audio.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
+                    output.record(buffer)
+                }
+            } then: { _ in continuation.resume() }
+        }
+        do {
+            engine.soundOn(x: 0, y: 0)
+            #expect(engine.playsStarted == 1)
+            let deadline = Date().addingTimeInterval(5)
+            while !output.hasSignal, Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(output.hasSignal, "\(file.lastPathComponent): the real mixer never rendered nonzero PCM samples")
+        } catch {
+            await removeMixerTap(from: audio)
+            throw error
+        }
+        await removeMixerTap(from: audio)
+    }
+
+    private func removeMixerTap(from audio: AVAudioEngine) async {
+        await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run {
+                audio.mainMixerNode.removeTap(onBus: 0)
+            } then: { _ in continuation.resume() }
+        }
+    }
+}
+
+private final class RenderedAudio: @unchecked Sendable {
+    private let lock = NSLock()
+    private var signal = false
+    var hasSignal: Bool { lock.lock(); defer { lock.unlock() }; return signal }
+    func record(_ buffer: AVAudioPCMBuffer) {
+        guard let channels = buffer.floatChannelData else { return }
+        var audible = false
+        for channel in 0..<Int(buffer.format.channelCount) {
+            for frame in 0..<Int(buffer.frameLength) where abs(channels[channel][frame]) > 0.0001 {
+                audible = true
+                break
+            }
+        }
+        lock.lock()
+        signal = signal || audible
+        lock.unlock()
+    }
+}
+
+/// Ways an Ogg Vorbis file can be broken before its audio starts, so nothing in it can be played.
+enum OggDamage: CaseIterable, CustomTestStringConvertible {
+    case onlyTheCapturePattern
+    case identificationHeaderOverwritten
+    case cutInsideTheHeaders
+
+    var testDescription: String { "\(self)" }
+
+    func write(from fixture: URL) throws -> URL {
+        var bytes = try Data(contentsOf: fixture)
+        switch self {
+        case .onlyTheCapturePattern:
+            bytes = Data("OggS".utf8) + Data(repeating: 0xA5, count: 512)
+        case .identificationHeaderOverwritten:
+            // The "vorbis" signature and stream parameters follow the first page header (28 bytes).
+            bytes.replaceSubrange(28..<58, with: Data(repeating: 0xFF, count: 30))
+        case .cutInsideTheHeaders:
+            bytes = bytes.prefix(100)
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "OggDamage-\(self)-\(UUID().uuidString).ogg")
+        try bytes.write(to: url)
+        return url
     }
 }
 #endif

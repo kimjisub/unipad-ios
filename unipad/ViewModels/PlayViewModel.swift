@@ -1,4 +1,5 @@
 import SwiftUI
+import QuartzCore
 import os
 import AVFoundation
 #if canImport(MediaPlayer)
@@ -573,7 +574,8 @@ final class PlayViewModel {
     }
 
     /// `trigger` says who pressed the pad; a release does the same whoever caused it.
-    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil) {
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
+        let ledTimeMs = ledTimeMs ?? Int64(CACurrentMediaTime() * 1000)
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
@@ -605,14 +607,14 @@ final class PlayViewModel {
                     setPadColor(x: x, y: y, color: .red)
                 }
             }
-            ledRunner?.eventOn(x: x, y: y)
+            ledRunner?.eventOn(x: x, y: y, pressedAt: ledTimeMs)
         } else {
-            padRelease(x: x, y: y, inputID: inputID)
+            padRelease(x: x, y: y, inputID: inputID, ledTimeMs: ledTimeMs)
         }
     }
 
     /// `x` and `y` must be a pad of the loaded pack.
-    private func padRelease(x: Int, y: Int, inputID: UUID? = nil) {
+    private func padRelease(x: Int, y: Int, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
         // An ended touch can be reported again after a fresh press. Ignore the
         // duplicate for both sound and pressed light, without clearing other pads.
         if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
@@ -623,7 +625,7 @@ final class PlayViewModel {
         } else {
             clearPadColor(x: x, y: y)
         }
-        ledRunner?.eventOff(x: x, y: y)
+        ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs)
     }
 
     // MARK: - LED
@@ -1262,8 +1264,22 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         }
     }
 
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+    }
+
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) {
+        for inputID in inputIDs {
+            viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+        }
+    }
+
     func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
         viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID)
+    }
+
+    func onInputTimeThrough(_ at: Int64?) {
+        viewModel?.ledRunner?.setInputTimeThrough(at)
     }
 
     func onChainChange(c: Int) {

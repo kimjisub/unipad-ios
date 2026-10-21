@@ -7,18 +7,23 @@
 # start it in the background before the tests. The app connects to it as to a USB Launchpad MK2, and
 # every message the app sends is written to <arrivals-file> with its arrival time. The tests read that
 # file when started with TEST_RUNNER_UNIPAD_LED_TIMING_MIDI=<arrivals-file>.
+# Optional <signal-file> <sent-file>: once the signal exists, send notes 81/82 with
+# releases in order and record them separately. The three-argument timing mode is unchanged.
+# <udid> --log <log-file> instead runs a bounded collector that reports its simulator PID.
 set -euo pipefail
 
-if (( $# != 3 )); then
-  print -u2 "usage: $0 <simulator-udid> <seconds> <arrivals-file>"
+if (( $# != 3 && $# != 5 )); then
+  print -u2 "usage: $0 <simulator-udid> <seconds> <arrivals-file> [<signal-file> <sent-file>]"
   exit 2
 fi
 udid=$1
 seconds=$2
 arrivals=${3:A}
 
-build=$(mktemp -d "${TMPDIR:-/tmp}/virtual-launchpad.XXXXXX")
+build=$(mktemp -d "${arrivals:h}/virtual-launchpad.XXXXXX")
 trap 'rm -rf $build' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 cat > $build/Info.plist <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -33,4 +38,10 @@ xcrun --sdk iphonesimulator clang -arch arm64 -arch x86_64 -mios-simulator-versi
   -Wl,-sectcreate,__TEXT,__info_plist,$build/Info.plist \
   -o $build/virtual-launchpad ${0:A:h}/virtual-launchpad.c
 codesign -s - -f $build/virtual-launchpad >/dev/null
-xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals
+if [[ $seconds == --log ]]; then
+  xcrun simctl spawn $udid $build/virtual-launchpad --log
+elif (( $# == 5 )); then
+  xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals ${4:A} ${5:A}
+else
+  xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals
+fi

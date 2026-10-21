@@ -20,6 +20,18 @@ udid=$1
 shift
 selection=("$@")
 (( ${#selection} )) || selection=(-only-testing:unipadUITests)
+# Checks this script cannot set up. They are left out by name, not skipped, so any
+# skip that remains still fails the run. Run them as their notes say.
+not_run=(
+  # Needs the virtual MIDI device: run ci/virtual_launchpad_roundtrip.py.
+  -skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests
+  # Needs a real sample pack installed and named in UNIPAD_LED_TIMING_VISUAL_PACK.
+  -skip-testing:unipadUITests/LedAutoplayUITests
+  # Downloads from the real store over the network; this script answers from fixtures.
+  -skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt
+  # Pointer input exists only on iPad; this script runs on an iPhone.
+  -skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain
+)
 
 cd ${0:A:h:h}
 output=${UNIPAD_UI_TEST_OUTPUT:-build/ui-tests}
@@ -41,7 +53,7 @@ export TEST_RUNNER_UNIPAD_RELEASE_SUITE=1
 ci/host-keys.sh $udid $output/DerivedData test \
   -project unipad.xcodeproj -scheme unipad -configuration Debug \
   -onlyUsePackageVersionsFromResolvedFile \
-  $selection \
+  $selection $not_run \
   -resultBundlePath $output/UITests.xcresult \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
   UNIPAD_WARNINGS_AS_ERRORS=YES >$output/ui-tests.log 2>&1

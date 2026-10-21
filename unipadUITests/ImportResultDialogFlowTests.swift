@@ -8,8 +8,7 @@
 //  that tapping outside closes it.
 //
 //  Every launch starts from its own empty test library and generated archive, so
-//  the imported copies never reach the simulator's real library, where tests that
-//  open "Alan Walker - Faded" by title (PlayChainLayoutTests) need it to be unique.
+//  the imported copies never reach the simulator's real library.
 //
 
 import XCTest

@@ -37,6 +37,8 @@ struct ConformanceDeps {
     }
     var stopAutoPlay: @MainActor (AutoPlayRunner) -> Void = { $0.stop() }
     var turnOffAutoPlay: @MainActor (PlayViewModel) -> Void = { $0.switchPlayMode(.none) }
+    var setupChainObserver: @MainActor (PlayViewModel) -> Void = { $0.setupChainObserver() }
+    var soundOff: @MainActor (SoundEngine, Int, Int) -> Void = { $0.soundOff(x: $1, y: $2) }
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
 }
@@ -66,10 +68,24 @@ enum ConformanceHarness {
         return "\(section):\(kind)"
     }
 
+    /// Whether files whose names differ only in letter case are different files where the packs are
+    /// written. Where they are not, a parser that opens only the exact name of `info` passes too.
+    static let caseSensitiveFileSystem: Bool = {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil,
+              FileManager.default.createFile(atPath: dir.appendingPathComponent("a").path, contents: Data()) else { return false }
+        return !FileManager.default.fileExists(atPath: dir.appendingPathComponent("A").path)
+    }()
+
     private static func soundName(_ file: URL, root: URL) -> String {
         let base = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
         let path = file.resolvingSymlinksInPath().path
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : file.lastPathComponent
+        // The parser finds the sounds folder whatever its letter case; the name below it is the file's own.
+        let name = path.lowercased().hasPrefix(base.lowercased()) ? String(path.dropFirst(base.count)) : file.lastPathComponent
+        // File URLs give names decomposed (NFD); results carry them composed (NFC), as the corpus writes them.
+        // Swift compares the two forms as equal, the other platforms and report.mjs do not.
+        return name.precomposedStringWithCanonicalMapping
     }
 
     static func parseResult(_ pack: UniPack, root: URL) -> JSONValue {
@@ -341,8 +357,12 @@ enum ConformanceHarness {
     @MainActor
     private static func runScenario(_ conformanceCase: ConformanceCase, pack: UniPack, root: URL, deps: ConformanceDeps) async throws -> ConformanceActual {
         let log = EventLog()
-        // Cases that turn autoplay off stay on the play screen and use its real input/transport path.
-        let screen = conformanceCase.scenario.contains { $0["do"]?.string == "autoplayOff" } ? PlayViewModel() : nil
+        // Chain scenarios install the play screen's real queue-reset observer. Autoplay-off cases
+        // also use its input/transport path so manual and scripted presses keep separate identities.
+        let usesScreenInputs = conformanceCase.scenario.contains { $0["do"]?.string == "autoplayOff" }
+        let usesChainSelection = conformanceCase.scenario.contains { $0["do"]?.string == "chain" }
+        let screen = usesScreenInputs || usesChainSelection ? PlayViewModel() : nil
+        let inputScreen = usesScreenInputs ? screen : nil
         let chain = screen?.chain ?? ChainObserver()
         chain.range = 0...max(pack.chain - 1, 0)
         chain.addObserver { current, _ in
@@ -366,6 +386,9 @@ enum ConformanceHarness {
         screen?.unipack = pack
         screen?.soundEngine = engine
         screen?.ledRunner = led
+        if let screen { deps.setupChainObserver(screen) }
+        var watchesStops = false
+        var voices: [Int: JSONValue] = [:]
         // Only infinite voices are indexed; liveness always comes from the real engine's play IDs.
         var loopingPads: [Int: (x: Int, y: Int)] = [:]
         var manualInputs: [String: UUID] = [:]
@@ -384,10 +407,17 @@ enum ConformanceHarness {
             engine.destroy()
         }
 
+        func recordStops(since previousIDs: Set<Int>) {
+            guard watchesStops else { return }
+            for id in previousIDs.subtracting(engine.activePlayIDs).sorted() {
+                if let voice = voices.removeValue(forKey: id) { log.add(voice) }
+            }
+        }
+
         func touch(_ x: Int, _ y: Int, _ down: Bool, inputID: UUID? = nil) {
             let key = "\(x),\(y)"
             let identity: UUID?
-            if screen != nil, inputID == nil {
+            if inputScreen != nil, inputID == nil {
                 if down { manualInputs[key] = UUID() }
                 identity = manualInputs[key]
                 if !down { manualInputs.removeValue(forKey: key) }
@@ -397,25 +427,35 @@ enum ConformanceHarness {
                 let head = pack.soundGet(c: playing, x: x, y: y)
                 let before = engine.playsStarted
                 let previousIDs = engine.activePlayIDs
-                if let screen {
+                if let screen = inputScreen {
                     screen.padTouch(x: x, y: y, isDown: true,
                                     trigger: inputID == nil ? .pad(.screen) : .autoplay, inputID: identity)
                 } else { engine.soundOn(x: x, y: y) }
+                // A replacement's stop precedes the next start. The removed IDs belong to the
+                // engine, not the current chain or the pad's already-advanced queue head.
+                recordStops(since: previousIDs)
                 if engine.playsStarted > before, let head {
                     log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root)), .int(head.loop)])
+                    if watchesStops {
+                        for id in engine.activePlayIDs.subtracting(previousIDs) {
+                            voices[id] = ["soundStop", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root))]
+                        }
+                    }
                 }
                 if head?.loop == -1 {
                     for id in engine.activePlayIDs.subtracting(previousIDs) { loopingPads[id] = (x, y) }
                 }
-                if screen == nil { deps.ledEventOn(led, x, y) }
+                if inputScreen == nil { deps.ledEventOn(led, x, y) }
             } else {
-                if let screen {
+                let previousIDs = engine.activePlayIDs
+                if let screen = inputScreen {
                     screen.padTouch(x: x, y: y, isDown: false,
                                     trigger: inputID == nil ? .pad(.screen) : .autoplay, inputID: identity)
                 } else {
-                    engine.soundOff(x: x, y: y)
+                    deps.soundOff(engine, x, y)
                     led.eventOff(x: x, y: y)
                 }
+                recordStops(since: previousIDs)
             }
         }
 
@@ -435,6 +475,14 @@ enum ConformanceHarness {
                 let x = step["x"]?.int ?? 0
                 let y = step["y"]?.int ?? 0
                 switch step["do"]?.string {
+                case "watchStops":
+                    watchesStops = true
+                    // These cases have no elapsed-time steps. Keep finite completion delivery
+                    // from turning a simulator stall into a natural end between two pad actions.
+                    // Scheduling and stop calls remain real; playback failures are still delivered.
+                    engine.playbackCompletionDelivery = { _, failure, complete in
+                        if failure != nil { complete() }
+                    }
                 case "press":
                     touch(x, y, true)
                 case "release":
@@ -443,7 +491,7 @@ enum ConformanceHarness {
                     let toPads = step["toPads"] == .bool(true)
                     let listener = AutoRecorder(log: log, clock: autoClock, chain: chain) { x, y, down, ids in
                         guard toPads else { return }
-                        if screen != nil {
+                        if inputScreen != nil {
                             for id in ids { touch(x, y, down, inputID: id) }
                         } else { touch(x, y, down) }
                     }
@@ -451,7 +499,7 @@ enum ConformanceHarness {
                     let runner = AutoPlayRunner(unipack: pack, listener: listener, chain: chain,
                                                 clock: { autoClock.now }, sleep: { _ in await autoClock.sleep() })
                     autoPlay = runner
-                    if let screen {
+                    if let screen = inputScreen {
                         screen.autoPlayRunner = runner
                         screen.switchPlayMode(.autoPlay)
                     } else { runner.launch() }
@@ -468,7 +516,8 @@ enum ConformanceHarness {
                     for pad in pads { log.add(["looping", .int(pad.x), .int(pad.y)]) }
                 case "chain":
                     log.recordsChain = false
-                    chain.setValue(step["c"]?.int ?? 0)
+                    if let screen { screen.selectChain(step["c"]?.int ?? 0) }
+                    else { chain.setValue(step["c"]?.int ?? 0) }
                     log.recordsChain = true
                 case "advance":
                     let total = step["ms"]?.int ?? 0

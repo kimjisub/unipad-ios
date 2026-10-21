@@ -42,6 +42,14 @@ enum UITestSupport {
         return arguments
     }
 
+    /// For checks that need known packs whatever the simulator holds: the app gets a library of
+    /// its own for this launch, filled with the fixture packs ReleaseTestSupport generates, and a
+    /// store that answers from fixtures. The simulator's own packs are neither used nor changed.
+    static func isolatedLibraryLaunchArguments(language: String = "en", locale: String = "en_US",
+                                               library: String = "standard") -> [String] {
+        launchArguments(language: language, locale: locale, library: library, isolated: true)
+    }
+
     /// Creates a recent-play record through the same controls the user uses.
     static func playAndReturn(_ title: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(title.waitForExistence(timeout: 30), "the test pack must be prepared")
@@ -475,12 +483,21 @@ enum UITestSupport {
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
     }
 
-    /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
-    /// Documents/UniPack first; a missing fixture fails the check.
+    /// Opens the Playback Stop fixture's play screen from home. Launch with
+    /// `isolatedLibraryLaunchArguments`, whose library has the fixture; a missing fixture fails the check.
     static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {
+        openPack(titled: "Playback Stop Fixture", in: app, playButtonTitle: playButtonTitle,
+                 missingMessage: "the Playback Stop fixture was not prepared")
+    }
+
+    /// Opens the play screen of the pack whose title contains `packTitle` from home.
+    static func openPack(titled packTitle: String, in app: XCUIApplication, playButtonTitle: String = "Play",
+                         missingMessage: String) {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
-        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", packTitle)).firstMatch
+        // A long lazy list may not have created the pack's row yet.
+        if !title.exists { searchForPack(packTitle, in: app) }
+        XCTAssertTrue(title.waitForExistence(timeout: 10), missingMessage)
         title.tap()
         let play = app.buttons[playButtonTitle].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }

@@ -259,7 +259,7 @@ final class SoundEngine {
                 }
                 return
             }
-            // One failing file (an .ogg AVAudioFile cannot open, a 0-byte wav) used to abort the
+            // One failing file (a damaged .ogg, a 0-byte wav) used to abort the
             // whole load and kick the user out of the pack; Android's SoundPool skips it.
             var loaded = 0
             var firstError: Error?
@@ -323,7 +323,12 @@ final class SoundEngine {
     }
 
     static func loadAudioBuffer(from url: URL) throws -> AVAudioPCMBuffer {
-        let audioFile = try AVAudioFile(forReading: url)
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(forReading: url)
+        } catch _ where OggVorbisDecoder.isOgg(url) {
+            return try OggVorbisDecoder.decode(url)
+        }
         let format = audioFile.processingFormat
         let frameCount = try SoundFileLimits.sourceFrameCount(
             audioFile.length, sampleRate: format.sampleRate, channels: format.channelCount)
@@ -678,7 +683,9 @@ nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
         voice.remaining -= 1
         let final = voice.remaining == 0
         scheduled += 1
-        voice.node.scheduleBuffer(voice.buffer, at: nil, options: [], completionCallbackType: final ? .dataPlayedBack : .dataConsumed) { [weak self, weak voice] _ in
+        // Not .dataPlayedBack: that arms a player-node timer, and every later stop() of the node
+        // (the next pad press reusing it) waits on a semaphore for the timer's default-QoS thread.
+        voice.node.scheduleBuffer(voice.buffer, at: nil, options: [], completionCallbackType: final ? .dataRendered : .dataConsumed) { [weak self, weak voice] _ in
             self?.queue.async { [weak self, weak voice] in
                 guard let self, let voice else { return }
                 let key = ObjectIdentifier(voice.node)

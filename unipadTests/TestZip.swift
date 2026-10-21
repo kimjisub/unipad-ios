@@ -14,13 +14,21 @@ enum TestZip {
         archive(files, deflated: true, corruptingSizeOf: nil)
     }
 
-    private static func archive(_ files: [(name: String, data: Data)], deflated: Bool, corruptingSizeOf corrupted: String?) -> Data {
+    /// Raw entry names and flags, independent of the text encoding of each file's contents.
+    static func storedRawNames(_ files: [(name: Data, data: Data)], utf8Flag: Bool) -> Data {
+        archive(files.enumerated().map { (name: String($0.offset), data: $0.element.data) },
+                deflated: false, corruptingSizeOf: nil,
+                rawNames: files.map(\.name), flags: utf8Flag ? 0x0800 : 0)
+    }
+
+    private static func archive(_ files: [(name: String, data: Data)], deflated: Bool, corruptingSizeOf corrupted: String?,
+                                rawNames: [Data]? = nil, flags: UInt16 = 0x0800) -> Data {
         var archive = Data()
         var centralDirectory = Data()
         let method: UInt16 = deflated ? 8 : 0
 
-        for file in files {
-            let name = Data(file.name.utf8)
+        for (index, file) in files.enumerated() {
+            let name = rawNames?[index] ?? Data(file.name.utf8)
             let crc = crc32(file.data)
             let body = deflated ? deflate(file.data) : file.data
             let size = UInt32(file.data.count)
@@ -29,7 +37,7 @@ enum TestZip {
             let localHeaderOffset = UInt32(archive.count)
 
             archive.append(le32(0x0403_4B50))
-            archive.append(le16(20)); archive.append(le16(0x0800)); archive.append(le16(method))
+            archive.append(le16(20)); archive.append(le16(flags)); archive.append(le16(method))
             archive.append(le16(0)); archive.append(le16(0))
             archive.append(le32(crc)); archive.append(le32(compressedSize)); archive.append(le32(size))
             archive.append(le16(UInt16(name.count))); archive.append(le16(0))
@@ -38,7 +46,7 @@ enum TestZip {
 
             centralDirectory.append(le32(0x0201_4B50))
             centralDirectory.append(le16(20)); centralDirectory.append(le16(20))
-            centralDirectory.append(le16(0x0800)); centralDirectory.append(le16(method))
+            centralDirectory.append(le16(flags)); centralDirectory.append(le16(method))
             centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
             centralDirectory.append(le32(crc)); centralDirectory.append(le32(declaredSize))
             centralDirectory.append(le32(file.name == corrupted ? declaredSize : size))

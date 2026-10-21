@@ -87,12 +87,52 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   `ci/host-keys.sh`, which the script uses. It presses keys through the
   simulator's HID input with a pinned, checksum-verified AXe release. VoiceOver
   checks need Xcode 27 and iOS 27.
+- The script leaves out, by name, the checks it cannot set up, and lists why in
+  `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
+  the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
+  download, and iPad pointer input. Run those separately when a change touches them.
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
   parts together must name every class:
 
   ```bash
   ci/ui-tests.sh <simulator-udid> -only-testing:unipadUITests/PackWarningUITests -only-testing:unipadUITests/PlayChainLayoutTests
   ```
+
+## Play input checks on a Mac
+
+Before pushing play-input test changes, run the input edge UI checks on an iPhone
+and an iPad simulator, in addition to the build and unit checks above. Use a lent
+simulator's identifier as `SIMULATOR_UDID`:
+
+```sh
+xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+  -only-testing:unipadUITests/PlayInputEdgeUITests -parallel-testing-enabled NO \
+  -collect-test-diagnostics never
+```
+
+These checks generate their own packs without a shared library setup. On iPhone, exclude
+`unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain`
+with `-skip-testing:`; run it on iPad, where pointer interaction is supported.
+The suite generates its own looping packs and compares held and released pad
+pixels through rotation, pointer input and both `squareButton` settings. Rotation
+must cancel the held pad before the finger is lifted. Each scheduled step records both
+start and completion using a monotonic clock. Rotation and captures must complete before
+gesture invocation plus its requested duration minus 0.25 seconds, and before the
+command returns. A late observation fails instead of establishing held-input coverage.
+The result bundle keeps the timing records and the actual before/after rotation
+captures taken during the hold. `python3 -m unittest discover -s ci -v` also checks
+that the shared timing decision rejects a capture completed after release while the
+gesture command is still waiting to return. The whole UI target also
+includes these checks, but its other suites need their own fixture setup.
+`MultiTouchPlayTests.testScreenTurningUnderHeldFingersReleasesThemAndStartsNothing`
+and `testPadsMovingUnderAStillFingerReleaseItAndStartNothing` separately check
+sound requests and feedback through the pad view's input handlers.
+
+A second gesture during a held press is refused by XCUITest, so pointer/touch
+mixing and a margin held while tapping a chain remain unverified on screen.
+Resizing an iPad window during a held press is also unverified. Direct handler
+tests do not establish those screen paths or audible sound quality.
 
 ## App Store destination check
 
@@ -120,6 +160,28 @@ changing the verdict. `--source <file>` and `--expected-id <number>` allow
 checking a different source or expected app ID.
 
 ## Connecting a Launchpad
+
+For an automated simulator check, lend an iPhone simulator through your device
+harness and run:
+
+```bash
+python3 ci/virtual_launchpad_roundtrip.py --simulator <udid> \
+  --derived-data <scratch>/dd --output <scratch>/roundtrip
+```
+
+The output folder must be new. The command closes the normal app before sending
+test notes, installs a separate Debug test app,
+checks the connected MK2 label, sends notes 81 and 82 after the play screen is
+ready, and requires each note's receipt and nonzero LED reply. It runs MIDI-first
+and screen-first sessions and checks one local `play_first_input` event per
+session. Firebase uses local stubs; their `AnalyticsLocal` marker is required.
+Logs, command/PID records, shared pack/preference snapshots, screenshots in the
+test result bundles, and `result.json` remain in the output folder. A failed
+check exits nonzero. `--without-device` is a negative control and must fail the
+connection wait. Each wait and the overall run are bounded (20 minutes by
+default); cleanup runs on success, failure, and interruption. Return the lent
+device through your harness when finished. This opt-in check does not verify
+physical USB, hardware latency, or models other than MK2.
 
 1. Connect your Launchpad to your device using a USB adapter or USB-C cable.
 2. Open UniPad. The app scans and connects to supported hardware automatically.
