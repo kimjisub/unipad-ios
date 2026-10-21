@@ -17,7 +17,7 @@ nonisolated final class AppStoreLookupClient: Sendable {
 
     func lookup(country: String) async throws -> Data {
         var components = URLComponents(string: "https://itunes.apple.com/lookup")!
-        components.queryItems = [URLQueryItem(name: "id", value: "6760479102"),
+        components.queryItems = [URLQueryItem(name: "id", value: String(AppStoreApp.id)),
                                  URLQueryItem(name: "country", value: country)]
         let request = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
                                  timeoutInterval: 10)

@@ -267,9 +267,13 @@ The existing home-screen update link uses Apple's public [lookup API](https://pe
 for app `6760479102`. It reads the account's actual [StoreKit storefront](https://developer.apple.com/documentation/storekit/storefront),
 converts its ISO alpha-3 country code to alpha-2, and never substitutes the device's
 language, region, or another country's store. Missing or unrecognized countries
-leave the link hidden. The previous prompt is hidden while StoreKit resolves
-the current storefront and installation. Storefront changes cancel outstanding work, remove the
-saved result, and reject responses from the old country.
+leave the link hidden. A prompt already on screen stays while StoreKit reads the
+storefront again, and is hidden as soon as the storefront reads as another country or
+cannot be read, or the installation is not verified; at launch nothing is shown until the
+storefront has been read. Storefront changes cancel outstanding work, remove the
+saved result, and reject responses from the old country. A storefront or installation that
+cannot be read for a moment keeps the saved result, which is only used again for the same
+country and a verified installation.
 
 Only a verified production [AppTransaction](https://developer.apple.com/documentation/storekit/apptransaction/shared)
 with the running bundle identifier enables checks. Debug builds, TestFlight,
@@ -280,8 +284,10 @@ server-side list for older apps are unaffected.
 
 A response must contain exactly one software app with the expected app ID and
 running bundle ID, an App Store destination in the requested country, a numeric
-version, a minimum OS no newer than this device,
-and a `supportedDevices` entry for its device family. Numeric components compare
+version and minimum OS, and a `supportedDevices` list. A newer version is offered only
+when its minimum OS is no newer than this device and the list has an entry for its device
+family; otherwise the response means there is nothing to offer and is kept for a day like
+any other successful lookup. Numeric components compare
 without integer overflow (`4.2.9 < 4.2.10`, `4.3 == 4.3.0`). The lookup cannot prove
 installation eligibility: exact hardware capabilities, account restrictions,
 phased availability, and the final installation decision remain with the App Store.

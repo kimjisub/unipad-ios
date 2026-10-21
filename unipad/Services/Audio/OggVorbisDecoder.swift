@@ -3,7 +3,7 @@ import CVorbis
 
 /// Decodes Ogg Vorbis sounds, which `AVAudioFile` cannot open although the UniPack format
 /// recommends them, with the Xiph.Org reference decoder.
-enum OggVorbisDecoder {
+nonisolated enum OggVorbisDecoder {
     enum DecodeError: Error {
         /// `ov_fopen` refused the file (an `OV_*` code): not Vorbis, or its headers are damaged.
         case unreadable(Int32)
@@ -21,6 +21,16 @@ enum OggVorbisDecoder {
         return (try? handle.read(upToCount: 4)) == Data("OggS".utf8)
     }
 
+    /// The sound's length in frames as its last page declares it, and the format `decode` would
+    /// give, without decoding the audio. A damaged or forged file may declare a wrong length.
+    static func length(of url: URL) throws -> (frames: AVAudioFramePosition, format: AVAudioFormat) {
+        try withOpenFile(url) { file, _, format in
+            let frames = ov_pcm_total(file, -1)
+            guard frames >= 0 else { throw DecodeError.unreadable(Int32(truncatingIfNeeded: frames)) }
+            return (frames, format)
+        }
+    }
+
     /// The whole sound as deinterleaved Float32, the layout `AVAudioFile.processingFormat` gives.
     /// A damaged page inside the audio is skipped; a file cut short plays up to the cut. `admit` sees
     /// every frame capacity before it is allocated: first the length the file declares, then each
@@ -29,6 +39,14 @@ enum OggVorbisDecoder {
         _ url: URL,
         admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void = { _, _ in }
     ) throws -> AVAudioPCMBuffer {
+        try withOpenFile(url) { file, info, format in try decode(file, info: info, format: format, admitting: admit) }
+    }
+
+    /// Opens the file and reads its layout, refusing one playback cannot use.
+    private static func withOpenFile<T>(
+        _ url: URL,
+        _ body: (UnsafeMutablePointer<OggVorbis_File>, vorbis_info, AVAudioFormat) throws -> T
+    ) throws -> T {
         // libvorbis keeps pointers into this structure between calls, so its address must stay
         // stable for the entire decode (a Swift inout address is only valid for one call).
         let file = UnsafeMutablePointer<OggVorbis_File>.allocate(capacity: 1)
@@ -48,6 +66,15 @@ enum OggVorbisDecoder {
         guard SoundFileLimits.sampleRates.contains(format.sampleRate) else {
             throw SoundFileLimits.Violation.implausibleSampleRate(format.sampleRate)
         }
+        return try body(file, info, format)
+    }
+
+    private static func decode(
+        _ file: UnsafeMutablePointer<OggVorbis_File>,
+        info: vorbis_info,
+        format: AVAudioFormat,
+        admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void
+    ) throws -> AVAudioPCMBuffer {
         let channelCount = Int(format.channelCount)
         let maximumFrames = Int(SoundFileLimits.longestSound * format.sampleRate)
         let maximumCapacity = min(maximumFrames, Int(SoundFileLimits.maximumBufferBytes

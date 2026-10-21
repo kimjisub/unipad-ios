@@ -31,8 +31,7 @@ extension AppStoreUpdateChecker {
 #if DEBUG
                 return false
 #else
-                guard NumericAppVersion(version) != nil,
-                      let result = try? await AppTransaction.shared,
+                guard let result = try? await AppTransaction.shared,
                       case .verified(let transaction) = result else { return false }
                 return AppStoreInstallation.mayCheck(debug: false, version: version,
                     verifiedProduction: transaction.environment == .production && transaction.bundleID == bundleID)

@@ -126,12 +126,22 @@ final class UniPackAutoMapper {
 
     /// Use the same source limits as playback, so a skipped sound adds no wait.
     private nonisolated static func audioDurationMs(url: URL) throws -> Int {
-        let audioFile = try AVAudioFile(forReading: url)
-        let format = audioFile.processingFormat
+        let (length, format) = try soundLength(url)
         let sampleRate = format.sampleRate
         let frameCount = try SoundFileLimits.sourceFrameCount(
-            audioFile.length, sampleRate: sampleRate, channels: format.channelCount)
+            length, sampleRate: sampleRate, channels: format.channelCount)
         return Int(Double(frameCount) / sampleRate * 1000)
+    }
+
+    /// Playback opens Ogg Vorbis, which `AVAudioFile` cannot, with its own decoder; its length
+    /// comes from the stream without decoding the audio.
+    private nonisolated static func soundLength(_ url: URL) throws -> (frames: AVAudioFramePosition, format: AVAudioFormat) {
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            return (audioFile.length, audioFile.processingFormat)
+        } catch _ where OggVorbisDecoder.isOgg(url) {
+            return try OggVorbisDecoder.length(of: url)
+        }
     }
 }
 
