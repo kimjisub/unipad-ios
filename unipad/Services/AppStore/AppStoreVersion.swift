@@ -41,6 +41,11 @@ nonisolated enum AppStoreCountry {
     }
 }
 
+/// The home-screen link keeps its own literal URL: `ci/app_store_link.py` reads it from source.
+nonisolated enum AppStoreApp {
+    static let id: UInt64 = 6760479102
+}
+
 nonisolated enum AppStoreInstallation {
     static func mayCheck(debug: Bool, version: String, verifiedProduction: Bool) -> Bool {
         !debug && NumericAppVersion(version) != nil && verifiedProduction
@@ -58,19 +63,21 @@ nonisolated struct AppStoreUpdateContext: Codable, Equatable, Sendable {
         let response = try JSONDecoder().decode(LookupResponse.self, from: data)
         guard response.resultCount == 1, response.results.count == 1,
               let app = response.results.first,
-              app.trackId == 6760479102, app.bundleId == bundleID,
+              app.trackId == AppStoreApp.id, app.bundleId == bundleID,
               app.kind == "software", app.wrapperType == "software",
               let destination = URL(string: app.trackViewUrl), destination.scheme == "https",
               destination.host == "apps.apple.com",
               destination.pathComponents.dropFirst().first == country.lowercased(),
               let current = NumericAppVersion(version), let latest = NumericAppVersion(app.version),
               let minimumOS = NumericAppVersion(app.minimumOsVersion),
-              let currentOS = NumericAppVersion(operatingSystem), currentOS >= minimumOS,
-              ["iPhone", "iPad", "iPod"].contains(deviceFamily),
-              app.supportedDevices.contains(where: { $0.hasPrefix(deviceFamily) }) else {
+              let currentOS = NumericAppVersion(operatingSystem),
+              !app.supportedDevices.isEmpty else {
             throw LookupError.invalidResponse
         }
-        return latest > current
+        // A newer version this device cannot install is a valid answer with nothing to offer.
+        return latest > current && currentOS >= minimumOS
+            && ["iPhone", "iPad", "iPod"].contains(deviceFamily)
+            && app.supportedDevices.contains(where: { $0.hasPrefix(deviceFamily) })
     }
 
     enum LookupError: Error { case invalidResponse }

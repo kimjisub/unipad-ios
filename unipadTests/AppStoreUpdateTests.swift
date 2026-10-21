@@ -36,9 +36,10 @@ struct AppStoreUpdateTests {
         #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(version: "4.3b"), country: "KR") }
         #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(id: 1), country: "KR") }
         #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(bundle: "another.app"), country: "KR") }
-        #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(minOS: "17.1"), country: "KR") }
+        #expect(try context.hasUpdate(in: payload(minOS: "17.1"), country: "KR") == false)
+        #expect(try context.hasUpdate(in: payload(version: "4.2.9", minOS: "17.1"), country: "KR") == false)
+        #expect(try context.hasUpdate(in: payload(devices: ["iPadPro-iPadPro"]), country: "KR") == false)
         #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(minOS: "unknown"), country: "KR") }
-        #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(devices: ["iPadPro-iPadPro"]), country: "KR") }
         #expect(throws: (any Error).self) { try context.hasUpdate(in: payload(devices: []), country: "KR") }
         #expect(throws: (any Error).self) { try context.hasUpdate(in: Data(#"{"resultCount":0,"results":[]}"#.utf8), country: "KR") }
         #expect(throws: (any Error).self) { try context.hasUpdate(in: Data(#"{"resultCount":2,"results":[]}"#.utf8), country: "KR") }
@@ -104,17 +105,94 @@ struct AppStoreUpdateTests {
         #expect(probe.calls.count == 2)
     }
 
-    @Test func hidesThePreviousPromptWhileResolvingTheCurrentStorefront() async {
+    @Test func keepsAValidPromptWhileRecheckingTheSameStorefront() async {
+        let probe = Probe(data: payload())
+        let checker = make(probe)
+        await checker.refresh().value
+        #expect(checker.updateAvailable)
+        probe.holdStorefront = true
+        probe.holdInstallation = true
+        let pending = checker.refresh()
+        #expect(checker.updateAvailable)
+        await probe.waitUntil { probe.storefrontGate != nil }
+        #expect(checker.updateAvailable)
+        probe.releaseStorefront()
+        await probe.waitUntil { probe.installationGate != nil }
+        #expect(checker.updateAvailable)
+        probe.releaseInstallation()
+        await pending.value
+        #expect(checker.updateAvailable)
+        #expect(probe.calls == ["KR"])
+    }
+
+    @Test func hidesThePromptAsSoonAsTheStorefrontReadsAnotherCountry() async {
+        let probe = Probe(data: payload())
+        let checker = make(probe)
+        await checker.refresh().value
+        #expect(checker.updateAvailable)
+        probe.country = "USA"
+        probe.holdInstallation = true
+        let pending = checker.refresh()
+        await probe.waitUntil { probe.installationGate != nil }
+        #expect(!checker.updateAvailable)
+        #expect(checker.state == .unavailable)
+        #expect(probe.cache.load() == nil)
+        probe.releaseInstallation()
+        await pending.value
+        #expect(!checker.updateAvailable)
+        #expect(probe.calls == ["KR", "US"])
+    }
+
+    @Test func hidesThePromptButKeepsTheResultWhileTheStorefrontCannotBeRead() async {
         let probe = Probe(data: payload())
         let checker = make(probe)
         await checker.refresh().value
         #expect(checker.updateAvailable)
         probe.country = nil
-        let pending = checker.refresh()
+        await checker.refresh().value
         #expect(!checker.updateAvailable)
-        await pending.value
         #expect(checker.state == .unavailable)
+        probe.country = "KOR"
+        await checker.refresh().value
+        #expect(checker.updateAvailable)
         #expect(probe.calls == ["KR"])
+    }
+
+    @Test func keepsTheResultWhileTheInstallationCannotBeVerified() async {
+        let probe = Probe(data: payload())
+        let first = make(probe)
+        await first.refresh().value
+        #expect(first.updateAvailable)
+        probe.production = false
+        let unverified = make(probe)
+        await unverified.refresh().value
+        #expect(!unverified.updateAvailable)
+        #expect(probe.cache.load() != nil)
+        probe.production = true
+        let verified = make(probe)
+        await verified.refresh().value
+        #expect(verified.updateAvailable)
+        #expect(probe.calls == ["KR"])
+    }
+
+    @Test func cachesANewerVersionThisDeviceCannotInstallAsNoPromptForADay() async {
+        for data in [payload(minOS: "17.1"), payload(devices: ["iPadPro-iPadPro"])] {
+            let probe = Probe(data: data)
+            let checker = make(probe)
+            await checker.refresh().value
+            #expect(checker.state == .current)
+            #expect(!checker.updateAvailable)
+            probe.now += 86_399
+            await checker.refresh().value
+            let next = make(probe)
+            await next.refresh().value
+            #expect(next.state == .current)
+            #expect(probe.calls == ["KR"])
+            probe.now += 1
+            await checker.refresh().value
+            #expect(probe.calls == ["KR", "KR"])
+            #expect(checker.state == .current)
+        }
     }
 
     @Test func neverUsesAnotherCountrysCacheOrAnUnknownCountry() async {
@@ -187,7 +265,7 @@ struct AppStoreUpdateTests {
     }
 
     @Test func invalidDataAndOfflineFailuresNeverBecomeCurrent() async {
-        for data in [Data(), Data("broken".utf8), payload(id: 0), payload(minOS: "99.0")] {
+        for data in [Data(), Data("broken".utf8), payload(id: 0), payload(minOS: "unknown")] {
             let probe = Probe(data: data)
             let checker = make(probe)
             await checker.refresh().value
@@ -206,7 +284,7 @@ struct AppStoreUpdateTests {
 
     private func make(_ probe: Probe) -> AppStoreUpdateChecker {
         AppStoreUpdateChecker(context: context, cache: probe.cache, now: { probe.now },
-                              installationAllowed: { probe.production }, storefront: { probe.country },
+                              installationAllowed: { await probe.installation() }, storefront: { await probe.storefront() },
                               lookup: { country in try await probe.lookup(country) })
     }
 
@@ -232,8 +310,30 @@ struct AppStoreUpdateTests {
         var hold = false
         let cache = AppStoreUpdateCache(defaults: UserDefaults(suiteName: "AppStoreUpdateTests-\(UUID())")!)
         var continuations: [String: CheckedContinuation<Data, any Error>] = [:]
+        var holdStorefront = false
+        var holdInstallation = false
+        var storefrontGate: CheckedContinuation<Void, Never>?
+        var installationGate: CheckedContinuation<Void, Never>?
 
         init(data: Data) { self.data = data }
+        func storefront() async -> String? {
+            if holdStorefront { await withCheckedContinuation { storefrontGate = $0 } }
+            return country
+        }
+        func installation() async -> Bool {
+            if holdInstallation { await withCheckedContinuation { installationGate = $0 } }
+            return production
+        }
+        func releaseStorefront() {
+            holdStorefront = false
+            storefrontGate?.resume()
+            storefrontGate = nil
+        }
+        func releaseInstallation() {
+            holdInstallation = false
+            installationGate?.resume()
+            installationGate = nil
+        }
         func lookup(_ country: String) async throws -> Data {
             calls.append(country)
             if hold {
@@ -246,11 +346,14 @@ struct AppStoreUpdateTests {
             continuations.removeValue(forKey: country)?.resume(returning: data)
         }
         func waitForCall(count: Int = 1) async {
+            await waitUntil { self.calls.count >= count }
+        }
+        func waitUntil(_ condition: () -> Bool) async {
             for _ in 0..<10_000 {
-                if calls.count >= count { return }
+                if condition() { return }
                 await Task.yield()
             }
-            Issue.record("lookup never started")
+            Issue.record("the awaited step never started")
         }
     }
 }
