@@ -71,21 +71,17 @@ final class AppStoreUpdateChecker {
         generation += 1
         task?.cancel()
         task = nil
-        expirationTask?.cancel()
-        state = .unavailable
-        validUntil = nil
+        hide()
         country = next
         hasReadCountry = true
         cache.save(nil)
         _ = startCheck { code }
     }
 
+    /// A result already on screen came from a storefront read in this process, so it stays while
+    /// the same storefront is read again. A new checker shows nothing until it has read one.
     private func startCheck(readCountry: @escaping () async -> String?) -> Task<Void, Never> {
         if let task { return task }
-        // The current account country is not known yet, even if yesterday's lookup is fresh.
-        state = .unavailable
-        validUntil = nil
-        expirationTask?.cancel()
         let requestedGeneration = generation
         let checking = Task { [weak self] in
             guard let self else { return }
@@ -99,20 +95,17 @@ final class AppStoreUpdateChecker {
     private func check(readCountry: () async -> String?, generation requestedGeneration: Int) async {
         let nextCountry = AppStoreCountry.lookupCode(await readCountry())
         guard generation == requestedGeneration, !Task.isCancelled else { return }
-        if hasReadCountry && country != nextCountry { cache.save(nil) }
+        if nextCountry == nil || country != nextCountry { hide() }
+        // An unreadable storefront or installation can be momentary (offline, signed out). The
+        // saved result stays: it is only read again for the same country and a verified install.
+        if let country, let nextCountry, country != nextCountry { cache.save(nil) }
         country = nextCountry
         hasReadCountry = true
-        state = .unavailable
-        validUntil = nil
-        expirationTask?.cancel()
-        guard let country else {
-            cache.save(nil)
-            return
-        }
+        guard let country else { return }
         let allowed = await installationAllowed()
         guard generation == requestedGeneration, !Task.isCancelled else { return }
         guard allowed else {
-            cache.save(nil)
+            hide()
             return
         }
 
@@ -126,14 +119,14 @@ final class AppStoreUpdateChecker {
                 return
             }
             if entry.payload == nil, age < Self.failureRetry {
-                state = .failed
+                hide(as: .failed)
                 return
             }
         }
         // Drop expired or mismatched entries before the network starts. An error must never
         // resurrect a previous prompt or be described as an up-to-date result.
         cache.save(nil)
-        state = .checking
+        hide(as: .checking)
         do {
             let payload = try await lookup(country)
             try Task.checkCancellation()
@@ -151,10 +144,17 @@ final class AppStoreUpdateChecker {
         }
     }
 
+    private func hide(as hidden: State = .unavailable) {
+        state = hidden
+        validUntil = nil
+        expirationTask?.cancel()
+    }
+
     private func apply(available: Bool, checkedAt: Date) {
         state = available ? .available : .current
         let deadline = checkedAt.addingTimeInterval(Self.successLifetime)
         validUntil = deadline
+        expirationTask?.cancel()
         expirationTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSince(self?.now() ?? deadline)))) }
             catch { return }

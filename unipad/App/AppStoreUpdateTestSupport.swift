@@ -19,10 +19,10 @@ enum AppStoreUpdateTestSupport {
                 throw URLError(.timedOut)
             default:
                 return try JSONSerialization.data(withJSONObject: ["resultCount": 1, "results": [[
-                    "trackId": 6760479102, "bundleId": context.bundleID,
+                    "trackId": AppStoreApp.id, "bundleId": context.bundleID,
                     "version": mode == "available" ? "999.0" : context.version,
                     "minimumOsVersion": "17.0", "kind": "software", "wrapperType": "software",
-                    "trackViewUrl": "https://apps.apple.com/kr/app/unipad/id6760479102",
+                    "trackViewUrl": "https://apps.apple.com/kr/app/unipad/id\(AppStoreApp.id)",
                     "supportedDevices": ["iPhone17Pro-iPhone17Pro", "iPadPro-iPadPro"],
                 ]]])
             }
