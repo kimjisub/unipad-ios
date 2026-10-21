@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import Testing
 
@@ -36,25 +35,13 @@ struct ConformanceJSONTests {
         #expect(JSONValue.object([:]).serialized() == "{}")
     }
 
-    private func footprint() throws -> UInt64 {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        #expect(result == KERN_SUCCESS)
-        return info.phys_footprint
-    }
-
     @Test func manyStringsDoNotRetainLargeSerializationTemporaries() throws {
         try autoreleasepool {
             let value = JSONValue.array(Array(repeating: .object(["file": "sounds/kick.wav"]), count: 100_000))
             _ = JSONValue.string("warmup").serialized()
-            let before = try footprint()
+            let before = try #require(TestProcessMemory.physicalFootprint(), "could not measure the process footprint")
             let text = value.serialized()
-            let after = try footprint()
+            let after = try #require(TestProcessMemory.physicalFootprint(), "could not measure the process footprint")
             #expect(text.utf8.count == 2_800_001)
             #expect(after < before + 64 * 1024 * 1024,
                     "serializing 100,000 small objects retained \(after > before ? after - before : 0) bytes")
