@@ -178,20 +178,59 @@ enum JSONValue: Equatable {
 
     /// Compact JSON with sorted keys, so the same value always prints the same.
     func serialized() -> String {
+        var text = ""
+        appendJSON(to: &text)
+        return text
+    }
+
+    private func appendJSON(to text: inout String) {
         switch self {
-        case .null: return "null"
-        case .bool(let value): return value ? "true" : "false"
-        case .int(let value): return String(value)
-        case .string(let value):
-            let data = (try? JSONSerialization.data(withJSONObject: [value], options: [])) ?? Data("[\"\"]".utf8)
-            let text = String(decoding: data, as: UTF8.self)
-            return String(text.dropFirst().dropLast())
-        case .array(let values): return "[" + values.map { $0.serialized() }.joined(separator: ",") + "]"
+        case .null: text += "null"
+        case .bool(let value): text += value ? "true" : "false"
+        case .int(let value): text += String(value)
+        case .string(let value): Self.appendQuoted(value, to: &text)
+        case .array(let values):
+            text += "["
+            for (index, value) in values.enumerated() {
+                if index > 0 { text += "," }
+                value.appendJSON(to: &text)
+            }
+            text += "]"
         case .object(let values):
-            return "{" + values.keys.sorted().map { key in
-                JSONValue.string(key).serialized() + ":" + values[key]!.serialized()
-            }.joined(separator: ",") + "}"
+            text += "{"
+            for (index, key) in values.keys.sorted().enumerated() {
+                if index > 0 { text += "," }
+                Self.appendQuoted(key, to: &text)
+                text += ":"
+                values[key]!.appendJSON(to: &text)
+            }
+            text += "}"
         }
+    }
+
+    /// Match JSONSerialization's default escaping without creating autoreleased Foundation
+    /// objects for every key and string in a pack. Keep Unicode scalars in their original form.
+    private static func appendQuoted(_ value: String, to text: inout String) {
+        text += "\""
+        for scalar in value.unicodeScalars {
+            switch scalar.value {
+            case 0x22: text += "\\\""
+            case 0x5C: text += "\\\\"
+            case 0x2F: text += "\\/"
+            case 0x08: text += "\\b"
+            case 0x0C: text += "\\f"
+            case 0x0A: text += "\\n"
+            case 0x0D: text += "\\r"
+            case 0x09: text += "\\t"
+            case 0..<0x20:
+                text += "\\u00"
+                let hex = Array("0123456789abcdef".utf8)
+                text.unicodeScalars.append(Unicode.Scalar(hex[Int(scalar.value >> 4)]))
+                text.unicodeScalars.append(Unicode.Scalar(hex[Int(scalar.value & 0xF)]))
+            default: text.unicodeScalars.append(scalar)
+            }
+        }
+        text += "\""
     }
 }
 
