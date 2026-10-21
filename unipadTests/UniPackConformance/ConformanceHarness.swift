@@ -61,7 +61,7 @@ enum ConformanceHarness {
         func has(_ pattern: String) -> Bool { message.range(of: pattern, options: .regularExpression) != nil }
         let kind: String
         if has(#"format is (incorrect|not found)"#) { kind = "format" }
-        else if has(#"\b(chain|x|y|loop|coordinate|delay) is incorrect\b|out of range"#) { kind = "range" }
+        else if has(#"\b(chain|x|y|loop|wormhole|coordinate|delay) is incorrect\b|out of range"#) { kind = "range" }
         else if has(#"was not found|directory not found|doesn't exist"#) { kind = "missing-file" }
         else if has(#"was missing"#) { kind = "missing-field" }
         else { kind = "other(\(message))" }
