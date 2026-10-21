@@ -132,4 +132,44 @@ struct PlayLayoutTests {
         }
     }
 
+
+    /// `squareButton=false` asks the pad view to stretch its cells to the grid, but PlayView sizes
+    /// the grid from square cells, so the pads the screen draws and hits are the same either way.
+    @MainActor
+    @Test(arguments: [(4, 3), (8, 8)])
+    func squareButtonFalseDrawsTheSameSquarePads(rows: Int, columns: Int) async throws {
+        for size in [CGSize(width: 750, height: 381), CGSize(width: 1194, height: 814)] {
+            let l = PlayLayout(viewSize: size, buttonX: rows, buttonY: columns, reservedWidth: menuStrip)
+            let square = try padTouchGrid(rows: rows, columns: columns, square: true, in: l)
+            let rect = try padTouchGrid(rows: rows, columns: columns, square: false, in: l)
+            #expect(rect == square, "\(rows)x\(columns) in \(size)")
+            #expect(square.cell == CGSize(width: l.cellSize, height: l.cellSize), "\(rows)x\(columns) in \(size)")
+            #expect(square.origin == .zero, "\(rows)x\(columns) in \(size)")
+        }
+    }
+
+    private struct PadTouchGrid: Equatable {
+        let origin: CGPoint
+        let cell: CGSize
+    }
+
+    /// The cells the pad view hits, as PlayView frames it.
+    @MainActor
+    private func padTouchGrid(rows: Int, columns: Int, square: Bool, in l: PlayLayout) throws -> PadTouchGrid {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: l.gridWidth, height: l.gridHeight)
+        let grid = PadGridView(columns: columns, rows: rows, isSquareButton: square, padColors: [], padLedColors: [],
+                               padItems: [], onPadTouch: { _, _, _, _ in })
+            .frame(width: l.gridWidth, height: l.gridHeight)
+        window.rootViewController = UIHostingController(rootView: grid)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        func find(_ view: UIView) -> MultiTouchUIView? {
+            (view as? MultiTouchUIView) ?? view.subviews.lazy.compactMap(find).first
+        }
+        let pads = try #require(find(window))
+        return PadTouchGrid(origin: pads.gridOrigin, cell: CGSize(width: pads.cellWidth, height: pads.cellHeight))
+    }
 }

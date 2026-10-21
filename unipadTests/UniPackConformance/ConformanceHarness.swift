@@ -66,10 +66,24 @@ enum ConformanceHarness {
         return "\(section):\(kind)"
     }
 
+    /// Whether files whose names differ only in letter case are different files where the packs are
+    /// written. Where they are not, a parser that opens only the exact name of `info` passes too.
+    static let caseSensitiveFileSystem: Bool = {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil,
+              FileManager.default.createFile(atPath: dir.appendingPathComponent("a").path, contents: Data()) else { return false }
+        return !FileManager.default.fileExists(atPath: dir.appendingPathComponent("A").path)
+    }()
+
     private static func soundName(_ file: URL, root: URL) -> String {
         let base = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
         let path = file.resolvingSymlinksInPath().path
-        return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : file.lastPathComponent
+        // The parser finds the sounds folder whatever its letter case; the name below it is the file's own.
+        let name = path.lowercased().hasPrefix(base.lowercased()) ? String(path.dropFirst(base.count)) : file.lastPathComponent
+        // File URLs give names decomposed (NFD); results carry them composed (NFC), as the corpus writes them.
+        // Swift compares the two forms as equal, the other platforms and report.mjs do not.
+        return name.precomposedStringWithCanonicalMapping
     }
 
     static func parseResult(_ pack: UniPack, root: URL) -> JSONValue {

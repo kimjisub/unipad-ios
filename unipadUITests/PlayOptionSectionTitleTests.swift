@@ -1,8 +1,8 @@
 import XCTest
 
 /// The play screen's option panel names its sections in the app's language.
-/// Install Fixtures/PlaybackStop in Documents/UniPack before running: the panel only
-/// shows its play mode section for a pack with autoplay, which that fixture has.
+/// Opens the Playback Stop fixture in a library of its own: the panel only shows its play
+/// mode section for a pack with autoplay, which that fixture has.
 final class PlayOptionSectionTitleTests: XCTestCase {
 
     private struct Language {
@@ -30,7 +30,7 @@ final class PlayOptionSectionTitleTests: XCTestCase {
     func testSectionTitlesFollowAppLanguage() {
         for language in Self.languages {
             app = XCUIApplication()
-            app.launchArguments += UITestSupport.launchArguments(language: language.code, locale: language.locale)
+            app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments(language: language.code, locale: language.locale)
             app.launch()
             UITestSupport.dismissSystemAlerts()
             openOptionPanel(language)

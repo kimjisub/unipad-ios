@@ -16,15 +16,30 @@ enum UITestSupport {
     }
 
     static func launchArguments(language: String, locale: String) -> [String] {
-        var arguments = [
+        isReleaseSuite
+            ? isolatedLibraryLaunchArguments(language: language, locale: locale)
+            : sharedLibraryLaunchArguments(language: language, locale: locale)
+    }
+
+    /// The run asked every launch for a library of its own (UNIPAD_RELEASE_SUITE=1). The store
+    /// then answers from fixtures, so nothing in such a run reaches the real store.
+    static var isReleaseSuite: Bool {
+        ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1"
+    }
+
+    /// For checks that need known packs whatever the simulator holds: the app gets a library of
+    /// its own for this launch, filled with the fixture packs ReleaseTestSupport generates, and a
+    /// store that answers from fixtures. The simulator's own packs are neither used nor changed.
+    static func isolatedLibraryLaunchArguments(language: String = "en", locale: String = "en_US") -> [String] {
+        sharedLibraryLaunchArguments(language: language, locale: locale) + ["-UniPadReleaseTest", UUID().uuidString]
+    }
+
+    private static func sharedLibraryLaunchArguments(language: String, locale: String) -> [String] {
+        [
             "-UniPadFirebaseLocalOnly", "YES",
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
         ]
-        if ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" {
-            arguments += ["-UniPadReleaseTest", UUID().uuidString]
-        }
-        return arguments
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself
@@ -269,15 +284,19 @@ enum UITestSupport {
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
     }
 
-    /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
-    /// Documents/UniPack first; a missing fixture fails the check.
+    /// Opens the Playback Stop fixture's play screen from home. Launch with
+    /// `isolatedLibraryLaunchArguments`, whose library has the fixture; a missing fixture fails the check.
     static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {
+        openPack(titled: "Playback Stop Fixture", in: app, playButtonTitle: playButtonTitle,
+                 missingMessage: "the Playback Stop fixture was not prepared")
+    }
+
+    /// Opens the play screen of the pack whose title contains `packTitle` from home.
+    static func openPack(titled packTitle: String, in app: XCUIApplication, playButtonTitle: String = "Play",
+                         missingMessage: String) {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
-        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Playback Stop Fixture")).firstMatch
-        if !title.exists {
-            searchForPack("Playback Stop Fixture", in: app)
-        }
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install Fixtures/PlaybackStop first")
+        let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", packTitle)).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), missingMessage)
         title.tap()
         let play = app.buttons[playButtonTitle].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { title.tap() }
