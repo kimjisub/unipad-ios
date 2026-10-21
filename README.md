@@ -137,10 +137,14 @@ It downloads a local fixture, accepts the fresh notification permission prompt,
 requires the prompt to disappear, and opens synthetic notifications from
 Notification Center's Open swipe action both while the app is in the background
 and after termination.
-Screenshots and assertions require the app to return to its pack list. Runtime
-logs must show a new local-only process with no local-only launch argument.
-Commands, exit codes, runtime logs and `UI.xcresult` are saved in the output
-directory. Return the simulator through your harness immediately afterward.
+Screenshots and assertions require the app to return to home with the launch
+splash gone and home taking touches: the pack list after the background return,
+and the test app's own empty library after the cold launch, which the system
+starts without the test's library argument. Runtime logs must show a new
+local-only process with no local-only launch argument. `--timeout` (default 300
+seconds) bounds the UI test. Commands, exit codes, runtime logs and `UI.xcresult`
+are saved in the output directory. Return the simulator through your harness
+immediately afterward.
 This checks simulator notification handling, not real APNs or Firebase delivery.
 The UI test skips unless invoked through this command.
 

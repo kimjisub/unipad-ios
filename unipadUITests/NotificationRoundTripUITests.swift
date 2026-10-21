@@ -15,8 +15,15 @@ final class NotificationRoundTripUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
-        defer { app.terminate() }
-        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
+        let orientation = XCUIDevice.shared.orientation
+        defer {
+            app.terminate()
+            XCUIDevice.shared.orientation = orientation
+        }
+        // Evidence that the splash can be found at all, so its absence later means something.
+        try Data("splash_seen=\(app.descendants(matching: .any)["splash"].exists ? "YES" : "NO")\n".utf8)
+            .write(to: directory.appendingPathComponent("launched"), options: .atomic)
+        waitForHome(in: app, after: "launch", withPacks: true)
         let list = UITestSupport.openStore(in: app, testCase: self)
         let row = UITestSupport.storeRows(in: list)
             .containing(NSPredicate(format: "label == %@", "Downloaded Fixture")).firstMatch
@@ -36,7 +43,7 @@ final class NotificationRoundTripUITests: XCTestCase {
         XCTAssertTrue(row.staticTexts["Downloaded"].waitForExistence(timeout: 30))
         UITestSupport.attachScreenshot("notification-permission-dismissed", to: self)
         UITestSupport.tapBack(in: app)
-        XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 15))
+        waitForHome(in: app, after: "download", withPacks: true)
 
         for mode in ["background", "cold"] {
             if mode == "cold" {
@@ -84,10 +91,33 @@ final class NotificationRoundTripUITests: XCTestCase {
             // Use the notification's Open swipe action, never an app activation fallback.
             card.swipeRight(velocity: .slow)
             XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "\(mode) notification did not bring the app forward")
-            XCTAssertTrue(app.descendants(matching: .any)["main.packList"].waitForExistence(timeout: 20),
-                          "pack list did not appear after \(mode) notification")
-            UITestSupport.attachScreenshot("notification-\(mode)-pack-list", to: self)
-            try Data().write(to: directory.appendingPathComponent("returned-\(mode)"), options: .atomic)
+            // The system starts the app without test arguments, so a cold launch opens the
+            // test app's own library, which is empty; the download went to the isolated one.
+            let splashSeen = waitForHome(in: app, after: "\(mode) notification", withPacks: mode == "background")
+            UITestSupport.attachScreenshot("notification-\(mode)-home", to: self)
+            try Data("splash_seen=\(splashSeen ? "YES" : "NO")\n".utf8)
+                .write(to: directory.appendingPathComponent("returned-\(mode)"), options: .atomic)
         }
+    }
+
+    /// The launch splash is drawn over home, and home is in the element tree underneath
+    /// it, so home's elements existing is no proof that home is on screen.
+    /// Returns whether the splash was still up when the wait began.
+    @MainActor
+    @discardableResult
+    private func waitForHome(in app: XCUIApplication, after step: String, withPacks: Bool) -> Bool {
+        let splash = app.descendants(matching: .any)["splash"]
+        let seen = splash.exists
+        XCTAssertTrue(splash.waitForNonExistence(timeout: 20), "splash still covered home after \(step)")
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 20),
+                      "home could not be touched after \(step)")
+        if withPacks {
+            XCTAssertTrue(UITestSupport.waitUntilHittable(app.scrollViews["main.packList"], timeout: 20),
+                          "pack list could not be touched after \(step)")
+        } else {
+            XCTAssertTrue(UITestSupport.revealHomeCard(.download, in: app, timeout: 20).isHittable,
+                          "empty library home could not be touched after \(step)")
+        }
+        return seen
     }
 }
