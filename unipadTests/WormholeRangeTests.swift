@@ -25,19 +25,27 @@ struct WormholeRangeTests {
         Case(column: "0", wormhole: Sound.noWormhole, warns: false),
     ]
 
-    @Test(arguments: cases)
-    func movesToTheNearestChainThePackHas(_ sample: Case) throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: "WormholeRangeTests-\(UUID().uuidString)", directoryHint: .isDirectory)
-        defer { try? FileManager.default.removeItem(at: root) }
-        try PlayUsageScenario.writePack(to: root, keySound: "1 1 1 a.wav 1 \(sample.column)\n", autoPlay: "o 1 1\no 1 2\n")
-        try "title=Wormhole\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=\(Self.chains)\n"
+    private static func loadPack(at root: URL, keySound: String) throws -> UniPackFolder {
+        try PlayUsageScenario.writePack(to: root, keySound: keySound, autoPlay: "o 1 1\no 1 2\n")
+        try "title=Wormhole\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=\(chains)\n"
             .write(to: root.appending(path: "info"), atomically: true, encoding: .utf8)
-
         let pack = UniPackFolder(rootFolder: root)
         pack.checkFile()
         pack.loadInfo()
         pack.loadDetail()
+        return pack
+    }
+
+    private static func temporaryRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appending(path: "WormholeRangeTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    }
+
+    @Test(arguments: cases)
+    func movesToTheNearestChainThePackHas(_ sample: Case) throws {
+        let root = Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pack = try Self.loadPack(at: root, keySound: "1 1 1 a.wav 1 \(sample.column)\n")
 
         #expect(!pack.criticalError)
         let sound = try #require(pack.soundGet(c: 0, x: 0, y: 0))
@@ -50,6 +58,24 @@ struct WormholeRangeTests {
             return nil
         }
         #expect(currentChains.allSatisfy { (0..<Self.chains).contains($0) })
+    }
+
+    /// The wormhole is checked before chain, x, y and the sound file, as Android and the web do, so
+    /// a line skipped for another field still reports its wormhole.
+    @Test
+    func aLineSkippedForAnotherFieldStillReportsItsWormhole() throws {
+        let root = Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pack = try Self.loadPack(at: root, keySound: "5 1 1 a.wav 1 9\n1 1 1 none.wav 1 9\n1 1 2 a.wav\n")
+
+        #expect(pack.errorDetail?.components(separatedBy: "\n") == [
+            "keySound : [5 1 1 a.wav 1 9] wormhole is incorrect",
+            "keySound : [5 1 1 a.wav 1 9] chain is incorrect",
+            "keySound : [1 1 1 none.wav 1 9] wormhole is incorrect",
+            "keySound : [1 1 1 none.wav 1 9] sound was not found",
+        ])
+        #expect(pack.soundGet(c: 0, x: 0, y: 0) == nil, "a skipped line must not place a sound")
+        #expect(pack.soundGet(c: 0, x: 0, y: 1) != nil)
     }
 }
 

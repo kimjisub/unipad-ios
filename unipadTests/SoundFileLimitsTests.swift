@@ -123,4 +123,52 @@ struct SoundFileLimitsTests {
             try SoundFileLimits.resampledFrameCount(frames, from: 8_000, to: 48_000, channels: 1)
         }
     }
+
+    @Test(arguments: [AVAudioChannelCount(1), 2, 8])
+    func aPackSpendsUpToItsLimitAndNoFurther(channels: AVAudioChannelCount) throws {
+        let frames = AVAudioFrameCount(1_000 / (UInt64(channels) * 4))
+        var pack = SoundFileLimits.PackBudget(limit: 3 * UInt64(frames) * UInt64(channels) * 4)
+        for _ in 0..<3 {
+            try pack.spend(frames, channels: channels)
+        }
+        #expect(pack.spentBytes == pack.limit)
+        try pack.check(0, channels: channels)
+        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+            try pack.check(1, channels: channels)
+        }
+        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+            try pack.spend(1, channels: channels)
+        }
+        #expect(pack.spentBytes == pack.limit, "a refused sound was counted")
+    }
+
+    @Test func extremeCountsCannotOverflowThePackBudget() {
+        var pack = SoundFileLimits.PackBudget()
+        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+            try pack.spend(.max, channels: .max)
+        }
+        #expect(throws: SoundFileLimits.Violation.invalidChannelCount) {
+            try pack.check(0, channels: 0)
+        }
+        #expect(pack.spentBytes == 0)
+    }
+
+    /// Ten-minute sounds pass every per-sound limit; the pack refuses the third.
+    @Test(arguments: [44_100.0, 48_000])
+    func aPackHoldsTwoTenMinuteSoundsButNotThree(sampleRate: Double) throws {
+        let frames = try SoundFileLimits.resampledFrameCount(
+            AVAudioFrameCount(SoundFileLimits.longestSound * sampleRate), from: sampleRate, to: sampleRate, channels: 2)
+        var pack = SoundFileLimits.PackBudget()
+        try pack.spend(frames, channels: 2)
+        try pack.spend(frames, channels: 2)
+        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+            try pack.check(frames, channels: 2)
+        }
+    }
+
+    /// The largest real pack, counted by the lengths its headers claim, must still open whole.
+    @Test func theLargestRealPackFits() throws {
+        var pack = SoundFileLimits.PackBudget()
+        try pack.spend(AVAudioFrameCount(334_000_000 / 8), channels: 2)
+    }
 }

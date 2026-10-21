@@ -22,8 +22,13 @@ enum OggVorbisDecoder {
     }
 
     /// The whole sound as deinterleaved Float32, the layout `AVAudioFile.processingFormat` gives.
-    /// A damaged page inside the audio is skipped; a file cut short plays up to the cut.
-    static func decode(_ url: URL) throws -> AVAudioPCMBuffer {
+    /// A damaged page inside the audio is skipped; a file cut short plays up to the cut. `admit` sees
+    /// every frame capacity before it is allocated: first the length the file declares, then each
+    /// larger one a file holding more than it declares needs.
+    static func decode(
+        _ url: URL,
+        admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void = { _, _ in }
+    ) throws -> AVAudioPCMBuffer {
         // libvorbis keeps pointers into this structure between calls, so its address must stay
         // stable for the entire decode (a Swift inout address is only valid for one call).
         let file = UnsafeMutablePointer<OggVorbis_File>.allocate(capacity: 1)
@@ -52,8 +57,8 @@ enum OggVorbisDecoder {
         // Ordinary files decode directly into their final buffer. A truncated or forged file can
         // underreport its total: grow only as needed, always within the actual frame limit.
         let initialCapacity = declaredFrames > 0 ? Int(declaredFrames) : Int(readFrames)
-        _ = try SoundFileLimits.sourceFrameCount(AVAudioFramePosition(initialCapacity),
-            sampleRate: format.sampleRate, channels: format.channelCount)
+        try admit(format, try SoundFileLimits.sourceFrameCount(AVAudioFramePosition(initialCapacity),
+            sampleRate: format.sampleRate, channels: format.channelCount))
         guard var buffer = AVAudioPCMBuffer(pcmFormat: format,
                                             frameCapacity: AVAudioFrameCount(initialCapacity)) else {
             throw DecodeError.noAudio
@@ -74,6 +79,7 @@ enum OggVorbisDecoder {
                 sampleRate: format.sampleRate, channels: format.channelCount)
             if needed > Int(buffer.frameCapacity) {
                 let capacity = min(maximumCapacity, max(needed, Int(buffer.frameCapacity) * 2))
+                try admit(format, AVAudioFrameCount(capacity))
                 guard let grown = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(capacity)),
                       let destination = grown.floatChannelData, let source = buffer.floatChannelData else {
                     throw DecodeError.noAudio
