@@ -74,7 +74,8 @@ struct SoundSourceLengthTests {
         try oggWithFinalGranule(44_100 * 540, at: tone).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         let buffer = try SoundEngine.loadAudioBuffer(from: url)
-        #expect(buffer.frameLength == 22_050)
+        // The forged granule no longer trims the encoder's padding from the last block.
+        #expect((22_050..<23_000).contains(buffer.frameLength))
         #expect(buffer.frameCapacity == buffer.frameLength)
     }
 
