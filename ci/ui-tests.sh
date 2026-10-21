@@ -25,6 +25,8 @@ selection=("$@")
 not_run=(
   # Needs the virtual MIDI device: run ci/virtual_launchpad_roundtrip.py.
   -skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests
+  # Needs a fresh install for the notification permission: run ci/notification_roundtrip.py.
+  -skip-testing:unipadUITests/NotificationRoundTripUITests
   # Needs a real sample pack installed and named in UNIPAD_LED_TIMING_VISUAL_PACK.
   -skip-testing:unipadUITests/LedAutoplayUITests
   # Downloads from the real store over the network; this script answers from fixtures.

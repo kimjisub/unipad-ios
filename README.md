@@ -91,6 +91,7 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   checks need Xcode 27 and iOS 27.
 - The script leaves out, by name, the checks it cannot set up, and lists why in
   `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
+  the notification permission round trip (`ci/notification_roundtrip.py`),
   the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
   download, and iPad pointer input. Run those separately when a change touches them.
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
