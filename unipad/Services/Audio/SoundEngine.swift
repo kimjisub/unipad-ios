@@ -41,6 +41,11 @@ final class SoundEngine {
     private var nodeIsLoop: [Bool] = []
     private var nodeStartOrder: [Int] = []
     private var startCounter = 0
+    // How many times a recovery has started the engine again, and per node the count it last played
+    // under. A node that ran out of buffers before the engine stopped stays silent after the restart
+    // until it is stopped. Counted on the worker, read on the main thread.
+    private let engineRestarts = OSAllocatedUnfairLock(initialState: 0)
+    private var nodeEngineRun: [Int] = []
 
     // stopID[chain][x][y] tracks a unique play ID (like Android's stream ID) for stopping
     private var stopID: [[[Int]]]
@@ -92,6 +97,7 @@ final class SoundEngine {
     /// Test observations for finite-loop completion and stale callback cancellation.
     private let repeatScheduler = FiniteRepeatScheduler()
     var repeatedBuffersScheduled: Int { repeatScheduler.buffersScheduled }
+    var playerNodesStopped: Int { repeatScheduler.nodesStopped }
     var activeVoiceCount: Int { nodePlayID.filter { $0 != 0 }.count }
     var activePlayIDs: Set<Int> { Set(nodePlayID.filter { $0 != 0 }) }
 
@@ -130,10 +136,14 @@ final class SoundEngine {
         // and must not keep it alive.
         let engine = self.engine
         let worker = self.worker
+        let engineRestarts = self.engineRestarts
         self.gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
             isEngineRunning: { engine.isRunning },
             activateSession: { try Self.configureSession() },
-            startEngine: { try engine.start() },
+            startEngine: {
+                engineRestarts.withLock { $0 += 1 }
+                try engine.start()
+            },
             runOffMain: { worker.run($0, then: $1) }
         ))
 
@@ -162,6 +172,7 @@ final class SoundEngine {
         nodePlayID = Array(repeating: 0, count: playerCount)
         nodeIsLoop = Array(repeating: false, count: playerCount)
         nodeStartOrder = Array(repeating: 0, count: playerCount)
+        nodeEngineRun = Array(repeating: 0, count: playerCount)
         playerNodes = (0..<playerCount).map { _ in AVAudioPlayerNode() }
 
         // Before the set-up is handed over: a call or a route change while the worker configures the
@@ -385,12 +396,20 @@ final class SoundEngine {
     ///
     /// An idle node is taken as it is: it was stopped when its play ID was cleared, or it has run out
     /// of buffers, so the next buffer plays at once. Stopping it again would make every pad wait for
-    /// the node on the screen's thread, and would cut a one-shot that frees its node when the node has
-    /// read it, before the mix has all of it.
+    /// the node on the screen's thread. Only a busy node, or an idle one from before an engine
+    /// restart, is stopped.
     private func acquirePlayerNode() -> (AVAudioPlayerNode, Int) {
-        if let idle = nodePlayID.firstIndex(of: 0) {
-            return (playerNodes[idle], idle)
+        let run = engineRestarts.withLock { $0 }
+        let index = nodePlayID.firstIndex(of: 0) ?? oldestStealableNode()
+        if nodePlayID[index] != 0 || nodeEngineRun[index] != run {
+            repeatScheduler.stop(playerNodes[index])
+            nodePlayID[index] = 0
         }
+        nodeEngineRun[index] = run
+        return (playerNodes[index], index)
+    }
+
+    private func oldestStealableNode() -> Int {
         var victim: Int? = nil
         for i in 0..<playerCount where !nodeIsLoop[i] {
             if victim == nil || nodeStartOrder[i] < nodeStartOrder[victim!] { victim = i }
@@ -398,11 +417,7 @@ final class SoundEngine {
         if victim == nil {
             victim = (0..<playerCount).min { nodeStartOrder[$0] < nodeStartOrder[$1] }
         }
-        let index = victim ?? 0
-        let node = playerNodes[index]
-        repeatScheduler.stop(node)
-        nodePlayID[index] = 0
-        return (node, index)
+        return victim ?? 0
     }
 
     private func stopByPlayID(_ playID: Int) {
@@ -641,7 +656,9 @@ nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
     private let queue = DispatchQueue(label: "UniPad.finiteRepeats", qos: .userInteractive)
     private var voices: [ObjectIdentifier: Voice] = [:]
     private var scheduled = 0
+    private var stopped = 0
     var buffersScheduled: Int { queue.sync { scheduled } }
+    var nodesStopped: Int { queue.sync { stopped } }
 
     private final class Voice: @unchecked Sendable {
         let node: AVAudioPlayerNode
@@ -678,6 +695,7 @@ nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
             // Invalidate before stop triggers completion handlers. Already enqueued handlers also
             // check identity, so they cannot schedule or release a replacement voice on this node.
             voices.removeValue(forKey: ObjectIdentifier(node))
+            stopped += 1
             _ = runCatchingObjCException { node.stop() }
         }
     }

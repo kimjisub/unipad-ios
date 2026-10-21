@@ -518,6 +518,23 @@ final class PlaybackStopTests: XCTestCase {
         return first..<end
     }
 
+    /// Every pad press runs on the screen's thread, and stopping a player node there can wait for the
+    /// node. A pad that finds an idle node has nothing to stop.
+    func testPadTakesAnIdleVoiceWithoutStoppingIt() async throws {
+        let root = try pack(loop: 1)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "1 1 1 a.wav 1\n1 1 2 a.wav 1\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+        XCTAssertEqual(engine.playerNodesStopped, 0, "a node that never played was stopped")
+        try await wait(for: "the first sound", until: { engine.activeVoiceCount == 0 })
+        vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+        XCTAssertEqual(engine.playsStarted, 2)
+        XCTAssertEqual(engine.playerNodesStopped, 0, "the node the first sound freed was stopped")
+    }
+
     /// The final mix of the real-time engine, recorded while a three-play sound ends and the next pad
     /// takes over its freed player node (the first idle one). The last repeat has to reach the mix in full
     /// before the node is handed on, and the reused node has to play the next sound in full.
