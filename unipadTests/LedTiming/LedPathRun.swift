@@ -6,19 +6,28 @@ import XCTest
 nonisolated final class LedRunClock: @unchecked Sendable {
     private let lock = NSLock()
     private var start: CFTimeInterval?
+    private let currentTime: () -> CFTimeInterval
 
-    func begin() { lock.withLock { start = CACurrentMediaTime() } }
+    init(currentTime: @escaping () -> CFTimeInterval = { CACurrentMediaTime() }) {
+        self.currentTime = currentTime
+    }
+
+    func begin() { lock.withLock { start = currentTime() } }
 
     /// When autoplay started (CACurrentMediaTime); nil before.
     var started: CFTimeInterval? { lock.withLock { start } }
 
     /// Nil before autoplay starts.
     func now() -> Double? {
-        lock.withLock { start.map { (CACurrentMediaTime() - $0) * 1000 } }
+        lock.withLock { start.map { (currentTime() - $0) * 1000 } }
     }
 }
 
 nonisolated struct LedPathRecording {
+    static func cutoffTime(nowMs: Double, giveUpAtMs: Int64, animating: Bool, discarded: Bool) -> Int64? {
+        nowMs >= Double(giveUpAtMs) || animating || discarded ? giveUpAtMs : nil
+    }
+
     /// LedRunner's changes as commands, in the order and at the time it handed them over.
     let handedOver: [LedCommand]
     /// A forced observation end; nil when every animation finished naturally.
@@ -134,14 +143,18 @@ final class LedPathRun {
         while (clock.now() ?? 0) < Double(giveUpAtMs) && animating(ledRunner) {
             try await Task.sleep(for: .milliseconds(20))
         }
-        // The final sleep may resume after the deadline even though the last animation finished.
-        let cutoffMs = animating(ledRunner) ? giveUpAtMs : nil
+        // An overdue finite animation may finish in a tick whose output the recorder rejects.
+        // Neither an expired clock nor discarded output proves whole-pack completeness.
         ledRunner.stop()
+        let stoppedAtMs = clock.now() ?? 0
+        let stillAnimating = animating(ledRunner)
         // Drain batches accepted before the cutoff. HandoverRecorder rejects later ticks even if
         // this task resumes late, but accepted batches still reach the real main-actor adapter.
         try await Task.sleep(for: .milliseconds(50))
         // MIDI sends leave by way of the main actor and MidiManager's send queue.
         if launchpad != nil { try await Task.sleep(for: .milliseconds(500)) }
+        let cutoffMs = LedPathRecording.cutoffTime(nowMs: stoppedAtMs, giveUpAtMs: giveUpAtMs,
+                                                  animating: stillAnimating, discarded: handover.discardedCommands)
         let departed = clock.started.flatMap { start in launchpad?.arrivals(since: start) }
         guard manager.driver === driver else {
             throw LedPathRunError("MidiManager replaced the recording driver during the run (a MIDI device connected or left)")
@@ -240,12 +253,14 @@ private final class RecordingDriver: BaseMidiDriver {
 }
 
 /// The play screen's LED listener, recording each tick's changes before passing them on.
-nonisolated private final class HandoverRecorder: LedRunner.Listener, @unchecked Sendable {
+nonisolated final class HandoverRecorder: LedRunner.Listener, @unchecked Sendable {
     private let lock = NSLock()
     private let clock: LedRunClock
     private let next: LedRunner.Listener
     private let giveUpAtMs: Int64
     private var recorded: [LedCommand] = []
+    private var discarded = false
+    var discardedCommands: Bool { lock.withLock { discarded } }
 
     init(clock: LedRunClock, giveUpAtMs: Int64, next: LedRunner.Listener) {
         self.clock = clock
@@ -257,7 +272,11 @@ nonisolated private final class HandoverRecorder: LedRunner.Listener, @unchecked
 
     func onLedBatch(_ events: [LedRunner.LedEvent]) {
         // The intended timeline ends here too. Do not pass shutdown or late ticks on as pack LEDs.
-        guard let at = clock.now(), at < Double(giveUpAtMs) else { return }
+        guard let at = clock.now() else { return }
+        guard at < Double(giveUpAtMs) else {
+            if !events.isEmpty { lock.withLock { discarded = true } }
+            return
+        }
         lock.withLock {
             for event in events {
                 switch event {
@@ -295,13 +314,34 @@ private final class AutoPlayStandIn: AutoPlayRunner.Listener {
     }
 
     func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
-        for inputID in inputIDs {
-            onPadTouchCancel(x: x, y: y, inputID: inputID)
+        driver.repainting {
+            for inputID in inputIDs {
+                vm.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID)
+            }
         }
     }
 
     func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
         driver.repainting { vm.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID) }
+    }
+
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+        presses.append(clock.now() ?? 0)
+        driver.repainting {
+            vm.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+        }
+    }
+
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) {
+        driver.repainting {
+            for inputID in inputIDs {
+                vm.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+            }
+        }
+    }
+
+    func onInputTimeThrough(_ at: Int64?) {
+        vm.ledRunner?.setInputTimeThrough(at)
     }
 
     func onChainChange(c: Int) {

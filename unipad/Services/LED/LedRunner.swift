@@ -19,6 +19,12 @@ nonisolated final class LedRunner: @unchecked Sendable {
     private var ledAnimationStates: [LedAnimationState] = []
     private var ledAnimationStatesAdd: [LedAnimationState] = []
 
+    private var requests: Int64 = 0
+    private var pausedAt: Int64?
+    private var inputTimeThrough: Int64?
+    // Autoplay input can reach the runner after an animation's last event.
+    private static let latePressMs: Int64 = 1_000
+
     private let lock = NSLock()
 
     var active: Bool { loopTask != nil }
@@ -63,14 +69,14 @@ nonisolated final class LedRunner: @unchecked Sendable {
 
     func launch() {
         guard loopTask == nil else { return }
-        // States that survived stop() (LED toggled off and on) re-anchor to the new start;
-        // resuming from their old `delay` replayed the whole backlog in one burst.
         lock.lockWithDeadlockDetection()
-        for state in ledAnimationStates {
-            state.delay = 0
-            // A resumed partial pass cannot tell us the duration of a complete pass.
-            state.loopStartTime = nil
+        if let pausedAt {
+            let pausedFor = clock() - pausedAt
+            for state in ledAnimationStates + ledAnimationStatesAdd {
+                state.resume(pausedSince: pausedAt, pausedFor: pausedFor)
+            }
         }
+        pausedAt = nil
         lock.unlock()
 
         loopTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -95,169 +101,130 @@ nonisolated final class LedRunner: @unchecked Sendable {
     }
 
     func stop() {
+        lock.lockWithDeadlockDetection()
+        if active { pausedAt = clock() }
         loopTask?.cancel()
         loopTask = nil
+        lock.unlock()
     }
 
     // MARK: - Main Loop
 
-    private var loopLogCount = 0
     /// One tick. Internal so tests can drive it with a manual `clock`.
     func loop() {
         var pendingLedEvents: [LedEvent] = []
         var pendingChainSets: [Int] = []
-
         lock.lockWithDeadlockDetection()
-
-        let currTime = clock()
-
-        if !ledAnimationStates.isEmpty || !ledAnimationStatesAdd.isEmpty {
-            loopLogCount += 1
-            if loopLogCount <= 3 {
-                logger.debug("loop: states=\(self.ledAnimationStates.count), add=\(self.ledAnimationStatesAdd.count), listener=\(self.listener != nil)")
-            }
-        }
-
-        for state in ledAnimationStates {
-            if state.isPlaying && !state.isShutdown {
-                if state.delay == 0 { state.delay = currTime }
-
-                // An empty keyLed file stops at once instead of re-spinning every tick.
-                guard let ledAnimation = state.ledAnimation, !ledAnimation.ledEvents.isEmpty else {
-                    state.isPlaying = false
-                    continue
-                }
-                let ledEvents = ledAnimation.ledEvents
-                let budget = ledEvents.count * max(1, ledAnimation.loop) + 1
-                var processed = 0
-
-                while true {
-                    if state.index >= ledEvents.count {
-                        state.loopProgress += 1
-                        state.index = 0
-                        // Repeating a pass whose logical time does not advance leaves the same
-                        // final LEDs. Finish finite animations now, without building a huge batch
-                        // while holding the lock shared with pad input. Endless loops keep yielding.
-                        if ledAnimation.loop > 0, let loopStartTime = state.loopStartTime, state.delay <= loopStartTime {
-                            state.isPlaying = false
-                            break
-                        }
-                    }
-
-                    if ledAnimation.loop != 0 && ledAnimation.loop <= state.loopProgress {
-                        state.isPlaying = false
-                        break
-                    }
-
-                    // Only endless (loop 0) animations reach the budget. They yield to the next tick
-                    // and keep playing, so eventOff and eventOffAll still find them and turn their
-                    // LEDs off (Android LedRunner.kt). The backlog is dropped: a strobe shorter than a
-                    // tick or the first tick after a suspension would otherwise fall further behind.
-                    processed += 1
-                    if processed > budget {
-                        state.delay = currTime
-                        break
-                    }
-
-                    guard state.delay <= currTime else { break }
-
-                    if state.index == 0 { state.loopStartTime = state.delay }
-                    let event = ledEvents[state.index]
-                    switch event {
-                    case .on(let x, let y, let color, let velocity):
-                        if x != -1 {
-                            guard isValidPadIndex(x: x, y: y) else {
-                                state.index += 1
-                                continue
-                            }
-                            if loopLogCount <= 5 {
-                                logger.debug("LED ON: x=\(x) y=\(y) color=\(color) vel=\(velocity) listener=\(self.listener != nil)")
-                                loopLogCount += 1
-                            }
-                            pendingLedEvents.append(.padOn(x: x, y: y, color: color, velocity: velocity))
-                            btnLed[x][y] = Led(buttonX: state.buttonX, buttonY: state.buttonY, chain: state.chainAtCreation)
-                        } else {
-                            guard isValidCircularIndex(y) else {
-                                state.index += 1
-                                continue
-                            }
-                            pendingLedEvents.append(.chainOn(c: y, color: color, velocity: velocity))
-                            cirLed[y] = Led(buttonX: state.buttonX, buttonY: state.buttonY, chain: state.chainAtCreation)
-                        }
-
-                    case .off(let x, let y):
-                        if x != -1 {
-                            guard isValidPadIndex(x: x, y: y) else {
-                                state.index += 1
-                                continue
-                            }
-                            if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
-                                pendingLedEvents.append(.padOff(x: x, y: y))
-                                btnLed[x][y] = nil
-                            }
-                        } else {
-                            guard isValidCircularIndex(y) else {
-                                state.index += 1
-                                continue
-                            }
-                            if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
-                                pendingLedEvents.append(.chainOff(c: y))
-                                cirLed[y] = nil
-                            }
-                        }
-
-                    case .delay(let delay):
-                        state.delay += Int64(delay)
-
-                    case .chain(let chainValue):
-                        pendingChainSets.append(chainValue)
-                    }
-
-                    state.index += 1
-                }
-
-            } else if state.isShutdown {
-                for x in 0..<unipack.buttonX {
-                    for y in 0..<unipack.buttonY {
-                        if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
-                            pendingLedEvents.append(.padOff(x: x, y: y))
-                            btnLed[x][y] = nil
-                        }
-                    }
-                }
-                for y in 0..<cirLed.count {
-                    if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
-                        pendingLedEvents.append(.chainOff(c: y))
-                        cirLed[y] = nil
-                    }
-                }
-                state.remove = true
-            } else {
-                state.remove = true
-            }
-        }
-
+        // Autoplay can be a millisecond behind this task. Do not render a later
+        // step until its earlier scheduled inputs have reached the runner.
+        let currTime = min(clock(), inputTimeThrough ?? .max)
         ledAnimationStates.append(contentsOf: ledAnimationStatesAdd)
-        ledAnimationStatesAdd.removeAll()
-        ledAnimationStates.removeAll { $0.remove }
+        ledAnimationStatesAdd.removeAll(keepingCapacity: true)
 
+        // Merge each animation's next step by intended time before applying LED ownership.
+        // Sorting the output afterwards would already have lost or added owner-dependent offs.
+        var due = StepQueue()
+        for state in ledAnimationStates {
+            state.processed = 0
+            if let step = state.nextStep(currTime) { due.push(step) }
+        }
+        while let step = due.pop() {
+            if step.rank == Step.shutdown {
+                shutDown(step.state, pendingLedEvents: &pendingLedEvents)
+            } else {
+                playEvent(step.state, at: step.at, pendingLedEvents: &pendingLedEvents, pendingChainSets: &pendingChainSets)
+            }
+            if let next = step.state.nextStep(currTime) { due.push(next) }
+        }
+        ledAnimationStates.removeAll { $0.remove }
         lock.unlock()
 
-        // The chain observers mutate @Observable UI state and rotate the pack tables; they must
-        // run on the main thread, not on the LED queue (same hop the AutoPlay adapter does).
+        // Chain observers mutate UI state and rotate pack tables on the main actor.
         if !pendingChainSets.isEmpty {
             let chain = self.chain
             let chainSets = pendingChainSets
             Task { @MainActor in
-                for c in chainSets {
-                    chain.setValue(c)
+                for c in chainSets { chain.setValue(c) }
+            }
+        }
+        if !pendingLedEvents.isEmpty { listener?.onLedBatch(pendingLedEvents) }
+    }
+
+    private func playEvent(_ state: LedAnimationState, at: Int64,
+                           pendingLedEvents: inout [LedEvent], pendingChainSets: inout [Int]) {
+        guard let animation = state.ledAnimation else { return }
+        if state.index == 0 { state.loopStartTime = state.delay }
+        let event = animation.ledEvents[state.index]
+        state.processed += 1
+        switch event {
+        case .on(let x, let y, let color, let velocity):
+            if x != -1 {
+                guard isValidPadIndex(x: x, y: y) else {
+                    break
+                }
+                pendingLedEvents.append(.padOn(x: x, y: y, color: color, velocity: velocity))
+                btnLed[x][y] = Led(buttonX: state.buttonX, buttonY: state.buttonY, chain: state.chainAtCreation)
+            } else {
+                guard isValidCircularIndex(y) else {
+                    break
+                }
+                pendingLedEvents.append(.chainOn(c: y, color: color, velocity: velocity))
+                cirLed[y] = Led(buttonX: state.buttonX, buttonY: state.buttonY, chain: state.chainAtCreation)
+            }
+
+        case .off(let x, let y):
+            if x != -1 {
+                guard isValidPadIndex(x: x, y: y) else {
+                    break
+                }
+                if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
+                    pendingLedEvents.append(.padOff(x: x, y: y))
+                    btnLed[x][y] = nil
+                }
+            } else {
+                guard isValidCircularIndex(y) else {
+                    break
+                }
+                if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
+                    pendingLedEvents.append(.chainOff(c: y))
+                    cirLed[y] = nil
+                }
+            }
+
+        case .delay(let delay):
+            state.delay += Int64(delay)
+
+        case .chain(let chainValue):
+            pendingChainSets.append(chainValue)
+        }
+        state.index += 1
+        state.finishIfDone(at: at)
+    }
+
+    private func shutDown(_ state: LedAnimationState, pendingLedEvents: inout [LedEvent]) {
+        for x in 0..<unipack.buttonX {
+            for y in 0..<unipack.buttonY {
+                if btnLed[x][y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
+                    pendingLedEvents.append(.padOff(x: x, y: y))
+                    btnLed[x][y] = nil
                 }
             }
         }
-
-        if !pendingLedEvents.isEmpty {
-            listener?.onLedBatch(pendingLedEvents)
+        for y in 0..<cirLed.count {
+            if cirLed[y]?.isEqual(bx: state.buttonX, by: state.buttonY, chain: state.chainAtCreation) == true {
+                pendingLedEvents.append(.chainOff(c: y))
+                cirLed[y] = nil
+            }
         }
+        state.remove = true
+    }
+
+    /// Autoplay has delivered every scheduled input through this time; nil releases the bound.
+    /// A new run uses .min until its first input batch has been delivered.
+    func setInputTimeThrough(_ at: Int64?) {
+        lock.lockWithDeadlockDetection()
+        inputTimeThrough = at
+        lock.unlock()
     }
 
     // MARK: - Event Control
@@ -265,18 +232,18 @@ nonisolated final class LedRunner: @unchecked Sendable {
     func isEventExist(x: Int, y: Int, chain: Int) -> Bool {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
-        return ledAnimationStates.contains { $0.isEqual(bx: x, by: y, chain: chain) }
+        return (ledAnimationStates + ledAnimationStatesAdd).contains { $0.isPlaying && $0.isEqual(bx: x, by: y, chain: chain) }
     }
 
     /// Any chain: ledInit must find animations started on a previous chain too.
     func isEventExist(x: Int, y: Int) -> Bool {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
-        return ledAnimationStates.contains { $0.buttonX == x && $0.buttonY == y }
+        return (ledAnimationStates + ledAnimationStatesAdd).contains { $0.isPlaying && $0.buttonX == x && $0.buttonY == y }
     }
 
     @MainActor
-    func eventOn(x: Int, y: Int) {
+    func eventOn(x: Int, y: Int, pressedAt: Int64? = nil) {
         guard active else {
             logger.debug("eventOn(\(x),\(y)): not active")
             return
@@ -284,15 +251,19 @@ nonisolated final class LedRunner: @unchecked Sendable {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
-        for existing in ledAnimationStates where existing.isEqual(bx: x, by: y, chain: chain.value) {
-            existing.isShutdown = true
+        let at = pressedAt ?? clock()
+        requests += 1
+        for existing in ledAnimationStates + ledAnimationStatesAdd where existing.isEqual(bx: x, by: y, chain: chain.value) {
+            existing.shutDownAt(at, order: requests)
         }
 
         let state = LedAnimationState(
             buttonX: x,
             buttonY: y,
             unipack: unipack,
-            chain: chain.value
+            chain: chain.value,
+            startedAt: at,
+            order: requests
         )
         if state.noError {
             ledAnimationStatesAdd.append(state)
@@ -303,15 +274,15 @@ nonisolated final class LedRunner: @unchecked Sendable {
     }
 
     @MainActor
-    func eventOff(x: Int, y: Int) {
+    func eventOff(x: Int, y: Int, releasedAt: Int64? = nil) {
         guard active else { return }
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
-        for state in ledAnimationStates where state.isEqual(bx: x, by: y, chain: chain.value) {
-            if state.ledAnimation?.loop == 0 {
-                state.isShutdown = true
-            }
+        let at = releasedAt ?? clock()
+        requests += 1
+        for state in ledAnimationStates + ledAnimationStatesAdd where state.isEqual(bx: x, by: y, chain: chain.value) {
+            if state.ledAnimation?.loop == 0 { state.shutDownAt(at, order: requests) }
         }
     }
 
@@ -322,10 +293,8 @@ nonisolated final class LedRunner: @unchecked Sendable {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
-        for state in ledAnimationStates where state.buttonX == x && state.buttonY == y {
-            if state.ledAnimation?.loop == 0 {
-                state.isShutdown = true
-            }
+        for state in ledAnimationStates + ledAnimationStatesAdd where state.buttonX == x && state.buttonY == y {
+            if state.ledAnimation?.loop == 0 { state.shutDownAt(.min, order: 0) }
         }
     }
 
@@ -341,21 +310,70 @@ nonisolated final class LedRunner: @unchecked Sendable {
         }
     }
 
+    /// At the same millisecond: running events, input shutdowns, then new animations.
+    private struct Step {
+        static let running = 0
+        static let shutdown = 1
+        static let starting = 2
+        let state: LedAnimationState
+        let at: Int64
+        let rank: Int
+        let order: Int64
+
+        func precedes(_ other: Step) -> Bool { (at, rank, order) < (other.at, other.rank, other.order) }
+    }
+
+    /// Only one pending step per animation, so ordering does not copy a whole overdue animation.
+    private struct StepQueue {
+        private var heap: [Step] = []
+
+        mutating func push(_ step: Step) {
+            heap.append(step)
+            var child = heap.count - 1
+            while child > 0 {
+                let parent = (child - 1) / 2
+                guard heap[child].precedes(heap[parent]) else { break }
+                heap.swapAt(child, parent)
+                child = parent
+            }
+        }
+
+        mutating func pop() -> Step? {
+            guard !heap.isEmpty else { return nil }
+            if heap.count == 1 { return heap.removeLast() }
+            let first = heap[0]
+            heap[0] = heap.removeLast()
+            var parent = 0
+            while parent * 2 + 1 < heap.count {
+                var child = parent * 2 + 1
+                if child + 1 < heap.count, heap[child + 1].precedes(heap[child]) { child += 1 }
+                guard heap[child].precedes(heap[parent]) else { break }
+                heap.swapAt(child, parent)
+                parent = child
+            }
+            return first
+        }
+    }
+
     private class LedAnimationState {
-        // Like ChainObserver, this storage has no UI cleanup. Releasing it from the runner's
-        // isolated deinit must not enter the older runtime's nested task-local cleanup crash.
+        // This storage has no UI cleanup; avoid actor-isolated cleanup on older runtimes.
         nonisolated deinit {}
 
         let buttonX: Int
         let buttonY: Int
         let chainAtCreation: Int
-        var index: Int = 0
-        var delay: Int64 = 0
+        private var startedAt: Int64
+        private let order: Int64
+        var index = 0
+        var delay: Int64
         var loopStartTime: Int64?
-        var isPlaying: Bool = true
-        var isShutdown: Bool = false
-        var remove: Bool = false
-        var loopProgress: Int = 0
+        var isPlaying = true
+        private var shutdownAt: Int64?
+        private var shutdownOrder: Int64 = 0
+        private var finishedAt: Int64?
+        var remove = false
+        var loopProgress = 0
+        var processed = 0
         let ledAnimation: LedAnimation?
 
         var noError: Bool { ledAnimation != nil }
@@ -364,12 +382,73 @@ nonisolated final class LedRunner: @unchecked Sendable {
             buttonX == bx && buttonY == by && chainAtCreation == chain
         }
 
-        init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: Int) {
+        init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: Int, startedAt: Int64, order: Int64) {
             self.buttonX = buttonX
             self.buttonY = buttonY
             self.chainAtCreation = chain
+            self.startedAt = startedAt
+            self.delay = startedAt
+            self.order = order
             self.ledAnimation = unipack.ledGet(c: chain, x: buttonX, y: buttonY)
             unipack.ledPush(c: chain, x: buttonX, y: buttonY)
+            if ledAnimation?.ledEvents.isEmpty != false { isPlaying = false }
+        }
+
+        func shutDownAt(_ at: Int64, order: Int64) {
+            if let shutdownAt, at >= shutdownAt { return }
+            shutdownAt = at
+            shutdownOrder = order
+        }
+
+        func resume(pausedSince: Int64, pausedFor: Int64) {
+            startedAt += pausedFor
+            delay += pausedFor
+            loopStartTime = loopStartTime.map { $0 + pausedFor }
+            finishedAt = finishedAt.map { $0 + pausedFor }
+            shutdownAt = shutdownAt.map { min($0, pausedSince) + pausedFor }
+        }
+
+        func nextStep(_ now: Int64) -> Step? {
+            guard !remove, let animation = ledAnimation else {
+                remove = true
+                return nil
+            }
+            let shutdown = shutdownAt.map { Step(state: self, at: $0, rank: Step.shutdown, order: shutdownOrder) }
+            if !isPlaying {
+                // Keep the last state briefly for a press timestamped before its final event.
+                if let shutdown, let finishedAt, shutdown.at < finishedAt, shutdown.at <= now { return shutdown }
+                if let finishedAt {
+                    remove = now > finishedAt && now - finishedAt > LedRunner.latePressMs
+                } else {
+                    remove = true
+                }
+                return nil
+            }
+            var event: Step? = Step(state: self, at: delay,
+                                    rank: delay == startedAt ? Step.starting : Step.running, order: order)
+            // Endless strobes yield after one pass plus one event and drop their backlog.
+            // Finite passes with no elapsed time are collapsed by finishIfDone instead.
+            if animation.loop == 0 && delay <= now && processed > animation.ledEvents.count {
+                delay = now
+                event = nil
+            }
+            let next: Step?
+            if let event {
+                if let shutdown, shutdown.precedes(event) { next = shutdown } else { next = event }
+            } else {
+                next = shutdown
+            }
+            return next.flatMap { $0.at <= now ? $0 : nil }
+        }
+
+        func finishIfDone(at: Int64) {
+            guard let animation = ledAnimation, index >= animation.ledEvents.count else { return }
+            loopProgress += 1
+            index = 0
+            if animation.loop > 0 && (loopProgress >= animation.loop || loopStartTime.map { delay <= $0 } == true) {
+                isPlaying = false
+                finishedAt = at
+            }
         }
     }
 

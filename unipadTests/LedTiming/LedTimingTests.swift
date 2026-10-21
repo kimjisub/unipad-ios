@@ -6,6 +6,34 @@ import XCTest
 /// The intended timeline the real-time runs are compared with follows LedRunner's rules.
 @MainActor
 struct LedTimingTimelineTests {
+    @Test func lateFiniteAnimationCompletionStillCountsAsForcedCutoff() {
+        #expect(LedPathRecording.cutoffTime(nowMs: 101, giveUpAtMs: 100, animating: false, discarded: false) == 100)
+    }
+
+    @Test func discardedCommandsStillCountAsForcedCutoff() {
+        #expect(LedPathRecording.cutoffTime(nowMs: 99, giveUpAtMs: 100, animating: false, discarded: true) == 100)
+    }
+
+    @Test func naturalCompletionBeforeTheDeadlineHasNoCutoff() {
+        #expect(LedPathRecording.cutoffTime(nowMs: 99, giveUpAtMs: 100, animating: false, discarded: false) == nil)
+    }
+
+    @Test func recorderMarksAndRejectsLateOutputFromAFiniteAnimation() {
+        var now = 1.0
+        let clock = LedRunClock(currentTime: { now })
+        let next = LedRunnerTests.Recorder()
+        let recorder = HandoverRecorder(clock: clock, giveUpAtMs: 100, next: next)
+        clock.begin()
+        recorder.onLedBatch([.padOn(x: 0, y: 0, color: -1, velocity: 5)])
+        now = 1.2
+        recorder.onLedBatch([.padOff(x: 0, y: 0)])
+        #expect(recorder.discardedCommands)
+        #expect(recorder.commands.map(\.code) == [5])
+        #expect(next.codes == [5])
+        #expect(LedPathRecording.cutoffTime(nowMs: 200, giveUpAtMs: 100,
+                                          animating: false, discarded: recorder.discardedCommands) == 100)
+    }
+
     private func pack(buttons: Int = 8, chains: Int = 1, keyLed: [String: String], autoPlay: String) throws -> UniPack {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("LedTimeline-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
