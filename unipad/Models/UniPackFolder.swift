@@ -254,6 +254,15 @@ nonisolated class UniPackFolder: UniPack {
                 wormhole = wormholeRaw - 1
             }
 
+            // The sound still plays and moves to the nearest chain the pack has. A chain it lacks
+            // would become autoPlay's current chain, and practice would light that chain's button
+            // past the end of the round button table. Checked before the other fields, as on Android and
+            // the web, so a line skipped for one of them still reports its wormhole.
+            if wormhole != Sound.noWormhole && !(0..<chain).contains(wormhole) {
+                addErr("keySound : [\(s)] wormhole is incorrect")
+                wormhole = min(max(wormhole, 0), chain - 1)
+            }
+
             guard (0..<chain).contains(c) else {
                 addErr("keySound : [\(s)] chain is incorrect"); continue
             }
@@ -270,14 +279,6 @@ nonisolated class UniPackFolder: UniPack {
 
             guard let soundFile = soundFinder.file(soundURL, in: soundsDir) else {
                 addErr("keySound : [\(s)] sound was not found"); continue
-            }
-
-            // The sound still plays and moves to the nearest chain the pack has. A chain it lacks
-            // would become autoPlay's current chain, and practice would light that chain's button
-            // past the end of the round button table.
-            if wormhole != Sound.noWormhole && !(0..<chain).contains(wormhole) {
-                addErr("keySound : [\(s)] wormhole is incorrect")
-                wormhole = min(max(wormhole, 0), chain - 1)
             }
 
             var sound = Sound(file: soundFile, loop: loop, wormhole: wormhole)
