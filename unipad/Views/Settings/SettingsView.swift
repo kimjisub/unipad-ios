@@ -287,7 +287,7 @@ struct SettingsView: View {
                         }
                         cardDivider
                         settingsRow(title: String(localized: "openSourceLicense")) {
-                            vm.openURL("https://github.com/kimjisub/unipad-android/blob/main/LICENSE")
+                            router.navigate(to: .openSourceLicenses)
                         }
                         cardDivider
                         settingsRow(title: vm.pushIdentifierTitle, subtitle: String(localized: "tap_to_copy")) {
