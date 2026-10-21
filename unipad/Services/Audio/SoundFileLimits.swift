@@ -14,8 +14,8 @@ nonisolated enum SoundFileLimits {
     static let maximumBufferBytes: UInt64 = 256 * 1_024 * 1_024
 
     /// Every decoded sound of one pack together. Silence compresses to almost nothing: a 10-minute
-    /// sound of a few hundred KB decodes to about 230 MB, so ten of them, each within the limits
-    /// above, took gigabytes. Measured on 1,512 real packs (the sounds their keySound uses, at 48 kHz
+    /// sound of a few hundred KB passes the limits above and decodes to about 230 MB, so without
+    /// this limit a pack of a few such files would take gigabytes. Measured on 1,512 real packs (the sounds their keySound uses, at 48 kHz
     /// stereo float): median 52 MB, largest 168 MB. Some MP3s cut from a whole song still claim the
     /// song's length, and a sound is checked against what its header claims before it is decoded;
     /// counted that way the largest pack needs 334 MB. 512 MiB admits it with headroom and refuses

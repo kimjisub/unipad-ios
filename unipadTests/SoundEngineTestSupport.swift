@@ -112,7 +112,7 @@ enum SoundEngineTestSupport {
             withUnsafeBytes(of: value.bigEndian) { data.replaceSubrange(info + 4 * index..<info + 4 * index + 4, with: $0) }
         }
         // Flags, then the frame count and the byte count when flags 1 and 2 are set.
-        #expect(field(0) & 3 == 3, "the Info header carries no frame or byte count")
+        try #require(field(0) & 3 == 3, "the Info header carries no frame or byte count")
         let packets = field(1)
         setField(2, field(2) / packets * claimingPackets)
         setField(1, claimingPackets)

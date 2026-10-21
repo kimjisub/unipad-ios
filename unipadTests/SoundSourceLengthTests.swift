@@ -79,6 +79,28 @@ struct SoundSourceLengthTests {
         #expect(buffer.frameCapacity == buffer.frameLength)
     }
 
+    /// An Ogg file can declare one frame and hold ten minutes. Each larger buffer it needs is checked
+    /// against the pack's limit before it is allocated, so it is refused while still small instead
+    /// of after decoding all ten minutes.
+    @Test func anOggHoldingMoreThanItDeclaresIsRefusedAsItsBufferGrows() throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self).url(forResource: "vorbis-at-limit", withExtension: "ogg"))
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "SoundSourceLengthTests-\(UUID().uuidString).ogg")
+        try oggWithFinalGranule(1, at: fixture).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        // What a pack that has spent all but 8 MiB of its limit has left.
+        let budget = SoundFileLimits.PackBudget(limit: 8 * 1_024 * 1_024)
+        var admitted: [AVAudioFrameCount] = []
+        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+            try SoundEngine.loadAudioBuffer(from: url) { format, frames in
+                try budget.check(frames, channels: format.channelCount)
+                admitted.append(frames)
+            }
+        }
+        #expect(admitted.count > 1, "the buffer grew without being checked")
+        #expect(admitted.allSatisfy { UInt64($0) * 2 * 4 <= budget.limit })
+    }
+
     /// The pack's limit is applied to what the header claims, before the decoded buffer exists.
     @Test(arguments: [("vorbis-at-limit", "ogg"), ("mp3-tone-named-wav", "wav")])
     func theClaimIsCheckedBeforeDecoding(_ name: String, _ ext: String) throws {
