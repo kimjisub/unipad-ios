@@ -27,6 +27,20 @@ struct RealPackResultsTests {
         return all.filter { only.contains($0.lastPathComponent) }
     }
 
+    /// Reads one pack and writes its `<id>.json` into `directory`, inside an autorelease pool of its own.
+    /// Reading a pack and building its result autorelease their temporaries, and the whole loop runs in
+    /// one test job that drains nothing until it ends: without the pool every pack's temporaries stayed
+    /// (hundreds of MB a pack on the simulator), and macOS killed the test host for lack of swap after
+    /// some 1,500 packs.
+    static func writeResult(of folder: URL, to directory: URL, deps: ConformanceDeps = ConformanceDeps()) throws {
+        try autoreleasepool {
+            let id = folder.lastPathComponent
+            let pack = deps.load(folder)
+            let line: JSONValue = ["platform": .string(ConformanceCorpus.platform), "id": .string(id), "actual": ConformanceHarness.parseResult(pack, root: folder)]
+            try Data((line.serialized() + "\n").utf8).write(to: directory.appendingPathComponent("\(id).json"), options: .atomic)
+        }
+    }
+
     @Test func soundsBelowACapitalisedSoundsFolderAreNamedFromInsideIt() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("real-pack-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -39,6 +53,29 @@ struct RealPackResultsTests {
             Issue.record("no sounds in \(result.serialized())"); return
         }
         #expect(queue.first?.object?["file"] == "kick/a.wav")
+    }
+
+    @Test func readingAPackReleasesWhatItAutoreleased() throws {
+        final class Temporary: NSObject {}
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("real-pack-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pack = root.appendingPathComponent("pack", isDirectory: true)
+        try FileManager.default.createDirectory(at: pack, withIntermediateDirectories: true)
+        try Data("title=t\nproducerName=p\nbuttonX=2\nbuttonY=2\nchain=1".utf8).write(to: pack.appendingPathComponent("info"))
+        try Data().write(to: pack.appendingPathComponent("keySound"))
+
+        weak var temporary: Temporary?
+        var deps = ConformanceDeps()
+        let load = deps.load
+        deps.load = { folder in
+            let object = Temporary()
+            temporary = object
+            _ = Unmanaged.passRetained(object).autorelease()
+            return load(folder)
+        }
+        try Self.writeResult(of: pack, to: root, deps: deps)
+        #expect(temporary == nil, "an object the read autoreleased is still alive after the pack was written")
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("pack.json").path))
     }
 
     @Test(.enabled(if: environment["UNIPACK_REAL_PACKS"] != nil))
@@ -55,11 +92,8 @@ struct RealPackResultsTests {
         let directory = out.appendingPathComponent(ConformanceCorpus.platform, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for folder in packs {
-            let id = folder.lastPathComponent
-            let pack = ConformanceDeps().load(folder)
-            let line: JSONValue = ["platform": .string(ConformanceCorpus.platform), "id": .string(id), "actual": ConformanceHarness.parseResult(pack, root: folder)]
-            try Data((line.serialized() + "\n").utf8).write(to: directory.appendingPathComponent("\(id).json"), options: .atomic)
-            print("UNIPACK-REAL-PACK \(id) ok")
+            try Self.writeResult(of: folder, to: directory)
+            print("UNIPACK-REAL-PACK \(folder.lastPathComponent) ok")
         }
         let run: JSONValue = [
             "platform": .string(ConformanceCorpus.platform), "generatedAt": .string(ISO8601DateFormatter().string(from: Date())),
