@@ -121,6 +121,8 @@ struct unipadApp: App {
                                 SettingsView(initialCategory: .storage)
                             case .theme:
                                 ThemeView()
+                            case .openSourceLicenses:
+                                OpenSourceLicensesView()
                             case .midiSelect:
                                 MidiSelectView()
                             case .importByUrl(let code):

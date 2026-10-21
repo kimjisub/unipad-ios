@@ -51,6 +51,8 @@ GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
 available iPhone simulator. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
+After the Release build it checks that the app's open source notices list
+exactly the Swift packages that build compiled (see below).
 The same checks also run after changes are merged into `main`.
 
 The job needs no repository secrets or signing credentials. It replaces the
@@ -97,6 +99,26 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   ```bash
   ci/ui-tests.sh <simulator-udid> -only-testing:unipadUITests/PackWarningUITests -only-testing:unipadUITests/PlayChainLayoutTests
   ```
+
+## Open source notices
+
+Settings > Open Source License shows every third-party component built into the
+app with its full license text. The list is
+`unipad/Resources/OpenSourceLicenses/OpenSourceLicenses.json`; each entry names the
+license files it is made from, in a resolved package checkout (`pin`) or in a
+vendored package (`path`). After adding, removing or updating a package, build
+Release once and run:
+
+```sh
+python3 ci/open_source_licenses.py write --source-packages <cloned source packages folder>
+python3 ci/open_source_licenses.py check --source-packages <cloned source packages folder> \
+  --derived-data <derived data folder>
+```
+
+`write` regenerates the bundled texts; `check`, which CI runs after its Release build,
+fails when a package the build compiled is not listed, a listed one is no longer
+built, a version differs from `Package.resolved` or `Vendor/XiphVorbis/vendor.sh`, or a
+bundled text differs from its source.
 
 ## Play input checks on a Mac
 
@@ -205,3 +227,49 @@ This project is licensed under the [GNU Lesser General Public License v2.1](LICE
 
 - Original UniPad app and concept by [Kim Ji-Sub](https://github.com/kimjisub).
 - Thanks to the UniPack creators and custom firmware developers.
+
+## App Store update checks
+
+The existing home-screen update link uses Apple's public [lookup API](https://performance-partners.apple.com/search-api)
+for app `6760479102`. It reads the account's actual [StoreKit storefront](https://developer.apple.com/documentation/storekit/storefront),
+converts its ISO alpha-3 country code to alpha-2, and never substitutes the device's
+language, region, or another country's store. Missing or unrecognized countries
+leave the link hidden. The previous prompt is hidden while StoreKit resolves
+the current storefront and installation. Storefront changes cancel outstanding work, remove the
+saved result, and reject responses from the old country.
+
+Only a verified production [AppTransaction](https://developer.apple.com/documentation/storekit/apptransaction/shared)
+with the running bundle identifier enables checks. Debug builds, TestFlight,
+Xcode installations, unavailable/unverified transactions, and nonnumeric version
+strings do not enable them. No management credentials or new analytics are used.
+The old remote `ios_version` list is no longer read; other remote settings and the
+server-side list for older apps are unaffected.
+
+A response must contain exactly one software app with the expected app ID and
+running bundle ID, an App Store destination in the requested country, a numeric
+version, a minimum OS no newer than this device,
+and a `supportedDevices` entry for its device family. Numeric components compare
+without integer overflow (`4.2.9 < 4.2.10`, `4.3 == 4.3.0`). The lookup cannot prove
+installation eligibility: exact hardware capabilities, account restrictions,
+phased availability, and the final installation decision remain with the App Store.
+No prompt is created from an invalid or failed response.
+
+Successful validated results are retained for **24 hours**. Failed public lookups wait
+**1 hour** before retrying; neither interval restarts on each home appearance.
+These intervals and failures persist across launches, scoped to the country,
+installed version, bundle ID, OS, and device family. Expired results are hidden
+before revalidation; errors never restore an old prompt or mean “up to date.”
+Cancelled requests save no result or retry entry.
+Concurrent callers share one task, including StoreKit reads. Requests use an
+uncached ephemeral session with **10-second request and resource timeouts**.
+Apple documents approximately 20 calls/minute, subject to change; the intervals
+reduce requests without assuming that number is a guaranteed quota. Work is
+asynchronous and does not hold navigation, import, or playback.
+
+`AppStoreUpdateTests` and `AppStoreLookupTests` inject the clock, country,
+installation eligibility, storage, and transport. `AppStoreUpdateUITests` uses
+`-UniPadAppStoreResponse available|current|failure|delay`, together with
+`-UniPadFirebaseLocalOnly YES -UniPadReleaseTest <UUID>`, to exercise the actual
+home/play screens with isolated offline packs. These overrides compile only in
+Debug or `UNIPAD_RELEASE_TESTS` builds and are absent from store builds. Injected
+responses do not verify an actual store installation or TestFlight receipt.

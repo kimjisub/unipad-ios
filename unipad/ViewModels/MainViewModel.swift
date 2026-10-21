@@ -65,7 +65,12 @@ final class MainViewModel {
     var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
-    var updateAvailable = false
+    @ObservationIgnored private let updateChecker: AppStoreUpdateChecker
+    var updateAvailable: Bool { updateChecker.updateAvailable }
+
+    init(updateChecker: AppStoreUpdateChecker? = nil) {
+        self.updateChecker = updateChecker ?? .shared
+    }
     var currentThemeName: String? {
         ThemeManager.shared.activeResources.name
     }
@@ -157,19 +162,7 @@ final class MainViewModel {
     private let workspaceManager = WorkspaceManager.shared
 
     func versionCheck() {
-        let thisVersion = appVersion
-        guard !thisVersion.contains("b") else { return }
-
-        let versionListString = FirebaseManager.shared.remoteConfig.getString("ios_version")
-        guard !versionListString.isEmpty,
-              let data = versionListString.data(using: .utf8),
-              let versionList = try? JSONDecoder().decode([String].self, from: data) else {
-            return
-        }
-
-        if !versionList.contains(thisVersion) {
-            updateAvailable = true
-        }
+        updateChecker.refresh()
     }
     var modelContainer: ModelContainer?
 
