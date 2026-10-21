@@ -127,10 +127,7 @@ final class DesignScreenshots: XCTestCase {
         // Play. The pack row is not a cell and not a button; it is an `Other`
         // holding the title as static text, so the title is what gets tapped.
         arrive(app.buttons["gearshape"], "home before play")
-        let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        if packTitles.count > 0 {
-            let title = packTitles.element(boundBy: 0)
-            XCTAssertTrue(UITestSupport.scrollIntoView(title, in: app.scrollViews.firstMatch, app: app))
+        if let title = visiblePackTitle() {
             title.tap()          // first tap selects and opens the detail panel
             sleep(1)
             shot("05-pack-selected")
@@ -146,8 +143,30 @@ final class DesignScreenshots: XCTestCase {
             shot("06-play")
             dumpTree("00-tree-play")
         } else {
-            XCTFail("no pack in the list; ios_shots.sh installs one before the walk")
+            XCTFail("no pack title on screen; ios_shots.sh installs one before the walk")
+            dumpTree("00-tree-no-pack")
             shot("06-empty-list")
         }
+    }
+
+    /// A pack title the screen shows whole. The store card sits after the last pack, so the
+    /// list comes back from the store scrolled to its end, and the lazy list keeps rows above
+    /// the viewport in the tree: the first title found can be off screen. The title is picked
+    /// from what is visible, scrolling back up until something is, and then held by its label
+    /// so the reference does not move to another row as the list creates and drops rows.
+    private func visiblePackTitle(maxSwipes: Int = 6) -> XCUIElement? {
+        let list = app.scrollViews["main.packList"]
+        guard list.waitForExistence(timeout: 10) else { return nil }
+        let titles = list.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
+        for swipe in 0...maxSwipes {
+            let visible = titles.allElementsBoundByIndex.first {
+                UITestSupport.isFullyVisible($0, in: app, within: list)
+            }
+            if let label = visible?.label {
+                return list.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
+            }
+            if swipe < maxSwipes { list.swipeDown(velocity: .slow) }
+        }
+        return nil
     }
 }
