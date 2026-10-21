@@ -1,6 +1,6 @@
 import XCTest
 
-/// Install Fixtures/PlaybackStop in Documents/UniPack before running; missing content fails the
+/// Opens the Playback Stop fixture in a library of its own; missing content fails the
 /// check. Pad input XCUITest's public gestures can aim at pads, through the real touch path: one
 /// finger dragged across pads (D), and the app leaving and returning with no finger held (part of
 /// G). After each gesture every pad must look as it did before it: a pressed pad is drawn with the
@@ -19,7 +19,7 @@ final class MultiTouchPlayUITests: XCTestCase {
     @MainActor
     func testDraggedPadsGoDarkAndStayDarkAfterLeavingAndReturning() throws {
         continueAfterFailure = true
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
         UITestSupport.openPlaybackStopFixture(in: app)

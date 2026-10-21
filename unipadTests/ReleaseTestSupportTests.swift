@@ -154,6 +154,51 @@ final class ReleaseTestSupportTests: XCTestCase {
         }
     }
 
+    /// The chain layout checks open these packs by title and expect each grid size and chain count.
+    func testChainLayoutPacksAreOptInWithUniqueTitlesAndExpectedShapes() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseChainLayout"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(false, forKey: "UniPadReleaseEmpty")
+        let shapes: [(folder: String, title: String, rows: Int, columns: Int, chains: Int, lights: Bool)] = [
+            ("ChainLayout8x8", "Chain Layout 8x8", 8, 8, 6, true),
+            ("ChainLayout4x3", "Chain Layout 4x3", 4, 3, 24, false),
+        ]
+        for enabled in [false, true] {
+            defaults.set(UUID().uuidString, forKey: "UniPadReleaseTest")
+            defaults.set(enabled, forKey: "UniPadReleaseChainLayout")
+            let root = try XCTUnwrap(ReleaseTestSupport.root)
+            defer { try? FileManager.default.removeItem(at: root) }
+            try ReleaseTestSupport.prepare()
+            let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+            let folders = WorkspaceManager.unipackFolders(in: workspace)
+            XCTAssertEqual(Set(folders.map(\.lastPathComponent)),
+                           Set(["Release", "PlaybackStop", "Faded"] + (enabled ? shapes.map(\.folder) : [])))
+            let titles = folders.map { folder -> String in
+                let pack = UniPackFolder(rootFolder: folder)
+                pack.load()
+                return pack.title
+            }
+            XCTAssertEqual(Set(titles).count, titles.count, "\(titles)")
+            guard enabled else { continue }
+            for shape in shapes {
+                let pack = UniPackFolder(rootFolder: workspace.url.appendingPathComponent(shape.folder))
+                pack.load()
+                pack.loadDetail()
+                XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+                XCTAssertNil(pack.errorDetail)
+                XCTAssertEqual(pack.title, shape.title)
+                XCTAssertEqual(pack.buttonX, shape.rows)
+                XCTAssertEqual(pack.buttonY, shape.columns)
+                XCTAssertEqual(pack.chain, shape.chains)
+                XCTAssertTrue(pack.squareButton)
+                XCTAssertEqual(pack.keyLedExist, shape.lights)
+                XCTAssertEqual(pack.autoPlayExist, shape.lights)
+            }
+        }
+    }
+
     /// Checks reach "Playback Stop Fixture" from the release suite's library or, outside it, from
     /// the shared library holding the repository fixture; both must be the same pack.
     func testReleasePlaybackStopPackMatchesRepositoryFixture() throws {

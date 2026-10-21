@@ -284,11 +284,11 @@ enum UITestSupport {
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
     }
 
-    /// Opens the Playback Stop fixture's play screen from home. Install Fixtures/PlaybackStop in
-    /// Documents/UniPack first; a missing fixture fails the check.
+    /// Opens the Playback Stop fixture's play screen from home. Launch with
+    /// `isolatedLibraryLaunchArguments`, whose library has the fixture; a missing fixture fails the check.
     static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {
         openPack(titled: "Playback Stop Fixture", in: app, playButtonTitle: playButtonTitle,
-                 missingMessage: "install Fixtures/PlaybackStop first")
+                 missingMessage: "the Playback Stop fixture was not prepared")
     }
 
     /// Opens the play screen of the pack whose title contains `packTitle` from home.

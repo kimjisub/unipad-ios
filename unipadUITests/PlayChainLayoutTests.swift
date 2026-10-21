@@ -1,17 +1,16 @@
 import XCTest
 
-/// Install only INF-002 (4x3, 24 chains, title Conformance) from the public corpus at
-/// https://github.com/kimjisub/unipad.io/tree/main/meta/unipack-conformance
-/// ZIP SHA-256: 55d178d318096b02e3f3642703fa1fdf2754bcad2a26221a5ab2dbf410bf4c3a.
-/// Also install the bundled 8x8 Faded pack in Documents/UniPack. Other corpus cases
-/// share the Conformance title: do not install them alongside INF-002. Missing or
-/// ambiguous fixtures fail this required regression check.
+/// Opens two packs made for this check in a library of its own: a 4x3 pack with 24 chains,
+/// shaped like conformance case INF-002, and an 8x8 pack with 6 chains, shaped like the bundled
+/// Faded pack (ReleaseTestSupport.makeChainLayoutPacks). The simulator's own packs are neither
+/// used nor changed, so copies of Faded or of other conformance cases there cannot make a title
+/// ambiguous. A missing or ambiguous pack fails this required regression check.
 final class PlayChainLayoutTests: XCTestCase {
     private let app = XCUIApplication()
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments() + ["-UniPadReleaseChainLayout", "YES"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -27,7 +26,7 @@ final class PlayChainLayoutTests: XCTestCase {
                 .press(forDuration: 0.1, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)),
                        withVelocity: .slow, thenHoldForDuration: 0.3)
         }
-        XCTAssertEqual(titles.count, 1, "install the required fixture first")
+        XCTAssertEqual(titles.count, 1, "the \(title) pack was not prepared")
         titles.firstMatch.tap()
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 5))
@@ -107,28 +106,28 @@ final class PlayChainLayoutTests: XCTestCase {
     @MainActor
     func testEveryChainOfSmallPackCanBeSelected() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
-        openPack(title: "Conformance")
+        openPack(title: "Chain Layout 4x3")
         try assertChains(rows: 4, columns: 3, count: 24, pro: false, name: "small-normal")
     }
 
     @MainActor
     func testEveryChainOfSmallPackInProLightModeCanBeSelected() throws {
         XCUIDevice.shared.orientation = .landscapeRight
-        openPack(title: "Conformance")
+        openPack(title: "Chain Layout 4x3")
         try assertChains(rows: 4, columns: 3, count: 24, pro: true, name: "small-pro")
     }
 
     @MainActor
     func testEightByEightPackChainsCanBeSelected() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
-        openPack(title: "Alan Walker - Faded")
+        openPack(title: "Chain Layout 8x8")
         try assertChains(rows: 8, columns: 8, count: 6, pro: false, name: "eight-normal")
     }
 
     @MainActor
     func testEightByEightPackInProLightModeChainsCanBeSelected() throws {
         XCUIDevice.shared.orientation = .landscapeRight
-        openPack(title: "Alan Walker - Faded")
+        openPack(title: "Chain Layout 8x8")
         try assertChains(rows: 8, columns: 8, count: 6, pro: true, name: "eight-pro")
     }
 }
