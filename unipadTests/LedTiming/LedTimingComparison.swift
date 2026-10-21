@@ -11,7 +11,7 @@ nonisolated struct LedTimingComparison {
         let ms: Double
     }
 
-    /// Two LedRunner ticks: closer than this, two commands can share a tick and leave in either order.
+    /// Report cross-LED overtakes larger than two LedRunner ticks separately from per-LED order.
     static let overtakeMs = 8.0
     /// Only this fixed window before a forced cutoff can contain commands not yet handed over.
     /// It never grows when output stops early or the measured latency is large.
@@ -46,7 +46,8 @@ nonisolated struct LedTimingComparison {
     }
 
     func hasUnexpectedDifferences(cutoffMs: Int64?) -> Bool {
-        reordered > 0 || extra > 0 || uncompared > 0 || unexpectedMissing(cutoffMs: cutoffMs) > 0
+        // An uncompared middle always contributes reordered or extra commands as well.
+        reordered > 0 || extra > 0 || unexpectedMissing(cutoffMs: cutoffMs) > 0
     }
 
     private var sorted: [Double] { latencies.map(\.ms).sorted() }

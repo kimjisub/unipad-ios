@@ -296,6 +296,8 @@ enum UITestSupport {
                          missingMessage: String) {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
         let title = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", packTitle)).firstMatch
+        // A long lazy list may not have created the pack's row yet.
+        if !title.exists { searchForPack(packTitle, in: app) }
         XCTAssertTrue(title.waitForExistence(timeout: 10), missingMessage)
         title.tap()
         let play = app.buttons[playButtonTitle].firstMatch

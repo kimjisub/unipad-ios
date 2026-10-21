@@ -37,6 +37,11 @@ final class AutoPlayRunner {
         func onStart()
         func onPadTouchOn(x: Int, y: Int, inputID: UUID)
         func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID])
+        /// Absolute monotonic times, on the same clock as LedRunner.
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64)
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64)
+        /// nil releases scheduling when paused, stopped, or practicing without scheduled input.
+        func onInputTimeThrough(_ at: Int64?)
         func onPadTouchCancel(x: Int, y: Int, inputID: UUID)
         func onChainChange(c: Int)
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64)
@@ -176,6 +181,8 @@ final class AutoPlayRunner {
                 self.withGuides { $0.removeAll() }
             }
 
+            // Close the LED timeline before sampling the new autoplay origin.
+            self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? .min : nil)
             var delayAccum: Int64 = 0
             var startTime = self.clock()
             var prevPracticeGuide = self.practiceGuide
@@ -283,7 +290,7 @@ final class AutoPlayRunner {
                                     let pad = Pad(x: x, y: y, chain: self.chain.value)
                                     let inputID = self.heldPads[pad] ?? UUID()
                                     self.heldPads[pad] = inputID
-                                    self.listener?.onPadTouchOn(x: x, y: y, inputID: inputID)
+                                    self.listener?.onPadTouchOn(x: x, y: y, inputID: inputID, scheduledAtMs: startTime + delayAccum)
                                 }
 
                             case .off(let x, let y, let currChain):
@@ -296,7 +303,7 @@ final class AutoPlayRunner {
                                     // from its current (possibly clamped) chain.
                                     let inputs = self.heldPads.filter { $0.key.x == x && $0.key.y == y }
                                     for pad in inputs.keys { self.heldPads.removeValue(forKey: pad) }
-                                    self.listener?.onPadTouchOff(x: x, y: y, inputIDs: Array(inputs.values))
+                                    self.listener?.onPadTouchOff(x: x, y: y, inputIDs: Array(inputs.values), scheduledAtMs: startTime + delayAccum)
                                 }
 
                             case .delay(let delay):
@@ -359,12 +366,14 @@ final class AutoPlayRunner {
                     }
                 }
 
+                self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? currTime : nil)
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
             }
 
             // stop() already reset the UI; a cancelled run must not post another onEnd after it.
             guard !Task.isCancelled else { return }
             self.releaseHeldPads()
+            self.listener?.onInputTimeThrough(nil)
             self.turnOffRemainingGuides()
             self.task = nil
             self.listener?.onEnd()
@@ -378,6 +387,7 @@ final class AutoPlayRunner {
         task?.cancel()
         task = nil
         releaseHeldPads()
+        listener?.onInputTimeThrough(nil)
         withGuides { $0.removeAll() }
         resetStepState()
     }
@@ -492,6 +502,16 @@ final class AutoPlayRunner {
 }
 
 extension AutoPlayRunner.Listener {
+    func onInputTimeThrough(_ at: Int64?) {}
+
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+        onPadTouchOn(x: x, y: y, inputID: inputID)
+    }
+
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) {
+        onPadTouchOff(x: x, y: y, inputIDs: inputIDs)
+    }
+
     func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
         onPadTouchOff(x: x, y: y, inputIDs: [inputID])
     }
