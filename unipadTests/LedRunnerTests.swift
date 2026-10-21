@@ -39,6 +39,9 @@ struct LedRunnerTests {
     final class Recorder: LedRunner.Listener {
         private let lock = NSLock()
         private var _outputs: [String] = []
+        private var _codes: [Int] = []
+
+        var codes: [Int] { lock.withLock { _codes } }
 
         var outputs: [String] {
             lock.lock()
@@ -50,6 +53,10 @@ struct LedRunnerTests {
             lock.lock()
             defer { lock.unlock() }
             for event in events {
+                switch event {
+                case .padOn(_, _, _, let velocity), .chainOn(_, _, let velocity): _codes.append(velocity)
+                case .padOff, .chainOff: _codes.append(0)
+                }
                 switch event {
                 case .padOn(let x, let y, _, _): _outputs.append("padOn \(x) \(y)")
                 case .padOff(let x, let y): _outputs.append("padOff \(x) \(y)")
@@ -72,7 +79,7 @@ struct LedRunnerTests {
             runner.loop()
         }
 
-        /// eventOn queues the animation; the next tick adopts it and the one after plays it.
+        /// Advance two normal ticks after a press.
         func press() {
             runner.eventOn(x: 0, y: 0)
             tick()
@@ -112,6 +119,190 @@ struct LedRunnerTests {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         return Harness(runner: runner, recorder: recorder, clock: clock, chain: chain)
+    }
+
+    @Test func autoplayInputMustArriveBeforeRenderingLaterSteps() async throws {
+        let h = try await start([
+            0: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 5), .delay(delay: 2),
+                                       .on(x: 1, y: 1, velocity: 9)], loop: 1, num: 0),
+            1: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 21)], loop: 1, num: 0)
+        ])
+        defer { h.runner.stop() }
+        h.runner.setInputTimeThrough(1000)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(0)
+        // The LED task runs while autoplay's press for 1001 is still waiting on the main actor.
+        h.tick(2)
+        #expect(h.recorder.codes == [5])
+        h.chain.setValue(1)
+        h.runner.eventOn(x: 0, y: 0, pressedAt: 1001)
+        h.runner.setInputTimeThrough(1003)
+        h.tick(1)
+        #expect(h.recorder.codes == [5, 21, 9])
+    }
+
+    @Test func clearingTheInputBoundaryLetsTheFiniteTailFinish() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 2), .off(x: 0, y: 0)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.setInputTimeThrough(1000)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(3)
+        #expect(h.recorder.codes == [5])
+        h.runner.setInputTimeThrough(nil)
+        h.tick(0)
+        #expect(h.recorder.codes == [5, 0])
+        // Starting another autoplay run can close the bound while a finished state remains.
+        h.runner.setInputTimeThrough(.min)
+        h.tick(1)
+        #expect(h.recorder.codes == [5, 0])
+    }
+
+    @Test func lateFirstTickUsesThePressTime() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 10), .off(x: 0, y: 0)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(12)
+        #expect(h.recorder.codes == [5, 0])
+    }
+
+    @Test func oneTickInterleavesAnimationsByDueTime() async throws {
+        let h = try await start([
+            0: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 5), .delay(delay: 5),
+                                       .on(x: 1, y: 1, velocity: 9), .delay(delay: 100)], loop: 1, num: 0),
+            1: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 21), .delay(delay: 100)], loop: 1, num: 0)
+        ])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(0)
+        h.tick(0)
+        h.clock.advance(2)
+        h.chain.setValue(1)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(6)
+        h.tick(0)
+        #expect(h.recorder.codes == [5, 21, 9])
+    }
+
+    @Test func pressingAgainPreservesOnlyWhatWasDueBeforeThePress() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 10),
+            .on(x: 1, y: 1, velocity: 9), .delay(delay: 10),
+            .on(x: 0, y: 1, velocity: 13), .delay(delay: 100)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(0)
+        h.tick(0)
+        h.clock.advance(15)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(13)
+        h.tick(0)
+        #expect(h.recorder.codes == [5, 9, 0, 0, 5, 9])
+    }
+
+    @Test func runningEventAtThePressTimePrecedesShutdownAndNewAnimation() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 10),
+            .on(x: 0, y: 0, velocity: 9), .delay(delay: 10),
+            .on(x: 1, y: 1, velocity: 13), .delay(delay: 100)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(0)
+        h.tick(0)
+        h.clock.advance(10)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(2)
+        h.tick(0)
+        #expect(h.recorder.codes == [5, 9, 0, 5])
+    }
+
+    @Test func twoPressesBetweenTicksEndTheQueuedAnimation() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 2),
+            .on(x: 1, y: 1, velocity: 9), .delay(delay: 100)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.clock.advance(1)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(3)
+        h.tick(0)
+        #expect(h.recorder.codes == [5, 0, 5, 9])
+    }
+
+    @Test func ownershipIsAppliedInDueTimeOrderBeforeSuppressingOffs() async throws {
+        let h = try await start([
+            0: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 5), .delay(delay: 6),
+                                       .off(x: 1, y: 1)], loop: 1, num: 0),
+            1: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 9), .delay(delay: 100)], loop: 1, num: 0)
+        ])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(0)
+        h.clock.advance(2)
+        h.chain.setValue(1)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(6)
+        #expect(h.recorder.codes == [5, 9])
+    }
+
+    @Test func latePressEndsAnAnimationThatFinishedAfterItsTimestamp() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 10), .on(x: 1, y: 1, velocity: 9)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(12)
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+        h.clock.advance(2)
+        h.runner.eventOn(x: 0, y: 0, pressedAt: 1008)
+        h.tick(2)
+        h.tick(4)
+        #expect(h.recorder.codes == [5, 9, 0, 0, 5, 9])
+    }
+
+    @Test func pressAtTheLastEventLeavesTheFinishedLedsLit() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 10), .on(x: 1, y: 1, velocity: 9)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(12)
+        h.clock.advance(2)
+        h.runner.eventOn(x: 0, y: 0, pressedAt: 1010)
+        h.tick(2)
+        #expect(h.recorder.codes == [5, 9, 5])
+    }
+
+    @Test func releasingBeforeTheFirstTickEndsTheQueuedEndlessAnimation() async throws {
+        let h = try await start([0: Self.slowLoop])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.clock.advance(1)
+        h.runner.eventOff(x: 0, y: 0)
+        h.tick(3)
+        #expect(h.recorder.codes == [5, 0])
+    }
+
+    @Test func resumeShiftsTheRemainingWaitInsteadOfReplayingPausedTime() async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 20), .off(x: 0, y: 0)
+        ], loop: 1, num: 0)])
+        defer { h.runner.stop() }
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(4)
+        h.runner.stop()
+        h.clock.advance(1000)
+        h.runner.launch()
+        h.tick(15)
+        #expect(h.recorder.codes == [5])
+        h.tick(1)
+        #expect(h.recorder.codes == [5, 0])
     }
 
     @Test(arguments: [false, true])

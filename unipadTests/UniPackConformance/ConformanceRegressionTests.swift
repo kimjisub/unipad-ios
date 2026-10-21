@@ -5,7 +5,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
-    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005"])
+    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005", "RUN-S-008", "RUN-S-009", "RUN-S-010", "RUN-S-012", "RUN-S-013"])
     func playbackCasesAreMeasured(id: String) async throws {
         let corpus = try ConformanceCorpus.load()
         let sample = try #require(corpus.cases.first { $0.id == id })
@@ -15,6 +15,34 @@ struct ConformanceRegressionTests {
             return
         }
         #expect(sample.classify(value).status == "pass", "\(id): \(value.serialized())")
+    }
+
+    @Test(arguments: ["RUN-S-008", "RUN-S-009"])
+    func omittingSoundOffFailsTheReleaseCase(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        deps.soundOff = { _, _, _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "a release must stop the voice its press started")
+    }
+
+    @Test(arguments: ["RUN-S-012", "RUN-S-013"])
+    func omittingTheChainObserverFailsTheQueueResetCase(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        deps.setupChainObserver = { _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "the play screen must reset both queues on a chain change")
     }
 
     @Test(arguments: ["RUN-L-006", "RUN-L-007"])

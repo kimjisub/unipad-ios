@@ -130,6 +130,7 @@ final class DesignScreenshots: XCTestCase {
         let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
         if packTitles.count > 0 {
             let title = packTitles.element(boundBy: 0)
+            XCTAssertTrue(UITestSupport.scrollIntoView(title, in: app.scrollViews.firstMatch, app: app))
             title.tap()          // first tap selects and opens the detail panel
             sleep(1)
             shot("05-pack-selected")

@@ -17,9 +17,9 @@ import XCTest
 /// autoplay) and fails when the driver does not receive exactly what LedRunner handed over, or receives
 /// the pack's commands reordered, incomplete or with extra ones. With UNIPAD_LED_TIMING_MIDI set to the
 /// arrivals file of a running ci/virtual-launchpad.sh, the commands also go out as MIDI to that virtual
-/// Launchpad MK2, which must receive all of them in order. A run stopped at the give-up time reports
-/// unmatched intended commands after the latest match as an incomplete observation, not a whole-pack
-/// missing-command verdict. Missing commands before that point still fail.
+/// Launchpad MK2, which must receive all of them in order. A run stopped at the give-up time cannot
+/// establish whole-pack completeness. Only missing commands in the fixed final cutoff window remain
+/// unassessed; every earlier missing command still fails.
 /// Reordered/extra commands and every observed command's transport delivery are still checked. Reports go to UNIPAD_LED_TIMING_OUT
 /// (an existing folder; a simulator can write host paths) and to the test's attachments.
 @MainActor

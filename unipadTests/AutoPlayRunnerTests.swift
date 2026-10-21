@@ -8,12 +8,18 @@ final class AutoPlayRunnerTests: XCTestCase {
         var ends = 0
         var onFinish: (() -> Void)?
         var guidePads: [Int] = []
+        var pressTimes: [Int64] = []
+        var releaseTimes: [Int64] = []
+        var inputBoundaries: [Int64?] = []
         /// Guide pads on screen, as the play screen tracks them.
         var litGuides: Set<Int> = []
         func onStart() { starts += 1 }
         func onEnd() { ends += 1; onFinish?() }
         func onPadTouchOn(x: Int, y: Int, inputID: UUID) {}
         func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {}
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) { pressTimes.append(scheduledAtMs) }
+        func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) { releaseTimes.append(scheduledAtMs) }
+        func onInputTimeThrough(_ at: Int64?) { inputBoundaries.append(at) }
         func onChainChange(c: Int) {}
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
             guidePads.append(x * 256 + y)
@@ -36,6 +42,27 @@ final class AutoPlayRunnerTests: XCTestCase {
             }
             await Task.yield()
         }
+    }
+
+    func testLateTickKeepsScheduledPressAndReleaseTimes() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [
+            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 2),
+            .on(x: 0, y: 1, currChain: 0, num: 0), .delay(delay: 3),
+            .off(x: 0, y: 0, currChain: 0)
+        ])
+        let clock = TestManualClock()
+        let recorder = Recorder()
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                    clock: { clock.read() }, sleep: { _ in clock.advance(20); await Task.yield() })
+        defer { runner.stop() }
+        runner.launch()
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.pressTimes, [1000, 1002])
+        XCTAssertEqual(recorder.releaseTimes, [1005])
+        XCTAssertEqual(recorder.inputBoundaries.first!, .min)
+        XCTAssertTrue(recorder.inputBoundaries.compactMap { $0 }.contains(1020))
+        XCTAssertNil(recorder.inputBoundaries.last!)
     }
 
     func testCompletedSongBecomesInactiveAndCanLaunchAgain() async throws {
