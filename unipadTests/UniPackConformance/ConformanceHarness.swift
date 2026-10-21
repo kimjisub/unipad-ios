@@ -78,13 +78,18 @@ enum ConformanceHarness {
         return !FileManager.default.fileExists(atPath: dir.appendingPathComponent("A").path)
     }()
 
-    private static func soundName(_ file: URL, base: String, prefixLength: Int) -> String {
-        let path = file.resolvingSymlinksInPath().path
-        // The parser finds the sounds folder whatever its letter case; the name below it is the file's own.
-        let name = path.lowercased().hasPrefix(base) ? String(path.dropFirst(prefixLength)) : file.lastPathComponent
-        // File URLs give names decomposed (NFD); results carry them composed (NFC), as the corpus writes them.
-        // Swift compares the two forms as equal, the other platforms and report.mjs do not.
-        return name.precomposedStringWithCanonicalMapping
+    private static func soundNames(root: URL) -> (URL) -> String {
+        let base = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
+        let lowercaseBase = base.lowercased()
+        let prefixLength = base.count
+        return { file in
+            let path = file.resolvingSymlinksInPath().path
+            // The parser finds the sounds folder whatever its letter case; the name below it is the file's own.
+            let name = path.lowercased().hasPrefix(lowercaseBase) ? String(path.dropFirst(prefixLength)) : file.lastPathComponent
+            // File URLs give names decomposed (NFD); results carry them composed (NFC), as the corpus writes them.
+            // Swift compares the two forms as equal, the other platforms and report.mjs do not.
+            return name.precomposedStringWithCanonicalMapping
+        }
     }
 
     static func parseResult(_ pack: UniPack, root: URL) -> JSONValue {
@@ -99,15 +104,13 @@ enum ConformanceHarness {
 
         var sounds: [JSONValue] = []
         var leds: [JSONValue] = []
-        let soundsBase = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
-        let soundsBaseLowercased = soundsBase.lowercased()
-        let soundsPrefixLength = soundsBase.count
+        let soundName = soundNames(root: root)
         for c in 0..<pack.chain {
             for x in 0..<pack.buttonX {
                 for y in 0..<pack.buttonY {
                     if let queue = pack.soundTable?[c][x][y], !queue.isEmpty {
                         sounds.append(["c": .int(c), "x": .int(x), "y": .int(y), "queue": .array(queue.map { sound in
-                            ["file": .string(soundName(sound.file, base: soundsBaseLowercased, prefixLength: soundsPrefixLength)), "loop": .int(sound.loop), "wormhole": .int(sound.wormhole)]
+                            ["file": .string(soundName(sound.file)), "loop": .int(sound.loop), "wormhole": .int(sound.wormhole)]
                         })])
                     }
                     if let queue = pack.ledAnimationTable?[c][x][y], !queue.isEmpty {
@@ -359,6 +362,7 @@ enum ConformanceHarness {
     @MainActor
     private static func runScenario(_ conformanceCase: ConformanceCase, pack: UniPack, root: URL, deps: ConformanceDeps) async throws -> ConformanceActual {
         let log = EventLog()
+        let soundName = soundNames(root: root)
         // Chain scenarios install the play screen's real queue-reset observer. Autoplay-off cases
         // also use its input/transport path so manual and scripted presses keep separate identities.
         let usesScreenInputs = conformanceCase.scenario.contains { $0["do"]?.string == "autoplayOff" }
@@ -437,10 +441,10 @@ enum ConformanceHarness {
                 // engine, not the current chain or the pad's already-advanced queue head.
                 recordStops(since: previousIDs)
                 if engine.playsStarted > before, let head {
-                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root)), .int(head.loop)])
+                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file)), .int(head.loop)])
                     if watchesStops {
                         for id in engine.activePlayIDs.subtracting(previousIDs) {
-                            voices[id] = ["soundStop", .int(playing), .int(x), .int(y), .string(soundName(head.file, root: root))]
+                            voices[id] = ["soundStop", .int(playing), .int(x), .int(y), .string(soundName(head.file))]
                         }
                     }
                 }
