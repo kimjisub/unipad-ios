@@ -382,20 +382,23 @@ final class SoundEngine {
     /// An idle node first; otherwise the oldest one-shot, never an infinite loop while a one-shot
     /// exists (Android AudioEngine's stealing policy). Plain round-robin killed the backing track
     /// after `playerCount` further pad hits.
+    ///
+    /// An idle node is taken as it is: it was stopped when its play ID was cleared, or it has run out
+    /// of buffers, so the next buffer plays at once. Stopping it again would make every pad wait for
+    /// the node on the screen's thread, and would cut a one-shot that frees its node when the node has
+    /// read it, before the mix has all of it.
     private func acquirePlayerNode() -> (AVAudioPlayerNode, Int) {
-        var index: Int
         if let idle = nodePlayID.firstIndex(of: 0) {
-            index = idle
-        } else {
-            var victim: Int? = nil
-            for i in 0..<playerCount where !nodeIsLoop[i] {
-                if victim == nil || nodeStartOrder[i] < nodeStartOrder[victim!] { victim = i }
-            }
-            if victim == nil {
-                victim = (0..<playerCount).min { nodeStartOrder[$0] < nodeStartOrder[$1] }
-            }
-            index = victim ?? 0
+            return (playerNodes[idle], idle)
         }
+        var victim: Int? = nil
+        for i in 0..<playerCount where !nodeIsLoop[i] {
+            if victim == nil || nodeStartOrder[i] < nodeStartOrder[victim!] { victim = i }
+        }
+        if victim == nil {
+            victim = (0..<playerCount).min { nodeStartOrder[$0] < nodeStartOrder[$1] }
+        }
+        let index = victim ?? 0
         let node = playerNodes[index]
         repeatScheduler.stop(node)
         nodePlayID[index] = 0
@@ -684,7 +687,8 @@ nonisolated final class FiniteRepeatScheduler: @unchecked Sendable {
         let final = voice.remaining == 0
         scheduled += 1
         // Not .dataPlayedBack: that arms a player-node timer, and every later stop() of the node
-        // (the next pad press reusing it) waits on a semaphore for the timer's default-QoS thread.
+        // (from the screen's thread when a pad takes it back) waits on a semaphore for the timer's
+        // default-QoS thread.
         voice.node.scheduleBuffer(voice.buffer, at: nil, options: [], completionCallbackType: final ? .dataRendered : .dataConsumed) { [weak self, weak voice] _ in
             self?.queue.async { [weak self, weak voice] in
                 guard let self, let voice else { return }
