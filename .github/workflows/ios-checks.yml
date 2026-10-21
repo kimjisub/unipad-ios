@@ -78,6 +78,12 @@ jobs:
             UNIPAD_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee "$RUNNER_TEMP/build.log"
 
+      - name: Check open source notices against the build
+        run: |
+          python3 ci/open_source_licenses.py check \
+            --derived-data "$RUNNER_TEMP/DerivedData" \
+            --source-packages "$RUNNER_TEMP/SourcePackages"
+
       - name: Run unit tests without UI tests
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}

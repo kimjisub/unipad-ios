@@ -51,6 +51,8 @@ GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
 Simulator without signing and runs the `unipadTests` target in Debug on an
 available iPhone simulator. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
+After the Release build it checks that the app's open source notices list
+exactly the Swift packages that build compiled (see below).
 The same checks also run after changes are merged into `main`.
 
 The job needs no repository secrets or signing credentials. It replaces the
@@ -60,6 +62,26 @@ stubs. App configuration, version, and behavior in normal builds are unchanged.
 Build logs and the test result bundle are available in the run's
 `ios-check-results` artifact for seven days. This workflow does not upload to
 a store or change required checks.
+
+## Open source notices
+
+Settings > Open Source License shows every third-party component built into the
+app with its full license text. The list is
+`unipad/Resources/OpenSourceLicenses/OpenSourceLicenses.json`; each entry names the
+license files it is made from, in a resolved package checkout (`pin`) or in a
+vendored package (`path`). After adding, removing or updating a package, build
+Release once and run:
+
+```sh
+python3 ci/open_source_licenses.py write --source-packages <cloned source packages folder>
+python3 ci/open_source_licenses.py check --source-packages <cloned source packages folder> \
+  --derived-data <derived data folder>
+```
+
+`write` regenerates the bundled texts; `check`, which CI runs after its Release build,
+fails when a package the build compiled is not listed, a listed one is no longer
+built, a version differs from `Package.resolved` or `Vendor/XiphVorbis/vendor.sh`, or a
+bundled text differs from its source.
 
 ## Play input checks on a Mac
 
