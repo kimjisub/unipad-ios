@@ -14,10 +14,8 @@ final class WormholePracticeUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments() + [
-            "-UniPadReleaseTest", UUID().uuidString,
-            "-UniPadReleaseEmpty", "YES", "-UniPadReleaseWormhole", jump,
-        ]
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: "empty")
+            + ["-UniPadReleaseWormhole", jump]
         app.launch()
         defer { app.terminate() }
         let title = app.staticTexts["Wormhole \(jump)"].firstMatch

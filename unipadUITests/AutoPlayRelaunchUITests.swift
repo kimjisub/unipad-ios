@@ -9,14 +9,14 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
         let list = app.scrollViews["main.packList"]
         XCTAssertTrue(list.waitForExistence(timeout: 30))
         UITestSupport.searchForPack("Playback Stop Fixture", in: app)
         let title = list.staticTexts["Playback Stop Fixture"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "Install Fixtures/PlaybackStop before this check")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the Playback Stop fixture was not prepared")
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20))
         title.tap()
         let play = app.buttons["Play"].firstMatch
@@ -54,14 +54,14 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 20))
         UITestSupport.searchForPack("Playback Stop Fixture", in: app)
         let title = app.staticTexts["Playback Stop Fixture"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "Install Fixtures/PlaybackStop before this check")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the Playback Stop fixture was not prepared")
         title.tap()
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 10))

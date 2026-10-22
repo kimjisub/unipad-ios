@@ -12,8 +12,8 @@
 //      --predicate 'category == "AnalyticsLocal"' > analytics.log &
 //
 //  The app is launched with -UniPadFirebaseLocalOnly YES (UITestSupport), so nothing reaches
-//  Firebase. Needs a pack titled "First Input Fixture" in the app's library (Documents/UniPack); the
-//  unit tests in PlayUsageRecordTests describe the same pack:
+//  Firebase. Each launch gets an isolated library with a generated pack titled "First Input
+//  Fixture" (ReleaseTestSupport); the unit tests in PlayUsageRecordTests describe the same pack:
 //    info: title=First Input Fixture, producerName=Tester, buttonX=8, buttonY=8, chain=1, squareButton=true
 //    keySound: "1 1 1 a.wav", "1 1 2 a.wav", "1 1 3 a.wav"   sounds/a.wav: silent 16-bit PCM
 //    autoPlay: on 1 1 / delay 400 / on 1 2 / delay 400 / on 1 3
@@ -31,7 +31,7 @@ final class PlayUsageRecordUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "play-usage")
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -57,7 +57,7 @@ final class PlayUsageRecordUITests: XCTestCase {
         UITestSupport.searchForPack(Self.packTitle, in: app)
         let list = app.scrollViews["main.packList"]
         let title = list.staticTexts.matching(NSPredicate(format: "label == %@", Self.packTitle)).firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "install test-fixtures/PlayUsage first")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the isolated PlayUsage pack must be prepared")
         // XCTest can report an offscreen title as hittable, then tap a different row while scrolling.
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
                       "fixture title never reached the visible pack list")

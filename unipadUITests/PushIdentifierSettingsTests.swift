@@ -46,6 +46,7 @@ final class PushIdentifierSettingsTests: XCTestCase {
         let pane = app.scrollViews.containing(titled(element.label)).firstMatch
         XCTAssertTrue(UITestSupport.scrollIntoView(element, in: pane, app: app, maxSwipes: 5),
                       "\(element.label) is never fully on screen")
+        XCTAssertTrue(element.isHittable, "\(element) is never on screen")
     }
 
     private func assertAlertShows(_ message: String, name: String) {

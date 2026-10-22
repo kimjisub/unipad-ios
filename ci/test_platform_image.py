@@ -11,7 +11,7 @@ import unittest
 class PlatformImageCompilationTests(unittest.TestCase):
     def test_named_image_compiles_without_recursion_for_macos(self):
         source = Path(__file__).resolve().parents[1] / 'unipad/Utils/PlatformImage.swift'
-        with tempfile.TemporaryDirectory(dir=os.environ.get('PAPERCLIP_RUN_SCRATCH_DIR')) as directory:
+        with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as directory:
             probe = Path(directory) / 'PlatformImage.swift'
             probe.write_text(source.read_text() + '''
 func loadNamedPlatformImage(_ name: String) -> PlatformImage? {

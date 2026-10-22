@@ -20,9 +20,8 @@ final class AppStoreUpdateUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments() + [
-            "-UniPadReleaseTest", UUID().uuidString, "-UniPadAppStoreResponse", response,
-        ]
+        app.launchArguments = UITestSupport.englishLaunchArguments(isolated: true)
+            + ["-UniPadAppStoreResponse", response]
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))

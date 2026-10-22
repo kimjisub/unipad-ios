@@ -2,21 +2,20 @@ import XCTest
 
 /// Exercises the real audio engine and app lifecycle with the shared Faded sample pack.
 /// Screenshots and the app's audio logs are evidence of the simulator flow, not audible latency.
+/// Every launch stages a silent 8x8 Faded in an isolated library and requires a pass.
 final class AudioLifecycleUITests: XCTestCase {
     @MainActor
     func testPadsAndAutoplayRemainUsableAfterReturningFromHome() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "chain-layout")
         app.launch()
         UITestSupport.dismissSystemAlerts()
         let list = app.scrollViews["main.packList"]
         XCTAssertTrue(list.waitForExistence(timeout: 30))
         let title = list.staticTexts.matching(NSPredicate(format: "label == %@", "Alan Walker - Faded")).firstMatch
-        guard title.waitForExistence(timeout: 10) else {
-            throw XCTSkip("Faded is not installed in Documents/UniPack; the audio lifecycle was not checked")
-        }
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the isolated library must stage Faded")
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20))
         UITestSupport.attachScreenshot("audio-01-pack-selected", to: self)
         title.tap()

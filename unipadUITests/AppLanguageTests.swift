@@ -88,9 +88,7 @@ final class AppLanguageTests: XCTestCase {
         // to be hittable instead of reading the button list at a fixed moment.
         let list = app.scrollViews["main.packList"]
         let packTitles = list.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else {
-            throw XCTSkip("no pack in the library, so pack selection and play were not walked")
-        }
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let title = packTitles.element(boundBy: 0)
         XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
                       "[\(language.code)] the pack row never scrolled into view")

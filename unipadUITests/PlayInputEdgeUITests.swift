@@ -168,9 +168,7 @@ final class PlayInputEdgeUITests: XCTestCase {
     @MainActor
     private func openPack(_ title: String) {
         if app.launchArguments.isEmpty {
-            var arguments = UITestSupport.englishLaunchArguments()
-            if !arguments.contains("-UniPadReleaseTest") { arguments += ["-UniPadReleaseTest", UUID().uuidString] }
-            app.launchArguments = arguments + ["-UniPadReleaseInputEdges", "YES"]
+            app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments() + ["-UniPadReleaseInputEdges", "YES"]
         }
         app.launch()
         UITestSupport.dismissSystemAlerts()

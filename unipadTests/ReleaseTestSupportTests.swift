@@ -6,6 +6,219 @@ import XCTest
 
 @MainActor
 final class ReleaseTestSupportTests: XCTestCase {
+    func testZeroDurationLEDLibraryMatchesRepositoryFixture() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("zero-duration-led", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let library = root.appendingPathComponent("UniPack")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: library.path), ["ZeroDurationLED"])
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("test-fixtures/ZeroDurationLED")
+        let staged = library.appendingPathComponent("ZeroDurationLED")
+        for name in ["info", "keySound", "keyLed/1 1 1 2147483647", "keyLed/1 1 2 2147483647", "keyLed/1 1 3 2147483647"] {
+            XCTAssertEqual(try Data(contentsOf: staged.appendingPathComponent(name)),
+                           try Data(contentsOf: source.appendingPathComponent(name)), name)
+        }
+        let pack = UniPackFolder(rootFolder: staged)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertEqual(pack.title, "Zero Duration LED Fixture")
+        XCTAssertEqual([pack.buttonX, pack.buttonY, pack.chain], [8, 8, 2])
+        XCTAssertEqual(pack.soundCount, 0)
+    }
+
+    func testPlayUsageLibraryPreparesTheScreenScenariosPack() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("play-usage", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let folders = WorkspaceManager.unipackFolders(in: workspace)
+        XCTAssertEqual(folders.count, 1)
+        let folder = try XCTUnwrap(folders.first)
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertEqual(pack.title, "First Input Fixture")
+        XCTAssertEqual(pack.buttonX, 8)
+        XCTAssertEqual(pack.buttonY, 8)
+        XCTAssertEqual(pack.chain, 1)
+        XCTAssertTrue(pack.squareButton)
+        XCTAssertEqual(pack.soundCount, 3)
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("autoPlay"), encoding: .utf8),
+                       "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n")
+    }
+
+    func testWarningLibrariesKeepTheOriginalWarningAndGridScenarios() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        for kind in ["sound", "info", "none"] {
+            defaults.set(UUID().uuidString, forKey: keys[0])
+            defaults.set(false, forKey: keys[1])
+            defaults.set("warning-\(kind)", forKey: keys[2])
+            let root = try XCTUnwrap(ReleaseTestSupport.root)
+            defer { try? FileManager.default.removeItem(at: root) }
+            try ReleaseTestSupport.prepare()
+            let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+            let folders = WorkspaceManager.unipackFolders(in: workspace)
+            XCTAssertEqual(folders.count, 1)
+            let pack = UniPackFolder(rootFolder: try XCTUnwrap(folders.first))
+            pack.load()
+            pack.loadDetail()
+            XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+            XCTAssertEqual(pack.buttonX, 3)
+            XCTAssertEqual(pack.buttonY, 4)
+            XCTAssertTrue(pack.squareButton)
+            let expected: String? = kind == "sound"
+                ? "keySound : [1 1 1 nope.wav] sound was not found"
+                : kind == "info" ? "info : title was missing\ninfo : producerName was missing" : nil
+            XCTAssertEqual(pack.errorDetail, expected)
+        }
+    }
+
+    func testChainLayoutLibraryHasTheSmallConformancePackAndAnEightByEightFaded() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("chain-layout", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let packs = WorkspaceManager.unipackFolders(in: workspace).map { folder -> UniPackFolder in
+            let pack = UniPackFolder(rootFolder: folder)
+            pack.load()
+            pack.loadDetail()
+            XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+            return pack
+        }
+        XCTAssertEqual(packs.map(\.title).sorted(), ["Alan Walker - Faded", "Conformance"])
+        let small = try XCTUnwrap(packs.first { $0.title == "Conformance" })
+        XCTAssertEqual([small.buttonX, small.buttonY, small.chain], [4, 3, 24])
+        XCTAssertTrue(small.squareButton)
+        XCTAssertEqual(small.soundCount, 1)
+        XCTAssertFalse(small.keyLedExist)
+        XCTAssertFalse(small.autoPlayExist)
+        let faded = try XCTUnwrap(packs.first { $0.title == "Alan Walker - Faded" })
+        XCTAssertEqual([faded.buttonX, faded.buttonY, faded.chain], [8, 8, 6])
+        XCTAssertTrue(faded.autoPlayExist)
+    }
+
+    func testSearchLibraryHasTitlesAndProducersUsedByScreenChecks() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("search", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let packs = WorkspaceManager.unipackFolders(in: workspace).map { folder in
+            let pack = UniPackFolder(rootFolder: folder)
+            pack.load()
+            return pack
+        }
+        XCTAssertEqual(Set(packs.map(\.title)), Set(["Alan Walker - Faded", "Sunflower", "봄날"]))
+        XCTAssertEqual(packs.first { $0.title == "Sunflower" }?.producerName, "Post Malone")
+        XCTAssertTrue(packs.first { $0.title == "Alan Walker - Faded" }?.producerName.contains("김지섭") == true)
+    }
+
+    func testChainReleaseLibraryStagesTheGivenArchiveUnchanged() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadReleaseArchive"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let archive = try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(forResource: "delayed", withExtension: "uni")))
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("chain-release", forKey: keys[2])
+        defaults.set(archive.base64EncodedString(), forKey: keys[3])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let workspace = try XCTUnwrap(WorkspaceManager.currentWorkspaces().first)
+        let folders = WorkspaceManager.unipackFolders(in: workspace)
+        XCTAssertEqual(folders.count, 1)
+        let folder = try XCTUnwrap(folders.first)
+        let pack = UniPackFolder(rootFolder: folder)
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertEqual(pack.title, "Chain Release v1 delayed")
+        XCTAssertEqual(pack.chain, 2)
+        XCTAssertEqual(pack.soundCount, 9)
+    }
+
+    func testChainReleaseLibraryWithoutAnArchiveFailsInsteadOfStagingNothing() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadReleaseArchive"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("chain-release", forKey: keys[2])
+        defaults.removeObject(forKey: keys[3])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertThrowsError(try ReleaseTestSupport.prepare())
+    }
+
+    func testDeletionFixtureIsProtectedUntilNextLaunchUnlocksIt() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary", "UniPadUITestDeleteFailure"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("deletion", forKey: keys[2])
+        defaults.set(true, forKey: keys[3])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        let file = root.appendingPathComponent("UniPack/Deletion/info")
+        defer {
+            defaults.set(false, forKey: keys[3])
+            try? ReleaseTestSupport.prepare()
+            try? FileManager.default.removeItem(at: root)
+        }
+        try ReleaseTestSupport.prepare()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        XCTAssertEqual(attributes[.immutable] as? Bool, true)
+        XCTAssertThrowsError(try FileManager.default.removeItem(at: file))
+        let packRoot = file.deletingLastPathComponent()
+        XCTAssertThrowsError(try UniPackFolder(rootFolder: packRoot).delete())
+        let pack = UniPackFolder(rootFolder: packRoot)
+        pack.load()
+        XCTAssertFalse(pack.criticalError, "a rejected deletion must keep the full fixture readable")
+        XCTAssertEqual(pack.title, "UI Test Pack")
+        defaults.set(false, forKey: keys[3])
+        try ReleaseTestSupport.prepare()
+        try FileManager.default.removeItem(at: file)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
     func testPickerPreparationRemovesOnlyOldGeneratedArchivesAndDoesNotAccumulate() throws {
         let defaults = UserDefaults.standard
         let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
@@ -40,7 +253,7 @@ final class ReleaseTestSupportTests: XCTestCase {
             let token = UUID().uuidString
             defaults.set(token, forKey: "UniPadReleaseTest")
             roots.append(try XCTUnwrap(ReleaseTestSupport.root))
-            let current = documents.appendingPathComponent("ReleaseFixture-\(token).zip")
+            let current = documents.appendingPathComponent("00-ReleaseTestImports/ReleaseFixture-\(token).zip")
             currentArchives.append(current)
             try ReleaseTestSupport.prepare()
             let firstContents = try Data(contentsOf: current)
@@ -121,6 +334,49 @@ final class ReleaseTestSupportTests: XCTestCase {
         XCTAssertEqual(pack.chain, 2)
         XCTAssertTrue(pack.detailLoaded)
         XCTAssertEqual(pack.soundCount, 3)
+    }
+
+    func testPickerFilesAreIsolatedFromPreviousLaunches() async throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadReleaseFile"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        let fm = FileManager.default
+        let documents = WorkspaceManager.documentsDirectory
+        let picker = documents.appendingPathComponent("00-ReleaseTestImports")
+        let firstToken = UUID().uuidString
+        let secondToken = UUID().uuidString
+        let untouched = documents.appendingPathComponent("PickerUser-\(UUID().uuidString).zip")
+        try Data("user archive".utf8).write(to: untouched)
+        defer {
+            try? fm.removeItem(at: untouched)
+            for token in [firstToken, secondToken] {
+                try? fm.removeItem(at: documents.appendingPathComponent("ReleaseTests/\(token)"))
+                try? fm.removeItem(at: documents.appendingPathComponent("ReleaseFixture-\(token).zip"))
+                try? fm.removeItem(at: picker.appendingPathComponent("ReleaseFixture-\(token).zip"))
+            }
+        }
+        defaults.set(true, forKey: "UniPadReleaseEmpty")
+        defaults.set(true, forKey: "UniPadReleaseFile")
+        for token in [firstToken, secondToken] {
+            defaults.set(token, forKey: "UniPadReleaseTest")
+            try ReleaseTestSupport.prepare()
+            let exposed = picker.appendingPathComponent("ReleaseFixture-\(token).zip")
+            XCTAssertTrue(fm.fileExists(atPath: exposed.path), "picker fixture must use its isolated folder")
+            if fm.fileExists(atPath: picker.path) {
+                XCTAssertEqual(try fm.contentsOfDirectory(atPath: picker.path), [exposed.lastPathComponent])
+                if fm.fileExists(atPath: exposed.path) {
+                    XCTAssertEqual(try Data(contentsOf: exposed),
+                                   try Data(contentsOf: documents.appendingPathComponent("ReleaseTests/\(token)/ReleaseFixture.zip")))
+                }
+            }
+            XCTAssertFalse(fm.fileExists(atPath: documents.appendingPathComponent(exposed.lastPathComponent).path))
+            XCTAssertEqual(try Data(contentsOf: untouched), Data("user archive".utf8))
+        }
+        // Returning to the first library must expose its own archive again.
+        defaults.set(firstToken, forKey: "UniPadReleaseTest")
+        try ReleaseTestSupport.prepare()
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: picker.path), ["ReleaseFixture-\(firstToken).zip"])
     }
 
     func testThemeLoadingFixtureIsOptInAndOnlyEnlargesFaded() throws {
