@@ -63,6 +63,9 @@ final class SoundEngine {
         let isInfinite: Bool
     }
     private var inputPlayback: [Input: StartedPlayback] = [:]
+    /// Wormhole chain changes still waiting out their delay, by the press that made them.
+    private var pendingWormholes: [Int: Task<Void, Never>] = [:]
+    private var nextWormholeID = 0
 
     private func input(x: Int, y: Int, id: UUID?) -> Input {
         id.map(Input.identified) ?? .pad(x, y)
@@ -680,11 +683,21 @@ final class SoundEngine {
         if sound.wormhole != Sound.noWormhole {
             let wormhole = sound.wormhole
             let delay = wormholeDelay
-            Task { @MainActor in
+            let id = nextWormholeID
+            nextWormholeID += 1
+            pendingWormholes[id] = Task { @MainActor [weak self] in
                 await delay()
-                chain.setValue(wormhole)
+                guard let self, self.pendingWormholes.removeValue(forKey: id) != nil else { return }
+                self.chain.setValue(wormhole)
             }
         }
+    }
+
+    /// Drops the wormhole chain changes still waiting out their delay: a chain the player picks
+    /// after a press is the one that stays.
+    func cancelPendingWormholes() {
+        for task in pendingWormholes.values { task.cancel() }
+        pendingWormholes.removeAll()
     }
 
     func soundOff(x: Int, y: Int, inputID: UUID? = nil) {
@@ -697,6 +710,7 @@ final class SoundEngine {
 
     func destroy() {
         inputPlayback.removeAll()
+        cancelPendingWormholes()
         // Terminal: a notification that lands after this must not restart the engine we just stopped.
         gate.shutDown()
         for i in nodePlayID.indices { nodePlayID[i] = 0 }
