@@ -36,14 +36,14 @@ struct UniPackDownloaderTests {
     }
 
     private func download(
-        _ recorder: RecordingDelegate, from host: String? = nil, preKnownFileSize: Int64 = 0,
+        _ recorder: RecordingDelegate, from host: String? = nil, folderName: String = "pack", preKnownFileSize: Int64 = 0,
         waitBeforeRetry: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) async {
         await UniPackDownloader(session: session, stagingRoot: stagingRoot, waitBeforeRetry: waitBeforeRetry).download(
             title: "pack",
             url: "https://\(host ?? self.host)/pack.zip",
             workspace: workspace,
-            folderName: "pack",
+            folderName: folderName,
             preKnownFileSize: preKnownFileSize,
             delegate: recorder
         )
@@ -275,6 +275,22 @@ struct UniPackDownloaderTests {
         #expect(requests.count == 3)
         #expect(requests.dropFirst().allSatisfy { $0.value(forHTTPHeaderField: "Range") == "bytes=\(split)-" })
         #expect(requests.last?.value(forHTTPHeaderField: "If-Range") == date)
+    }
+
+    /// A store item whose name is longer than a file name may be fails like any other write
+    /// failure, leaving neither a pack nor a staging folder behind.
+    @Test func nameLongerThanAFileNameMayBeFailsAndLeavesNothing() async throws {
+        defer { cleanUp() }
+        StubURLProtocol.register(host: host, .init(status: 200, chunks: [Self.packZip(title: "Long")]))
+        let recorder = RecordingDelegate()
+
+        await download(recorder, folderName: String(repeating: "a", count: 300))
+
+        #expect(recorder.importStarted)
+        #expect(recorder.installedFolder == nil)
+        #expect(recorder.error != nil)
+        #expect(try workspaceContents().isEmpty)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: stagingRoot.path))?.isEmpty ?? true)
     }
 
     // MARK: - Two downloads of the same name

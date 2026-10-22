@@ -67,31 +67,21 @@ final class AppRouter {
             )
             return
         }
-        defer { url.stopAccessingSecurityScopedResource() }
 
-        do {
-            let zipData = try Data(contentsOf: url)
-
-            Task { @MainActor in
-                await importFileData(zipData, fileName: fileName)
-            }
-        } catch {
-            UsageAnalytics.shared.packImportFailed(source: .openIn, error: error)
-            NotificationCenter.default.post(
-                name: NSNotification.Name("UniPadExternalFileImportFailed"),
-                object: nil,
-                userInfo: ["error": error.localizedDescription]
-            )
+        // The importer copies the file from where it is; access lasts until it is done.
+        Task { @MainActor in
+            defer { url.stopAccessingSecurityScopedResource() }
+            await importFile(at: url)
         }
     }
 
     @MainActor
-    private func importFileData(_ data: Data, fileName: String) async {
+    private func importFile(at url: URL) async {
         let workspace = WorkspaceManager.shared.downloadWorkspace.url
         let importer = UniPackImporter()
 
         do {
-            let importedFolder = try await importer.importPack(data: data, fileName: fileName, to: workspace, delegate: nil)
+            let importedFolder = try await importer.importPack(from: url, to: workspace, delegate: nil)
             UsageAnalytics.shared.packImportSucceeded(source: .openIn)
 
             NotificationCenter.default.post(
