@@ -135,6 +135,8 @@ nonisolated class UniPackFolder: UniPack {
         // Every branch falls through to the validation below: an unreadable info used to return
         // early with chain == 0 and criticalError == false, and PlayViewModel then formed the
         // range 0...(-1) and trapped.
+        var hasButtonX = false
+        var hasButtonY = false
         if let infoFile {
             guard let data = Self.readTextFile(infoFile) else {
                 addErr("info : file could not be decoded")
@@ -142,8 +144,8 @@ nonisolated class UniPackFolder: UniPack {
                 return
             }
 
-            for rawLine in data.components(separatedBy: .newlines) {
-                let s = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            for rawLine in Self.lines(of: data) {
+                let s = rawLine.trimmingCharacters(in: Self.lineTrim)
                 // A line without "=" is skipped without a warning, as on the web (info.mdx).
                 guard let separator = s.firstIndex(of: "=") else { continue }
                 let key = s[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -152,8 +154,8 @@ nonisolated class UniPackFolder: UniPack {
                 switch key {
                 case "title": title = value
                 case "producerName": producerName = value
-                case "buttonX": buttonX = gridSize(key, value)
-                case "buttonY": buttonY = gridSize(key, value)
+                case "buttonX": buttonX = gridSize(key, value); hasButtonX = true
+                case "buttonY": buttonY = gridSize(key, value); hasButtonY = true
                 case "chain": chain = Int(value) ?? 0
                 case "squareButton": squareButton = value == "true"
                 case "website": website = value
@@ -166,6 +168,9 @@ nonisolated class UniPackFolder: UniPack {
         if producerName.isEmpty { addErr("info : producerName was missing") }
         if buttonX == 0 { addErr("info : buttonX was missing") }
         if buttonY == 0 { addErr("info : buttonY was missing") }
+        // Without the key the pack has no pads to play; info.mdx marks both as required. A written 0
+        // only warns.
+        if !hasButtonX || !hasButtonY { criticalError = true }
         if chain == 0 { addErr("info : chain was missing") }
         if !(1...24).contains(chain) {
             addErr("info : chain out of range")
@@ -214,8 +219,8 @@ nonisolated class UniPackFolder: UniPack {
         logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
         let soundFinder = PackFileFinder()
 
-        for rawLine in data.components(separatedBy: .newlines) {
-            let s = rawLine.trimmingCharacters(in: .whitespaces)
+        for rawLine in Self.lines(of: data) {
+            let s = rawLine.trimmingCharacters(in: Self.lineTrim)
             if s.isEmpty { continue }
 
             let split = s.split(whereSeparator: { $0.isWhitespace }).map(String.init)
@@ -346,8 +351,8 @@ nonisolated class UniPackFolder: UniPack {
             guard let data = Self.readTextFile(file) else { continue }
             var ledList: [LedAnimation.LedEvent] = []
 
-            for rawLine in data.components(separatedBy: .newlines) {
-                let s = rawLine.trimmingCharacters(in: .whitespaces)
+            for rawLine in Self.lines(of: data) {
+                let s = rawLine.trimmingCharacters(in: Self.lineTrim)
                 if s.isEmpty { continue }
 
                 let split2 = s.split(whereSeparator: { $0.isWhitespace }).map(String.init)
@@ -422,7 +427,7 @@ nonisolated class UniPackFolder: UniPack {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledColor = Int(LaunchpadColor.colorFromCode(ledVelocity))
-                    } else if let cStr = colorToken, cStr.count <= 6, let hexVal = Int(cStr, radix: 16) {
+                    } else if let cStr = colorToken, let hexVal = Self.hexColor(cStr) {
                         ledColor = hexVal | 0xFF000000
                     } else {
                         addErr("keyLed : [\(fileName)].[\(s)] format is incorrect")
@@ -509,8 +514,8 @@ nonisolated class UniPackFolder: UniPack {
             for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
         }
 
-        for rawLine in data.components(separatedBy: .newlines) {
-            let s = rawLine.trimmingCharacters(in: .whitespaces)
+        for rawLine in Self.lines(of: data) {
+            let s = rawLine.trimmingCharacters(in: Self.lineTrim)
             if s.isEmpty { continue }
 
             let split = s.split(whereSeparator: { $0.isWhitespace }).map(String.init)
@@ -635,6 +640,9 @@ nonisolated class UniPackFolder: UniPack {
         return text
     }
 
+    /// UTF-8, then UTF-16 with a byte order mark, then CP949 (T-01 to T-04). Only a file that cannot be
+    /// read gives nil: refusing a pack, or dropping an LED file, over a few bytes from another code page
+    /// lost what Android and the web open.
     private static func decodeTextFile(_ url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
 
@@ -648,13 +656,26 @@ nonisolated class UniPackFolder: UniPack {
                 if let utf16 = String(data: data, encoding: .utf16) { return utf16 }
             }
         }
+        return LegacyText.cp949(data)
+    }
 
-        let eucKR = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.EUC_KR.rawValue)))
-        if let eucKrText = String(data: data, encoding: eucKR) { return eucKrText }
+    /// A line ends at LF, CRLF or a lone CR (T-05). The other Unicode line breaks (VT, FF, NEL,
+    /// U+2028, U+2029) stay inside the line, as Android's and the web's line readers leave them.
+    private static func lines(of text: String) -> [Substring] {
+        text.split(omittingEmptySubsequences: false) { $0 == "\n" || $0 == "\r" || $0 == "\r\n" }
+    }
 
-        let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(0x0422))
-        if let cp949Text = String(data: data, encoding: cp949) { return cp949Text }
+    /// Trimmed from both ends of every line. U+FEFF is included: two files joined into one leave a
+    /// byte order mark at the start of a line, and Android and the web read that line.
+    private static let lineTrim = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FEFF}"))
 
-        return nil
+    /// One to six ASCII hex digits (E-02). `Int(_:radix:)` also takes a sign, so `-1` lit white here
+    /// and another colour on Android; the web skips such a line with a format warning.
+    private static func hexColor(_ token: String) -> Int? {
+        let digits = token.utf8
+        guard (1...6).contains(digits.count),
+              digits.allSatisfy({ (0x30...0x39).contains($0) || (0x41...0x46).contains($0) || (0x61...0x66).contains($0) })
+        else { return nil }
+        return Int(token, radix: 16)
     }
 }
