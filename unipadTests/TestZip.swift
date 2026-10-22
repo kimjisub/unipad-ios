@@ -14,21 +14,29 @@ enum TestZip {
         archive(files, deflated: true, corruptingSizeOf: nil)
     }
 
-    /// Raw entry names and flags, independent of the text encoding of each file's contents.
-    static func storedRawNames(_ files: [(name: Data, data: Data)], utf8Flag: Bool) -> Data {
+    /// Raw entry names and flags, independent of the text encoding of each file's contents. `extras`
+    /// holds each entry's extra field, written to both its local and central headers.
+    static func storedRawNames(_ files: [(name: Data, data: Data)], utf8Flag: Bool, extras: [Data]? = nil) -> Data {
         archive(files.enumerated().map { (name: String($0.offset), data: $0.element.data) },
                 deflated: false, corruptingSizeOf: nil,
-                rawNames: files.map(\.name), flags: utf8Flag ? 0x0800 : 0)
+                rawNames: files.map(\.name), extras: extras, flags: utf8Flag ? 0x0800 : 0)
+    }
+
+    /// An Info-ZIP Unicode Path extra field (0x7075) naming `name` for the raw name `rawName`.
+    static func unicodePathExtra(_ name: String, rawName: Data, crcOf crcName: Data? = nil) -> Data {
+        let body = Data([1]) + le32(crc32(crcName ?? rawName)) + Data(name.utf8)
+        return le16(0x7075) + le16(UInt16(body.count)) + body
     }
 
     private static func archive(_ files: [(name: String, data: Data)], deflated: Bool, corruptingSizeOf corrupted: String?,
-                                rawNames: [Data]? = nil, flags: UInt16 = 0x0800) -> Data {
+                                rawNames: [Data]? = nil, extras: [Data]? = nil, flags: UInt16 = 0x0800) -> Data {
         var archive = Data()
         var centralDirectory = Data()
         let method: UInt16 = deflated ? 8 : 0
 
         for (index, file) in files.enumerated() {
             let name = rawNames?[index] ?? Data(file.name.utf8)
+            let extra = extras?[index] ?? Data()
             let crc = crc32(file.data)
             let body = deflated ? deflate(file.data) : file.data
             let size = UInt32(file.data.count)
@@ -40,8 +48,9 @@ enum TestZip {
             archive.append(le16(20)); archive.append(le16(flags)); archive.append(le16(method))
             archive.append(le16(0)); archive.append(le16(0))
             archive.append(le32(crc)); archive.append(le32(compressedSize)); archive.append(le32(size))
-            archive.append(le16(UInt16(name.count))); archive.append(le16(0))
+            archive.append(le16(UInt16(name.count))); archive.append(le16(UInt16(extra.count)))
             archive.append(name)
+            archive.append(extra)
             archive.append(body)
 
             centralDirectory.append(le32(0x0201_4B50))
@@ -51,11 +60,12 @@ enum TestZip {
             centralDirectory.append(le32(crc)); centralDirectory.append(le32(declaredSize))
             centralDirectory.append(le32(file.name == corrupted ? declaredSize : size))
             centralDirectory.append(le16(UInt16(name.count)))
-            centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
+            centralDirectory.append(le16(UInt16(extra.count))); centralDirectory.append(le16(0))
             centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
             centralDirectory.append(le32(0))
             centralDirectory.append(le32(localHeaderOffset))
             centralDirectory.append(name)
+            centralDirectory.append(extra)
         }
 
         let centralDirectoryOffset = UInt32(archive.count)

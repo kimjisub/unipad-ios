@@ -211,7 +211,6 @@ nonisolated extension FileManager {
             guard cursor + 46 <= data.count, readUInt32LE(at: cursor) == 0x0201_4B50 else { break }
 
             guard
-                let generalPurposeFlags = readUInt16LE(at: cursor + 8),
                 let compressionMethod = readUInt16LE(at: cursor + 10),
                 let compressedSizeU32 = readUInt32LE(at: cursor + 20),
                 let uncompressedSizeU32 = readUInt32LE(at: cursor + 24),
@@ -234,7 +233,8 @@ nonisolated extension FileManager {
             }
 
             let rawName = data[fileNameStart..<fileNameEnd]
-            let fileName = Self.decodeEntryName(rawName, utf8Flag: generalPurposeFlags & 0x0800 != 0)
+            let extra = data[fileNameEnd..<min(fileNameEnd + extraLength, data.count)]
+            let fileName = Self.decodeEntryName(Data(rawName), extra: Data(extra))
             if !fileName.isEmpty {
                 entries.append(Entry(
                     fileName: fileName,
@@ -248,14 +248,12 @@ nonisolated extension FileManager {
             cursor = fileNameEnd + extraLength + commentLength
         }
 
+        var folders = ArchiveFolderNames()
         for entry in entries {
-            // Prevent path traversal and absolute-path extraction.
-            if entry.fileName.hasPrefix("/") || entry.fileName.contains("..") {
-                continue
-            }
+            guard let path = Self.entryPath(entry.fileName) else { continue }
 
-            let entryPath = destinationURL.appendingPathComponent(entry.fileName)
-            if entry.fileName.hasSuffix("/") {
+            let entryPath = destinationURL.appendingPathComponent(folders.place(path.components, isDirectory: path.isDirectory))
+            if path.isDirectory {
                 try createDirectory(at: entryPath, withIntermediateDirectories: true)
                 continue
             }
@@ -296,17 +294,56 @@ nonisolated extension FileManager {
         }
     }
 
-    /// Entry names without the UTF-8 flag are in the archiver's code page. Korean packs were
-    /// zipped on CP949 Windows; decoding them as Latin-1 while `keySound` is decoded as EUC-KR
-    /// produced two different strings for the same file, so every sound was "not found" and a
-    /// legacy pack that plays on Android and web was silent here.
-    private static func decodeEntryName(_ raw: Data, utf8Flag: Bool) -> String {
-        if let utf8 = String(data: raw, encoding: .utf8) { return utf8 }
-        if !utf8Flag {
-            let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(0x0422))
-            if let korean = String(data: raw, encoding: cp949) { return korean }
+    /// Where an entry goes below the destination, or nil for one that must not be written. `\`
+    /// separates folders as `/` does (PowerShell 5.1's Compress-Archive and older .NET write it);
+    /// leading slashes and `.` are dropped. An entry with a `..` folder is skipped so nothing lands
+    /// outside the destination; names that only contain dots (`Faded.../`, `wait...wav`) are kept.
+    static func entryPath(_ name: String) -> (components: [String], isDirectory: Bool)? {
+        let slashed = name.replacingOccurrences(of: "\\", with: "/")
+        var components: [String] = []
+        for component in slashed.split(separator: "/") where component != "." {
+            if component == ".." { return nil }
+            components.append(String(component))
         }
-        return String(data: raw, encoding: .isoLatin1) ?? ""
+        return components.isEmpty ? nil : (components, slashed.hasSuffix("/"))
+    }
+
+    /// The Info-ZIP Unicode Path field (0x7075) when it belongs to this name (its CRC-32 matches the
+    /// raw name); otherwise the raw name as UTF-8 when it is valid UTF-8, and as CP949 when it is not,
+    /// whatever the UTF-8 flag says: some Korean archivers set the flag on CP949 names. Android and
+    /// the web read names the same way.
+    private static func decodeEntryName(_ raw: Data, extra: Data) -> String {
+        if let unicode = unicodePath(in: extra, of: raw) { return unicode }
+        if let utf8 = String(data: raw, encoding: .utf8) { return utf8 }
+        return LegacyText.cp949(raw)
+    }
+
+    private static func unicodePath(in extra: Data, of raw: Data) -> String? {
+        let bytes = [UInt8](extra)
+        func uint16(_ at: Int) -> Int { Int(bytes[at]) | Int(bytes[at + 1]) << 8 }
+        var offset = 0
+        while offset + 4 <= bytes.count {
+            let body = offset + 4
+            let end = body + uint16(offset + 2)
+            guard end <= bytes.count else { return nil }
+            if uint16(offset) == 0x7075, end - body >= 5, bytes[body] == 1 {
+                let crc = UInt32(uint16(body + 1)) | UInt32(uint16(body + 3)) << 16
+                guard crc == crc32(raw), let name = String(bytes: bytes[(body + 5)..<end], encoding: .utf8),
+                      !name.isEmpty else { return nil }
+                return name
+            }
+            offset = end
+        }
+        return nil
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 { crc = (crc >> 1) ^ (crc & 1 == 1 ? 0xEDB8_8320 : 0) }
+        }
+        return ~crc
     }
 
     /// Decompress deflate data using Apple's Compression framework with dynamic buffer growth
@@ -352,5 +389,27 @@ nonisolated extension FileManager {
             destBuffer.deallocate()
             bufferSize *= 2
         }
+    }
+}
+
+/// Folders an archive spells in different letter case (`Pack/Sounds/a.wav`, `Pack/sounds/b.wav`) are
+/// one folder on the Windows or macOS disk the pack was made on, and two on an iPhone's disk, where the
+/// pack then reads only one of them. Each folder keeps the spelling of its first entry.
+nonisolated struct ArchiveFolderNames {
+    /// Lower-cased composed folder path -> the path as first spelled.
+    private var spelled: [String: String] = [:]
+
+    /// The path below the destination for an entry's components.
+    mutating func place(_ components: [String], isDirectory: Bool) -> String {
+        let folderCount = isDirectory ? components.count : components.count - 1
+        var placed = ""
+        for (index, component) in components.enumerated() {
+            let path = placed.isEmpty ? component : placed + "/" + component
+            guard index < folderCount else { return path }
+            let key = path.precomposedStringWithCanonicalMapping.lowercased()
+            placed = spelled[key] ?? path
+            spelled[key] = placed
+        }
+        return placed
     }
 }
