@@ -154,10 +154,17 @@ final class PlayViewModel {
 
     /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
     @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
+    /// Builds the sound engine; a test swaps in one whose audio session it can refuse.
+    @ObservationIgnored var makeSoundEngine: (UniPack, ChainObserver, SoundEngine.LoadingListener) -> SoundEngine = {
+        SoundEngine(unipack: $0, chain: $1, loadingListener: $2)
+    }
 
     // MARK: - Load
 
     func loadUnipack(path: String) async throws {
+        // PlayView starts this again when the screen is shown again after another one covered it;
+        // a pack already built for this screen goes on as it was.
+        guard unipack == nil else { return }
         logger.info("loadUnipack: path=\(path)")
         usageSession.loadStarted()
         unipackLoading = true
@@ -215,11 +222,7 @@ final class PlayViewModel {
         loadingPhaseIndex = loadingPhaseTotal - 1
         soundLoadingActive = true
 
-        soundEngine = SoundEngine(
-            unipack: pack,
-            chain: chain,
-            loadingListener: SoundLoadingAdapter(viewModel: self)
-        )
+        soundEngine = makeSoundEngine(pack, chain, SoundLoadingAdapter(viewModel: self))
         soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {
@@ -472,7 +475,7 @@ final class PlayViewModel {
         proLightModeEnabled = enabled
         cm.setCirIgnore(channel: .led, ignore: !enabled)
         if !enabled {
-            MidiManager.shared.driver.sendFunctionKeyLed(f: 32, velocity: 0)
+            launchpad?.sendFunctionKeyLed(f: 32, velocity: 0)
         }
         chainBtnsRefresh()
     }
@@ -556,7 +559,7 @@ final class PlayViewModel {
             if i < Self.circleArraySize {
                 refreshChainFromChannel(index: i)
             } else {
-                MidiManager.shared.driver.sendFunctionKeyLed(f: i, velocity: 0)
+                launchpad?.sendFunctionKeyLed(f: i, velocity: 0)
             }
         }
     }
@@ -658,11 +661,11 @@ final class PlayViewModel {
             padItems[x][y] = item
             let color = Self.colorFromARGB(item.color)
             setPadColor(x: x, y: y, color: color)
-            MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: item.code)
+            launchpad?.sendPadLed(x: x, y: y, velocity: item.code)
         } else {
             padItems[x][y] = nil
             clearPadColor(x: x, y: y)
-            MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: 0)
+            launchpad?.sendPadLed(x: x, y: y, velocity: 0)
         }
 
         // LED overlay color: guide takes priority over LED
@@ -683,11 +686,11 @@ final class PlayViewModel {
         if let item = cm.get(x: -1, y: index) {
             chainItems[index] = item
             chainColors[index] = Self.colorFromARGB(item.color)
-            MidiManager.shared.driver.sendFunctionKeyLed(f: index, velocity: item.code)
+            launchpad?.sendFunctionKeyLed(f: index, velocity: item.code)
         } else {
             chainItems[index] = nil
             chainColors[index] = .clear
-            MidiManager.shared.driver.sendFunctionKeyLed(f: index, velocity: 0)
+            launchpad?.sendFunctionKeyLed(f: index, velocity: 0)
         }
     }
 
@@ -922,13 +925,22 @@ final class PlayViewModel {
     }
 
     private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
-        let playing = playMode != .none && autoPlayRunner?.playmode == true
+        guard enable else { return }
+        // An autoplay paused only because another screen covers this one counts as playing: an
+        // interruption meanwhile decides whether it goes on, as it would without that screen.
+        let playing = playMode != .none && (autoPlayRunner?.playmode == true || resumesAutoPlayWhenShown)
         switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
         case .pause:
+            resumesAutoPlayWhenShown = false
             pauseAutoPlay()
         case .resume:
             // Autoplay may have been turned off while the session was away.
-            if playMode != .none { resumeAutoPlay() }
+            guard playMode != .none else { break }
+            if isCovered {
+                resumesAutoPlayWhenShown = true
+            } else {
+                resumeAutoPlay()
+            }
         case nil:
             break
         }
@@ -960,8 +972,7 @@ final class PlayViewModel {
     }
 
     func redrawAllLaunchpadLeds() {
-        guard let unipack, let cm = channelManager else { return }
-        let driver = MidiManager.shared.driver
+        guard let unipack, let cm = channelManager, let driver = launchpad else { return }
         driver.sendClearLed()
         for x in 0..<unipack.buttonX {
             for y in 0..<unipack.buttonY {
@@ -1068,16 +1079,21 @@ final class PlayViewModel {
     // MARK: - Lifecycle
 
     func onPause() {
+        autoPlayRunner?.appWentAway()
+        ledRunner?.appWentAway()
         if let adapter = midiControllerAdapter {
             MidiManager.shared.removeController(adapter)
         }
-        MidiManager.shared.driver.sendClearLed()
+        launchpad?.sendClearLed()
         stopVolumeObserver()
     }
 
     func onResume() {
+        autoPlayRunner?.appReturned()
+        ledRunner?.appReturned()
         soundEngine?.appBecameActive()
-        guard uiLoaded else { return }
+        // A covered screen leaves the launchpad and the volume to the screen on top until it is shown.
+        guard uiLoaded, !isCovered else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()
         startVolumeObserver()
@@ -1088,9 +1104,46 @@ final class PlayViewModel {
         usageSession.screenLayoutChanged(layout)
     }
 
+    // MARK: - Covered by another screen
+
+    /// Another screen was pushed over this one (the device screen opened from the connection banner).
+    @ObservationIgnored private var isCovered = false
+    @ObservationIgnored private var resumesAutoPlayWhenShown = false
+
+    /// The performance stays, paused, for when this screen is shown again: held pads are released,
+    /// a playing autoplay pauses, and the launchpad and the volume buttons go to the screen on top.
+    func screenCovered() {
+        guard enable, !isCovered else { return }
+        padInit()
+        resumesAutoPlayWhenShown = playMode != .none && autoPlayRunner?.playmode == true
+        if resumesAutoPlayWhenShown { pauseAutoPlay() }
+        onPause()
+        // Lights still running (a pad's animation, the practice guide) stay on this screen from here.
+        isCovered = true
+    }
+
+    /// This screen is shown again after `screenCovered()`. An autoplay that was playing goes on from
+    /// where it paused, as after a call that lets playback resume, and only with sound.
+    func screenShown() {
+        guard enable, isCovered else { return }
+        isCovered = false
+        onResume()
+        if resumesAutoPlayWhenShown, playMode != .none, soundEngine?.isPlaybackSuppressed != true {
+            resumeAutoPlay()
+        }
+        resumesAutoPlayWhenShown = false
+    }
+
+    /// The launchpad this screen lights; none while another screen covers it and has the launchpad.
+    fileprivate var launchpad: MidiDriver? {
+        isCovered ? nil : MidiManager.shared.driver
+    }
+
     // MARK: - Cleanup
 
+    /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
+        guard enable else { return }
         activePadInputs.removeAll()
         usageSession.ended()
         enable = false
@@ -1131,9 +1184,11 @@ final class PlayViewModel {
         // launchpad LEDs and the volume observer stayed dead until the screen was re-entered.
         uiLoaded = true
         initSetting()
+        updateVolumeUI()
+        // A covered screen gets these when it is shown again.
+        guard !isCovered else { return }
         setupMidiController()
         startVolumeObserver()
-        updateVolumeUI()
         logger.info("Sound loading complete, startReady=true")
     }
 
@@ -1203,7 +1258,9 @@ final class LedListenerAdapter: LedRunner.Listener {
 
     nonisolated func onLedBatch(_ events: [LedRunner.LedEvent]) {
         Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
+            // A batch the runner worked out just before it was stopped (lights turned off, the screen
+            // left) arrives after the lights were cleared, and must not light them again.
+            guard let vm = self?.viewModel, let cm = vm.channelManager, vm.ledRunner?.active == true else { return }
             for event in events {
                 switch event {
                 case .padOn(let x, let y, let color, let velocity):
@@ -1215,7 +1272,7 @@ final class LedListenerAdapter: LedRunner.Listener {
                 case .chainOn(let c, let color, let velocity):
                     if c == 32 {
                         if vm.proLightModeEnabled {
-                            MidiManager.shared.driver.sendFunctionKeyLed(f: 32, velocity: velocity)
+                            vm.launchpad?.sendFunctionKeyLed(f: 32, velocity: velocity)
                         }
                         continue
                     }
@@ -1224,7 +1281,7 @@ final class LedListenerAdapter: LedRunner.Listener {
                     vm.refreshChainFromChannel(index: c)
                 case .chainOff(let c):
                     if c == 32 {
-                        MidiManager.shared.driver.sendFunctionKeyLed(f: 32, velocity: 0)
+                        vm.launchpad?.sendFunctionKeyLed(f: 32, velocity: 0)
                         continue
                     }
                     guard c >= 0, c < vm.chainColors.count else { continue }
@@ -1309,7 +1366,7 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
     func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {
         // The countdown ramp (1, 2, 3, 21) goes to the launchpad only, as on Android; writing it
         // into the GUIDE channel faded the on-screen guide pad from orange to white and green.
-        MidiManager.shared.driver.sendPadLed(x: x, y: y, velocity: velocity)
+        viewModel?.launchpad?.sendPadLed(x: x, y: y, velocity: velocity)
     }
 
     func onGuideChainOn(c: Int) {

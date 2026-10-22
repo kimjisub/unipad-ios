@@ -15,19 +15,24 @@ final class PlayUsageScenario {
     nonisolated static let defaultKeySound = "1 1 1 a.wav\n1 1 2 a.wav\n1 1 3 a.wav\n"
     nonisolated static let defaultAutoPlay = "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n"
 
-    init(keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, grid: PackGrid = PackGrid()) throws {
+    /// `keyLed` maps a keyLED file name ("1 1 1") to its text.
+    init(
+        keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:],
+        grid: PackGrid = PackGrid()
+    ) throws {
         vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink))
         packFolder = FileManager.default.temporaryDirectory.appendingPathComponent("PlayUsage-\(UUID().uuidString)")
-        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, grid: grid)
+        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, grid: grid)
     }
 
     static func run(
         keySound: String = defaultKeySound,
         autoPlay: String = defaultAutoPlay,
+        keyLed: [String: String] = [:],
         grid: PackGrid = PackGrid(),
         _ body: (PlayUsageScenario) async throws -> Void
     ) async throws {
-        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay, grid: grid)
+        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, grid: grid)
         defer { s.finish() }
         try await body(s)
     }
@@ -97,7 +102,8 @@ final class PlayUsageScenario {
     }
 
     static func writePack(
-        to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, grid: PackGrid = PackGrid()
+        to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay,
+        keyLed: [String: String] = [:], grid: PackGrid = PackGrid()
     ) throws {
         let info = "title=PlayUsage\nproducerName=Tester\nbuttonX=\(grid.buttonX)\nbuttonY=\(grid.buttonY)\nchain=\(grid.chain)\nsquareButton=true\n"
         let files: [(String, Data)] = [
@@ -105,7 +111,7 @@ final class PlayUsageScenario {
             ("keySound", Data(keySound.utf8)),
             ("autoPlay", Data(autoPlay.utf8)),
             ("sounds/a.wav", silentWav(milliseconds: 60)),
-        ]
+        ] + keyLed.map { ("keyLED/\($0.key)", Data($0.value.utf8)) }
         for (name, data) in files {
             let url = folder.appending(path: name)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

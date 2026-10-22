@@ -65,6 +65,15 @@ final class MidiBannerCoordinator {
         }
     }
 
+#if DEBUG || UNIPAD_RELEASE_TESTS
+    /// UI tests reach the device screen from the play screen as a user does after connecting a
+    /// launchpad, without one: the banner stays until it is used.
+    func presentForTesting() {
+        message = String(format: String(localized: "midi_connected_banner %@"), "Launchpad")
+        isVisible = true
+    }
+#endif
+
     private func presentDisconnected(deviceName: String) {
         message = String(
             format: String(localized: "midi_disconnected_banner %@"),

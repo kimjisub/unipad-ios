@@ -80,6 +80,23 @@ nonisolated enum ReleaseTestSupport {
                 // The shared Faded sample's grid and chain count, with silent sounds.
                 try makePack(at: library.appendingPathComponent("Faded"), title: "Alan Walker - Faded",
                              producer: "Otarygen, 김지섭, K1A2", chains: 6)
+            case "play-return":
+                // Autoplay sweeps the top row every second and each pad lights briefly, so the lights
+                // keep moving while it plays. The bottom-right pad lights for 5 s when pressed.
+                let pack = library.appendingPathComponent("PlayReturn")
+                try makePack(at: pack, title: "Play Return Fixture")
+                try "title=Play Return Fixture\nproducerName=Tests\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n"
+                    .write(to: pack.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+                try ((1...8).map { "1 1 \($0) silence.wav\n" }.joined() + "1 8 8 silence.wav\n")
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+                for y in 1...8 {
+                    try "on 1 \(y) a 5\ndelay 200\noff 1 \(y)\n"
+                        .write(to: pack.appendingPathComponent("keyLed/1 1 \(y) 1"), atomically: true, encoding: .utf8)
+                }
+                try "on 8 8 a 5\ndelay 5000\noff 8 8\n"
+                    .write(to: pack.appendingPathComponent("keyLed/1 8 8 1"), atomically: true, encoding: .utf8)
+                try String(repeating: (1...8).map { "on 1 \($0)\ndelay 125\noff 1 \($0)\n" }.joined(), count: 200)
+                    .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
             case "zero-duration-led":
                 let pack = library.appendingPathComponent("ZeroDurationLED")
                 try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)

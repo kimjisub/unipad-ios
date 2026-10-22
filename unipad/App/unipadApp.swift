@@ -68,6 +68,7 @@ struct unipadApp: App {
     @State private var midiBanner = MidiBannerCoordinator()
 #if DEBUG || UNIPAD_RELEASE_TESTS
     @State private var openedTestLink = false
+    @State private var showedTestMidiBanner = false
 #endif
     #if canImport(UIKit) && canImport(FirebaseCore)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
@@ -183,6 +184,14 @@ struct unipadApp: App {
             .onChange(of: scenePhase) { _, newPhase in
                 midiBanner.handleScenePhaseChanged(newPhase, router: router)
             }
+#if DEBUG || UNIPAD_RELEASE_TESTS
+            .onChange(of: router.currentRoute) { _, route in
+                guard case .play = route, !showedTestMidiBanner,
+                      UserDefaults.standard.bool(forKey: "UniPadReleaseMidiBanner") else { return }
+                showedTestMidiBanner = true
+                midiBanner.presentForTesting()
+            }
+#endif
         }
         .modelContainer(sharedModelContainer)
     }
