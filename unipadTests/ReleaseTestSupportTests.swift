@@ -420,6 +420,7 @@ final class ReleaseTestSupportTests: XCTestCase {
         let shapes: [(folder: String, title: String, rows: Int, columns: Int, chains: Int, lights: Bool)] = [
             ("ChainLayout8x8", "Chain Layout 8x8", 8, 8, 6, true),
             ("ChainLayout4x3", "Chain Layout 4x3", 4, 3, 24, false),
+            ("ChainLayout8x4", "Chain Layout 8x4", 8, 4, 8, false),
         ]
         for enabled in [false, true] {
             defaults.set(UUID().uuidString, forKey: "UniPadReleaseTest")

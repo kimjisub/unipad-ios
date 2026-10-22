@@ -207,6 +207,8 @@ nonisolated enum ReleaseTestSupport {
     /// "Chain Layout 8x8" is shaped like the bundled Faded pack: 8x8, 6 chains, with LEDs and
     /// autoplay. "Chain Layout 4x3" is shaped like conformance case INF-002: 4x3 and 24 chains,
     /// the largest count a pack may have, with one sound on the last chain and no LEDs or autoplay.
+    /// "Chain Layout 8x4" is a tall pack, 8 rows by 4 columns with 8 chains, whose top chain row
+    /// reaches past the pads toward the logo.
     static func makeChainLayoutPacks(in library: URL) throws {
         let eight = library.appendingPathComponent("ChainLayout8x8")
         try makePack(at: eight, title: "Chain Layout 8x8")
@@ -217,6 +219,11 @@ nonisolated enum ReleaseTestSupport {
         try writeInfo(to: small, title: "Chain Layout 4x3", rows: 4, columns: 3, chains: 24, square: true)
         try "24 1 1 silence.wav\n".write(to: small.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
         try removeLightsAndAutoPlay(from: small)
+
+        let tall = library.appendingPathComponent("ChainLayout8x4")
+        try makePack(at: tall, title: "Chain Layout 8x4")
+        try writeInfo(to: tall, title: "Chain Layout 8x4", rows: 8, columns: 4, chains: 8, square: true)
+        try removeLightsAndAutoPlay(from: tall)
     }
 
     private static func writeInfo(to root: URL, title: String, producer: String = "Tests", rows: Int = 8,

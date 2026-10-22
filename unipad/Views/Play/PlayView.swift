@@ -149,7 +149,7 @@ struct PlayView: View {
             if vm.startReady, let unipack = vm.unipack {
                 let padLeft = layout.padCenterX - layout.gridWidth / 2
                 playContentGrid(unipack: unipack, layout: layout, centerX: layout.padCenterX, centerY: layout.padCenterY, padLeft: padLeft, showAllSides: showAllSides)
-                playContentRightColumn(layout: layout, padLeft: padLeft, viewWidth: geometry.size.width, viewHeight: geometry.size.height, centerY: geometry.size.height / 2)
+                playContentRightColumn(layout: layout, viewWidth: geometry.size.width, viewHeight: geometry.size.height, centerY: geometry.size.height / 2)
             }
         }
     }
@@ -255,16 +255,16 @@ struct PlayView: View {
     }
 
     @ViewBuilder
-    private func playContentRightColumn(layout: PlayLayout, padLeft: CGFloat, viewWidth: CGFloat, viewHeight: CGFloat, centerY: CGFloat) -> some View {
+    private func playContentRightColumn(layout: PlayLayout, viewWidth: CGFloat, viewHeight: CGFloat, centerY: CGFloat) -> some View {
         // "Hide UI" (optionViewVisible) was written by the view model and read nowhere; it hides
         // the logo and the chrome column, as Android and web do.
-        if vm.optionViewVisible, let customLogo = theme.customLogo {
-            let maxLogoWidth: CGFloat = max(0, min(90, viewWidth - padLeft - layout.gridWidth - layout.chainWidth - chromeStripWidth - 16))
+        if vm.optionViewVisible, let customLogo = theme.customLogo, layout.logoFrame.width > 0 {
+            let logo = layout.logoFrame
             Image(platformImage: customLogo)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: maxLogoWidth, height: 40)
-                .position(x: viewWidth - chromeStripWidth - maxLogoWidth / 2 - 8, y: 28)
+                .frame(width: logo.width, height: logo.height)
+                .position(x: logo.midX, y: logo.midY)
                 .accessibilityIdentifier("playLogo")
         }
 
@@ -493,6 +493,10 @@ struct PlayLayout {
     /// `viewSize`'s coordinates, the safe area, which the screen overhangs by `safeAreaInsets`.
     let padCenterX: CGFloat
     let padCenterY: CGFloat
+    /// The theme logo's place in the top-right corner, left of the reserved strip: up to 90pt wide,
+    /// narrowed to stay clear of the chains, including a top or bottom chain row that reaches past
+    /// a narrow grid's chain columns. Empty when no width is left.
+    let logoFrame: CGRect
 
     init(viewSize: CGSize, buttonX: Int, buttonY: Int, showAllSides: Bool = false, reservedWidth: CGFloat = 0, safeAreaInsets: EdgeInsets = EdgeInsets()) {
         let chainColumns = 2
@@ -516,6 +520,10 @@ struct PlayLayout {
         let halfWidth = max(gridWidth / 2 + chainWidth, showAllSides ? chainWidth * chainsPerSide / 2 : 0)
         padCenterX = max(halfWidth, min(screenCenterX, totalWidth - halfWidth))
         padCenterY = viewSize.height / 2
+        let logoMargin: CGFloat = 8
+        let logoRight = viewSize.width - reservedWidth - logoMargin
+        let logoWidth = max(0, min(90, logoRight - (padCenterX + halfWidth) - logoMargin))
+        logoFrame = CGRect(x: logoRight - logoWidth, y: logoMargin, width: logoWidth, height: 40)
     }
 
     /// The size at which an image of `imageSize`, centred on `center`, covers all of `screenSize`

@@ -9,6 +9,28 @@ struct PlayLayoutTests {
         PlayLayout(viewSize: CGSize(width: width, height: height), buttonX: buttons, buttonY: buttons, showAllSides: bottomRow, reservedWidth: menuStrip)
     }
 
+    private func padFrame(of l: PlayLayout) -> CGRect {
+        CGRect(x: l.padCenterX - l.gridWidth / 2, y: l.padCenterY - l.gridHeight / 2, width: l.gridWidth, height: l.gridHeight)
+    }
+
+    /// The chain strips as PlayView places them: a column on each side and, with `rows`, a row
+    /// above and below, each eight chains long and centred on the pads.
+    private func chainStrips(of l: PlayLayout, rows: Bool) -> [CGRect] {
+        let pads = padFrame(of: l)
+        let side = l.chainWidth * 8
+        var strips = [
+            CGRect(x: pads.minX - l.chainWidth, y: l.padCenterY - side / 2, width: l.chainWidth, height: side),
+            CGRect(x: pads.maxX, y: l.padCenterY - side / 2, width: l.chainWidth, height: side),
+        ]
+        if rows {
+            strips += [
+                CGRect(x: l.padCenterX - side / 2, y: pads.minY - l.chainHeight, width: side, height: l.chainHeight),
+                CGRect(x: l.padCenterX - side / 2, y: pads.maxY, width: side, height: l.chainHeight),
+            ]
+        }
+        return strips
+    }
+
     private func assertChainColumnsFit(_ l: PlayLayout, width: CGFloat) {
         let leftChainEdge = l.padCenterX - l.gridWidth / 2 - l.chainWidth
         let rightChainEdge = l.padCenterX + l.gridWidth / 2 + l.chainWidth
@@ -91,18 +113,8 @@ struct PlayLayoutTests {
             for columns in 1...8 {
                 for chainRows in [false, true] {
                     let l = PlayLayout(viewSize: CGSize(width: width, height: height), buttonX: rows, buttonY: columns, showAllSides: chainRows, reservedWidth: menuStrip)
-                    let pads = CGRect(x: l.padCenterX - l.gridWidth / 2, y: l.padCenterY - l.gridHeight / 2, width: l.gridWidth, height: l.gridHeight)
-                    let side = l.chainWidth * 8
-                    var strips = [
-                        CGRect(x: pads.minX - l.chainWidth, y: l.padCenterY - side / 2, width: l.chainWidth, height: side),
-                        CGRect(x: pads.maxX, y: l.padCenterY - side / 2, width: l.chainWidth, height: side),
-                    ]
-                    if chainRows {
-                        strips += [
-                            CGRect(x: l.padCenterX - side / 2, y: pads.minY - l.chainHeight, width: side, height: l.chainHeight),
-                            CGRect(x: l.padCenterX - side / 2, y: pads.maxY, width: side, height: l.chainHeight),
-                        ]
-                    }
+                    let pads = padFrame(of: l)
+                    let strips = chainStrips(of: l, rows: chainRows)
                     let safe = CGRect(x: 0, y: 0, width: width - menuStrip, height: height).insetBy(dx: -0.001, dy: -0.001)
                     #expect(l.chainWidth > 0)
                     #expect(l.chainWidth <= l.cellSize)
@@ -118,6 +130,46 @@ struct PlayLayoutTests {
                     }
                 }
             }
+        }
+    }
+
+    /// A tall 8x4 pack's top chain row is twice as wide as its pads, so it reaches past the right
+    /// chain column, under the logo when the window is small, as a resized iPad window can be.
+    @Test(arguments: [
+        (CGFloat(750), CGFloat(382)), // iPhone 17 Pro safe area
+        (CGFloat(667), CGFloat(375)),
+        (CGFloat(568), CGFloat(320)),
+        (CGFloat(1133), CGFloat(744)),
+        (CGFloat(1210), CGFloat(809)),
+        (CGFloat(520), CGFloat(320)), // a resized iPad window
+        (CGFloat(600), CGFloat(400)),
+    ])
+    func logoStaysClearOfPadsChainsAndMenu(width: CGFloat, height: CGFloat) {
+        for (rows, columns) in [(8, 4), (8, 8), (4, 3)] {
+            for chainRows in [false, true] {
+                let l = PlayLayout(viewSize: CGSize(width: width, height: height), buttonX: rows, buttonY: columns, showAllSides: chainRows, reservedWidth: menuStrip)
+                let logo = l.logoFrame
+                let shape = "\(rows)x\(columns) rows=\(chainRows) in \(width)x\(height): logo \(logo)"
+                #expect(logo.maxX <= width - menuStrip + 0.001, "\(shape)")
+                #expect(logo.width <= 90, "\(shape)")
+                for obstacle in [padFrame(of: l)] + chainStrips(of: l, rows: chainRows) {
+                    let overlap = logo.intersection(obstacle)
+                    #expect(overlap.isNull || overlap.width <= 0.001 || overlap.height <= 0.001, "\(shape) covers \(obstacle)")
+                }
+            }
+        }
+    }
+
+    /// An 8x8 pack's chain rows never reach past its chain columns, so its logo keeps the place
+    /// beside the right chain column it always had.
+    @Test(arguments: [(CGFloat(750), CGFloat(382)), (CGFloat(1133), CGFloat(744))])
+    func eightByEightLogoKeepsItsPlace(width: CGFloat, height: CGFloat) {
+        for chainRows in [false, true] {
+            let l = PlayLayout(viewSize: CGSize(width: width, height: height), buttonX: 8, buttonY: 8, showAllSides: chainRows, reservedWidth: menuStrip)
+            let padRight = l.padCenterX + l.gridWidth / 2 + l.chainWidth
+            #expect(abs(l.logoFrame.width - min(90, width - padRight - menuStrip - 16)) < 0.001)
+            #expect(abs(l.logoFrame.maxX - (width - menuStrip - 8)) < 0.001)
+            #expect(l.logoFrame.minY == 8 && l.logoFrame.height == 40)
         }
     }
 
