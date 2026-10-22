@@ -42,8 +42,11 @@ actor UniPackImporter {
     /// The pack is built in a staging folder and enters the library only once it is complete.
     @discardableResult
     func importPack(from sourceURL: URL, to workspace: URL, delegate: Delegate?) async throws -> URL {
-        let fileName = sourceURL.deletingPathExtension().lastPathComponent
+        try await importPack(from: sourceURL, named: Self.folderName(forArchiveNamed: sourceURL.lastPathComponent),
+                             to: workspace, delegate: delegate)
+    }
 
+    private func importPack(from sourceURL: URL, named folderName: String, to workspace: URL, delegate: Delegate?) async throws -> URL {
         await delegate?.onImportStart()
 
         var staging: UniPackStaging?
@@ -58,7 +61,7 @@ actor UniPackImporter {
 
             try extractZip(at: archive, to: staged.packFolder)
 
-            try FileManagerExtensions.removeDoubleFolder(at: staged.packFolder)
+            try FileManagerExtensions.unwrapUniPackFolder(at: staged.packFolder)
 
             // Validate the extracted unipack. load() runs checkFile + parseInfo; without it
             // loadDetail parsed nothing and criticalError was never set, so any ZIP passed.
@@ -71,7 +74,7 @@ actor UniPackImporter {
 
             // A download or another import of the same name may finish meanwhile; publishing takes
             // the next free name instead of replacing it.
-            let targetFolder = try staged.publish(to: workspace, name: fileName)
+            let targetFolder = try staged.publish(to: workspace, name: folderName)
 
             await delegate?.onImportComplete(folder: targetFolder)
             logger.info("Import completed: \(targetFolder.lastPathComponent)")
@@ -94,15 +97,33 @@ actor UniPackImporter {
         do {
             let staged = try UniPackStaging(root: stagingRoot)
             staging = staged
-            archive = staged.file(named: UUID().uuidString + ".zip")
+            archive = staged.file(named: "received.zip")
             try data.write(to: archive)
         } catch {
             logger.error("Failed to write temp ZIP: \(error.localizedDescription)")
             await delegate?.onImportError(error)
             throw error
         }
-        return try await importPack(from: archive, to: workspace, delegate: delegate)
+        return try await importPack(from: archive, named: Self.folderName(forArchiveNamed: fileName),
+                                    to: workspace, delegate: delegate)
     }
+
+    /// The library folder for an archive the user named: its name without the extension, reduced
+    /// to one folder name inside the library. The library is shown in the Files app, so the folder
+    /// keeps the name the user knows the pack by.
+    static func folderName(forArchiveNamed fileName: String) -> String {
+        // A leading-dot archive such as ".zip" also has no usable stem. NSString treats it
+        // as an extensionless hidden file, so remove the final suffix explicitly.
+        let stem = fileName.lastIndex(of: ".").map { String(fileName[..<$0]) } ?? fileName
+        var name = FileManagerExtensions.filterFilename(stem)
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        // Room for the " (2)" a taken name gets, within the file system's 255-byte name limit.
+        while name.utf8.count > maxFolderNameBytes { name.removeLast() }
+        return name.isEmpty ? fallbackFolderName : name
+    }
+
+    private static let maxFolderNameBytes = 200
+    static let fallbackFolderName = "UniPack"
 
     /// Extract a ZIP file without import validation (used by UniPackDownloader)
     func extractOnly(at zipURL: URL, to destination: URL) throws {

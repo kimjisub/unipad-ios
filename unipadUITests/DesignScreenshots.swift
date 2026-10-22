@@ -127,9 +127,7 @@ final class DesignScreenshots: XCTestCase {
         // Play. The pack row is not a cell and not a button; it is an `Other`
         // holding the title as static text, so the title is what gets tapped.
         arrive(app.buttons["gearshape"], "home before play")
-        let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        if packTitles.count > 0 {
-            let title = packTitles.element(boundBy: 0)
+        if let title = try visiblePackTitle() {
             title.tap()          // first tap selects and opens the detail panel
             sleep(1)
             shot("05-pack-selected")
@@ -141,12 +139,37 @@ final class DesignScreenshots: XCTestCase {
             } else {
                 title.tap()      // second tap on the row opens it
             }
-            sleep(3)
+            arrive(app.otherElements["playPadGrid"], "play")
             shot("06-play")
             dumpTree("00-tree-play")
         } else {
-            XCTFail("no pack in the list; ios_shots.sh installs one before the walk")
+            XCTFail("no pack title on screen; ios_shots.sh installs one before the walk")
+            dumpTree("00-tree-no-pack")
             shot("06-empty-list")
         }
+    }
+
+    /// A screen point on a pack title the screen shows whole. The store card sits after the last
+    /// pack, so the list comes back from the store scrolled to its end, and the lazy list keeps
+    /// rows above the viewport in the tree: the first title found can be off screen, and another
+    /// pack can carry the same title. The title is picked from one snapshot of the list, so the
+    /// frame that was checked is the frame that is tapped, scrolling back up until one is visible.
+    private func visiblePackTitle(maxSwipes: Int = 6) throws -> XCUICoordinate? {
+        let list = app.scrollViews["main.packList"]
+        guard list.waitForExistence(timeout: 10) else { return nil }
+        func titles(in snapshot: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+            let own = snapshot.elementType == .staticText && snapshot.label.contains(" - ")
+            return (own ? [snapshot] : []) + snapshot.children.flatMap(titles(in:))
+        }
+        for swipe in 0...maxSwipes {
+            let tree = try list.snapshot()
+            let viewport = tree.frame.intersection(app.windows.firstMatch.frame)
+            if let title = titles(in: tree).first(where: { !$0.frame.isEmpty && viewport.contains($0.frame) }) {
+                return app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: title.frame.midX, dy: title.frame.midY))
+            }
+            if swipe < maxSwipes { list.swipeDown(velocity: .slow) }
+        }
+        return nil
     }
 }

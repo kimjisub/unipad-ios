@@ -14,6 +14,7 @@
 		A1B2C3D4E5F60718293A4B62 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B66 /* FirebaseMessaging */; };
 		A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */; };
 		A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */; };
+		A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B6B /* CVorbis */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,6 +83,7 @@
 				A1B2C3D4E5F60718293A4B62 /* FirebaseMessaging in Frameworks */,
 				A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */,
 				A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */,
+				A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -149,6 +151,7 @@
 				A1B2C3D4E5F60718293A4B66 /* FirebaseMessaging */,
 				A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */,
 				A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */,
+				A1B2C3D4E5F60718293A4B6B /* CVorbis */,
 			);
 			productName = unipad;
 			productReference = 16CE2B902F5E6CE100402705 /* unipad.app */;
@@ -251,6 +254,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 16CE2B912F5E6CE100402705 /* Products */;
@@ -480,7 +484,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 4.1.6;
+				MARKETING_VERSION = 4.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kim.jisub.unipad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -529,7 +533,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 4.1.6;
+				MARKETING_VERSION = 4.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kim.jisub.unipad;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -557,7 +561,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 4.1.6;
+				MARKETING_VERSION = 4.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kim.jisub.unipadTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -583,7 +587,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 4.1.6;
+				MARKETING_VERSION = 4.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kim.jisub.unipadTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -610,7 +614,7 @@
 				INFOPLIST_KEY_NSPrincipalClass = unipadUITests.UITestBundle;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 4.1.6;
+				MARKETING_VERSION = 4.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kim.jisub.unipadUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -636,7 +640,7 @@
 				INFOPLIST_KEY_NSPrincipalClass = unipadUITests.UITestBundle;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 4.1.6;
+				MARKETING_VERSION = 4.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = kim.jisub.unipadUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -693,13 +697,20 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/XiphVorbis;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 12.0.0;
+				minimumVersion = 13.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -734,6 +745,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F60718293A4B5A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseInstallations;
+		};
+		A1B2C3D4E5F60718293A4B6B /* CVorbis */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */;
+			productName = CVorbis;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

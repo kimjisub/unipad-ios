@@ -1,5 +1,4 @@
 import CryptoKit
-import Darwin
 import Foundation
 import Testing
 @testable import unipad
@@ -22,7 +21,7 @@ struct UniPackDownloadBenchmarkTests {
 
         let sampler = FootprintSampler()
         let recorder = BenchmarkDelegate(zipURL: workspace.appending(path: "bench.zip"), sampler: sampler)
-        let baseline = FootprintSampler.currentFootprint()
+        let baseline = TestProcessMemory.physicalFootprint() ?? 0
         sampler.start()
         let start = ContinuousClock.now
         await UniPackDownloader().download(
@@ -112,10 +111,10 @@ private final class FootprintSampler: @unchecked Sendable {
     var peak: UInt64 { lock.withLock { _peak } }
 
     func start() {
-        lock.withLock { running = true; _peak = Self.currentFootprint() }
+        lock.withLock { running = true; _peak = TestProcessMemory.physicalFootprint() ?? 0 }
         Thread.detachNewThread { [self] in
             while lock.withLock({ running }) {
-                let now = Self.currentFootprint()
+                let now = TestProcessMemory.physicalFootprint() ?? 0
                 lock.withLock { _peak = max(_peak, now) }
                 Thread.sleep(forTimeInterval: 0.005)
             }
@@ -123,15 +122,4 @@ private final class FootprintSampler: @unchecked Sendable {
     }
 
     func stop() { lock.withLock { running = false } }
-
-    static func currentFootprint() -> UInt64 {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        return result == KERN_SUCCESS ? info.phys_footprint : 0
-    }
 }

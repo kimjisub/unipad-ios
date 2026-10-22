@@ -1,0 +1,117 @@
+From 1b75110b5a2754ba1931d82dd83cb822b266a21d Mon Sep 17 00:00:00 2001
+From: "Timothy B. Terriberry" <tterribe@xiph.org>
+Date: Mon, 3 Aug 2026 18:09:54 -0700
+Subject: [PATCH] [vorbisfile] Fix use-after-free in ov_pcm_page_seek
+
+The page seeking code includes a special case for when we cannot
+ find a page with a granuleposition smaller than the target, in
+ which case it starts reading from the beginning of the stream.
+However, it did so by assuming that the page that was found after
+ the target was right at the beginning.
+This is not actually required: if the initial bisection starts
+ somewhere after the beginning, and finds valid pages, but only
+ pages with a granuleposition that comes after the target, it will
+ only ever walk the bisection point back to 'begin+1', explicitly
+ _excluding_ reading the page at the beginning.
+
+The first page is still the best candidate: its granuleposition
+ might even come before the target as desired (we haven't checked).
+But this means that the page struct will _not_ be filled with the
+ contents of the first page when the loop exits.
+In fact, if _get_next_page() most recently returned an error (say,
+ because the read loop tried to find a page starting at begin+1
+ instead of at begin), the contents of the page struct might not be
+ valid at all, due to a realloc() of the backing store.
+Either way, we may need to explicitly read the first page.
+
+Because the got_page flag is only used for this special case, we
+ convert it to store the offset of the page that was read.
+Only in the case where that offset is the start of the link can we
+ guarantee the contents of the page struct are valid.
+That also means we cannot validate the serialno in the page struct
+ after the search.
+Instead, we move the line that sets got_page to after where the
+ serialno is validated in the read loop, so there is no need to
+ validate it after the search.
+
+Fixes #2361
+---
+ lib/vorbisfile.c | 28 ++++++++++++++++++----------
+ 1 file changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/lib/vorbisfile.c b/lib/vorbisfile.c
+index 1645849f..0c20f7d3 100644
+--- a/lib/vorbisfile.c
++++ b/lib/vorbisfile.c
+@@ -1438,7 +1438,7 @@ int ov_pcm_seek_page(OggVorbis_File *vf,ogg_int64_t pos){
+     ogg_int64_t endtime = vf->pcmlengths[link*2+1]+begintime;
+     ogg_int64_t target=pos-total+begintime;
+     ogg_int64_t best=-1;
+-    int         got_page=0;
++    ogg_int64_t got_page=-1;
+ 
+     ogg_page og;
+ 
+@@ -1450,7 +1450,7 @@ int ov_pcm_seek_page(OggVorbis_File *vf,ogg_int64_t pos){
+       result=_get_next_page(vf,&og,1);
+       if(result<0) goto seek_error;
+ 
+-      got_page=1;
++      got_page=result;
+     }
+ 
+     /* bisection loop */
+@@ -1496,13 +1496,14 @@ int ov_pcm_seek_page(OggVorbis_File *vf,ogg_int64_t pos){
+           }
+         }else{
+           ogg_int64_t granulepos;
+-          got_page=1;
+ 
+-          /* got a page. analyze it */
+           /* only consider pages from primary vorbis stream */
+           if(ogg_page_serialno(&og)!=vf->serialnos[link])
+             continue;
+ 
++          /* got a page. analyze it */
++          got_page=result;
++
+           /* only consider pages with the granulepos set */
+           granulepos=ogg_page_granulepos(&og);
+           if(granulepos==-1)continue;
+@@ -1559,13 +1560,11 @@ int ov_pcm_seek_page(OggVorbis_File *vf,ogg_int64_t pos){
+          bisection would 'fail' because our search target was before the
+          first PCM granule position fencepost. */
+ 
+-      if(got_page &&
+-         begin == vf->dataoffsets[link] &&
+-         ogg_page_serialno(&og)==vf->serialnos[link]){
++      if(got_page >= 0 &&
++         begin == vf->dataoffsets[link]){
+ 
+-        /* Yes, this is the beginning-of-stream case. We already have
+-           our page, right at the beginning of PCM data.  Set state
+-           and return. */
++        /* Yes, this is the beginning-of-stream case. The best candidate is
++           right at the beginning of PCM data.  Set state and return. */
+ 
+         vf->pcm_offset=total;
+ 
+@@ -1582,6 +1581,15 @@ int ov_pcm_seek_page(OggVorbis_File *vf,ogg_int64_t pos){
+         }
+ 
+         ogg_stream_reset_serialno(&vf->os,vf->current_serialno);
++        if(got_page!=begin){
++          /* If the page we found was not itself the first one (which can
++             happen, as we only bisect back to begin+1), we need to go back and
++             read the first one. */
++          result=_seek_helper(vf,begin);
++          if(result) goto seek_error;
++          result=_get_next_page(vf,&og,-1);
++          if(result<0) goto seek_error;
++        }
+         ogg_stream_pagein(&vf->os,&og);
+ 
+       }else
+-- 
+GitLab
+

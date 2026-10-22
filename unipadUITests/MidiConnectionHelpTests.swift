@@ -14,7 +14,8 @@ final class MidiConnectionHelpTests: XCTestCase {
         app.launchArguments += ["-LaunchpadConnectMethod", "0"]
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 5))
+        UITestSupport.tapOnScreen(app.buttons["gearshape"], in: app)
         let reconnect = app.buttons["Reconnect Launchpad"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
         reconnect.tap()
@@ -59,13 +60,66 @@ final class MidiConnectionHelpTests: XCTestCase {
         UITestSupport.attachScreenshot("settings-after-automatic-return", to: self)
     }
 
+    /// The confirm button shows "OK (N)" for a whole second and the screen
+    /// returns when N reaches 0, so a label of N means more than N - 1 seconds remain.
+    private static func countdownSeconds(in label: String) -> Int? {
+        guard let match = label.range(of: #"\((\d+)\)"#, options: .regularExpression) else { return nil }
+        return Int(label[match].dropFirst().dropLast())
+    }
+
     @MainActor
     func testSelectingModelStopsAutomaticReturn() {
         let model = app.buttons["Launchpad Mini MK3"].firstMatch
-        XCTAssertTrue(model.waitForExistence(timeout: 2))
-        model.tap()
+        XCTAssertTrue(model.waitForExistence(timeout: 2),
+                      "Test setup failed: model screen did not appear before automatic return")
+        let confirm = app.buttons["midi.confirm"]
+        // Every query before the tap spends the countdown, so read only the
+        // remaining time and the tap target, then tap at once.
+        let readAt = ProcessInfo.processInfo.systemUptime
+        let countdown: String
+        let modelFrame: CGRect
+        do {
+            countdown = try confirm.snapshot().label
+            modelFrame = try model.snapshot().frame
+        } catch {
+            UITestSupport.attachScreenshot("model-input-not-attempted", to: self)
+            XCTFail("Test setup failed: model screen disappeared while preparing input: \(error)")
+            return
+        }
+        guard let shown = Self.countdownSeconds(in: countdown), shown >= 3 else {
+            UITestSupport.attachScreenshot("model-input-not-attempted", to: self)
+            XCTFail("Test setup failed: insufficient automatic-return time before input: \(countdown)")
+            return
+        }
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: modelFrame.midX, dy: modelFrame.midY)).tap()
+        let inputDelay = ProcessInfo.processInfo.systemUptime - readAt
+        let timing = String(format: "read \"%@\", input delivered %.2f s later", countdown, inputDelay)
+        let record = XCTAttachment(string: timing)
+        record.name = "model-input-timing"
+        record.lifetime = .keepAlways
+        add(record)
+
+        // The first scroll view is the selected-device preview, outside the model grid.
+        let preview = app.scrollViews.element(boundBy: 0).staticTexts["Launchpad Mini MK3"].firstMatch
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            preview.exists && (try? confirm.snapshot().label) == "OK"
+        }, object: nil)
+        guard XCTWaiter().wait(for: [selected], timeout: 2) == .completed else {
+            UITestSupport.attachScreenshot("model-selection-not-shown", to: self)
+            // Delivered later than the least remaining time: the screen may have
+            // returned before the input, which says nothing about selection.
+            if inputDelay >= Double(shown - 1) {
+                XCTFail("Test setup failed: model input may have arrived after automatic return (\(timing))")
+            } else {
+                XCTFail("Model selection failed: input arrived in time but Launchpad Mini MK3 was not selected "
+                        + "or the countdown kept running (\(timing))")
+            }
+            return
+        }
+        UITestSupport.attachScreenshot("model-after-selection", to: self)
         waitSixSeconds()
-        XCTAssertTrue(model.exists)
+        XCTAssertTrue(model.exists, "Confirmed model selection did not stop automatic return")
         UITestSupport.attachScreenshot("explicit-selection-after-six-seconds", to: self)
     }
 
@@ -116,7 +170,8 @@ final class MidiConnectionHelpTests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 5))
+        UITestSupport.tapOnScreen(app.buttons["gearshape"], in: app)
         let reconnect = app.buttons["런치패드 다시 연결하기"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
         reconnect.tap()
@@ -164,7 +219,8 @@ final class MidiConnectionHelpTests: XCTestCase {
         if rejectLink { app.launchArguments += ["-UniPadHelpRejectExternalURL"] }
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(app.buttons["gearshape"], timeout: 5))
+        UITestSupport.tapOnScreen(app.buttons["gearshape"], in: app)
         let reconnect = app.buttons[language == "ko" ? "런치패드 다시 연결하기" : "Reconnect Launchpad"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
         reconnect.tap()

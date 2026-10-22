@@ -35,8 +35,11 @@ struct UniPackDownloaderTests {
         try FileManager.default.contentsOfDirectory(atPath: workspace.path).sorted()
     }
 
-    private func download(_ recorder: RecordingDelegate, from host: String? = nil, preKnownFileSize: Int64 = 0) async {
-        await UniPackDownloader(session: session, stagingRoot: stagingRoot).download(
+    private func download(
+        _ recorder: RecordingDelegate, from host: String? = nil, preKnownFileSize: Int64 = 0,
+        waitBeforeRetry: @escaping @Sendable (Duration) async throws -> Void = { _ in }
+    ) async {
+        await UniPackDownloader(session: session, stagingRoot: stagingRoot, waitBeforeRetry: waitBeforeRetry).download(
             title: "pack",
             url: "https://\(host ?? self.host)/pack.zip",
             workspace: workspace,
@@ -76,6 +79,7 @@ struct UniPackDownloaderTests {
             return
         }
         #expect(!recorder.importStarted)
+        #expect(StubURLProtocol.requests(host: host).count == 1)
         #expect(try workspaceContents().isEmpty)
     }
 
@@ -121,8 +125,156 @@ struct UniPackDownloaderTests {
 
         #expect(recorder.error?.isUsageCancellation == true)
         #expect(!recorder.importStarted)
+        #expect(StubURLProtocol.requests(host: host).count == 1)
         #expect(try workspaceContents().isEmpty)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: stagingRoot.path)) ?? []).isEmpty)
+    }
+
+    @Test func resumesAfterConnectionLossWithoutDuplicatingBytes() async throws {
+        defer { cleanUp() }
+        let body = Self.packZip(title: "Resumed")
+        let split = 4096
+        StubURLProtocol.register(host: host, scripts: [
+            .init(status: 200, chunks: [body.prefix(split)], contentLength: body.count,
+                  failure: URLError(.networkConnectionLost),
+                  headers: ["Accept-Ranges": "bytes", "ETag": "\"version-one\""]),
+            .init(status: 206, chunks: [body.dropFirst(split)], contentLength: body.count - split,
+                  headers: ["Content-Range": "bytes \(split)-\(body.count - 1)/\(body.count)"]),
+        ])
+        let recorder = RecordingDelegate(stagingRoot: stagingRoot)
+        await download(recorder)
+        #expect(recorder.error == nil)
+        #expect(recorder.zipAtImportStart == body)
+        #expect(recorder.percents == recorder.percents.sorted())
+        #expect(recorder.percents.last == 100)
+        let requests = StubURLProtocol.requests(host: host)
+        #expect(requests.count == 2)
+        #expect(requests.last?.value(forHTTPHeaderField: "Range") == "bytes=\(split)-")
+        #expect(requests.last?.value(forHTTPHeaderField: "If-Range") == "\"version-one\"")
+    }
+
+    @Test(arguments: [true, false])
+    func restartsWhenServerDoesNotResume(advertisesRanges: Bool) async throws {
+        defer { cleanUp() }
+        let old = Self.packZip(title: "Old")
+        let body = Self.packZip(title: "Replacement")
+        StubURLProtocol.register(host: host, scripts: [
+            .init(status: 200, chunks: [old.prefix(4096)], contentLength: old.count,
+                  failure: URLError(.networkConnectionLost),
+                  headers: advertisesRanges ? ["Accept-Ranges": "bytes", "ETag": "\"old\""] : [:]),
+            .init(status: 200, chunks: [body], contentLength: body.count),
+        ])
+        let recorder = RecordingDelegate(stagingRoot: stagingRoot)
+        await download(recorder)
+        #expect(recorder.error == nil)
+        #expect(recorder.zipAtImportStart == body)
+        #expect(StubURLProtocol.requests(host: host).count == 2)
+        if !advertisesRanges {
+            #expect(StubURLProtocol.requests(host: host).last?.value(forHTTPHeaderField: "Range") == nil)
+        }
+    }
+
+    @Test func exhaustedRetriesReportOneFinalNetworkFailure() async throws {
+        defer { cleanUp() }
+        StubURLProtocol.register(host: host, .init(status: 200, chunks: [], failure: URLError(.networkConnectionLost)))
+        let recorder = RecordingDelegate()
+        let delays = RetryDelays()
+        await download(recorder, waitBeforeRetry: { await delays.record($0) })
+        #expect(await delays.values == [.seconds(1), .seconds(2), .seconds(4)])
+        #expect(StubURLProtocol.requests(host: host).count == 4)
+        #expect(recorder.errorCount == 1)
+        #expect((recorder.error as? URLError)?.code == .networkConnectionLost)
+        let sink = UsageAnalyticsTests.RecordingAnalytics()
+        UsageAnalytics(sink: sink).packImportFailed(source: .store, error: try #require(recorder.error))
+        #expect(sink.events.map(\.parameters) == [
+            ["result": "failure", "import_source": "store", "error_type": "network_lost"],
+        ])
+    }
+
+    @Test(arguments: [URLError.timedOut, .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed])
+    func retriesTransientErrors(code: URLError.Code) async throws {
+        defer { cleanUp() }
+        let body = Self.packZip(title: "Recovered")
+        StubURLProtocol.register(host: host, scripts: [
+            .init(status: 200, chunks: [], failure: URLError(code)),
+            .init(status: 200, chunks: [body], contentLength: body.count),
+        ])
+        let recorder = RecordingDelegate()
+        await download(recorder)
+        #expect(recorder.error == nil)
+        #expect(StubURLProtocol.requests(host: host).count == 2)
+    }
+
+    @Test(arguments: [URLError.cancelled, .secureConnectionFailed, .badURL])
+    func doesNotRetryPermanentErrors(code: URLError.Code) async throws {
+        defer { cleanUp() }
+        StubURLProtocol.register(host: host, .init(status: 200, chunks: [], failure: URLError(code)))
+        let recorder = RecordingDelegate()
+        await download(recorder)
+        #expect((recorder.error as? URLError)?.code == code)
+        #expect(StubURLProtocol.requests(host: host).count == 1)
+    }
+
+    @Test func rejectsMismatchedPartialResponse() async throws {
+        defer { cleanUp() }
+        let body = Self.packZip(title: "Never mix bytes")
+        StubURLProtocol.register(host: host, scripts: [
+            .init(status: 200, chunks: [body.prefix(4096)], contentLength: body.count,
+                  failure: URLError(.networkConnectionLost),
+                  headers: ["Accept-Ranges": "bytes", "ETag": "\"one\""]),
+            .init(status: 206, chunks: [body.dropFirst(4096)], contentLength: body.count - 4096,
+                  headers: ["Content-Range": "bytes 0-\(body.count - 4097)/\(body.count)"]),
+        ])
+        let recorder = RecordingDelegate()
+        await download(recorder)
+        #expect(recorder.error != nil)
+        #expect(!recorder.importStarted)
+        #expect(StubURLProtocol.requests(host: host).count == 2)
+        #expect(try workspaceContents().isEmpty)
+    }
+
+    @Test func cancellationDuringBackoffDoesNotStartAnotherRequest() async throws {
+        defer { cleanUp() }
+        StubURLProtocol.register(host: host, .init(status: 200, chunks: [Data(repeating: 1, count: 4096)],
+                                                  contentLength: 100_000, failure: URLError(.networkConnectionLost)))
+        let recorder = RecordingDelegate()
+        let delays = RetryDelays()
+        let task = Task {
+            await download(recorder, waitBeforeRetry: { delay in
+                await delays.record(delay)
+                try await Task.sleep(for: .seconds(3600))
+            })
+        }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while await delays.values.isEmpty, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(await delays.values == [.seconds(1)])
+        task.cancel()
+        await task.value
+        #expect(recorder.error?.isUsageCancellation == true)
+        #expect(StubURLProtocol.requests(host: host).count == 1)
+    }
+
+    @Test func keepsPartialBytesWhenTheNextConnectionCannotOpen() async throws {
+        defer { cleanUp() }
+        let body = Self.packZip(title: "Date validated")
+        let date = "Mon, 19 Oct 2026 00:00:00 GMT"
+        let split = 4096
+        StubURLProtocol.register(host: host, scripts: [
+            .init(status: 200, chunks: [body.prefix(split)], contentLength: body.count,
+                  failure: URLError(.networkConnectionLost),
+                  headers: ["Accept-Ranges": "bytes", "ETag": "W/\"weak\"", "Last-Modified": date]),
+            .init(status: 200, chunks: [], failure: URLError(.cannotConnectToHost), failureBeforeResponse: true),
+            .init(status: 206, chunks: [body.dropFirst(split)], contentLength: body.count - split,
+                  headers: ["Content-Range": "bytes \(split)-\(body.count - 1)/\(body.count)", "Last-Modified": date]),
+        ])
+        let recorder = RecordingDelegate(stagingRoot: stagingRoot)
+        await download(recorder)
+        #expect(recorder.error == nil)
+        #expect(recorder.zipAtImportStart == body)
+        let requests = StubURLProtocol.requests(host: host)
+        #expect(requests.count == 3)
+        #expect(requests.dropFirst().allSatisfy { $0.value(forHTTPHeaderField: "Range") == "bytes=\(split)-" })
+        #expect(requests.last?.value(forHTTPHeaderField: "If-Range") == date)
     }
 
     // MARK: - Two downloads of the same name
@@ -253,6 +405,7 @@ private final class RecordingDelegate: UniPackDownloader.Delegate, @unchecked Se
     var zipAtImportStart: Data?
     var installedFolder: URL?
     var error: Error?
+    var errorCount = 0
 
     /// `stagingRoot` is where the downloader under test stages its archive; give it to read the
     /// archive as it stands when unpacking starts.
@@ -277,85 +430,10 @@ private final class RecordingDelegate: UniPackDownloader.Delegate, @unchecked Se
     }
 
     func onInstallComplete(folder: URL) { installedFolder = folder }
-    func onError(_ error: Error) { self.error = error }
+    func onError(_ error: Error) { errorCount += 1; self.error = error }
 }
 
-/// Serves a scripted response per host: a status, body chunks delivered one by one, then either
-/// success, an error, or silence until the task is cancelled or `release` ends it.
-private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
-    struct Script: Sendable {
-        var status: Int
-        var chunks: [Data]
-        var contentLength: Int?
-        var failure: URLError?
-        var stallsAfterChunks = false
-    }
-
-    enum Ending {
-        case finish([Data])
-        case fail(URLError)
-    }
-
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var scripts: [String: Script] = [:]
-    nonisolated(unsafe) private static var stalled: [String: StubURLProtocol] = [:]
-
-    static func isStalled(host: String) -> Bool {
-        lock.withLock { stalled[host] != nil }
-    }
-
-    static func release(host: String, _ ending: Ending) {
-        guard let loader = lock.withLock({ stalled.removeValue(forKey: host) }) else { return }
-        switch ending {
-        case .finish(let chunks):
-            chunks.forEach { loader.client?.urlProtocol(loader, didLoad: $0) }
-            loader.client?.urlProtocolDidFinishLoading(loader)
-        case .fail(let error):
-            loader.client?.urlProtocol(loader, didFailWithError: error)
-        }
-    }
-
-    static func register(host: String, _ script: Script) {
-        lock.withLock { scripts[host] = script }
-    }
-
-    static func remove(host: String) {
-        lock.withLock {
-            scripts.removeValue(forKey: host)
-            stalled.removeValue(forKey: host)
-        }
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        guard let host = request.url?.host else { return false }
-        return lock.withLock { scripts[host] != nil }
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        guard let url = request.url, let host = url.host,
-              let script = Self.lock.withLock({ Self.scripts[host] }) else {
-            client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
-            return
-        }
-        var headers: [String: String] = [:]
-        if let length = script.contentLength { headers["Content-Length"] = String(length) }
-        let response = HTTPURLResponse(url: url, statusCode: script.status, httpVersion: "HTTP/1.1", headerFields: headers)!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        for chunk in script.chunks {
-            client?.urlProtocol(self, didLoad: chunk)
-        }
-        if script.stallsAfterChunks {
-            Self.lock.withLock { Self.stalled[host] = self }
-            return
-        }
-        if let failure = script.failure {
-            client?.urlProtocol(self, didFailWithError: failure)
-        } else {
-            client?.urlProtocolDidFinishLoading(self)
-        }
-    }
-
-    override func stopLoading() {}
+private actor RetryDelays {
+    private(set) var values: [Duration] = []
+    func record(_ delay: Duration) { values.append(delay) }
 }

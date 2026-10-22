@@ -1,4 +1,5 @@
 import SwiftUI
+import QuartzCore
 import os
 import AVFoundation
 #if canImport(MediaPlayer)
@@ -41,9 +42,13 @@ final class PlayViewModel {
             self.checked = checked
         }
 
-        func setChecked(_ value: Bool) {
+        func setChecked(_ value: Bool, notify: Bool = true) {
             guard !locked else { return }
-            forceSetChecked(value)
+            if notify {
+                forceSetChecked(value)
+            } else {
+                setCheckedSilently(value)
+            }
         }
 
         func forceSetChecked(_ value: Bool) {
@@ -520,11 +525,11 @@ final class PlayViewModel {
         guard let unipack else { return }
         let inputs = activePadInputs
         for (id, pad) in inputs {
-            padTouch(x: pad.x, y: pad.y, isDown: false, inputID: id)
+            padRelease(x: pad.x, y: pad.y, inputID: id)
         }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
-                padTouch(x: i, y: j, isDown: false)
+                padRelease(x: i, y: j)
             }
         }
     }
@@ -561,7 +566,16 @@ final class PlayViewModel {
     private static let pressedVelocity = 3 // LED_RED
     private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
 
-    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger = .pad, inputID: UUID? = nil) {
+    /// What the on-screen pad grid (`PadGridView.onPadTouch`) calls for each finger.
+    var screenPadTouch: (Int, Int, Bool, UUID) -> Void {
+        { x, y, isDown, inputID in
+            self.padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
+        }
+    }
+
+    /// `trigger` says who pressed the pad; a release does the same whoever caused it.
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
+        let ledTimeMs = ledTimeMs ?? Int64(CACurrentMediaTime() * 1000)
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
@@ -593,20 +607,25 @@ final class PlayViewModel {
                     setPadColor(x: x, y: y, color: .red)
                 }
             }
-            ledRunner?.eventOn(x: x, y: y)
+            ledRunner?.eventOn(x: x, y: y, pressedAt: ledTimeMs)
         } else {
-            // An ended touch can be reported again after a fresh press. Ignore the
-            // duplicate for both sound and pressed light, without clearing other pads.
-            if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
-            soundEngine?.soundOff(x: x, y: y, inputID: inputID)
-            if let cm = channelManager {
-                cm.remove(x: x, y: y, channel: .pressed)
-                refreshPadFromChannel(x: x, y: y)
-            } else {
-                clearPadColor(x: x, y: y)
-            }
-            ledRunner?.eventOff(x: x, y: y)
+            padRelease(x: x, y: y, inputID: inputID, ledTimeMs: ledTimeMs)
         }
+    }
+
+    /// `x` and `y` must be a pad of the loaded pack.
+    private func padRelease(x: Int, y: Int, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
+        // An ended touch can be reported again after a fresh press. Ignore the
+        // duplicate for both sound and pressed light, without clearing other pads.
+        if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
+        soundEngine?.soundOff(x: x, y: y, inputID: inputID)
+        if let cm = channelManager {
+            cm.remove(x: x, y: y, channel: .pressed)
+            refreshPadFromChannel(x: x, y: y)
+        } else {
+            clearPadColor(x: x, y: y)
+        }
+        ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs)
     }
 
     // MARK: - LED
@@ -619,22 +638,6 @@ final class PlayViewModel {
 
     func clearPadColor(x: Int, y: Int) {
         setPadColor(x: x, y: y, color: .clear)
-    }
-
-    func clearAllPadColors() {
-        guard let unipack else { return }
-        padColors = Array(
-            repeating: Array(repeating: .clear, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-        padLedColors = Array(
-            repeating: Array(repeating: .clear, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-        padItems = Array(
-            repeating: Array(repeating: nil, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
     }
 
     /// Convert a 32-bit ARGB value to a SwiftUI Color
@@ -815,18 +818,12 @@ final class PlayViewModel {
             runner.playmode = false
             removeAllGuide()
             if runner.active { runner.stop() }
-            padInit()
             ledInit()
             isPracticeMode = false
             isAutoPlayPlaying = false
             scbAutoPlay.setCheckedSilently(false)
             autoPlayControlVisible = false
-            if let unipack, unipack.keyLedExist {
-                scbLed.setChecked(true)
-                scbFeedbackLight.setChecked(false)
-            } else {
-                scbFeedbackLight.setChecked(true)
-            }
+            restorePlaybackLights()
             refreshWatermark()
             return
         }
@@ -894,28 +891,29 @@ final class PlayViewModel {
         pauseAutoPlay()
     }
 
+    fileprivate func restorePlaybackLights() {
+        let hasLED = unipack?.keyLedExist == true
+        if hasLED { scbLed.setChecked(true) }
+        // Avoid the feedback callback's padInit while keeping hidden options locked.
+        scbFeedbackLight.setChecked(!hasLED, notify: false)
+    }
+
     private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
         runner.resetStepState()
         removeAllGuide()
-        padInit()
         ledInit()
         runner.playmode = true
         isAutoPlayPlaying = true
-        if let unipack, unipack.keyLedExist {
-            scbLed.setChecked(true)
-            scbFeedbackLight.setChecked(false)
-        } else {
-            scbFeedbackLight.setChecked(true)
-        }
+        restorePlaybackLights()
+        refreshWatermark()
         runner.beforeStartPlaying = true
     }
 
     private func pauseAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
-        padInit()
         ledInit()
         isAutoPlayPlaying = false
         if playMode == .stepPractice {
@@ -937,14 +935,12 @@ final class PlayViewModel {
     }
 
     func autoPlayPrev() {
-        padInit()
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(-40)
     }
 
     func autoPlayNext() {
-        padInit()
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(40)
@@ -1054,9 +1050,9 @@ final class PlayViewModel {
 
     func startVolumeObserver() {
         #if canImport(UIKit)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setActive(true)
-        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+        // SoundEngine keeps the session active: it takes it back after an interruption and activates
+        // it again, off the main thread, when the app comes back.
+        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.updateVolumeUI()
             }
@@ -1085,6 +1081,11 @@ final class PlayViewModel {
         setupMidiController()
         redrawAllLaunchpadLeds()
         startVolumeObserver()
+    }
+
+    /// Keeps the window layout that the next `play_start` or `play_end` reports.
+    func screenLayoutChanged(_ layout: ScreenLayout?) {
+        usageSession.screenLayoutChanged(layout)
     }
 
     // MARK: - Cleanup
@@ -1119,7 +1120,7 @@ final class PlayViewModel {
         autoPlayRunner?.stop()
         autoPlayControlVisible = false
         isAutoPlayPlaying = false
-        clearAllPadColors()
+        removeAllGuide()
     }
 
     /// Called when sound loading completes to apply initial settings
@@ -1192,7 +1193,8 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
 // MARK: - LED Listener Adapter
 
-private final class LedListenerAdapter: LedRunner.Listener {
+/// Internal so the LED timing test can record what LedRunner hands over before passing it on.
+final class LedListenerAdapter: LedRunner.Listener {
     private weak var viewModel: PlayViewModel?
 
     init(viewModel: PlayViewModel) {
@@ -1252,12 +1254,32 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         }
     }
 
-    func onPadTouchOn(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay)
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID) {
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID)
     }
 
-    func onPadTouchOff(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay)
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
+        for inputID in inputIDs {
+            onPadTouchCancel(x: x, y: y, inputID: inputID)
+        }
+    }
+
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+    }
+
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) {
+        for inputID in inputIDs {
+            viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+        }
+    }
+
+    func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
+        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID)
+    }
+
+    func onInputTimeThrough(_ at: Int64?) {
+        viewModel?.ledRunner?.setInputTimeThrough(at)
     }
 
     func onChainChange(c: Int) {
@@ -1317,12 +1339,7 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         vm.isPracticeMode = false
         vm.scbAutoPlay.setCheckedSilently(false)
         vm.autoPlayControlVisible = false
-        if let unipack = vm.unipack, unipack.keyLedExist {
-            vm.scbLed.setChecked(true)
-            vm.scbFeedbackLight.setChecked(false)
-        } else {
-            vm.scbFeedbackLight.setChecked(true)
-        }
+        vm.restorePlaybackLights()
         vm.refreshWatermark()
     }
 }
@@ -1351,7 +1368,7 @@ private final class PlayMidiControllerAdapter: MidiController {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel else { return }
             if !vm.isOptionWindowVisible {
-                vm.padTouch(x: x, y: y, isDown: upDown)
+                vm.padTouch(x: x, y: y, isDown: upDown, trigger: .pad(.midi))
             }
         }
     }
@@ -1392,33 +1409,23 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
     }
 
     func onStart() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = true
-        }
+        viewModel?.autoMappingActive = true
     }
 
     func onGetWorkSize(_ size: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingMax = size
-        }
+        viewModel?.autoMappingMax = size
     }
 
     func onProgress(_ progress: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingProgress = progress
-        }
+        viewModel?.autoMappingProgress = progress
     }
 
     func onDone() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.finishAutoMapping()
-        }
+        viewModel?.finishAutoMapping()
     }
 
     func onException(_ error: Error) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.toastMessage = error.localizedDescription
-            self?.viewModel?.finishAutoMapping()
-        }
+        viewModel?.toastMessage = error.localizedDescription
+        viewModel?.finishAutoMapping()
     }
 }

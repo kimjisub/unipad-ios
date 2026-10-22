@@ -2,12 +2,14 @@ name: iOS checks
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-checks-${{ github.event.pull_request.number }}
+  group: ios-checks-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -75,6 +77,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             UNIPAD_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Check open source notices against the build
+        run: |
+          python3 ci/open_source_licenses.py check \
+            --derived-data "$RUNNER_TEMP/DerivedData" \
+            --source-packages "$RUNNER_TEMP/SourcePackages"
 
       - name: Run unit tests without UI tests
         env:

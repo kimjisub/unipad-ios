@@ -1,7 +1,7 @@
 import XCTest
 
-/// JIS-313: exercise iOS document opening, without substituting a notification or
-/// calling the router directly. Fixtures are the three ZIPs used by JIS-307 QA.
+/// Exercises iOS document opening, without substituting a notification or calling
+/// the router directly. Fixtures are the three ZIPs in ExternalImportFixtures.
 @MainActor
 final class ExternalFileImportTests: XCTestCase {
     private var app: XCUIApplication!
@@ -15,12 +15,8 @@ final class ExternalFileImportTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         token = UUID().uuidString
         app = XCUIApplication()
-        app.launchArguments = [
-            "-UniPadFirebaseLocalOnly", "YES",
-            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-            "-UniPadReleaseTest", token, "-UniPadReleaseEmpty", "YES",
-            "-UniPadReleaseFile", "YES",
-        ]
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "empty", token: token, file: true,
+                                                                   isolated: true)
         app.launchEnvironment["XCTestConfigurationFilePath"] = "external-import-local-only"
         app.launch()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
@@ -47,19 +43,10 @@ final class ExternalFileImportTests: XCTestCase {
 
     private func importWithPicker() throws {
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let file = app.cells
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "ReleaseFixture-")).firstMatch
-        if !file.waitForExistence(timeout: 3) {
-            for label in ["Browse", "On My iPhone", "On My iPad", "UniPad"] {
-                let item = app.descendants(matching: .any)
-                    .matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
-                if item.waitForExistence(timeout: 2), item.isHittable { item.tap() }
-            }
-        }
-        // Every launch generates this same silent picker fixture. Its UUID is
-        // for filename isolation; the imported title below validates its content.
-        XCTAssertTrue(file.waitForExistence(timeout: 10), "generated picker fixture is missing")
-        file.tap()
+        // Every launch generates this same silent picker fixture in its isolated import folder.
+        // The imported title below validates its content.
+        try UITestSupport.selectPreparedArchive(token: token, in: app)
+
         XCTAssertTrue(title.waitForExistence(timeout: 30))
         XCTAssertEqual(title.label, "Pack imported!")
         XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "Downloaded Fixture")
@@ -70,7 +57,7 @@ final class ExternalFileImportTests: XCTestCase {
 
     private func assertNormal() {
         XCTAssertEqual(title.label, "Pack imported!")
-        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "JIS307 - Normal")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Normal")
         XCTAssertTrue(play.isHittable)
         play.tap()
         XCTAssertTrue(app.descendants(matching: .any)["playPadGrid"].waitForExistence(timeout: 30))
@@ -94,6 +81,14 @@ final class ExternalFileImportTests: XCTestCase {
     }
 
     func testNormalFromEmptyLibrary() throws { try open("Normal"); assertNormal() }
+
+    /// The pack folder sits next to a readme.txt at the top of the archive.
+    func testPackFolderBesideAReadmeImports() throws {
+        try open("BesideReadme")
+        XCTAssertEqual(title.label, "Pack imported!")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Beside Readme")
+        XCTAssertTrue(play.isHittable)
+    }
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
     func testNormalAfterPickerResult() throws { try importWithPicker(); try open("Normal"); assertNormal() }
@@ -108,7 +103,7 @@ final class ExternalFileImportTests: XCTestCase {
 
     func testConsecutiveExternalImportsReplaceTheResult() throws {
         try open("Normal")
-        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "JIS307 - Normal")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Normal")
         ok.tap()
         try open("Missing"); assertMissing()
         ok.tap()

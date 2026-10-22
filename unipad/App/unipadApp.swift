@@ -89,11 +89,26 @@ struct unipadApp: App {
         UniPackStaging.removeLeftovers()
     }
 
+    // MIDI timing runs use an in-process play model. The host's menu must not send its own
+    // watermark or selection lights into that model's recording after a scene activation.
+    private var isMidiTimingUnitTest: Bool {
+#if DEBUG
+        let env = ProcessInfo.processInfo.environment
+        return env["XCTestConfigurationFilePath"] != nil && env["UNIPAD_LED_TIMING_MIDI"] != nil
+#else
+        return false
+#endif
+    }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
                 NavigationStack(path: $router.path) {
-                    MainView()
+                    Group {
+                        if !isMidiTimingUnitTest {
+                            MainView()
+                        }
+                    }
                         .navigationDestination(for: Route.self) { route in
                             switch route {
                             case .play(let path):
@@ -106,6 +121,8 @@ struct unipadApp: App {
                                 SettingsView(initialCategory: .storage)
                             case .theme:
                                 ThemeView()
+                            case .openSourceLicenses:
+                                OpenSourceLicensesView()
                             case .midiSelect:
                                 MidiSelectView()
                             case .importByUrl(let code):

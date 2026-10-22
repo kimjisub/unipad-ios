@@ -5,11 +5,104 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005", "RUN-S-008", "RUN-S-009", "RUN-S-010", "RUN-S-012", "RUN-S-013"])
+    func playbackCasesAreMeasured(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "pass", "\(id): \(value.serialized())")
+    }
+
+    @Test(arguments: ["RUN-S-008", "RUN-S-009"])
+    func omittingSoundOffFailsTheReleaseCase(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        deps.soundOff = { _, _, _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "a release must stop the voice its press started")
+    }
+
+    @Test(arguments: ["RUN-S-012", "RUN-S-013"])
+    func omittingTheChainObserverFailsTheQueueResetCase(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        deps.setupChainObserver = { _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "the play screen must reset both queues on a chain change")
+    }
+
+    @Test(arguments: ["RUN-L-006", "RUN-L-007"])
+    func omittingTheMainScreenAttachFailsTheExitCase(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        deps.returnToMain = {}
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "runner shutdown alone must not stand in for screen cleanup")
+    }
+
+    @Test func omittingAutoplayStopFailsTheExitCase() async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == "RUN-A-002" })
+        var deps = ConformanceDeps()
+        deps.stopAutoPlay = { _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("autoplay stop was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "an uncancelled task must emit later presses on virtual time")
+    }
+
+    @Test func omittingAutoplayOffFailsTheHeldLoopCase() async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == "RUN-RP-005" })
+        var deps = ConformanceDeps()
+        deps.turnOffAutoPlay = { _ in }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("autoplay off was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "fail", "omitting the screen's autoplay-off action must leave its endless sound playing")
+    }
+
     @Test func anEmptyCaseFilterIsNotAPartialRun() {
         // This check runs with TEST_RUNNER_UNIPACK_CONFORMANCE_ONLY set to an empty string.
         if ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ONLY"] == "" {
             #expect(ConformanceReport.onlyPrefix == nil)
             #expect(ConformanceReport.assertions == "checked")
+        }
+    }
+
+    @Test func aCopyThatDoesNotHashToItsCorpusSha256OrHasNoneIsRefused() throws {
+        let data = Data(#"{"cases":[{"id":"KS-001"}]}"#.utf8)
+        let digest = ConformanceCorpus.sha256Hex(data) + "  corpus.json\n"
+        #expect(try ConformanceCorpus.verifyDigest(of: data, digestFile: digest) == ConformanceCorpus.sha256Hex(data))
+        var changed = data
+        changed[changed.firstIndex(of: UInt8(ascii: "K"))!] ^= 1
+        #expect(throws: ConformanceCorpus.LoadError.self) { try ConformanceCorpus.verifyDigest(of: changed, digestFile: digest) }
+        #expect(throws: ConformanceCorpus.LoadError.self) { try ConformanceCorpus.verifyDigest(of: data, digestFile: nil) }
+        #expect(throws: ConformanceCorpus.LoadError.self) {
+            try ConformanceCorpus.verifyDigest(of: data, digestFile: digest.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
 

@@ -1,0 +1,102 @@
+{
+  "components": [
+    {
+      "name": "libogg",
+      "version": "1.3.6",
+      "license": "BSD 3-Clause License",
+      "url": "https://xiph.org/ogg/",
+      "file": "license-libogg.txt",
+      "package": "XiphVorbis",
+      "source": {
+        "path": "Vendor/XiphVorbis",
+        "version": { "file": "vendor.sh", "pattern": "OGG_VERSION=(\\S+)" },
+        "files": [{ "path": "COPYING.libogg" }]
+      }
+    },
+    {
+      "name": "libvorbis",
+      "version": "1.3.7",
+      "license": "BSD 3-Clause License",
+      "url": "https://xiph.org/vorbis/",
+      "file": "license-libvorbis.txt",
+      "package": "XiphVorbis",
+      "source": {
+        "path": "Vendor/XiphVorbis",
+        "version": { "file": "vendor.sh", "pattern": "VORBIS_VERSION=(\\S+)" },
+        "files": [{ "path": "COPYING.libvorbis" }]
+      }
+    },
+    {
+      "name": "Firebase Apple SDK",
+      "version": "13.0.1",
+      "license": "Apache License 2.0, MIT License",
+      "url": "https://github.com/firebase/firebase-ios-sdk",
+      "file": "license-firebase-ios-sdk.txt",
+      "package": "Firebase",
+      "source": {
+        "pin": "firebase-ios-sdk",
+        "files": [
+          { "path": "Crashlytics/LICENSE" },
+          {
+            "path": "FirebaseSharedSwift/Sources/third_party/FirebaseDataEncoder/LICENSE",
+            "heading": "FirebaseDataEncoder, derived from the Swift standard library (https://swift.org)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Google App Measurement",
+      "version": "13.0.1",
+      "license": "Apache License 2.0",
+      "url": "https://github.com/google/GoogleAppMeasurement",
+      "file": "license-googleappmeasurement.txt",
+      "package": "GoogleAppMeasurement",
+      "source": { "pin": "googleappmeasurement", "files": [{ "path": "LICENSE" }] }
+    },
+    {
+      "name": "Google Ads On-Device Conversion",
+      "version": "3.7.0",
+      "license": "Apache License 2.0",
+      "url": "https://github.com/googleads/google-ads-on-device-conversion-ios-sdk",
+      "file": "license-google-ads-on-device-conversion-ios-sdk.txt",
+      "package": "GoogleAdsOnDeviceConversion",
+      "source": { "pin": "google-ads-on-device-conversion-ios-sdk", "files": [{ "path": "LICENSE" }] }
+    },
+    {
+      "name": "GoogleDataTransport",
+      "version": "10.1.1",
+      "license": "Apache License 2.0",
+      "url": "https://github.com/google/GoogleDataTransport",
+      "file": "license-googledatatransport.txt",
+      "package": "GoogleDataTransport",
+      "source": { "pin": "googledatatransport", "files": [{ "path": "LICENSE" }] }
+    },
+    {
+      "name": "GoogleUtilities",
+      "version": "8.1.4",
+      "license": "Apache License 2.0, MIT License",
+      "url": "https://github.com/google/GoogleUtilities",
+      "file": "license-googleutilities.txt",
+      "package": "GoogleUtilities",
+      "source": { "pin": "googleutilities", "files": [{ "path": "LICENSE" }] }
+    },
+    {
+      "name": "nanopb",
+      "version": "2.30910.1",
+      "license": "zlib License",
+      "url": "https://github.com/firebase/nanopb",
+      "file": "license-nanopb.txt",
+      "package": "nanopb",
+      "source": { "pin": "nanopb", "files": [{ "path": "LICENSE.txt" }] }
+    },
+    {
+      "name": "Promises",
+      "version": "2.4.1",
+      "license": "Apache License 2.0",
+      "url": "https://github.com/google/promises",
+      "file": "license-promises.txt",
+      "package": "Promises",
+      "source": { "pin": "promises", "files": [{ "path": "LICENSE" }] }
+    }
+  ]
+}

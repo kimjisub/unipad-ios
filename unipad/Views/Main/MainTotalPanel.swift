@@ -71,6 +71,7 @@ struct MainTotalPanel: View {
             if updateAvailable {
                 HStack {
                     Text(String(localized: "update_available"))
+                        .accessibilityIdentifier("main.updateAvailable")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(AppColors.blue)
                         .onTapGesture(perform: onUpdateClick)

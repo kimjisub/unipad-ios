@@ -9,11 +9,9 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// screen saves, so the walk through the Theme screen launches without one.
     private func launch(theme: String? = nil, observeLoading: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(
+            isolated: observeLoading || UITestSupport.isReleaseSuite, themeLoading: observeLoading)
         if let theme { app.launchArguments += ["-SelectedTheme", theme] }
-        if observeLoading {
-            app.launchArguments += ["-UniPadReleaseThemeLoading", "YES"]
-        }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         return app
@@ -22,12 +20,21 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// Opens the sample pack Faded, or the first pack when the library has no Faded, and returns
     /// the title it opened.
     @discardableResult
-    private func openFirstPack(in app: XCUIApplication) throws -> String {
+    private func openFirstPack(in app: XCUIApplication, loadingFixture: Bool = false) throws -> String {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
-        let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
+        let list = app.scrollViews["main.packList"]
+        let packTitles = list.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let faded = packTitles.matching(NSPredicate(format: "label CONTAINS[c] %@", "Faded")).firstMatch
-        let title = faded.exists ? faded : packTitles.element(boundBy: 0)
+        let title: XCUIElement
+        if loadingFixture {
+            title = packTitles.matching(NSPredicate(format: "label == %@", "Faded - Tests")).firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 10), "the slow-loading fixture was not prepared")
+        } else {
+            title = faded.exists ? faded : packTitles.element(boundBy: 0)
+        }
+        XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
+                      "the requested pack never reached the visible list")
         let name = title.label
         title.tap()
         let play = app.buttons["Play"].firstMatch
@@ -44,9 +51,7 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     private func safeArea(of window: CGRect) throws -> CGRect {
         let key = "\(Int(window.width))x\(Int(window.height))"
-        guard let insets = Self.landscapeSafeAreas[key] else {
-            throw XCTSkip("no reference safe area for a \(key) screen")
-        }
+        let insets = try XCTUnwrap(Self.landscapeSafeAreas[key], "no independently measured safe area for a \(key) screen")
         return CGRect(x: window.minX + insets.side, y: window.minY,
                       width: window.width - insets.side * 2, height: window.height - insets.bottom)
     }
@@ -111,7 +116,7 @@ final class PlayThemeLayoutTests: XCTestCase {
         // also catches it coming back.
         let themeImage = app.images.matching(NSPredicate(format: "identifier IN %@", ["playBackdrop", "playBackground"])).firstMatch
         let grid = app.otherElements["playPadGrid"]
-        let pack = try openFirstPack(in: app)
+        let pack = try openFirstPack(in: app, loadingFixture: true)
 
         var loadingFrames: [CGRect] = []
         let deadline = Date().addingTimeInterval(60)

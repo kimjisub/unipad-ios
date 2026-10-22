@@ -48,16 +48,29 @@ final class PlayUsageScenario {
     }
 
     func waitWhile(timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
+        try await Self.waitWhile(timeout: timeout, condition)
+    }
+
+    /// Polls until `condition` is false or `timeout` passes; the caller checks which.
+    static func waitWhile(timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while condition() && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
     }
 
     func removePackFile(_ name: String) throws { try FileManager.default.removeItem(at: packFolder.appending(path: name)) }
 
-    func press(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: true) }
-    func release(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: false) }
+    func press(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: true, trigger: .pad(.screen)) }
+    func release(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: false, trigger: .pad(.screen)) }
     var starts: [String?] { sink.events(named: "play_start").map { $0.parameters["trigger"] } }
     var firstInputs: [String?] { sink.events(named: "play_first_input").map { $0.parameters["trigger"] } }
+    var firstInputSources: [String?] { sink.events(named: "play_first_input").map { $0.parameters["input_source"] } }
+
+    /// Each event's window layout as "orientation short_side window_mode".
+    func layouts(of name: String) -> [String] {
+        sink.events(named: name).map { event in
+            ["orientation", "screen_short_side", "window_mode"].map { event.parameters[$0] ?? "-" }.joined(separator: " ")
+        }
+    }
 
     func midi(cmd: Int, note: Int, velocity: Int) async throws {
         if !restoresMidiDriver {
@@ -75,7 +88,7 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
-    private static func writePack(to folder: URL, keySound: String, autoPlay: String) throws {
+    static func writePack(to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
         let files: [(String, Data)] = [
             ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n".utf8)),
             ("keySound", Data(keySound.utf8)),

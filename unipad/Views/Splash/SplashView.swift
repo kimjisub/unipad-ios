@@ -53,6 +53,7 @@ struct SplashView: View {
                 .opacity(logoOpacity)
             }
         }
+        .accessibilityIdentifier("splash")
         .task {
             withAnimation(.easeOut(duration: 0.6)) {
                 logoOpacity = 1

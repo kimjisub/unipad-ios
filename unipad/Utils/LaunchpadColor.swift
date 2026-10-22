@@ -182,6 +182,11 @@ nonisolated enum LaunchpadColor {
         3, 56, 56, 57, 57, 57, 57,
     ]
 
+    /// Launchpad S colour code for a pack LED code; pack text can carry any integer (`on 1 1 a 200`).
+    static func sCodeClamped(_ velocity: Int) -> Int {
+        sCode[min(max(velocity, 0), sCode.count - 1)]
+    }
+
     static func colorFromCode(_ code: Int) -> UInt32 {
         guard code >= 0, code < argb.count else { return 0 }
         return argb[code]
