@@ -36,6 +36,17 @@ final class PlayChainLayoutTests: XCTestCase {
         let alert = app.alerts.firstMatch
         if alert.waitForExistence(timeout: 2) { alert.buttons.firstMatch.tap() }
         XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 30))
+        UITestSupport.assertFullScreenLandscape(app)
+    }
+
+    /// Switches Pro Light Mode in the play menu, closes the menu and returns its button.
+    private func setProLightMode(_ on: Bool) -> XCUIElement {
+        let menu = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        UITestSupport.setPlayOption("Pro Light Mode", on: on, in: app)
+        UITestSupport.closePlayMenu(in: app)
+        return menu
     }
 
     private func safeArea(_ window: CGRect) throws -> CGRect {
@@ -50,11 +61,7 @@ final class PlayChainLayoutTests: XCTestCase {
 
     private func assertChains(rows: Int, columns: Int, count: Int, pro: Bool, name: String) throws {
         let grid = app.otherElements["playPadGrid"]
-        let menu = app.buttons["line.3.horizontal"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        menu.tap()
-        UITestSupport.setPlayOption("Pro Light Mode", on: pro, in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let menu = setProLightMode(pro)
         let safe = try safeArea(app.windows.firstMatch.frame)
         let bounds = safe.insetBy(dx: -1, dy: -1)
         let chains = (1...count).map { app.buttons["playChain.\($0)"] }
@@ -139,11 +146,7 @@ final class PlayChainLayoutTests: XCTestCase {
     private func assertLogoLayout(title: String, pro: Bool, name: String, logoMayBeHidden: Bool = false) throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         openPack(title: title)
-        let menu = app.buttons["line.3.horizontal"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        menu.tap()
-        UITestSupport.setPlayOption("Pro Light Mode", on: pro, in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let menu = setProLightMode(pro)
         let logo = app.images["playLogo"]
         let grid = app.otherElements["playPadGrid"]
         XCTAssertTrue(grid.waitForExistence(timeout: 5))
