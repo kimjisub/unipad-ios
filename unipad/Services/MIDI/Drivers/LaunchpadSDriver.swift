@@ -23,24 +23,22 @@ final class LaunchpadSDriver: BaseMidiDriver {
     ]
 
     override func getSignal(cmd: Int, sig: Int, note: Int, velocity: Int) {
-        if cmd == 9 {
+        if let down = Self.noteTouch(cmd: cmd, velocity: velocity) {
             let x = note / 16 + 1
             let y = note % 16 + 1
             if (1...8).contains(y) {
-                onPadTouch(x: x - 1, y: y - 1, upDown: velocity != 0, velocity: velocity)
+                onPadTouch(x: x - 1, y: y - 1, upDown: down, velocity: velocity)
             } else if y == 9 {
-                onChainTouch(c: x - 1, upDown: velocity != 0)
-                onFunctionKeyTouch(f: x - 1 + 8, upDown: velocity != 0)
+                onChainTouch(c: x - 1, upDown: down)
+                onFunctionKeyTouch(f: x - 1 + 8, upDown: down)
             }
-        } else if cmd == 11 {
-            if (104...111).contains(note) {
-                onFunctionKeyTouch(f: note - 104, upDown: velocity != 0)
-            }
+        } else if Self.isControlChange(cmd) && (104...111).contains(note) {
+            onFunctionKeyTouch(f: note - 104, upDown: velocity != 0)
         }
     }
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
-        guard (0...7).contains(x), (0...7).contains(y) else { return }
+        guard Self.isOnGrid(x: x, y: y) else { return }
         sendSignal(cmd: 9, sig: -112, note: x * 16 + y, velocity: LaunchpadColor.sCodeClamped(velocity))
     }
 

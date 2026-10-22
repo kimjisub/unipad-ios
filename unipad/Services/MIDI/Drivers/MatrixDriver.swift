@@ -1,8 +1,10 @@
 import Foundation
 
 /// Driver for Matrix-style MIDI controllers.
-/// Supports 8x8 pad grid, 8 chain buttons, and 32 function keys.
+/// Supports an 8x8 pad grid on the drum-rack layout and 32 round buttons, 24 of them chains.
 final class MatrixDriver: BaseMidiDriver {
+    /// The round buttons by function key: top row left to right, right column top to bottom, bottom
+    /// row right to left, left column bottom to top. Function keys 8...31 are chains 0...23.
     static let circleCode: [[Int]] = [
         [9, -111, 28],
         [9, -111, 29],
@@ -39,60 +41,24 @@ final class MatrixDriver: BaseMidiDriver {
     ]
 
     override func getSignal(cmd: Int, sig: Int, note: Int, velocity: Int) {
-        var x: Int
-        var y: Int
-
-        switch cmd {
-        case 9:
-            switch note {
-            case 36...67:
-                x = (67 - note) / 4 + 1
-                y = 4 - (67 - note) % 4
-                onPadTouch(x: x - 1, y: y - 1, upDown: true, velocity: velocity)
-            case 68...99:
-                x = (99 - note) / 4 + 1
-                y = 8 - (99 - note) % 4
-                onPadTouch(x: x - 1, y: y - 1, upDown: true, velocity: velocity)
-            case 100...107:
-                let c = note - 100
-                onChainTouch(c: c, upDown: velocity != 0)
-                onFunctionKeyTouch(f: c + 8, upDown: velocity != 0)
-            case 108...115:
-                let c = 8 - (note - 108) + 8
-                onFunctionKeyTouch(f: c + 8, upDown: velocity != 0)
-            default:
-                break
+        guard let down = Self.noteTouch(cmd: cmd, velocity: velocity) else { return }
+        if let pad = DrumRackLayout.pad(note: note) {
+            onPadTouch(x: pad.x, y: pad.y, upDown: down, velocity: velocity)
+        } else if let f = Self.circleCode.firstIndex(where: { $0[2] == note }) {
+            if f >= 8 {
+                onChainTouch(c: f - 8, upDown: down)
             }
-        case 8:
-            switch note {
-            case 36...67:
-                x = (67 - note) / 4 + 1
-                y = 4 - (67 - note) % 4
-                onPadTouch(x: x - 1, y: y - 1, upDown: false, velocity: velocity)
-            case 68...99:
-                x = (99 - note) / 4 + 1
-                y = 8 - (99 - note) % 4
-                onPadTouch(x: x - 1, y: y - 1, upDown: false, velocity: velocity)
-            default:
-                break
-            }
-        default:
-            break
+            onFunctionKeyTouch(f: f, upDown: down)
         }
     }
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
-        let padX = x + 1
-        let padY = y + 1
-        if (1...4).contains(padY) {
-            sendSignal(cmd: 9, sig: -111, note: -4 * padX + padY + 67, velocity: velocity)
-        } else if (5...8).contains(padY) {
-            sendSignal(cmd: 9, sig: -111, note: -4 * padX + padY + 95, velocity: velocity)
-        }
+        guard let note = DrumRackLayout.note(x: x, y: y) else { return }
+        sendSignal(cmd: 9, sig: -111, note: note, velocity: velocity)
     }
 
     override func sendChainLed(c: Int, velocity: Int) {
-        if (0...7).contains(c) {
+        if (0...23).contains(c) {
             sendFunctionKeyLed(f: c + 8, velocity: velocity)
         }
     }
@@ -111,6 +77,9 @@ final class MatrixDriver: BaseMidiDriver {
             for j in 0...7 {
                 sendPadLed(x: i, y: j, velocity: 0)
             }
+        }
+        for i in 0...31 {
+            sendFunctionKeyLed(f: i, velocity: 0)
         }
     }
 }

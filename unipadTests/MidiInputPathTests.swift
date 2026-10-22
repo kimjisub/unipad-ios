@@ -5,12 +5,15 @@ import Testing
 
 /// Where a MidiInputPathTests device lives.
 enum MidiTestDeviceKind: String, CaseIterable {
+    /// CoreMIDI event lists go through MidiManager's own parser, its driver and PlayViewModel; LED
+    /// messages are read where the driver hands them to MidiManager to send.
+    case parser
     /// A device ci/midi-input-tests.sh publishes in the simulator's MIDI server: MidiManager finds it by
     /// name and its messages and LEDs travel through CoreMIDI, as a USB device's do.
     case coreMIDI
 
     static var folder: String? { ProcessInfo.processInfo.environment["UNIPAD_VIRTUAL_MIDI_DIR"] }
-    static var available: [Self] { folder == nil ? [] : allCases }
+    static var available: [Self] { folder == nil ? [.parser] : allCases }
 }
 
 @MainActor
@@ -31,6 +34,35 @@ nonisolated func midiWord(_ status: UInt32, _ data1: UInt32, _ data2: UInt32) ->
 nonisolated struct MidiTestDeviceError: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
+}
+
+/// Feeds CoreMIDI event lists to `MidiManager.channelMessages` as the input port's read block does,
+/// with the port MidiManager would have connected, and records the LED messages its driver sends.
+@MainActor
+final class ParserMidiDevice: MidiTestDevice, MidiDriverSendSignalListener {
+    private let port: Int
+    private(set) var messages: [[UInt8]] = []
+
+    init(driver: MidiDriver, port: Int) {
+        self.port = port
+        MidiManager.shared.overrideDriver(driver)
+        driver.sendSignalListener = self
+    }
+
+    func clearMessages() { messages.removeAll() }
+
+    func send(_ words: [UInt32]) async throws {
+        // The list must hold at least a whole MIDIEventList (69 words), whose one packet declares 64 words.
+        let builder = MIDIEventList.Builder(inProtocol: ._1_0, wordSize: words.count + 128)
+        guard builder.append(timestamp: 0, words: words) != nil else { throw MidiTestDeviceError("\(words.count) words do not fit") }
+        let events = builder.withUnsafePointer { MidiManager.channelMessages(in: $0, port: port) }
+        MidiManager.shared.receive(events)
+    }
+
+    func close() async { MidiManager.shared.overrideDriver(NotingDriver()) }
+
+    func onSend(cmd: UInt8, sig: UInt8, note: UInt8, velocity: UInt8) { messages.append([sig, note, velocity]) }
+    func onSendRaw(messages: [[UInt8]], cableNumber: Int) {}
 }
 
 /// Drives ci/virtual-midi-device.c through its command file. A virtual endpoint has no entities, so
@@ -116,6 +148,8 @@ extension PlayUsageRecordTests {
             let expected = type(of: make())
             let device: MidiTestDevice
             switch kind {
+            case .parser:
+                device = ParserMidiDevice(driver: make(), port: port)
             case .coreMIDI:
                 let folder = URL(fileURLWithPath: try #require(MidiTestDeviceKind.folder))
                 device = try await SimulatorMidiDevice.open(folder: folder, name: name, port: port) { type(of: $0) == expected }
