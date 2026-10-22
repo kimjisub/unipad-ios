@@ -245,7 +245,7 @@ struct PlayView: View {
     private func playContentRightColumn(layout: PlayLayout, viewWidth: CGFloat, viewHeight: CGFloat, centerY: CGFloat) -> some View {
         // "Hide UI" (optionViewVisible) was written by the view model and read nowhere; it hides
         // the logo and the chrome column, as Android and web do.
-        if vm.optionViewVisible, let customLogo = theme.customLogo {
+        if vm.optionViewVisible, let customLogo = theme.customLogo, layout.logoFrame.width > 0 {
             let logo = layout.logoFrame
             Image(platformImage: customLogo)
                 .resizable()
