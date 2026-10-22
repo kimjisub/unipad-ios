@@ -104,6 +104,9 @@ final class SoundEngine {
     /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
     /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
     var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+    /// Waits out the time between a sound with a wormhole and its chain change. A test seam: tests
+    /// hold it open to act inside that window.
+    var wormholeDelay: () async -> Void = { try? await Task.sleep(nanoseconds: 100_000_000) }
     /// Takes the session back when playback recovers. A test seam: a simulator always hands the
     /// session back, so tests replace this to make it refuse as another app holding it would.
     var activateSessionForRecovery: () throws -> Void {
@@ -676,8 +679,9 @@ final class SoundEngine {
 
         if sound.wormhole != Sound.noWormhole {
             let wormhole = sound.wormhole
+            let delay = wormholeDelay
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                await delay()
                 chain.setValue(wormhole)
             }
         }
