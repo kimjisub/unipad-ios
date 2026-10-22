@@ -21,6 +21,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
 
     private var requests: Int64 = 0
     private var pausedAt: Int64?
+    private var suspendedTime = SuspendedTime()
     private var inputTimeThrough: Int64?
     // Autoplay input can reach the runner after an animation's last event.
     private static let latePressMs: Int64 = 1_000
@@ -77,6 +78,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
             }
         }
         pausedAt = nil
+        suspendedTime.reset()
         lock.unlock()
 
         loopTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -100,6 +102,29 @@ nonisolated final class LedRunner: @unchecked Sendable {
         }
     }
 
+    /// The app left the front; it may be suspended before it comes back.
+    func appWentAway() {
+        lock.lockWithDeadlockDetection()
+        suspendedTime.appWentAway()
+        lock.unlock()
+    }
+
+    /// The app is in front again: animations go on from where they were when it was suspended.
+    func appReturned() {
+        lock.lockWithDeadlockDetection()
+        skip(suspendedTime.appReturned(at: clock()))
+        lock.unlock()
+    }
+
+    /// Moves every animation later by `ms`, as a stop and launch would. Called holding `lock`.
+    private func skip(_ ms: Int64) {
+        guard ms > 0 else { return }
+        let since = clock() - ms
+        for state in ledAnimationStates + ledAnimationStatesAdd {
+            state.resume(pausedSince: since, pausedFor: ms)
+        }
+    }
+
     func stop() {
         lock.lockWithDeadlockDetection()
         if active { pausedAt = clock() }
@@ -115,6 +140,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
         var pendingLedEvents: [LedEvent] = []
         var pendingChainSets: [Int] = []
         lock.lockWithDeadlockDetection()
+        skip(suspendedTime.tick(at: clock()))
         // Autoplay can be a millisecond behind this task. Do not render a later
         // step until its earlier scheduled inputs have reached the runner.
         let currTime = min(clock(), inputTimeThrough ?? .max)

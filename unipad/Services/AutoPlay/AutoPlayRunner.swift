@@ -114,6 +114,12 @@ final class AutoPlayRunner {
     // Pad presses are drained by the next tick on the main actor.
     private var _pressedKeysQueue: [Int] = []
 
+    private var suspendedTime = SuspendedTime()
+    /// Found by appReturned() before the run's next tick, which skips it.
+    private var pendingSkipMs: Int64 = 0
+    /// progressOffset() moved the guide's place in the song; the next tick follows it.
+    private var guideMoved = false
+
     /// Time reads and suspension can share a virtual clock in tests; app defaults remain real time.
     init(
         unipack: UniPack,
@@ -132,6 +138,23 @@ final class AutoPlayRunner {
     }
 
     private func guideKey(x: Int, y: Int) -> Int { x * 256 + y }
+
+    /// The time into the song at which `elements[index]` plays.
+    private func timeMs(at index: Int, in autoPlay: AutoPlay) -> Int64 {
+        autoPlay.elements[..<min(index, autoPlay.elements.count)].reduce(0) { sum, element in
+            if case .delay(let delay) = element { sum + Int64(delay) } else { sum }
+        }
+    }
+
+    /// Turns the lit guides off and shows them again from `elapsed` into the song on the next pass.
+    private func restartGuide(at elapsed: Int64) {
+        for key in drainGuides() {
+            listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
+        }
+        listener?.onRemoveGuide()
+        guideIndex = guideTimeline.firstIndex { $0.timeMs >= elapsed } ?? guideTimeline.count
+        waitingForChain = -1
+    }
 
     private func buildGuideTimeline(autoPlay: AutoPlay) -> [GuideEvent] {
         var events: [GuideEvent] = []
@@ -186,9 +209,29 @@ final class AutoPlayRunner {
             var delayAccum: Int64 = 0
             var startTime = self.clock()
             var prevPracticeGuide = self.practiceGuide
+            self.suspendedTime.reset()
+            self.pendingSkipMs = 0
+            self.guideMoved = false
 
             while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
                 let currTime = self.clock()
+
+                // Paused or waiting for a chain, the loop below already owes nothing for time passing.
+                let skipped = self.suspendedTime.tick(at: currTime) + self.pendingSkipMs
+                self.pendingSkipMs = 0
+                if skipped > 0 && self.playmode && self.waitingForChain < 0 {
+                    startTime += skipped
+                    if self.practiceGuide { self.restartGuide(at: currTime - startTime) }
+                }
+
+                if self.guideMoved {
+                    self.guideMoved = false
+                    if self.practiceGuide && self.playmode {
+                        delayAccum = self.timeMs(at: self.progress, in: autoPlay)
+                        startTime = currTime - delayAccum
+                        self.restartGuide(at: delayAccum)
+                    }
+                }
 
                 // Detect mid-run practice mode toggle
                 if self.practiceGuide != prevPracticeGuide {
@@ -380,6 +423,16 @@ final class AutoPlayRunner {
         }
     }
 
+    /// The app left the front (`willResignActive`); it may be suspended before it comes back.
+    func appWentAway() {
+        suspendedTime.appWentAway()
+    }
+
+    /// The app is in front again (`didBecomeActive`). The time it spent suspended is not played at once.
+    func appReturned() {
+        pendingSkipMs += suspendedTime.appReturned(at: clock())
+    }
+
     func stop() {
         // A second stop() used to overwrite previousRun with nil and lose the handle the next
         // launch() waits on, letting two runs overlap.
@@ -421,6 +474,7 @@ final class AutoPlayRunner {
         let target = progress + offset
         let count = unipack.autoPlayTable?.elements.count ?? 0
         progress = max(0, min(target, count))
+        guideMoved = true
         if stepMode {
             resetStepState()
             listener?.onRemoveGuide()
