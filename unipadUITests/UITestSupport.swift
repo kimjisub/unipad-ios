@@ -103,11 +103,10 @@ enum UITestSupport {
             let settled = waitForSettledFrame(timeout: 10,
                 waitForArrival: { row.waitForExistence(timeout: $0) },
                 frame: {
-                    guard row.exists else { return nil }
                     // Each frame read requests another accessibility snapshot.
                     // Reuse this sample for visibility and stability so a slow
                     // picker does not spend the bounded wait reading it twice.
-                    let current = row.frame
+                    guard let current = currentFrame(of: row) else { return nil }
                     return viewport.contains(current) ? current : nil
                 })
             if !settled { attachPickerDiagnostics(in: app, details: "row \(row.frame), viewport \(viewport)") }
@@ -283,8 +282,8 @@ enum UITestSupport {
         let didSettle = waitForSettledFrame(timeout: timeout,
             waitForArrival: { cancel.waitForExistence(timeout: $0) },
             frame: {
-                guard cancel.exists, onPad || bar.frame.width == screenWidth else { return nil }
-                return cancel.frame
+                guard onPad || currentFrame(of: bar)?.width == screenWidth else { return nil }
+                return currentFrame(of: cancel)
             })
         guard didSettle else {
             attachPickerDiagnostics(in: app, details:
@@ -336,19 +335,26 @@ enum UITestSupport {
         guard let frame = currentFrame(of: element) else { return false }
         var viewport = app.windows.firstMatch.frame
         if let scrollView {
-            guard scrollView.exists else { return false }
-            viewport = viewport.intersection(scrollView.frame)
+            guard let scrollFrame = currentFrame(of: scrollView) else { return false }
+            viewport = viewport.intersection(scrollFrame)
         }
         return !viewport.isEmpty && !frame.isEmpty && viewport.contains(frame)
     }
 
-    /// The element's frame, or nil when it is not on screen. Reading `frame` fails the test when
-    /// the element is gone, and it can go right after `exists` saw it: a lazy list drops rows
-    /// scrolled away, and the home cards move below the packs as they load. `exists` comes first
-    /// because a snapshot of a missing element retries for seconds before it gives up.
+    /// The element's frame, which may lie off screen, or nil when the accessibility tree no longer
+    /// has it. Reading `frame` fails the test when the element is gone, and it can go right after
+    /// `exists` saw it: a lazy list drops rows scrolled away, the home cards move below the packs
+    /// as they load, and the empty-library scroll view is replaced by the pack list. `exists`
+    /// comes first because a snapshot of a missing element retries for seconds before it gives up.
     static func currentFrame(of element: XCUIElement) -> CGRect? {
         guard element.exists else { return nil }
-        return try? element.snapshot().frame
+        do {
+            return try element.snapshot().frame
+        } catch {
+            // Only a vanished element is an answer. Any other error, such as a query matching
+            // several elements, fails the test through `frame` with XCTest's own message.
+            return element.exists ? element.frame : nil
+        }
     }
 
     /// Search exposes a fixture even when a large lazy library has not created its row yet.
@@ -368,11 +374,12 @@ enum UITestSupport {
                                app: XCUIApplication, maxSwipes: Int = 6) -> Bool {
         for _ in 0..<maxSwipes {
             if isFullyVisible(element, in: app, within: scrollView) { return true }
-            guard scrollView.exists, let frame = currentFrame(of: element) else { return false }
-            let viewport = scrollView.frame.intersection(app.windows.firstMatch.frame)
+            guard let scrollFrame = currentFrame(of: scrollView),
+                  let frame = currentFrame(of: element) else { return false }
+            let viewport = scrollFrame.intersection(app.windows.firstMatch.frame)
             guard !viewport.isEmpty else { return false }
             if let shift = nearbyShift(of: frame, into: viewport) {
-                drag(scrollView, by: shift, within: viewport)
+                drag(in: app, by: shift, within: viewport)
             } else if frame.midY < viewport.midY {
                 scrollView.swipeDown(velocity: .slow)
             } else {
@@ -399,16 +406,16 @@ enum UITestSupport {
         return abs(shift) <= viewport.height * 0.6 ? shift : nil
     }
 
-    /// Drags the content of `scrollView` up by `distance` points and holds before lifting the
-    /// finger, so the list stops where it was dragged instead of coasting on.
-    private static func drag(_ scrollView: XCUIElement, by distance: CGFloat, within viewport: CGRect) {
+    /// Drags the content shown in `viewport` up by `distance` points and holds before lifting the
+    /// finger, so the list stops where it was dragged instead of coasting on. The points are
+    /// placed from the app's origin, so a scroll view replaced meanwhile cannot fail the drag.
+    private static func drag(in app: XCUIApplication, by distance: CGFloat, within viewport: CGRect) {
         // The list only starts to follow the finger after it has moved a few points.
         let touchSlop: CGFloat = 12
         let travel = distance + (distance > 0 ? touchSlop : -touchSlop)
-        let origin = scrollView.coordinate(withNormalizedOffset: .zero)
-        let x = viewport.midX - scrollView.frame.minX
-        let start = origin.withOffset(CGVector(dx: x, dy: viewport.midY - scrollView.frame.minY + travel / 2))
-        let end = origin.withOffset(CGVector(dx: x, dy: viewport.midY - scrollView.frame.minY - travel / 2))
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: viewport.midX, dy: viewport.midY + travel / 2))
+        let end = origin.withOffset(CGVector(dx: viewport.midX, dy: viewport.midY - travel / 2))
         start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
     }
 
