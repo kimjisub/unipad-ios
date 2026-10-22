@@ -235,6 +235,48 @@ final class PlaybackStopTests: XCTestCase {
         }
     }
 
+    /// A Launchpad note that arrives twice, the second time on another chain, is lifted once: that
+    /// lift stops both endless sounds, so none is left that no release can stop.
+    func testControllerReleaseStopsEndlessSoundsItStartedOnEveryChain() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Controller Release\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        try "1 1 1 a.wav 0\n2 1 1 a.wav 0\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.midi))
+        vm.selectChain(1)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.midi))
+        XCTAssertEqual(engine.activePlayIDs.count, 2, "sounds of different chains overlap")
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.midi))
+
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "an endless sound outlived the note's release")
+    }
+
+    /// Changing the press light option while a finger holds a pad keeps that pad sounding, and the
+    /// finger's lift still stops it.
+    func testChangingThePressLightKeepsAHeldPadSounding() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let finger = UUID()
+
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: finger)
+        let held = engine.activePlayIDs
+        XCTAssertEqual(held.count, 1)
+        vm.scbFeedbackLight.setChecked(!vm.scbFeedbackLight.checked)
+        XCTAssertEqual(engine.activePlayIDs, held, "the option change stopped the held pad")
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: finger)
+
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "the lift after the option change was ignored")
+    }
+
     func testStoppingAutoplayReleasesItsInfiniteSound() async throws {
         try await checkAutoplayRelease { $0.stopAutoPlay() }
     }

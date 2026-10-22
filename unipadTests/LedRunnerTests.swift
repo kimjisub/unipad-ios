@@ -471,6 +471,23 @@ struct LedRunnerTests {
         #expect(h.recorder.outputs.last == "padOff 0 0")
     }
 
+    @Test func releaseOnAnotherChainEndsTheStrobeItsPressStarted() async throws {
+        let h = try await start([0: Self.strobe])
+        defer { h.runner.stop() }
+
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick()
+        h.chain.setValue(1)
+        for _ in 0..<10 { h.tick() }
+        h.runner.eventOff(x: 0, y: 0)
+        h.tick()
+        let ended = h.recorder.outputs.count
+        for _ in 0..<10 { h.tick() }
+
+        #expect(h.recorder.outputs.last == "padOff 0 0")
+        #expect(h.recorder.outputs.count == ended, "the strobe went on after its release")
+    }
+
     /// The loop task does not run while the app is suspended, so the tick after a return sees a
     /// long backlog.
     @Test func loopSurvivesALateTickWithoutReplayingTheBacklog() async throws {
