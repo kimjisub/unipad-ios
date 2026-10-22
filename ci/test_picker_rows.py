@@ -15,6 +15,9 @@ class PickerRowTests(unittest.TestCase):
         start = source.index("    static func waitForSettledFrame(")
         end = source.index("    private static func attachPickerDiagnostics", start)
         wait = source[start:end]
+        start = source.index("    static func currentFrame(")
+        end = source.index("    /// Search exposes", start)
+        frame = source[start:end].replace("XCUIElement", "Element")
         program = r"""
 import Foundation
 import XCTest
@@ -36,6 +39,8 @@ final class Element {
     var taps = 0
     var accepted = false
     init(_ frame: CGRect) { self.storedFrame = frame }
+    struct Snapshot { let frame: CGRect }
+    func snapshot() throws -> Snapshot { Snapshot(frame: frame) }
     func waitForExistence(timeout: TimeInterval) -> Bool {
         if delayedStabilization { frameDelay = 3 }
         return exists
@@ -82,7 +87,7 @@ extension Match { static var slow: Match { .any } }
 struct Support {
     static func attachPickerDiagnostics(in app: App, details: String) {}
     static func waitUntilHittable(_ row: Element, timeout: TimeInterval) -> Bool { row.isHittable }
-""" + wait + "\n    static func select(in app: App) {\n" + row + r"""
+""" + wait + frame + "\n    static func select(in app: App) {\n" + row + r"""
         tapRow(["On My iPhone"])
     }
 }
