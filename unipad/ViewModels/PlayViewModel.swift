@@ -154,6 +154,10 @@ final class PlayViewModel {
 
     /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
     @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
+    /// Builds the sound engine; a test swaps in one whose audio session it can refuse.
+    @ObservationIgnored var makeSoundEngine: (UniPack, ChainObserver, SoundEngine.LoadingListener) -> SoundEngine = {
+        SoundEngine(unipack: $0, chain: $1, loadingListener: $2)
+    }
 
     // MARK: - Load
 
@@ -215,11 +219,7 @@ final class PlayViewModel {
         loadingPhaseIndex = loadingPhaseTotal - 1
         soundLoadingActive = true
 
-        soundEngine = SoundEngine(
-            unipack: pack,
-            chain: chain,
-            loadingListener: SoundLoadingAdapter(viewModel: self)
-        )
+        soundEngine = makeSoundEngine(pack, chain, SoundLoadingAdapter(viewModel: self))
         soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {

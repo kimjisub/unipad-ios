@@ -123,10 +123,13 @@ final class SoundEngine {
         func onException(_ error: Error)
     }
 
+    /// `activateSession` applies the category and activates the session, on the worker. A test seam: a
+    /// simulator always grants the session, and a test makes it refuse as a call in progress would.
     init(
         unipack: UniPack,
         chain: ChainObserver,
-        loadingListener: LoadingListener
+        loadingListener: LoadingListener,
+        activateSession: @escaping () throws -> Void = SoundEngine.configureSession
     ) {
         self.unipack = unipack
         self.chain = chain
@@ -139,7 +142,7 @@ final class SoundEngine {
         let engineRestarts = self.engineRestarts
         self.gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
             isEngineRunning: { engine.isRunning },
-            activateSession: { try Self.configureSession() },
+            activateSession: activateSession,
             startEngine: {
                 engineRestarts.withLock { $0 += 1 }
                 try engine.start()
@@ -180,7 +183,7 @@ final class SoundEngine {
         observeSession()
 
         let nodes = playerNodes
-        worker.run({ Self.setUp(engine, nodes: nodes) }, then: { [weak self] result in
+        worker.run({ Self.setUp(engine, nodes: nodes, activateSession: activateSession) }, then: { [weak self] result in
             self?.finishSetUp(result, table: table, soundCount: soundCount)
         })
     }
@@ -218,9 +221,11 @@ final class SoundEngine {
 
     /// Runs on the worker. Configures the session before reading the engine's format, so the nodes
     /// are connected at the session's sample rate.
-    nonisolated private static func setUp(_ engine: AVAudioEngine, nodes: [AVAudioPlayerNode]) -> Result<AVAudioFormat, Error> {
+    nonisolated private static func setUp(
+        _ engine: AVAudioEngine, nodes: [AVAudioPlayerNode], activateSession: () throws -> Void
+    ) -> Result<AVAudioFormat, Error> {
         do {
-            try configureSession()
+            try activateSession()
             logger.info("AVAudioSession configured for playback")
         } catch {
             logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
@@ -492,7 +497,7 @@ final class SoundEngine {
     #if canImport(UIKit)
     /// Applies the category and the low-latency preferences and activates the session. Idempotent on
     /// purpose: recovery runs it again, and after a media services reset the configuration is gone.
-    nonisolated private static func configureSession() throws {
+    nonisolated static func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setPreferredSampleRate(48_000)
@@ -500,7 +505,7 @@ final class SoundEngine {
         try session.setActive(true)
     }
     #else
-    nonisolated private static func configureSession() throws {}
+    nonisolated static func configureSession() throws {}
     #endif
 
     #if canImport(UIKit)

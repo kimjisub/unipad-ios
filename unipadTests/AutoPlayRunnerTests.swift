@@ -160,6 +160,39 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertEqual(recorder.litGuides, [], "A finished run left its last guide lit")
     }
 
+    /// Guide play: autoplay keeps the time and the user plays the pads the guide shows. Skipping ahead
+    /// moves the guide to the pads at the new place in the song, not the ones the clock had reached.
+    func testSkippingAheadInGuidePlayGuidesThePadsAtTheNewPlace() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: (0..<60).flatMap { pad -> [AutoPlay.Element] in
+            [.on(x: pad / 8, y: pad % 8, currChain: 0, num: 0), .delay(delay: 100)]
+        })
+        let clock = TestManualClock()
+        let recorder = Recorder()
+        // Time stands still 300 ms into the song, so the guide only moves because of the skip.
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(), clock: { clock.read() }, sleep: { _ in
+            if clock.read() < 1300 { clock.advance(10) }
+            await Task.yield()
+        })
+        defer { runner.stop() }
+        runner.practiceGuide = true
+        runner.playmode = true
+        runner.launch()
+        try await wait { clock.read() >= 1300 && !recorder.litGuides.isEmpty }
+        let before = recorder.litGuides
+
+        let shownBefore = recorder.guidePads.count
+        runner.progressOffset(40)
+        let next = (runner.progress + 1) / 2
+        let nextKey = (next / 8) * 256 + next % 8
+        try await wait { recorder.guidePads.count > shownBefore }
+
+        // The pad at the new place is due at once, so it may already be off again; the ones after it stay.
+        XCTAssertEqual(recorder.guidePads.dropFirst(shownBefore).first, nextKey, "the guide did not move to pad \(next) after skipping ahead")
+        XCTAssertFalse(recorder.litGuides.isEmpty)
+        XCTAssertTrue(recorder.litGuides.isDisjoint(with: before), "the guide kept the pads from before the skip")
+    }
+
     func testMissingAutoplayCanLaunchAfterATableIsLoaded() async throws {
         let pack = UniPack()
         let recorder = Recorder()
