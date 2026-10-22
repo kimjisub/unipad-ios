@@ -53,8 +53,9 @@ final class PlayChainLayoutTests: XCTestCase {
         switch "\(Int(window.width))x\(Int(window.height))" {
         case "874x402": return window.insetBy(dx: 62, dy: 0).divided(atDistance: window.height - 20, from: .minYEdge).slice
         case "844x390": return window.insetBy(dx: 47, dy: 0).divided(atDistance: window.height - 21, from: .minYEdge).slice
-        // iPad Pro 11-inch (M4), measured in a separate fullscreen UIKit window.
-        case "1210x834": return window.divided(atDistance: window.height - 25, from: .minYEdge).slice
+        // iPad Pro 11-inch (M5) on iOS 27.0, measured in a separate full-screen landscape UIKit app
+        // with the status bar hidden and the home indicator set to auto-hide.
+        case "1210x834": return window.divided(atDistance: window.height - 20, from: .minYEdge).slice
         default: throw XCTSkip("no independent safe-area reference for \(window)")
         }
     }
@@ -73,7 +74,9 @@ final class PlayChainLayoutTests: XCTestCase {
                        "function lights must not be announced as chain buttons")
         XCTAssertTrue(bounds.contains(grid.frame), "pads leave the safe area")
         XCTAssertEqual(grid.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 1)
-        XCTAssertEqual(grid.frame.width / CGFloat(columns), grid.frame.height / CGFloat(rows), accuracy: 0.01)
+        // Pads are square up to the screen's pixel rounding.
+        XCTAssertEqual(grid.frame.width / CGFloat(columns), grid.frame.height / CGFloat(rows),
+                       accuracy: 1 / UIScreen.main.scale)
         let logo = app.images["playLogo"]
         for (index, button) in (visibleChains + functions).enumerated() {
             XCTAssertTrue(button.exists)
