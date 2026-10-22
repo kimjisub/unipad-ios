@@ -125,8 +125,6 @@ struct unipadApp: App {
                                 OpenSourceLicensesView()
                             case .midiSelect:
                                 MidiSelectView()
-                            case .importByUrl(let code):
-                                ImportByUrlView(code: code)
                             case .main:
                                 MainView()
                             }

@@ -313,10 +313,7 @@ private final class ReleaseURLProtocol: URLProtocol, @unchecked Sendable {
             let body: Data
             let contentType: String
             switch (url.host, url.path) {
-            case ("api.unipad.io", "/unishare/release-test"):
-                body = try JSONSerialization.data(withJSONObject: ["_id": "release-test", "title": "Downloaded Fixture", "producer": "Tests", "fileSize": zip.count])
-                contentType = "application/json"
-            case ("api.unipad.io", "/unishare/release-test/download"), ("release.invalid", "/pack.zip"):
+            case ("release.invalid", "/pack.zip"):
                 body = zip
                 contentType = "application/zip"
             case ("release.invalid", "/missing.zip"):

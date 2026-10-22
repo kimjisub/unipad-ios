@@ -9,5 +9,4 @@ enum Route: Hashable {
     case theme
     case openSourceLicenses
     case midiSelect
-    case importByUrl(code: String)
 }
