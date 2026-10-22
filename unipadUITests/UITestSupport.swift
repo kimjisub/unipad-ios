@@ -333,14 +333,22 @@ enum UITestSupport {
     /// its activation point cannot still sit below the fold.
     static func isFullyVisible(_ element: XCUIElement, in app: XCUIApplication,
                                within scrollView: XCUIElement? = nil) -> Bool {
-        guard element.exists else { return false }
+        guard let frame = currentFrame(of: element) else { return false }
         var viewport = app.windows.firstMatch.frame
         if let scrollView {
             guard scrollView.exists else { return false }
             viewport = viewport.intersection(scrollView.frame)
         }
-        let frame = element.frame
         return !viewport.isEmpty && !frame.isEmpty && viewport.contains(frame)
+    }
+
+    /// The element's frame, or nil when it is not on screen. Reading `frame` fails the test when
+    /// the element is gone, and it can go right after `exists` saw it: a lazy list drops rows
+    /// scrolled away, and the home cards move below the packs as they load. `exists` comes first
+    /// because a snapshot of a missing element retries for seconds before it gives up.
+    static func currentFrame(of element: XCUIElement) -> CGRect? {
+        guard element.exists else { return nil }
+        return try? element.snapshot().frame
     }
 
     /// Search exposes a fixture even when a large lazy library has not created its row yet.
@@ -360,12 +368,12 @@ enum UITestSupport {
                                app: XCUIApplication, maxSwipes: Int = 6) -> Bool {
         for _ in 0..<maxSwipes {
             if isFullyVisible(element, in: app, within: scrollView) { return true }
-            guard scrollView.exists, element.exists else { return false }
+            guard scrollView.exists, let frame = currentFrame(of: element) else { return false }
             let viewport = scrollView.frame.intersection(app.windows.firstMatch.frame)
             guard !viewport.isEmpty else { return false }
-            if let shift = nearbyShift(of: element.frame, into: viewport) {
+            if let shift = nearbyShift(of: frame, into: viewport) {
                 drag(scrollView, by: shift, within: viewport)
-            } else if element.frame.midY < viewport.midY {
+            } else if frame.midY < viewport.midY {
                 scrollView.swipeDown(velocity: .slow)
             } else {
                 scrollView.swipeUp(velocity: .slow)
