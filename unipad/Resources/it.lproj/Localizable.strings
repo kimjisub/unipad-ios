@@ -88,6 +88,10 @@
 "hideUI" = "Nascondi UI";
 "watermark" = "Filigrana";
 "proLightMode" = "Modalità Pro Light";
+"play_section_play_mode" = "Modalità di gioco";
+"play_section_performance" = "Esecuzione";
+"play_section_display" = "Visualizzazione";
+"play_section_tools" = "Strumenti";
 
 /* Version */
 "update_available" = "Aggiornamento disponibile";

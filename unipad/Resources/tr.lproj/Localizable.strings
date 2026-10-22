@@ -88,6 +88,10 @@
 "hideUI" = "Arayüzü Gizle";
 "watermark" = "Filigran";
 "proLightMode" = "Pro Işık Modu";
+"play_section_play_mode" = "Çalma Modu";
+"play_section_performance" = "Performans";
+"play_section_display" = "Görünüm";
+"play_section_tools" = "Araçlar";
 
 /* Version */
 "update_available" = "Güncelleme mevcut";

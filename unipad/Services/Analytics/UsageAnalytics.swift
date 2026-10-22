@@ -8,6 +8,7 @@ enum UsageEvent {
     static let packImport = "pack_import"
     static let packLoad = "pack_load"
     static let playStart = "play_start"
+    static let playFirstInput = "play_first_input"
     static let playEnd = "play_end"
 }
 
@@ -17,8 +18,14 @@ enum UsageParam {
     static let errorType = "error_type"
     static let durationBucket = "duration_bucket"
     static let trigger = "trigger"
+    static let inputSource = "input_source"
+    static let orientation = "orientation"
+    static let screenShortSide = "screen_short_side"
+    static let windowMode = "window_mode"
 
-    static let allowed: Set<String> = [result, importSource, errorType, durationBucket, trigger]
+    static let allowed: Set<String> = [
+        result, importSource, errorType, durationBucket, trigger, inputSource, orientation, screenShortSide, windowMode,
+    ]
 }
 
 enum UsageResult: String {
@@ -35,9 +42,25 @@ enum PackImportSource: String {
     case store
 }
 
-enum PlayTrigger: String {
-    case pad
+enum PlayTrigger: Equatable {
+    /// A person pressed a pad.
+    case pad(PlayInputSource)
     case autoplay
+
+    var name: String {
+        switch self {
+        case .pad: return "pad"
+        case .autoplay: return "autoplay"
+        }
+    }
+}
+
+/// Where a person's pad press came from. Device names, models and connection types are never sent.
+enum PlayInputSource: String {
+    /// A pad on the screen.
+    case screen
+    /// An external controller such as a Launchpad, over USB or Bluetooth.
+    case midi
 }
 
 enum UsageErrorType: String {
@@ -48,6 +71,9 @@ enum UsageErrorType: String {
     case notFound = "not_found"
     case server
     case network
+    case networkTimeout = "network_timeout"
+    case networkLost = "network_lost"
+    case networkOffline = "network_offline"
     case soundEngine = "sound_engine"
     case unknown
 
@@ -63,10 +89,16 @@ enum UsageErrorType: String {
             case .criticalError: return .invalidPack
             case .httpError(let status): return status == 404 ? .notFound : .server
             case .writeFailed: return .storage
+            case .invalidResponse: return .server
             case .emptyResponse, .cancelled: return .network
             }
-        case is URLError:
-            return .network
+        case let error as URLError:
+            switch error.code {
+            case .timedOut: return .networkTimeout
+            case .networkConnectionLost: return .networkLost
+            case .notConnectedToInternet: return .networkOffline
+            default: return .network
+            }
         case let error as CocoaError:
             return error.code == .fileWriteOutOfSpace ? .storage : .fileAccess
         default:

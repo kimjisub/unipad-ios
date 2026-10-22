@@ -11,12 +11,21 @@ final class PlaybackStopTests: XCTestCase {
         try "title=Playback Stop\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\n".write(to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
         try "1 1 1 a.wav \(loop)\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
         try "on 1 1\noff 1 1\ndelay 100\non 1 2\noff 1 2\ndelay 100\non 1 3\noff 1 3\n".write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
-        let file = try AVAudioFile(forWriting: root.appendingPathComponent("sounds/a.wav"), settings: format.settings)
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480))
-        buffer.frameLength = 480
-        try file.write(from: buffer)
+        try writeLevel(0, frames: 480, to: root.appendingPathComponent("sounds/a.wav"))
         return root
+    }
+
+    /// A 48 kHz stereo sound file holding one constant level.
+    private func writeLevel(_ level: Float, frames: AVAudioFrameCount, to url: URL) throws {
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for channel in 0..<Int(format.channelCount) {
+            for frame in 0..<Int(frames) { buffer.floatChannelData?[channel][frame] = level }
+        }
+        try? FileManager.default.removeItem(at: url)
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
     }
 
     /// Hosted CI simulators were seen stopping the whole test process for 18–41 s at arbitrary lines,
@@ -105,7 +114,8 @@ final class PlaybackStopTests: XCTestCase {
                 let gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
                     isEngineRunning: { false },
                     activateSession: {},
-                    startEngine: {}
+                    startEngine: {},
+                    runOffMain: { _, _ in }
                 ))
                 released = gate
                 XCTAssertEqual(gate.state, .ready)
@@ -181,6 +191,172 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(vm.chain.value, 0)
     }
 
+    private func checkAutoplayRelease(
+        loop: Int = 0,
+        manualPad: (Int, Int)? = nil,
+        identifiedManual: Bool = true,
+        script: String = "on 1 1\ndelay 60000\noff 1 1\n",
+        autoplayPresses: Int = 1,
+        stop: (PlayViewModel) -> Void
+    ) async throws {
+        let root = try pack(loop: loop)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Autoplay Release\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        try "1 1 1 a.wav \(loop)\n1 1 2 a.wav 0\n2 1 1 a.wav \(loop)\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try script.write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        // Keep short finite samples observable even if simulator scheduling is delayed.
+        engine.playbackCompletionDelivery = { _, _, _ in }
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "autoplay press", until: { engine.playsStarted == autoplayPresses })
+        let autoplayIDs = engine.activePlayIDs
+        XCTAssertEqual(autoplayIDs.count, autoplayPresses)
+        let manualTrigger: PlayTrigger = .pad(identifiedManual ? .screen : .midi)
+        let manualID = identifiedManual ? UUID() : nil
+        if let (x, y) = manualPad {
+            vm.padTouch(x: x, y: y, isDown: true, trigger: manualTrigger, inputID: manualID)
+        }
+        let beforeStop = engine.activePlayIDs
+        let manualIDs = beforeStop.subtracting(autoplayIDs)
+        let chainBeforeStop = vm.chain.value
+        stop(vm)
+        XCTAssertEqual(vm.chain.value, chainBeforeStop)
+        let expected = loop == 0 ? manualIDs : beforeStop
+        print("AUTOPLAY RELEASE loop=\(loop) manual=\(manualPad != nil) before=\(autoplayIDs) after=\(engine.activePlayIDs)")
+        XCTAssertEqual(engine.activePlayIDs, expected)
+        if let (x, y) = manualPad {
+            XCTAssertEqual(manualIDs.count, 1)
+            vm.padTouch(x: x, y: y, isDown: false, trigger: manualTrigger, inputID: manualID)
+            XCTAssertTrue(engine.activePlayIDs.isDisjoint(with: manualIDs))
+        }
+    }
+
+    func testStoppingAutoplayReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.stopAutoPlay() }
+    }
+
+    func testTurningAutoplayOffReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesAnotherHeldPad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 1)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesManualPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffPreservesControllerPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0), identifiedManual: false) { $0.switchPlayMode(.none) }
+    }
+
+    func testPausingAutoplayPreservesManualPressOnTheSamePad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 0)) { $0.autoPlayPause() }
+    }
+
+    func testSkippingAutoplayReleasesItsInfiniteSound() async throws {
+        try await checkAutoplayRelease { $0.autoPlayNext() }
+    }
+
+    func testEnteringGuideModeReleasesAutoplaySound() async throws {
+        try await checkAutoplayRelease { $0.switchPlayMode(.guidePlay) }
+    }
+
+    func testSkippingAutoplayPreservesAnotherHeldPad() async throws {
+        try await checkAutoplayRelease(manualPad: (0, 1)) { $0.autoPlayNext() }
+    }
+
+    func testStoppingAutoplayReleasesHeldPadsAcrossChains() async throws {
+        try await checkAutoplayRelease(
+            script: "on 1 1\nchain 2\non 1 1\ndelay 60000\n", autoplayPresses: 2
+        ) { $0.stopAutoPlay() }
+    }
+
+    func testStoppingAutoplayPreservesFiniteAndOneShotSounds() async throws {
+        for loop in [1, 50] {
+            try await checkAutoplayRelease(loop: loop) { $0.stopAutoPlay() }
+            try await checkAutoplayRelease(loop: loop) { $0.switchPlayMode(.none) }
+        }
+    }
+
+    private func checkAutoplayOffAfterChainChange(wormhole: Int? = nil) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Autoplay Off\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        let suffix = wormhole.map { " \($0)" } ?? ""
+        try "1 1 1 a.wav 0\(suffix)\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let change = wormhole == nil ? "chain 2\n" : ""
+        try "on 1 1\n\(change)off 1 1\ndelay 60000\noff 1 2\n".write(
+            to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.autoPlayRunner)
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "scripted off", until: { runner.progress >= 4 })
+        XCTAssertEqual(engine.playsStarted, 1)
+        XCTAssertTrue(runner.active, "check the scripted off before stop or song cleanup")
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "off must release the input from the previous chain")
+        XCTAssertNotEqual(vm.padItems[0][0]?.channel, .pressed)
+        print("AUTOPLAY OFF wormhole=\(String(describing: wormhole)) active=\(engine.activePlayIDs)")
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterExplicitChainChange() async throws {
+        try await checkAutoplayOffAfterChainChange()
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterWormhole() async throws {
+        try await checkAutoplayOffAfterChainChange(wormhole: 2)
+    }
+
+    func testAutoplayOffReleasesInfiniteSoundAfterOutOfRangeWormhole() async throws {
+        try await checkAutoplayOffAfterChainChange(wormhole: 20)
+    }
+
+    func testStoppingAutoplayReleasesInputPressedAfterOutOfRangeWormhole() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "1 1 1 a.wav 0 20\n1 1 2 a.wav 0\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try "on 1 1\non 1 2\ndelay 60000\n".write(
+            to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "second autoplay press", until: { engine.playsStarted == 2 })
+        XCTAssertFalse(engine.activePlayIDs.isEmpty)
+        vm.autoPlayNext()
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+    }
+
+    func testAutoplayModeChangesRespectLockedFeedbackLight() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Locked Light\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=false\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        XCTAssertTrue(vm.scbFeedbackLight.locked)
+        XCTAssertFalse(vm.scbFeedbackLight.checked)
+        vm.switchPlayMode(.autoPlay)
+        vm.switchPlayMode(.none)
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "turning autoplay off must respect the lock")
+        vm.switchPlayMode(.autoPlay)
+        vm.autoPlayResume()
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "resuming autoplay must respect the lock")
+        let runner = try XCTUnwrap(vm.autoPlayRunner)
+        try await wait(for: "song end", until: { runner.progress > 0 && !runner.active })
+        XCTAssertFalse(vm.scbFeedbackLight.checked, "song end must respect the lock")
+    }
+
     private func holdScreen() { Thread.sleep(forTimeInterval: 0.8) }
 
     func testRepeatSupplyDoesNotWaitForTheScreen() async throws {
@@ -189,23 +365,19 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         defer { vm.cleanup() }
         let engine = try XCTUnwrap(vm.soundEngine)
-        vm.padTouch(x: 0, y: 0, isDown: true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
         // Deliberately hold screen processing longer than all 50 ten-millisecond samples.
         // Supply must keep running while this actor cannot execute completion work.
         holdScreen()
         XCTAssertEqual(engine.repeatedBuffersScheduled, 50)
     }
 
-    nonisolated private final class RenderCapture {
-        private let lock = NSLock()
-        private var samples: [Float] = []
-        func append(_ buffer: AVAudioPCMBuffer) {
-            guard let data = buffer.floatChannelData?[0] else { return }
-            lock.withLock { samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(buffer.frameLength))) }
-        }
-        var captured: [Float] { lock.withLock { samples } }
-    }
-
+    /// The engine renders offline, one sample length per call, on the main thread itself: the screen
+    /// stays busy for the whole render and nothing hinges on how fast the simulator plays audio.
+    /// Before each call the repeat after the one about to render has to be queued too, which the scheduler
+    /// does on its own queue: a player node that runs out of buffers at the end of a render plays a buffer
+    /// queued after that one render late. Real-time playback keeps 100 ms queued ahead for this; the loop
+    /// below renders as soon as repeats arrive, so it waits for that one instead.
     func testFiniteRepeatsRenderWithoutGapsWhileTheScreenIsBusy() throws {
         let engine = AVAudioEngine()
         let node = AVAudioPlayerNode()
@@ -216,23 +388,38 @@ final class PlaybackStopTests: XCTestCase {
         for channel in 0..<2 {
             for frame in 0..<480 { buffer.floatChannelData?[channel][frame] = 0.125 }
         }
+        try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 480)
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-        // Observe the rendered player output before the muted mixer; no test tone reaches speakers.
-        engine.mainMixerNode.outputVolume = 0
-        let capture = RenderCapture()
-        node.installTap(onBus: 0, bufferSize: 480, format: format) { buffer, _ in capture.append(buffer) }
         try engine.start()
         defer {
             scheduler.stop(node)
-            node.removeTap(onBus: 0)
             engine.stop()
         }
         XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 50) { failure in
             XCTAssertNil(failure)
         })
-        holdScreen()
-        let samples = capture.captured
+        // Nothing has rendered yet, so this is the lookahead alone: 100 ms of 10 ms samples.
+        // The render loop below waits for each repeat and would hide a shorter one.
+        XCTAssertEqual(scheduler.buffersScheduled, 10, "repeats queued ahead before playback")
+        let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 480))
+        var samples: [Float] = []
+        // Five sample lengths past the last repeat, so a late or extra repeat would still be rendered.
+        for step in 0..<55 {
+            if step < 50 {
+                let needed = min(50, step + 2)
+                let deadline = Date().addingTimeInterval(Self.silenceLimit)
+                while scheduler.buffersScheduled < needed {
+                    guard Date() < deadline else {
+                        return XCTFail("repeat \(needed) was not queued within \(Int(Self.silenceLimit)) s")
+                    }
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+            }
+            XCTAssertEqual(try engine.renderOffline(480, to: output), .success)
+            let data = try XCTUnwrap(output.floatChannelData?[0])
+            samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(output.frameLength)))
+        }
         let first = try XCTUnwrap(samples.firstIndex { abs($0) > 0.01 })
         let last = try XCTUnwrap(samples.lastIndex { abs($0) > 0.01 })
         let rendered = samples[first...last]
@@ -243,13 +430,221 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(scheduler.buffersScheduled, 50)
     }
 
+    /// Records what the scheduler asks of a player node without attaching it to an engine.
+    private nonisolated final class RecordingPlayerNode: AVAudioPlayerNode, @unchecked Sendable {
+        private let lock = NSLock()
+        private var types: [AVAudioPlayerNodeCompletionCallbackType] = []
+        var callbackTypes: [AVAudioPlayerNodeCompletionCallbackType] { lock.withLock { types } }
+
+        override func scheduleBuffer(
+            _ buffer: AVAudioPCMBuffer,
+            at when: AVAudioTime?,
+            options: AVAudioPlayerNodeBufferOptions = [],
+            completionCallbackType callbackType: AVAudioPlayerNodeCompletionCallbackType,
+            completionHandler: AVAudioPlayerNodeCompletionHandler? = nil
+        ) {
+            lock.withLock { types.append(callbackType) }
+        }
+
+        override func play() {}
+        override func stop() {}
+    }
+
+    /// A played-back callback arms a timer inside the player node, and the node's next stop() waits
+    /// for that timer's default-priority thread. A pad that takes the node back stops it from the
+    /// screen's thread, so the last repeat must not ask for one.
+    func testLastFiniteRepeatDoesNotWaitForPlayedBackAudio() throws {
+        let node = RecordingPlayerNode()
+        let scheduler = FiniteRepeatScheduler()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480))
+        buffer.frameLength = 480
+        XCTAssertNil(scheduler.start(buffer, node: node, totalPlays: 2) { _ in })
+        defer { scheduler.stop(node) }
+        XCTAssertEqual(
+            node.callbackTypes, [.dataConsumed, .dataRendered],
+            "raw types \(node.callbackTypes.map(\.rawValue)); 0 consumed, 1 rendered, 2 played back"
+        )
+    }
+
+    /// Runs `work` on the audio worker, where the engine's taps and its start and stop belong.
+    private func onAudioWorker(_ work: @escaping @Sendable () -> Void) async {
+        await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run(work) { continuation.resume() }
+        }
+    }
+
+    private func audioEngine(of engine: SoundEngine) throws -> AVAudioEngine {
+        try XCTUnwrap(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine)
+    }
+
+    /// Records the final mix of the real-time engine while `body` runs, and has removed the tap by the
+    /// time this returns, so the screen model's clean-up stops an engine nobody records any more. The
+    /// recording is attached as `final-mix.wav`.
+    private func recordingMix(
+        of engine: SoundEngine,
+        _ body: (MixRecording, Double) async throws -> Void
+    ) async throws {
+        let audio = try audioEngine(of: engine)
+        let mix = MixRecording()
+        await onAudioWorker {
+            audio.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in mix.record(buffer) }
+        }
+        let rate = audio.mainMixerNode.outputFormat(forBus: 0).sampleRate
+        var failure: Error?
+        do { try await body(mix, rate) } catch { failure = error }
+        await onAudioWorker { audio.mainMixerNode.removeTap(onBus: 0) }
+        let wav = FileManager.default.temporaryDirectory.appendingPathComponent("mix-\(UUID().uuidString).wav")
+        try mix.write(to: wav, sampleRate: rate)
+        defer { try? FileManager.default.removeItem(at: wav) }
+        let recording = XCTAttachment(contentsOfFile: wav)
+        recording.name = "final-mix.wav"
+        recording.lifetime = .keepAlways
+        add(recording)
+        if let failure { throw failure }
+    }
+
+    private func report(_ text: String) {
+        print(text)
+        add(XCTAttachment(string: text))
+    }
+
+    /// The first unbroken stretch at `level` from `start` on. Measured unbroken, so a cut or a gap
+    /// shortens it.
+    private func stretch(at level: Float, in samples: [Float], from start: Int = 0) -> Range<Int>? {
+        let isLevel: (Float) -> Bool = { abs($0 - level) < 0.02 }
+        guard let first = samples[start...].firstIndex(where: isLevel) else { return nil }
+        let end = samples[first...].firstIndex { !isLevel($0) } ?? samples.endIndex
+        return first..<end
+    }
+
+    /// Every pad press runs on the screen's thread, and stopping a player node there can wait for the
+    /// node. A pad that finds an idle node has nothing to stop.
+    func testPadTakesAnIdleVoiceWithoutStoppingIt() async throws {
+        let root = try pack(loop: 1)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "1 1 1 a.wav 1\n1 1 2 a.wav 1\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+        XCTAssertEqual(engine.playerNodesStopped, 0, "a node that never played was stopped")
+        try await wait(for: "the first sound", until: { engine.activeVoiceCount == 0 })
+        vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+        XCTAssertEqual(engine.playsStarted, 2)
+        XCTAssertEqual(engine.playerNodesStopped, 0, "the node the first sound freed was stopped")
+    }
+
+    /// The final mix of the real-time engine, recorded while a three-play sound ends and the next pad
+    /// takes over its freed player node (the first idle one). The last repeat has to reach the mix in full
+    /// before the node is handed on, and the reused node has to play the next sound in full.
+    func testLastRepeatPlaysInFullBeforeTheNextPadReusesItsVoice() async throws {
+        let root = try pack(loop: 3)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeLevel(0.125, frames: 4_800, to: root.appendingPathComponent("sounds/a.wav"))
+        try writeLevel(0.25, frames: 4_800, to: root.appendingPathComponent("sounds/b.wav"))
+        try "1 1 1 a.wav 3\n1 1 2 b.wav 1\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        try await recordingMix(of: engine) { mix, rate in
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+            try await wait(for: "three plays", until: { engine.activeVoiceCount == 0 })
+            vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+            try await wait(for: "the next pad", until: { engine.activeVoiceCount == 0 })
+            try await wait(for: "the mix after both sounds", until: { mix.silentFramesAfterLastSound(below: 0.01) >= Int(rate * 0.2) })
+
+            let samples = mix.samples
+            let repeated = try XCTUnwrap(stretch(at: 0.125, in: samples))
+            // The next sound's rise passes through the repeated level on a sample of its own, which a
+            // plain count would add.
+            let nextStart = try XCTUnwrap(samples[repeated.upperBound...].firstIndex { abs($0 - 0.25) < 0.02 })
+            let next = samples[nextStart...].filter { abs($0 - 0.25) < 0.02 }.count
+            let pause = Double(nextStart - repeated.upperBound) / rate
+            report("MIX rate=\(rate) unbrokenRepeatedFrames=\(repeated.count) expected=\(Int(rate * 0.3)) nextFrames=\(next) expected=\(Int(rate * 0.1)) pauseBeforeNextMs=\(Int(pause * 1000))")
+            XCTAssertEqual(Double(repeated.count), rate * 0.3, accuracy: rate * 0.003, "the three plays did not reach the mix whole and unbroken")
+            XCTAssertEqual(Double(next), rate * 0.1, accuracy: rate * 0.003, "the reused node did not play the next sound in full")
+        }
+    }
+
+    /// A one-shot frees its player node once the node has read the last of it, which can be before the
+    /// mix has it. The next pad, pressed at that very moment, takes the same node (the first idle one);
+    /// the one-shot still has to reach the mix in full, and the next sound right after it.
+    func testOneShotPlaysInFullWhenTheNextPadTakesItsVoiceAtOnce() async throws {
+        let root = try pack(loop: 1)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeLevel(0.125, frames: 4_800, to: root.appendingPathComponent("sounds/a.wav"))
+        try writeLevel(0.25, frames: 4_800, to: root.appendingPathComponent("sounds/b.wav"))
+        try "1 1 1 a.wav 1\n1 1 2 b.wav 1\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        try await recordingMix(of: engine) { mix, rate in
+            var firstPlay: Int?
+            var nextPressed = false
+            engine.playbackCompletionDelivery = { playID, _, complete in
+                complete()
+                guard playID == firstPlay, !nextPressed else { return }
+                nextPressed = true
+                MainActor.assumeIsolated { vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen)) }
+            }
+            defer { engine.playbackCompletionDelivery = nil }
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+            firstPlay = engine.activePlayIDs.first
+            try await wait(for: "the one-shot to free its voice", until: { nextPressed })
+            try await wait(for: "the next pad", until: { engine.activeVoiceCount == 0 })
+            try await wait(for: "the mix after both sounds", until: { mix.silentFramesAfterLastSound(below: 0.01) >= Int(rate * 0.2) })
+
+            let samples = mix.samples
+            let first = try XCTUnwrap(stretch(at: 0.125, in: samples))
+            let next = try XCTUnwrap(stretch(at: 0.25, in: samples, from: first.upperBound))
+            let pause = Double(next.lowerBound - first.upperBound) / rate
+            report("MIX one-shot rate=\(rate) unbrokenFirstFrames=\(first.count) unbrokenNextFrames=\(next.count) expected=\(Int(rate * 0.1)) pauseBeforeNextMs=\(Int(pause * 1000))")
+            XCTAssertEqual(Double(first.count), rate * 0.1, accuracy: rate * 0.003, "the next pad cut the one-shot's tail")
+            XCTAssertEqual(Double(next.count), rate * 0.1, accuracy: rate * 0.003, "the reused node did not play the next sound in full")
+        }
+    }
+
+    /// A pad takes an idle player node without stopping it. A node that played to its end before the
+    /// engine stopped and started again (a route change) still has to play the next sound in full.
+    func testIdleVoicePlaysInFullAfterTheEngineRestarts() async throws {
+        let root = try pack(loop: 1)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeLevel(0.125, frames: 4_800, to: root.appendingPathComponent("sounds/a.wav"))
+        try writeLevel(0.25, frames: 4_800, to: root.appendingPathComponent("sounds/b.wav"))
+        try "1 1 1 a.wav 1\n1 1 2 b.wav 1\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let audio = try audioEngine(of: engine)
+        try await recordingMix(of: engine) { mix, rate in
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+            try await wait(for: "the first sound", until: { engine.activeVoiceCount == 0 })
+            await onAudioWorker { audio.stop() }
+            // The gate finds the engine stopped, ignores this pad and restarts the engine.
+            vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+            XCTAssertEqual(engine.playsStarted, 1)
+            try await wait(for: "the engine restart", until: { !engine.isPlaybackSuppressed })
+            vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+            XCTAssertEqual(engine.playsStarted, 2)
+            try await wait(for: "the next pad", until: { engine.activeVoiceCount == 0 })
+            try await wait(for: "the mix after the next sound", until: {
+                mix.samples.contains { abs($0 - 0.25) < 0.02 } && mix.silentFramesAfterLastSound(below: 0.01) >= Int(rate * 0.2)
+            })
+
+            let next = try XCTUnwrap(stretch(at: 0.25, in: mix.samples))
+            report("MIX restart rate=\(rate) unbrokenNextFrames=\(next.count) expected=\(Int(rate * 0.1))")
+            XCTAssertEqual(Double(next.count), rate * 0.1, accuracy: rate * 0.003, "the idle node did not play after the engine restarted")
+        }
+    }
+
     func testHugeRepeatCountCanBeStoppedWithoutSchedulingEveryRepeat() async throws {
         let root = try pack(loop: Int.max)
         defer { try? FileManager.default.removeItem(at: root) }
         let vm = try await loaded(root)
         let engine = try XCTUnwrap(vm.soundEngine)
         let began = Date()
-        vm.padTouch(x: 0, y: 0, isDown: true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
         vm.cleanup()
         XCTAssertLessThan(Date().timeIntervalSince(began), 1)
         XCTAssertLessThanOrEqual(engine.repeatedBuffersScheduled, 128)
@@ -262,7 +657,7 @@ final class PlaybackStopTests: XCTestCase {
         for round in 0..<30 {
             let vm = try await loaded(root)
             let engine = try XCTUnwrap(vm.soundEngine)
-            vm.padTouch(x: 0, y: 0, isDown: true)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             XCTAssertEqual(engine.playsStarted, 1)
             if round > 0 { try await Task.sleep(for: .milliseconds(round % 10)) }
             let began = Date()
@@ -280,8 +675,8 @@ final class PlaybackStopTests: XCTestCase {
         let engine = try XCTUnwrap(vm.soundEngine)
         for round in 0..<100 {
             let began = Date()
-            vm.padTouch(x: 0, y: 0, isDown: true)
-            vm.padTouch(x: 0, y: 0, isDown: true)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             XCTAssertLessThan(Date().timeIntervalSince(began), 1)
             try await Task.sleep(for: .milliseconds(round % 10))
         }
@@ -295,7 +690,7 @@ final class PlaybackStopTests: XCTestCase {
             let vm = try await loaded(root)
             let engine = try XCTUnwrap(vm.soundEngine)
             defer { vm.cleanup() }
-            vm.padTouch(x: 0, y: 0, isDown: true)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             try await wait(for: "finite repeats", until: { engine.activeVoiceCount == 0 })
             XCTAssertEqual(engine.repeatedBuffersScheduled, loop, "keySound stores total plays, not additional repeats")
             XCTAssertEqual(engine.activeVoiceCount, 0)
@@ -310,8 +705,8 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         let engine = try XCTUnwrap(vm.soundEngine)
         defer { vm.cleanup() }
-        vm.padTouch(x: 0, y: 0, isDown: true)
-        vm.padTouch(x: 0, y: 0, isDown: true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
         let suppliedBeforeStop = engine.repeatedBuffersScheduled
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(engine.repeatedBuffersScheduled, suppliedBeforeStop, "obsolete callback scheduled another repeat")
@@ -336,7 +731,7 @@ final class PlaybackStopTests: XCTestCase {
             if round.isMultiple(of: 2) {
                 vm.cleanup()
             } else {
-                vm.padTouch(x: 0, y: 0, isDown: true)
+                vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
                 vm.switchPlayMode(.autoPlay)
                 vm.switchPlayMode(.guidePlay)
                 vm.switchPlayMode(.none)
@@ -346,5 +741,38 @@ final class PlaybackStopTests: XCTestCase {
             XCTAssertFalse(runner.active)
             print("STOP step round=\(round) returned")
         }
+    }
+}
+
+/// The first channel of everything a tap hands over, in order.
+private nonisolated final class MixRecording: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [Float] = []
+    var samples: [Float] { lock.withLock { recorded } }
+
+    func record(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        let frames = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+        lock.withLock { recorded.append(contentsOf: frames) }
+    }
+
+    /// Zero until something louder than `threshold` has been recorded.
+    func silentFramesAfterLastSound(below threshold: Float) -> Int {
+        lock.withLock {
+            guard let last = recorded.lastIndex(where: { abs($0) >= threshold }) else { return 0 }
+            return recorded.count - last - 1
+        }
+    }
+
+    func write(to url: URL, sampleRate: Double) throws {
+        let mono = samples
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(1, mono.count))) else { return }
+        buffer.frameLength = AVAudioFrameCount(mono.count)
+        mono.withUnsafeBufferPointer { samples in
+            guard let base = samples.baseAddress else { return }
+            buffer.floatChannelData?[0].update(from: base, count: samples.count)
+        }
+        try AVAudioFile(forWriting: url, settings: format.settings).write(from: buffer)
     }
 }

@@ -88,6 +88,10 @@
 "hideUI" = "UI ausblenden";
 "watermark" = "Wasserzeichen";
 "proLightMode" = "Pro-Licht-Modus";
+"play_section_play_mode" = "Spielmodus";
+"play_section_performance" = "Effekte";
+"play_section_display" = "Anzeige";
+"play_section_tools" = "Werkzeuge";
 
 /* Version */
 "update_available" = "Aktualisierung verfügbar";

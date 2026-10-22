@@ -1,31 +1,23 @@
 import XCTest
 
+/// Share-code links from the discontinued pack sharing service must leave the app on home,
+/// without an import screen or a request to the retired endpoint.
 final class RetiredShareLinkTests: XCTestCase {
     @MainActor
     func testShareLinkLeavesHomeVisible() throws {
+        continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.englishLaunchArguments()
+        app.launchArguments = UITestSupport.englishLaunchArguments(isolated: true)
         app.launch()
-        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        UITestSupport.attachScreenshot("share-link-home-before-opening", to: self)
+        let settings = app.buttons["gearshape"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 30))
+        XCTAssertTrue(UITestSupport.waitUntilHittable(settings, timeout: 20))
 
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        safari.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        safari.launch()
-        let continueButton = safari.buttons["Continue"]
-        if continueButton.waitForExistence(timeout: 2) { continueButton.tap() }
-        let address = safari.textFields.firstMatch
-        XCTAssertTrue(address.waitForExistence(timeout: 10))
-        address.tap()
-        safari.typeText("unipad://unipack?code=retired-share\n")
-        let open = safari.buttons.matching(NSPredicate(format: "label IN %@", ["Open", "열기"])).firstMatch
-        XCTAssertTrue(open.waitForExistence(timeout: 10))
-        open.tap()
+        app.open(try XCTUnwrap(URL(string: "unipad://unipack?code=retired-share")))
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         let shareText = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "retired-share")).firstMatch
-        XCTAssertFalse(shareText.waitForExistence(timeout: 1))
+        XCTAssertFalse(shareText.waitForExistence(timeout: 3), "The retired link opened an import screen")
         UITestSupport.attachScreenshot("share-link-after-opening", to: self)
-        XCTAssertEqual(app.state, .runningForeground)
-        XCTAssertTrue(app.buttons["gearshape"].isHittable, "The retired link replaced home")
+        XCTAssertTrue(settings.isHittable, "The retired link replaced home")
     }
 }

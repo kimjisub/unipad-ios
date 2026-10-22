@@ -88,6 +88,10 @@
 "hideUI" = "ซ่อน UI";
 "watermark" = "ลายน้ำ";
 "proLightMode" = "โหมด Pro Light";
+"play_section_play_mode" = "โหมดการเล่น";
+"play_section_performance" = "การแสดง";
+"play_section_display" = "การแสดงผล";
+"play_section_tools" = "เครื่องมือ";
 
 /* Version */
 "update_available" = "มีอัปเดตใหม่";

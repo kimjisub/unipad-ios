@@ -88,6 +88,10 @@
 "hideUI" = "Sembunyikan UI";
 "watermark" = "Tera Air";
 "proLightMode" = "Mod Pro Light";
+"play_section_play_mode" = "Mod Bermain";
+"play_section_performance" = "Persembahan";
+"play_section_display" = "Paparan";
+"play_section_tools" = "Alatan";
 
 /* Version */
 "update_available" = "Kemas kini tersedia";

@@ -1,4 +1,5 @@
 import SwiftUI
+import QuartzCore
 import os
 import AVFoundation
 #if canImport(MediaPlayer)
@@ -41,9 +42,13 @@ final class PlayViewModel {
             self.checked = checked
         }
 
-        func setChecked(_ value: Bool) {
+        func setChecked(_ value: Bool, notify: Bool = true) {
             guard !locked else { return }
-            forceSetChecked(value)
+            if notify {
+                forceSetChecked(value)
+            } else {
+                setCheckedSilently(value)
+            }
         }
 
         func forceSetChecked(_ value: Bool) {
@@ -139,8 +144,13 @@ final class PlayViewModel {
     private var ledListenerAdapter: LedListenerAdapter?
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
+    @ObservationIgnored private var autoPlayInterruption = AutoPlayInterruptionPolicy()
 
-    @ObservationIgnored private let usageSession = UsageAnalytics.shared.makePlaySession()
+    @ObservationIgnored private let usageSession: PlaySessionTracker
+
+    init(usageAnalytics: UsageAnalytics = .shared) {
+        usageSession = usageAnalytics.makePlaySession()
+    }
 
     /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
     @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
@@ -173,10 +183,6 @@ final class PlayViewModel {
             return
         }
 
-        if let warning = pack.errorDetail {
-            unipackWarning = warning
-        }
-
         logger.info("loadUnipack: info loaded - title=\(pack.title), buttonX=\(pack.buttonX), buttonY=\(pack.buttonY), chain=\(pack.chain)")
 
         loadingPhase = "detail"
@@ -192,6 +198,8 @@ final class PlayViewModel {
             }
         }.value
         if Task.isCancelled { return }
+
+        unipackWarning = pack.errorDetail
 
         logger.info("loadUnipack: detail loaded - soundCount=\(pack.soundCount), ledCount=\(pack.ledTableCount), keyLedExist=\(pack.keyLedExist), autoPlayExist=\(pack.autoPlayExist)")
 
@@ -212,6 +220,7 @@ final class PlayViewModel {
             chain: chain,
             loadingListener: SoundLoadingAdapter(viewModel: self)
         )
+        soundEngine?.onInterruption = { [weak self] in self?.handleAudioInterruption($0) }
 
         if pack.keyLedExist {
             let adapter = LedListenerAdapter(viewModel: self)
@@ -378,6 +387,8 @@ final class PlayViewModel {
     // MARK: - Auto Mapping
 
     private var autoMapper: UniPackAutoMapper?
+    /// The mapper holds its listener weakly, so the adapter is kept alive here for the mapping's lifetime.
+    private var autoMappingListenerAdapter: AutoMappingListenerAdapter?
 
     func autoMapping() {
         guard let pack = unipack as? UniPackFolder else { return }
@@ -389,23 +400,32 @@ final class PlayViewModel {
 
         // The mapper replaces autoPlayTable when it finishes; a runner still iterating the old
         // elements on its own thread would race that swap, so it is stopped before the mapper starts.
+        if playMode != .none { switchPlayMode(.none) }
         autoPlayRunner?.stop()
         autoPlayRunner = nil
         autoPlayListenerAdapter = nil
 
-        let mapper = UniPackAutoMapper(unipack: pack, listener: AutoMappingListenerAdapter(viewModel: self))
+        let adapter = AutoMappingListenerAdapter(viewModel: self)
+        autoMappingListenerAdapter = adapter
+        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter)
         autoMapper = mapper
         mapper.start()
     }
 
-    fileprivate func onAutoMappingDone() {
-        autoMappingActive = false
-        autoMapper = nil
+    fileprivate func finishAutoMapping() {
+        releaseAutoMapper()
 
         guard let pack = unipack as? UniPackFolder else { return }
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+    }
+
+    private func releaseAutoMapper() {
+        autoMapper?.cancel()
+        autoMapper = nil
+        autoMappingListenerAdapter = nil
+        autoMappingActive = false
     }
 
     // MARK: - Trace Log
@@ -503,9 +523,13 @@ final class PlayViewModel {
     /// Clear all pad states by simulating release on every pad
     func padInit() {
         guard let unipack else { return }
+        let inputs = activePadInputs
+        for (id, pad) in inputs {
+            padRelease(x: pad.x, y: pad.y, inputID: id)
+        }
         for i in 0..<unipack.buttonX {
             for j in 0..<unipack.buttonY {
-                padTouch(x: i, y: j, isDown: false)
+                padRelease(x: i, y: j)
             }
         }
     }
@@ -540,19 +564,30 @@ final class PlayViewModel {
     // MARK: - Pad Touch
 
     private static let pressedVelocity = 3 // LED_RED
+    private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
 
-    func padTouch(x: Int, y: Int, isDown: Bool) {
+    /// What the on-screen pad grid (`PadGridView.onPadTouch`) calls for each finger.
+    var screenPadTouch: (Int, Int, Bool, UUID) -> Void {
+        { x, y, isDown, inputID in
+            self.padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
+        }
+    }
+
+    /// `trigger` says who pressed the pad; a release does the same whoever caused it.
+    func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
+        let ledTimeMs = ledTimeMs ?? Int64(CACurrentMediaTime() * 1000)
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
         if isDown {
-            usageSession.playTriggered(.pad)
+            if let inputID { activePadInputs[inputID] = (x, y) }
+            usageSession.playTriggered(trigger)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
             if autoPlayRunner?.stepMode == true {
                 autoPlayRunner?.stepPadPressed(x: x, y: y)
             }
 
-            soundEngine?.soundOn(x: x, y: y)
+            soundEngine?.soundOn(x: x, y: y, inputID: inputID)
 
             if scbRecord.checked {
                 let currTime = Self.currentTimeMs()
@@ -572,17 +607,25 @@ final class PlayViewModel {
                     setPadColor(x: x, y: y, color: .red)
                 }
             }
-            ledRunner?.eventOn(x: x, y: y)
+            ledRunner?.eventOn(x: x, y: y, pressedAt: ledTimeMs)
         } else {
-            soundEngine?.soundOff(x: x, y: y)
-            if let cm = channelManager {
-                cm.remove(x: x, y: y, channel: .pressed)
-                refreshPadFromChannel(x: x, y: y)
-            } else {
-                clearPadColor(x: x, y: y)
-            }
-            ledRunner?.eventOff(x: x, y: y)
+            padRelease(x: x, y: y, inputID: inputID, ledTimeMs: ledTimeMs)
         }
+    }
+
+    /// `x` and `y` must be a pad of the loaded pack.
+    private func padRelease(x: Int, y: Int, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
+        // An ended touch can be reported again after a fresh press. Ignore the
+        // duplicate for both sound and pressed light, without clearing other pads.
+        if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
+        soundEngine?.soundOff(x: x, y: y, inputID: inputID)
+        if let cm = channelManager {
+            cm.remove(x: x, y: y, channel: .pressed)
+            refreshPadFromChannel(x: x, y: y)
+        } else {
+            clearPadColor(x: x, y: y)
+        }
+        ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs)
     }
 
     // MARK: - LED
@@ -595,22 +638,6 @@ final class PlayViewModel {
 
     func clearPadColor(x: Int, y: Int) {
         setPadColor(x: x, y: y, color: .clear)
-    }
-
-    func clearAllPadColors() {
-        guard let unipack else { return }
-        padColors = Array(
-            repeating: Array(repeating: .clear, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-        padLedColors = Array(
-            repeating: Array(repeating: .clear, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
-        padItems = Array(
-            repeating: Array(repeating: nil, count: unipack.buttonY),
-            count: unipack.buttonX
-        )
     }
 
     /// Convert a 32-bit ARGB value to a SwiftUI Color
@@ -776,6 +803,7 @@ final class PlayViewModel {
 
     func switchPlayMode(_ mode: PlayMode) {
         guard let runner = autoPlayRunner else { return }
+        autoPlayInterruption.userTookControl()
         let currentMode = playMode
 
         if mode == currentMode {
@@ -790,24 +818,17 @@ final class PlayViewModel {
             runner.playmode = false
             removeAllGuide()
             if runner.active { runner.stop() }
-            padInit()
             ledInit()
             isPracticeMode = false
             isAutoPlayPlaying = false
             scbAutoPlay.setCheckedSilently(false)
             autoPlayControlVisible = false
-            if let unipack, unipack.keyLedExist {
-                scbLed.setChecked(true)
-                scbFeedbackLight.setChecked(false)
-            } else {
-                scbFeedbackLight.setChecked(true)
-            }
+            restorePlaybackLights()
             refreshWatermark()
             return
         }
 
         if currentMode == .none {
-            usageSession.playTriggered(.autoplay)
             applyModeFlags(runner, mode)
             scbAutoPlay.setCheckedSilently(true)
             if let unipack {
@@ -861,27 +882,38 @@ final class PlayViewModel {
     }
 
     func autoPlayResume() {
+        autoPlayInterruption.userTookControl()
+        resumeAutoPlay()
+    }
+
+    func autoPlayPause() {
+        autoPlayInterruption.userTookControl()
+        pauseAutoPlay()
+    }
+
+    fileprivate func restorePlaybackLights() {
+        let hasLED = unipack?.keyLedExist == true
+        if hasLED { scbLed.setChecked(true) }
+        // Avoid the feedback callback's padInit while keeping hidden options locked.
+        scbFeedbackLight.setChecked(!hasLED, notify: false)
+    }
+
+    private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
         runner.resetStepState()
         removeAllGuide()
-        padInit()
         ledInit()
         runner.playmode = true
         isAutoPlayPlaying = true
-        if let unipack, unipack.keyLedExist {
-            scbLed.setChecked(true)
-            scbFeedbackLight.setChecked(false)
-        } else {
-            scbFeedbackLight.setChecked(true)
-        }
+        restorePlaybackLights()
+        refreshWatermark()
         runner.beforeStartPlaying = true
     }
 
-    func autoPlayPause() {
+    private func pauseAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
-        padInit()
         ledInit()
         isAutoPlayPlaying = false
         if playMode == .stepPractice {
@@ -889,15 +921,26 @@ final class PlayViewModel {
         }
     }
 
+    private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
+        let playing = playMode != .none && autoPlayRunner?.playmode == true
+        switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
+        case .pause:
+            pauseAutoPlay()
+        case .resume:
+            // Autoplay may have been turned off while the session was away.
+            if playMode != .none { resumeAutoPlay() }
+        case nil:
+            break
+        }
+    }
+
     func autoPlayPrev() {
-        padInit()
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(-40)
     }
 
     func autoPlayNext() {
-        padInit()
         ledInit()
         removeAllGuide()
         autoPlayRunner?.progressOffset(40)
@@ -1007,9 +1050,9 @@ final class PlayViewModel {
 
     func startVolumeObserver() {
         #if canImport(UIKit)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setActive(true)
-        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+        // SoundEngine keeps the session active: it takes it back after an interruption and activates
+        // it again, off the main thread, when the app comes back.
+        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.updateVolumeUI()
             }
@@ -1033,15 +1076,22 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        soundEngine?.appBecameActive()
         guard uiLoaded else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()
         startVolumeObserver()
     }
 
+    /// Keeps the window layout that the next `play_start` or `play_end` reports.
+    func screenLayoutChanged(_ layout: ScreenLayout?) {
+        usageSession.screenLayoutChanged(layout)
+    }
+
     // MARK: - Cleanup
 
     func cleanup() {
+        activePadInputs.removeAll()
         usageSession.ended()
         enable = false
         stopVolumeObserver()
@@ -1049,6 +1099,7 @@ final class PlayViewModel {
             MidiManager.shared.removeController(adapter)
             midiControllerAdapter = nil
         }
+        releaseAutoMapper()
         autoPlayRunner?.stop()
         ledRunner?.stop()
         soundEngine?.destroy()
@@ -1069,7 +1120,7 @@ final class PlayViewModel {
         autoPlayRunner?.stop()
         autoPlayControlVisible = false
         isAutoPlayPlaying = false
-        clearAllPadColors()
+        removeAllGuide()
     }
 
     /// Called when sound loading completes to apply initial settings
@@ -1142,14 +1193,15 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
 // MARK: - LED Listener Adapter
 
-private final class LedListenerAdapter: LedRunner.Listener {
+/// Internal so the LED timing test can record what LedRunner hands over before passing it on.
+final class LedListenerAdapter: LedRunner.Listener {
     private weak var viewModel: PlayViewModel?
 
     init(viewModel: PlayViewModel) {
         self.viewModel = viewModel
     }
 
-    func onLedBatch(_ events: [LedRunner.LedEvent]) {
+    nonisolated func onLedBatch(_ events: [LedRunner.LedEvent]) {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
             for event in events {
@@ -1202,12 +1254,32 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         }
     }
 
-    func onPadTouchOn(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: true)
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID) {
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID)
     }
 
-    func onPadTouchOff(x: Int, y: Int) {
-        viewModel?.padTouch(x: x, y: y, isDown: false)
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {
+        for inputID in inputIDs {
+            onPadTouchCancel(x: x, y: y, inputID: inputID)
+        }
+    }
+
+    func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+        viewModel?.padTouch(x: x, y: y, isDown: true, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+    }
+
+    func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) {
+        for inputID in inputIDs {
+            viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID, ledTimeMs: scheduledAtMs)
+        }
+    }
+
+    func onPadTouchCancel(x: Int, y: Int, inputID: UUID) {
+        viewModel?.padTouch(x: x, y: y, isDown: false, trigger: .autoplay, inputID: inputID)
+    }
+
+    func onInputTimeThrough(_ at: Int64?) {
+        viewModel?.ledRunner?.setInputTimeThrough(at)
     }
 
     func onChainChange(c: Int) {
@@ -1267,12 +1339,7 @@ private final class AutoPlayListenerAdapter: AutoPlayRunner.Listener {
         vm.isPracticeMode = false
         vm.scbAutoPlay.setCheckedSilently(false)
         vm.autoPlayControlVisible = false
-        if let unipack = vm.unipack, unipack.keyLedExist {
-            vm.scbLed.setChecked(true)
-            vm.scbFeedbackLight.setChecked(false)
-        } else {
-            vm.scbFeedbackLight.setChecked(true)
-        }
+        vm.restorePlaybackLights()
         vm.refreshWatermark()
     }
 }
@@ -1301,7 +1368,7 @@ private final class PlayMidiControllerAdapter: MidiController {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel else { return }
             if !vm.isOptionWindowVisible {
-                vm.padTouch(x: x, y: y, isDown: upDown)
+                vm.padTouch(x: x, y: y, isDown: upDown, trigger: .pad(.midi))
             }
         }
     }
@@ -1342,33 +1409,23 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
     }
 
     func onStart() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = true
-        }
+        viewModel?.autoMappingActive = true
     }
 
     func onGetWorkSize(_ size: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingMax = size
-        }
+        viewModel?.autoMappingMax = size
     }
 
     func onProgress(_ progress: Int) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingProgress = progress
-        }
+        viewModel?.autoMappingProgress = progress
     }
 
     func onDone() {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.onAutoMappingDone()
-        }
+        viewModel?.finishAutoMapping()
     }
 
     func onException(_ error: Error) {
-        Task { @MainActor [weak self] in
-            self?.viewModel?.autoMappingActive = false
-            self?.viewModel?.toastMessage = error.localizedDescription
-        }
+        viewModel?.toastMessage = error.localizedDescription
+        viewModel?.finishAutoMapping()
     }
 }

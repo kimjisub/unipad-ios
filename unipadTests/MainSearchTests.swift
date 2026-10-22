@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftData
 import Testing
 @testable import unipad
@@ -187,17 +188,17 @@ struct MainSearchTests {
         vm.toggleSelection(faded)
 
         vm.recordOpen(faded)
-        var selectionChanged = false
+        let selectionChanged = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = vm.selectedItem
         } onChange: {
-            selectionChanged = true
+            selectionChanged.withLock { $0 = true }
         }
         await reload()
 
         let saved = try #require(try repo.find(id: faded.unipack.id))
         #expect(saved.openCount == 1)
-        #expect(selectionChanged)
+        #expect(selectionChanged.withLock { $0 })
         #expect(vm.selectedItem?.openCount == saved.openCount)
         #expect(vm.selectedItem?.lastOpenedAt == saved.lastOpenedAt)
         #expect(vm.searchQuery == "alan")

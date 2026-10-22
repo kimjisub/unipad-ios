@@ -88,6 +88,10 @@
 "hideUI" = "Скрыть UI";
 "watermark" = "Водяной знак";
 "proLightMode" = "Режим Pro Light";
+"play_section_play_mode" = "Режим игры";
+"play_section_performance" = "Исполнение";
+"play_section_display" = "Экран";
+"play_section_tools" = "Инструменты";
 
 /* Version */
 "update_available" = "Доступно обновление";

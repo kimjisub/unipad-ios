@@ -308,26 +308,40 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
 
 // MARK: - Firebase Runtime
 
-/// Keeps unit test runs, and Debug runs launched with `-UniPadFirebaseLocalOnly YES`, away from the
-/// production Firebase project: Firebase is not configured and every service is a local stub.
+/// Keeps unit tests and opted-in Debug/release-check installs away from production Firebase.
+/// The local-only choice survives notification and Home Screen launches without arguments.
+/// Launch with `-UniPadFirebaseLocalOnly NO` or reinstall to clear it. Store builds ignore it.
 enum FirebaseRuntime {
     static let localOnlyLaunchArgument = "UniPadFirebaseLocalOnly"
 
     static let isLocalOnly: Bool = {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return true }
-#if DEBUG
-        return UserDefaults.standard.bool(forKey: localOnlyLaunchArgument)
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        let localOnly = resolveLocalOnly(defaults: .standard, allowsOverride: true)
+        let hasOverride = ProcessInfo.processInfo.arguments.contains("-\(localOnlyLaunchArgument)")
+        Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "FirebaseRuntime")
+            .notice("local_only=\(localOnly ? "YES" : "NO", privacy: .public) launch_override=\(hasOverride ? "YES" : "NO", privacy: .public)")
+        return localOnly
 #else
         return false
 #endif
     }()
 
-    /// Debug-only, for UI tests: a local-only run presents the installation-ID model with the stub,
-    /// not Firebase, behind it.
+    static func resolveLocalOnly(defaults: UserDefaults, allowsOverride: Bool) -> Bool {
+        guard allowsOverride else { return false }
+        // The argument domain takes precedence over the saved value. Copy the resolved choice
+        // into the persistent domain so a later system launch retains it, including explicit NO.
+        let localOnly = defaults.bool(forKey: localOnlyLaunchArgument)
+        defaults.set(localOnly, forKey: localOnlyLaunchArgument)
+        return localOnly
+    }
+
+    /// For UI tests: a local-only run presents the installation-ID model with the stub, not
+    /// Firebase, behind it.
     static let fakeInstallationIdLaunchArgument = "UniPadFakeInstallationIdModel"
 
     static let fakesInstallationIdModel: Bool = {
-#if DEBUG
+#if DEBUG || UNIPAD_RELEASE_TESTS
         return isLocalOnly && UserDefaults.standard.bool(forKey: fakeInstallationIdLaunchArgument)
 #else
         return false
@@ -352,7 +366,11 @@ final class FirebaseManager: ObservableObject {
     let remoteConfig: RemoteConfigServiceProtocol
 
     private init() {
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        self.firestore = ReleaseTestSupport.root != nil ? ReleaseStore() : RealtimeDatabaseService()
+#else
         self.firestore = RealtimeDatabaseService()
+#endif
         if FirebaseRuntime.isLocalOnly {
             self.messaging = FCMServiceStub(usesInstallationID: FirebaseRuntime.fakesInstallationIdModel)
             self.analytics = AnalyticsServiceStub()
@@ -386,6 +404,7 @@ final class FirebaseManager: ObservableObject {
         analytics.setUserProperty(value: "ios", forName: "platform")
         crashlytics.setCrashlyticsCollectionEnabled(true)
         crashlytics.log("Firebase app launch configured")
+        MetricKitExitSubscriber.start(reportingTo: crashlytics)
         Task { [remoteConfig] in
             await remoteConfig.configureForAppLaunch()
         }

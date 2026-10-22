@@ -59,11 +59,11 @@ struct MainView: View {
             vm.versionCheck()
         }
         #endif
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImported"))) { _ in
-            vm.isImportingInProgress = false
-            vm.refreshList()
-            vm.updateStats()
-            showImportResult = true
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImported"))) { notification in
+            guard let importedFolder = notification.userInfo?["importedFolder"] as? URL else { return }
+            Task {
+                await completeImport(importedFolder: importedFolder)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImportFailed"))) { notification in
             if let errorMsg = notification.userInfo?["error"] as? String {
@@ -110,9 +110,7 @@ struct MainView: View {
                             UsageAnalytics.shared.packImportFailed(source: .file, error: error)
                         }
 
-                        vm.updateStats()
-                        await vm.completeImport(importedFolder: importedFolder)
-                        showImportResult = true
+                        await completeImport(importedFolder: importedFolder)
                     }
                 } catch {
                     UsageAnalytics.shared.packImportFailed(source: .file, error: error)
@@ -176,6 +174,12 @@ struct MainView: View {
                 }
             }
         }
+    }
+
+    private func completeImport(importedFolder: URL?) async {
+        vm.updateStats()
+        await vm.completeImport(importedFolder: importedFolder)
+        showImportResult = true
     }
 
     private func dismissImportResult() {

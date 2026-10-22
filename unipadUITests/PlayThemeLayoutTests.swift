@@ -7,9 +7,10 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     /// A theme given here is pinned in the argument domain, which also hides what the Theme
     /// screen saves, so the walk through the Theme screen launches without one.
-    private func launch(theme: String? = nil) -> XCUIApplication {
+    private func launch(theme: String? = nil, observeLoading: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        app.launchArguments += UITestSupport.englishLaunchArguments(
+            isolated: observeLoading || UITestSupport.isReleaseSuite, themeLoading: observeLoading)
         if let theme { app.launchArguments += ["-SelectedTheme", theme] }
         app.launch()
         UITestSupport.dismissSystemAlerts()
@@ -19,12 +20,21 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// Opens the sample pack Faded, or the first pack when the library has no Faded, and returns
     /// the title it opened.
     @discardableResult
-    private func openFirstPack(in app: XCUIApplication) throws -> String {
+    private func openFirstPack(in app: XCUIApplication, loadingFixture: Bool = false) throws -> String {
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30), "never reached home")
-        let packTitles = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
-        guard packTitles.count > 0 else { throw XCTSkip("no pack in the library") }
+        let list = app.scrollViews["main.packList"]
+        let packTitles = list.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - "))
+        XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 30), "the fixture must prepare a pack")
         let faded = packTitles.matching(NSPredicate(format: "label CONTAINS[c] %@", "Faded")).firstMatch
-        let title = faded.exists ? faded : packTitles.element(boundBy: 0)
+        let title: XCUIElement
+        if loadingFixture {
+            title = packTitles.matching(NSPredicate(format: "label == %@", "Faded - Tests")).firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 10), "the slow-loading fixture was not prepared")
+        } else {
+            title = faded.exists ? faded : packTitles.element(boundBy: 0)
+        }
+        XCTAssertTrue(UITestSupport.scrollIntoView(title, in: list, app: app, maxSwipes: 20),
+                      "the requested pack never reached the visible list")
         let name = title.label
         title.tap()
         let play = app.buttons["Play"].firstMatch
@@ -41,9 +51,7 @@ final class PlayThemeLayoutTests: XCTestCase {
 
     private func safeArea(of window: CGRect) throws -> CGRect {
         let key = "\(Int(window.width))x\(Int(window.height))"
-        guard let insets = Self.landscapeSafeAreas[key] else {
-            throw XCTSkip("no reference safe area for a \(key) screen")
-        }
+        let insets = try XCTUnwrap(Self.landscapeSafeAreas[key], "no independently measured safe area for a \(key) screen")
         return CGRect(x: window.minX + insets.side, y: window.minY,
                       width: window.width - insets.side * 2, height: window.height - insets.bottom)
     }
@@ -102,23 +110,29 @@ final class PlayThemeLayoutTests: XCTestCase {
     /// one the pads first appear on: the theme must not grow or move when play starts.
     private func assertThemeHoldsStillWhileOpening(theme: String, orientation: UIDeviceOrientation) throws {
         XCUIDevice.shared.orientation = orientation
-        let app = launch(theme: theme)
+        let app = launch(theme: theme, observeLoading: true)
         let label = "[\(theme) \(orientation == .landscapeLeft ? "left" : "right") opening]"
         // `playBackdrop` is the separate loading fill the play screen used to draw, so this check
         // also catches it coming back.
         let themeImage = app.images.matching(NSPredicate(format: "identifier IN %@", ["playBackdrop", "playBackground"])).firstMatch
         let grid = app.otherElements["playPadGrid"]
-        let pack = try openFirstPack(in: app)
+        let pack = try openFirstPack(in: app, loadingFixture: true)
 
         var loadingFrames: [CGRect] = []
         let deadline = Date().addingTimeInterval(60)
         while !grid.exists, Date() < deadline {
-            if themeImage.exists { loadingFrames.append(themeImage.frame) }
+            if themeImage.exists {
+                loadingFrames.append(themeImage.frame)
+                if loadingFrames.count == 1 {
+                    UITestSupport.attachScreenshot("\(label)-loading", to: self)
+                }
+            }
         }
         XCTAssertTrue(grid.waitForExistence(timeout: 5), "\(label) pad grid never appeared")
         let playing = app.images["playBackground"]
         XCTAssertTrue(playing.waitForExistence(timeout: 5), "\(label) theme background never appeared")
         let playFrame = playing.frame
+        UITestSupport.attachScreenshot("\(label)-playing", to: self)
         let seen = Set(loadingFrames.map { "\($0)" }).sorted().joined(separator: " ")
         XCTContext.runActivity(named: "\(label) pack \(pack) window \(app.windows.firstMatch.frame) loading \(loadingFrames.count) samples \(seen) play \(playFrame)") { _ in }
 

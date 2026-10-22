@@ -88,6 +88,10 @@
 "hideUI" = "UI छुपाएं";
 "watermark" = "वॉटरमार्क";
 "proLightMode" = "प्रो लाइट मोड";
+"play_section_play_mode" = "प्ले मोड";
+"play_section_performance" = "प्रदर्शन";
+"play_section_display" = "डिस्प्ले";
+"play_section_tools" = "टूल्स";
 
 /* Version */
 "update_available" = "अपडेट उपलब्ध";

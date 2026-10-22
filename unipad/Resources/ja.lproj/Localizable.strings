@@ -88,6 +88,10 @@
 "hideUI" = "UIを非表示";
 "watermark" = "ウォーターマーク";
 "proLightMode" = "Proライトモード";
+"play_section_play_mode" = "プレイモード";
+"play_section_performance" = "演奏";
+"play_section_display" = "表示";
+"play_section_tools" = "ツール";
 
 /* Version */
 "update_available" = "アップデートがあります";

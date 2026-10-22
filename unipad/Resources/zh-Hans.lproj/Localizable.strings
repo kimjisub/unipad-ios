@@ -88,6 +88,10 @@
 "hideUI" = "隐藏UI";
 "watermark" = "UI灯光";
 "proLightMode" = "Pro灯光模式";
+"play_section_play_mode" = "演奏模式";
+"play_section_performance" = "效果";
+"play_section_display" = "显示";
+"play_section_tools" = "工具";
 
 /* Version */
 "update_available" = "有可用更新";

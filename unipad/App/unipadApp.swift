@@ -66,6 +66,9 @@ struct unipadApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var router = AppRouter()
     @State private var midiBanner = MidiBannerCoordinator()
+#if DEBUG || UNIPAD_RELEASE_TESTS
+    @State private var openedTestLink = false
+#endif
     #if canImport(UIKit) && canImport(FirebaseCore)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     #endif
@@ -74,16 +77,38 @@ struct unipadApp: App {
     @State private var modelStoreStatus: ModelStoreStatus
 
     init() {
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        do { try ReleaseTestSupport.prepare() }
+        catch { fatalError("Release test fixture could not be prepared: \(error)") }
+        let opened = ModelContainerFactory.make(storeURL: ReleaseTestSupport.storeURL)
+#else
         let opened = ModelContainerFactory.make()
+#endif
         sharedModelContainer = opened.container
         _modelStoreStatus = State(initialValue: ModelStoreStatus(openError: opened.persistentStoreError))
+        UniPackStaging.removeLeftovers()
+    }
+
+    // MIDI timing runs use an in-process play model. The host's menu must not send its own
+    // watermark or selection lights into that model's recording after a scene activation.
+    private var isMidiTimingUnitTest: Bool {
+#if DEBUG
+        let env = ProcessInfo.processInfo.environment
+        return env["XCTestConfigurationFilePath"] != nil && env["UNIPAD_LED_TIMING_MIDI"] != nil
+#else
+        return false
+#endif
     }
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 NavigationStack(path: $router.path) {
-                    MainView()
+                    Group {
+                        if !isMidiTimingUnitTest {
+                            MainView()
+                        }
+                    }
                         .navigationDestination(for: Route.self) { route in
                             switch route {
                             case .play(let path):
@@ -96,6 +121,8 @@ struct unipadApp: App {
                                 SettingsView(initialCategory: .storage)
                             case .theme:
                                 ThemeView()
+                            case .openSourceLicenses:
+                                OpenSourceLicensesView()
                             case .midiSelect:
                                 MidiSelectView()
                             case .main:
@@ -141,6 +168,13 @@ struct unipadApp: App {
             }
             .onAppear {
                 midiBanner.start()
+#if DEBUG || UNIPAD_RELEASE_TESTS
+                if !openedTestLink, ReleaseTestSupport.root != nil,
+                   let link = UserDefaults.standard.string(forKey: "UniPadReleaseURL"), let url = URL(string: link) {
+                    openedTestLink = true
+                    router.handleDeepLink(url)
+                }
+#endif
                 modelStoreStatus.reportIfNeeded(to: FirebaseManager.shared.crashlytics)
             }
             .onReceive(MidiManager.shared.$isConnected.removeDuplicates()) { connected in

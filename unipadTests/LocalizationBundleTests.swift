@@ -8,6 +8,7 @@ import Testing
 /// back to English one key at a time: a key missing from the chosen language's
 /// table shows up as the raw key. Every language table therefore carries every
 /// English key, with the English text where there is no translation yet.
+/// Device help supplies its own per-key English fallback, tested separately.
 struct LocalizationBundleTests {
 
     private static let table = "Localizable"
@@ -48,7 +49,9 @@ struct LocalizationBundleTests {
         let english = try #require(Self.strings(for: "en"))
         for localization in Self.translations {
             let table = try #require(Self.strings(for: localization), "no \(Self.table).strings for \(localization)")
-            let missing = Set(english.keys).subtracting(table.keys).sorted()
+            // Device help has an explicit, tested English fallback and only en/ko translations.
+            let requiredKeys = english.keys.filter { !$0.hasPrefix("midi_help_") }
+            let missing = Set(requiredKeys).subtracting(table.keys).sorted()
             #expect(missing.isEmpty, "\(localization) would show these keys as raw names: \(missing)")
             let empty = table.filter { $0.value.isEmpty && english[$0.key]?.isEmpty == false }.keys.sorted()
             #expect(empty.isEmpty, "\(localization) has empty values: \(empty)")

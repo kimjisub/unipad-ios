@@ -77,4 +77,99 @@ struct PlayLayoutTests {
         let l = layout(750, 381, bottomRow: true, buttons: 16)
         assertChainColumnsFit(l, width: 750)
     }
+
+    @Test(arguments: [
+        (CGFloat(750), CGFloat(382)), // iPhone 17 Pro safe area
+        (CGFloat(667), CGFloat(375)),
+        (CGFloat(1133), CGFloat(744)),
+        (CGFloat(1194), CGFloat(814)),
+        (CGFloat(390), CGFloat(800)),
+        (CGFloat(507), CGFloat(1012)),
+    ])
+    func chainStripsFitWithoutCoveringPadsOrEachOther(width: CGFloat, height: CGFloat) {
+        for rows in 1...8 {
+            for columns in 1...8 {
+                for chainRows in [false, true] {
+                    let l = PlayLayout(viewSize: CGSize(width: width, height: height), buttonX: rows, buttonY: columns, showAllSides: chainRows, reservedWidth: menuStrip)
+                    let pads = CGRect(x: l.padCenterX - l.gridWidth / 2, y: l.padCenterY - l.gridHeight / 2, width: l.gridWidth, height: l.gridHeight)
+                    let side = l.chainWidth * 8
+                    var strips = [
+                        CGRect(x: pads.minX - l.chainWidth, y: l.padCenterY - side / 2, width: l.chainWidth, height: side),
+                        CGRect(x: pads.maxX, y: l.padCenterY - side / 2, width: l.chainWidth, height: side),
+                    ]
+                    if chainRows {
+                        strips += [
+                            CGRect(x: l.padCenterX - side / 2, y: pads.minY - l.chainHeight, width: side, height: l.chainHeight),
+                            CGRect(x: l.padCenterX - side / 2, y: pads.maxY, width: side, height: l.chainHeight),
+                        ]
+                    }
+                    let safe = CGRect(x: 0, y: 0, width: width - menuStrip, height: height).insetBy(dx: -0.001, dy: -0.001)
+                    #expect(l.chainWidth > 0)
+                    #expect(l.chainWidth <= l.cellSize)
+                    for strip in strips {
+                        #expect(safe.contains(strip))
+                        #expect(strip.intersection(pads).width <= 0.001 || strip.intersection(pads).height <= 0.001)
+                    }
+                    for first in strips.indices {
+                        for second in strips.indices where second > first {
+                            let intersection = strips[first].intersection(strips[second])
+                            #expect(intersection.isNull || intersection.width <= 0.001 || intersection.height <= 0.001)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func smallPackKeepsPadSizeAndCentre() {
+        for chainRows in [false, true] {
+            let l = PlayLayout(viewSize: CGSize(width: 750, height: 382), buttonX: 4, buttonY: 3, showAllSides: chainRows, reservedWidth: menuStrip)
+            #expect(l.cellSize == 382 / CGFloat(chainRows ? 6 : 4))
+            #expect(l.padCenterX == 375)
+            #expect(l.padCenterY == 191)
+            #expect(l.chainWidth * 8 <= max(l.gridWidth, l.gridHeight) + 0.001)
+            #expect(l.chainWidth * 8 <= 382.001)
+        }
+    }
+
+
+    /// `squareButton=false` asks the pad view to stretch its cells to the grid, but PlayView sizes
+    /// the grid from square cells, so the pads the screen draws and hits are the same either way.
+    @MainActor
+    @Test(arguments: [(4, 3), (8, 8)])
+    func squareButtonFalseDrawsTheSameSquarePads(rows: Int, columns: Int) async throws {
+        for size in [CGSize(width: 750, height: 381), CGSize(width: 1194, height: 814)] {
+            let l = PlayLayout(viewSize: size, buttonX: rows, buttonY: columns, reservedWidth: menuStrip)
+            let square = try padTouchGrid(rows: rows, columns: columns, square: true, in: l)
+            let rect = try padTouchGrid(rows: rows, columns: columns, square: false, in: l)
+            #expect(rect == square, "\(rows)x\(columns) in \(size)")
+            #expect(square.cell == CGSize(width: l.cellSize, height: l.cellSize), "\(rows)x\(columns) in \(size)")
+            #expect(square.origin == .zero, "\(rows)x\(columns) in \(size)")
+        }
+    }
+
+    private struct PadTouchGrid: Equatable {
+        let origin: CGPoint
+        let cell: CGSize
+    }
+
+    /// The cells the pad view hits, as PlayView frames it.
+    @MainActor
+    private func padTouchGrid(rows: Int, columns: Int, square: Bool, in l: PlayLayout) throws -> PadTouchGrid {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: l.gridWidth, height: l.gridHeight)
+        let grid = PadGridView(columns: columns, rows: rows, isSquareButton: square, padColors: [], padLedColors: [],
+                               padItems: [], onPadTouch: { _, _, _, _ in })
+            .frame(width: l.gridWidth, height: l.gridHeight)
+        window.rootViewController = UIHostingController(rootView: grid)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        func find(_ view: UIView) -> MultiTouchUIView? {
+            (view as? MultiTouchUIView) ?? view.subviews.lazy.compactMap(find).first
+        }
+        let pads = try #require(find(window))
+        return PadTouchGrid(origin: pads.gridOrigin, cell: CGSize(width: pads.cellWidth, height: pads.cellHeight))
+    }
 }

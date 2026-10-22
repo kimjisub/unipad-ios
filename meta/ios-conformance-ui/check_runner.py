@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import struct
 import subprocess
 import sys
 import tempfile
@@ -14,9 +15,27 @@ from unittest.mock import patch
 import zipfile
 
 sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location('runner', Path(__file__).with_name('run.py'))
+runner_path = Path(__file__).with_name('run.py')
+if '--runner' in sys.argv:
+    index = sys.argv.index('--runner')
+    runner_path = Path(sys.argv[index + 1])
+    del sys.argv[index:index + 2]
+spec = importlib.util.spec_from_file_location('runner', runner_path)
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+
+
+def box(kind, body):
+    return struct.pack('>I4s', 8 + len(body), kind) + body
+
+
+def movie(seconds=38, version=0):
+    """A minimal finalized movie: ftyp, moov/mvhd and mdat to the end of file."""
+    if version == 1:
+        mvhd = bytes([1, 0, 0, 0]) + bytes(16) + struct.pack('>IQ', 600, 600 * seconds)
+    else:
+        mvhd = bytes(4) + bytes(8) + struct.pack('>II', 600, 600 * seconds)
+    return box(b'ftyp', b'qt  ') + box(b'moov', box(b'mvhd', mvhd + bytes(80))) + box(b'mdat', b'frames' * 10)
 
 
 class RunnerChecks(unittest.TestCase):
@@ -34,11 +53,18 @@ class RunnerChecks(unittest.TestCase):
         (products / 'unipad.app/Info.plist').write_bytes(plistlib.dumps({
             'CFBundleShortVersionString': 'test', 'CFBundleVersion': 'test'}))
         (products / 'unipadUITests-Runner.app').mkdir()
+        self.xctestrun = self.build / 'Build/Products/unipad_unipad_iphonesimulator27.0-arm64.xctestrun'
+        self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': [{
+            'Name': 'Test Scheme Action', 'TestTargets': [
+                {'BlueprintName': 'unipadTests', 'PreferredScreenCaptureFormat': 'screenRecording'},
+                {'BlueprintName': 'unipadUITests', 'PreferredScreenCaptureFormat': 'screenRecording'}]}]}))
+        os.utime(self.xctestrun, (0, 0))
+        self.built_xctestruns = [self.xctestrun]
         self.container = self.root / 'container'
         self.library = self.container / 'Documents/UniPack'
         self.library.mkdir(parents=True)
         (self.library / 'existing').write_bytes(b'preserve me')
-        self.staged = self.library / 'JIS-70-regression'
+        self.staged = self.library / 'Conformance-regression'
         self.pack = self.root / 'pack.zip'
         with zipfile.ZipFile(self.pack, 'w') as z:
             z.writestr('info', 'title=Conformance\n')
@@ -58,19 +84,16 @@ class RunnerChecks(unittest.TestCase):
             path.write_bytes(content)
         self.mock_product_files = list(self.baseline_files)
 
-    def git(self, command, **kwargs):
-        if command[1] == 'ls-tree':
-            # Match git's path-limited enumeration from the tool subdirectory.
-            return (('\0' if '-z' in command else '\n').join(self.mock_product_files).encode()
-                    if '--full-tree' in command else b'')
-        return self.baseline_files[command[2].split(':', 1)[1]]
-
     def invoke(self, command, log=None, check=True, timeout=None):
         self.commands.append(command)
         if log:
             log.write_text('fake command: ' + repr(command))
         if self.fail_command and self.fail_command(command):
             raise RuntimeError('injected command failure')
+        if 'build-for-testing' in command:
+            for xctestrun in self.built_xctestruns:
+                if xctestrun.exists():
+                    os.utime(xctestrun)
         output = str(self.container) if 'get_app_container' in command else ''
         return subprocess.CompletedProcess(command, 0, output, '')
 
@@ -89,13 +112,22 @@ class RunnerChecks(unittest.TestCase):
                 pass
 
             def wait(self, timeout=None):
-                if owner.recording_mode == 'timeout' and self.returncode is None:
+                mode = owner.recording_mode
+                video = Path(command[-1])
+                if mode.startswith('hung') and self.returncode is None:
+                    # simctl finalizes (or not) the file, then never exits.
+                    video.write_bytes(movie() if mode == 'hung-finalized' else movie()[:-5])
+                if mode == 'frozen' or (mode in ('timeout', 'hung-finalized', 'hung-cut-off')
+                                        and self.returncode is None):
+                    # 'frozen' ignores even SIGKILL, so every wait times out.
                     raise subprocess.TimeoutExpired(command, timeout)
-                self.returncode = 1 if owner.recording_mode == 'early-exit' else (self.returncode or 0)
-                if owner.recording_mode == 'ok':
-                    Path(command[-1]).write_bytes(b'fake video')
-                elif owner.recording_mode == 'empty':
-                    Path(command[-1]).touch()
+                if mode in ('ok', 'version-1', 'cut-off', 'nonzero') and self.returncode is None:
+                    data = movie(version=1 if mode == 'version-1' else 0)
+                    video.write_bytes(data[:-5] if mode == 'cut-off' else data)
+                elif mode == 'empty':
+                    video.touch()
+                if self.returncode is None:
+                    self.returncode = 1 if mode in ('early-exit', 'nonzero') else 0
                 return self.returncode
 
             def kill(self):
@@ -105,15 +137,14 @@ class RunnerChecks(unittest.TestCase):
 
     def run_tool(self):
         argv = ['run.py', '--udid', 'fake-device', '--source', str(self.source),
-                '--derived-data', str(self.build), '--pack', str(self.pack), '--out', str(self.out)]
+                '--derived-data', str(self.build), '--pack', str(self.pack), '--out', str(self.out)] + getattr(self, 'extra_args', [])
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.object(sys, 'argv', argv))
             stack.enter_context(patch.dict(os.environ, PAPERCLIP_RUN_SCRATCH_DIR=str(self.root),
                                           PAPERCLIP_RUN_ID='regression', HARNESS=str(self.root)))
-            stack.enter_context(patch.object(runner, 'AP001_SHA256', hashlib.sha256(self.pack.read_bytes()).hexdigest()
-                                            if self.pack.exists() else 'missing'))
+            stack.enter_context(patch.object(runner, 'approved_pack', lambda path: ('TEST', hashlib.sha256(path.read_bytes()).hexdigest())))
+            stack.enter_context(patch.object(runner, 'load_baseline', lambda: {name: hashlib.sha256(self.baseline_files[name]).hexdigest() for name in self.mock_product_files}))
             stack.enter_context(patch.object(runner, 'invoke', self.invoke))
-            stack.enter_context(patch.object(runner.subprocess, 'check_output', self.git))
             stack.enter_context(patch.object(runner.subprocess, 'Popen', self.popen))
             stack.enter_context(patch.object(runner.time, 'sleep'))
             runner.main()
@@ -132,6 +163,185 @@ class RunnerChecks(unittest.TestCase):
 
     def assert_failed(self):
         self.assertFalse(self.receipt()['success'])
+
+    def assert_title_rejected_before_staging(self, filename, content):
+        folder = self.library / 'another-folder-name'
+        folder.mkdir()
+        (folder / filename).write_bytes(content)
+        before = runner.hashes(self.library)
+        with self.assertRaisesRegex(RuntimeError, 'Conformance|decode'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertEqual(runner.hashes(self.library), before)
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertNotIn('stagedName', self.receipt())
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse(any('recordVideo' in c for c in self.commands))
+
+    def assert_other_title_allowed(self, content):
+        folder = self.library / 'another-folder-name'
+        folder.mkdir()
+        (folder / 'info').write_bytes(content)
+        before = runner.hashes(self.library)
+        self.run_tool()
+        self.assert_cleaned()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['existingConformanceCount'], 0)
+        self.assertEqual(self.receipt()['stagedConformanceCount'], 1)
+        self.assertEqual(runner.hashes(self.library), before)
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertTrue(any('test-without-building' in c for c in self.commands))
+
+    def test_arbitrary_title_reaches_ui(self):
+        with zipfile.ZipFile(self.pack, 'w') as archive:
+            archive.writestr('info', 'title=Spaced Title\n')
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['fixtureTitle'], 'Spaced Title')
+        self.assertTrue(any('test-without-building' in c for c in self.commands))
+
+    def test_empty_title_reaches_ui_using_staged_folder_label(self):
+        with zipfile.ZipFile(self.pack, 'w') as archive:
+            archive.writestr('info', 'buttonX=4\nbuttonY=3\n')
+        self.run_tool()
+        self.assertEqual(self.receipt()['fixtureTitle'], '')
+        self.assertEqual(self.receipt()['selectionTitle'], '')
+        self.assertTrue(self.receipt()['success'])
+
+    def test_keep_device_skips_return_after_failure(self):
+        self.extra_args = ['--keep-device']
+        self.fail_command = lambda c: 'test-without-building' in c
+        with self.assertRaisesRegex(RuntimeError, 'UI|command'):
+            self.run_tool()
+        self.assertFalse(any(c[-1] == 'down' for c in self.commands))
+        self.assertFalse(self.staged.exists())
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertFalse(self.receipt()['deviceReturned'])
+
+    def test_approved_sample_fingerprints_and_modified_pack(self):
+        approved = json.loads((runner.TOOLS / 'pack-fingerprints.json').read_text())
+        self.assertEqual(len(approved), 20)
+        self.assertEqual(len(set(approved.values())), 20)
+        with self.assertRaisesRegex(RuntimeError, 'unchanged ZIP'):
+            runner.approved_pack(self.pack)
+
+    def test_output_outside_scratch_is_fresh_and_allowed(self):
+        with tempfile.TemporaryDirectory(dir=self.root.parent) as directory:
+            self.out = Path(directory) / 'evidence'
+            self.run_tool()
+            self.assertTrue(self.receipt()['success'])
+            with self.assertRaises(RuntimeError):
+                self.run_tool()
+
+    def test_runner_does_not_need_git(self):
+        with patch.object(runner.subprocess, 'check_output', side_effect=AssertionError('git must not run')):
+            self.assertEqual(len(runner.load_baseline()), 236)
+            self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+
+    def test_ui_parameters_match_fixture_and_no_autoplay(self):
+        self.run_tool()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        targets = plistlib.loads(copy.read_bytes())['TestConfigurations'][0]['TestTargets']
+        for target in targets:
+            self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_TITLE'], 'Conformance')
+            self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_HAS_AUTOPLAY'], 'NO')
+
+    def test_autoplay_file_parameter_reaches_every_target(self):
+        with zipfile.ZipFile(self.pack, 'a') as archive:
+            archive.writestr('AutoPlay', 'c 1\n')
+        self.run_tool()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        for configuration in plistlib.loads(copy.read_bytes())['TestConfigurations']:
+            for target in configuration['TestTargets']:
+                self.assertEqual(target['EnvironmentVariables']['CONFORMANCE_HAS_AUTOPLAY'], 'YES')
+        self.assertTrue(self.receipt()['hasAutoplayFile'])
+
+    def test_conformance_number_suffix_allowed(self):
+        self.assert_other_title_allowed(b'title=Conformance 2\n')
+
+    def test_conformance_letter_suffix_allowed(self):
+        self.assert_other_title_allowed(b'title=ConformanceX\n')
+
+    def test_overridden_conformance_title_allowed(self):
+        self.assert_other_title_allowed(b'title=Conformance\ntitle=Other\n')
+
+    def test_duplicate_title_in_differently_named_folder(self):
+        self.assert_title_rejected_before_staging('info', b'title=Conformance\n')
+
+    def test_duplicate_title_with_spaces(self):
+        self.assert_title_rejected_before_staging('info', b'  title = Conformance  \n')
+
+    def test_duplicate_title_after_leading_separator(self):
+        self.assert_title_rejected_before_staging('info', b'=title=Conformance\n')
+
+    def test_duplicate_title_after_multiple_leading_separators(self):
+        self.assert_title_rejected_before_staging('info', b'==title=Conformance\n')
+
+    def test_title_with_leading_value_separator_allowed(self):
+        self.assert_other_title_allowed(b'title==Conformance\n')
+
+    def test_empty_title_line_does_not_override_duplicate(self):
+        self.assert_title_rejected_before_staging('info', b'title=Conformance\ntitle=\n')
+
+    def test_duplicate_title_in_uppercase_info(self):
+        self.assert_title_rejected_before_staging('INFO', b'title=Conformance\n')
+
+    def test_duplicate_title_in_json(self):
+        self.assert_title_rejected_before_staging('info.json', b'{"title": "Conformance"}')
+
+    def test_undecodable_info_preserved_and_device_returned(self):
+        self.assert_title_rejected_before_staging('info', b'\xff')
+
+    def test_duplicate_title_with_utf8_bom(self):
+        self.assert_title_rejected_before_staging('info', '\ufefftitle = Conformance\n'.encode())
+
+    def test_duplicate_title_with_utf16_bom(self):
+        self.assert_title_rejected_before_staging('info', 'title=Conformance\n'.encode('utf-16'))
+
+    def test_duplicate_title_with_legacy_encoding(self):
+        self.assert_title_rejected_before_staging('info',
+                                                'producerName=한글\ntitle = Conformance\n'.encode('cp949'))
+
+    def test_unreadable_info_preserved_and_device_returned(self):
+        path = self.library / 'another-folder-name/info'
+        read_info = runner.read_info
+
+        def unreadable(info):
+            if info == path:
+                raise RuntimeError('Cannot decode info: permission denied')
+            return read_info(info)
+
+        with patch.object(runner, 'read_info', side_effect=unreadable):
+            self.assert_title_rejected_before_staging('info', b'title=Other pack\n')
+
+    def test_info_title_uses_last_value_first_separator_and_json_fallback(self):
+        folder = self.root / 'metadata'
+        folder.mkdir()
+        (folder / 'INFO.JSON').write_text('{"title": "Conformance"}')
+        self.assertEqual(runner.folder_title(folder), 'Conformance')
+        (folder / 'INFO').write_text('title = First\ntitle = Conformance=Other\ntitle=\n')
+        self.assertEqual(runner.folder_title(folder), 'Conformance=Other')
+        (folder / 'INFO').write_text('title = First\n  title = Conformance \n')
+        self.assertEqual(runner.folder_title(folder), 'Conformance')
+
+    def test_wrong_staged_title_stops_before_recording_and_ui(self):
+        extractall = zipfile.ZipFile.extractall
+
+        def wrong_title(archive, path):
+            extractall(archive, path)
+            (path / 'info').write_text('title=Other pack\n')
+
+        with patch.object(zipfile.ZipFile, 'extractall', new=wrong_title):
+            with self.assertRaisesRegex(RuntimeError, 'exactly one Conformance'):
+                self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertTrue(self.receipt()['libraryRestored'])
+        self.assertEqual(self.receipt()['stagedConformanceCount'], 0)
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse((self.out / 'walkthrough.mp4').exists())
 
     def test_changed_product_rejected_before_build(self):
         (self.source / 'unipad/product.swift').write_bytes(b'changed')
@@ -273,12 +483,65 @@ class RunnerChecks(unittest.TestCase):
         self.assert_failed()
         self.assertEqual(self.receipt()['cleanupErrors'][0]['step'], 'recording')
 
+    def test_recorder_frozen_through_kill_still_cleans_and_records_failure(self):
+        self.recording_mode = 'frozen'
+        with self.assertRaises(Exception):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        receipt = self.receipt()
+        self.assertEqual(receipt['cleanupErrors'][0]['step'], 'recording')
+        self.assertIn('TimeoutExpired', receipt['cleanupErrors'][0]['error'])
+
     def test_recording_early_failure_rejected(self):
         self.recording_mode = 'early-exit'
         with self.assertRaisesRegex(RuntimeError, 'recording'):
             self.run_tool()
         self.assert_cleaned()
         self.assert_failed()
+
+    def test_recorder_hung_after_finalized_movie_accepted(self):
+        self.recording_mode = 'hung-finalized'
+        self.run_tool()
+        self.assert_cleaned()
+        receipt = self.receipt()
+        self.assertTrue(receipt['success'])
+        self.assertTrue(receipt['recordingHungAfterStop'])
+        self.assertEqual(receipt['recordingExitCode'], -9)
+        self.assertEqual(receipt['recordingSeconds'], 38)
+
+    def test_recorder_hung_with_cut_off_movie_rejected(self):
+        self.recording_mode = 'hung-cut-off'
+        with self.assertRaisesRegex(RuntimeError, 'recording'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertIsNone(self.receipt()['recordingSeconds'])
+
+    def test_cut_off_movie_rejected(self):
+        self.recording_mode = 'cut-off'
+        with self.assertRaisesRegex(RuntimeError, 'recording'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+
+    def test_finalized_movie_with_nonzero_exit_rejected(self):
+        self.recording_mode = 'nonzero'
+        with self.assertRaisesRegex(RuntimeError, 'recording'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+
+    def test_version_1_movie_header_read(self):
+        self.recording_mode = 'version-1'
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['recordingSeconds'], 38)
+
+    def test_movie_without_header_has_no_duration(self):
+        path = self.root / 'frames-only.mp4'
+        path.write_bytes(box(b'ftyp', b'qt  ') + box(b'mdat', b'frames'))
+        self.assertIsNone(runner.movie_seconds(path))
 
     def test_missing_video_rejected(self):
         self.recording_mode = 'missing'
@@ -341,6 +604,96 @@ class RunnerChecks(unittest.TestCase):
                 self.run_tool()
         self.assert_cleaned()
         self.assert_failed()
+
+    def test_ui_runs_from_screenshots_xctestrun_copy(self):
+        original = self.xctestrun.read_bytes()
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        targets = plistlib.loads(copy.read_bytes())['TestConfigurations'][0]['TestTargets']
+        self.assertEqual([t['PreferredScreenCaptureFormat'] for t in targets], ['screenshots'] * 2)
+        self.assertEqual(self.xctestrun.read_bytes(), original, 'The built xctestrun must stay unchanged')
+        self.assertEqual(self.receipt()['screenCaptureFormatsBefore'], ['screenRecording'])
+        ui = next(c for c in self.commands if 'test-without-building' in c)
+        self.assertEqual(ui[ui.index('-xctestrun') + 1], str(copy))
+        self.assertNotIn('-scheme', ui)
+        self.assertNotIn('-project', ui)
+        for option in ['-collect-test-diagnostics', '-parallel-testing-enabled', '-enableCodeCoverage']:
+            self.assertIn(option, ui)
+        self.assertIn('-only-testing:unipadUITests/PlayPadLayoutTests/testSyntheticPackInputAutoplayAndExit', ui)
+
+    def test_xctestrun_parameters_written_once(self):
+        original = plistlib.loads(self.xctestrun.read_bytes())
+        original['TestConfigurations'].append({
+            'TestTargets': [{'EnvironmentVariables': {'EXISTING': 'preserve'}}]})
+        self.xctestrun.write_bytes(plistlib.dumps(original))
+        original_bytes = self.xctestrun.read_bytes()
+        copy = self.xctestrun.with_name(runner.SCREENSHOTS_XCTESTRUN)
+        writes = []
+        write_bytes = Path.write_bytes
+
+        def record_write(path, data):
+            if path == copy:
+                writes.append(data)
+            return write_bytes(path, data)
+
+        with patch.object(Path, 'write_bytes', record_write):
+            self.run_tool()
+        self.assertEqual(len(writes), 1, 'Configure capture and fixture parameters in one write')
+        configurations = plistlib.loads(writes[0])['TestConfigurations']
+        for configuration in configurations:
+            for target in configuration['TestTargets']:
+                expected = {'CONFORMANCE_TITLE': 'Conformance', 'CONFORMANCE_SAMPLE': 'TEST',
+                            'CONFORMANCE_HAS_AUTOPLAY': 'NO'}
+                if configuration == configurations[1]:
+                    expected['EXISTING'] = 'preserve'
+                self.assertEqual(target['EnvironmentVariables'], expected)
+                self.assertEqual(target['PreferredScreenCaptureFormat'], 'screenshots')
+        self.assertEqual(self.xctestrun.read_bytes(), original_bytes)
+        self.assertEqual(self.receipt()['screenshotsXctestrunSha256'],
+                         hashlib.sha256(writes[0]).hexdigest())
+
+    def test_rerun_ignores_previous_screenshots_copy(self):
+        self.run_tool()
+        self.commands.clear()
+        self.out = self.root / 'out-2'
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+
+    def assert_xctestrun_rejected_before_ui(self):
+        with self.assertRaisesRegex(RuntimeError, 'xctestrun'):
+            self.run_tool()
+        self.assert_cleaned()
+        self.assert_failed()
+        self.assertFalse(any('test-without-building' in c for c in self.commands))
+        self.assertFalse(any('recordVideo' in c for c in self.commands))
+
+    def test_missing_xctestrun_stops_before_ui(self):
+        self.xctestrun.unlink()
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_two_xctestruns_from_overlay_build_stop_before_ui(self):
+        other = self.xctestrun.with_name('other.xctestrun')
+        other.write_bytes(self.xctestrun.read_bytes())
+        self.built_xctestruns.append(other)
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_xctestrun_from_earlier_build_ignored(self):
+        # A generic-destination build leaves an arm64-x86_64 file in the same folder.
+        earlier = self.xctestrun.with_name('unipad_unipad_iphonesimulator27.0-arm64-x86_64.xctestrun')
+        earlier.write_bytes(self.xctestrun.read_bytes())
+        os.utime(earlier, (0, 0))
+        self.run_tool()
+        self.assertTrue(self.receipt()['success'])
+        self.assertEqual(self.receipt()['xctestrun'], self.xctestrun.name)
+
+    def test_xctestrun_not_written_by_overlay_build_stops_before_ui(self):
+        self.built_xctestruns = []
+        self.assert_xctestrun_rejected_before_ui()
+
+    def test_xctestrun_without_test_targets_stops_before_ui(self):
+        self.xctestrun.write_bytes(plistlib.dumps({'__xctestrun_metadata__': {'FormatVersion': 2}, 'TestConfigurations': []}))
+        self.assert_xctestrun_rejected_before_ui()
 
     def test_success_counts_product_files_and_preserves_library(self):
         self.run_tool()

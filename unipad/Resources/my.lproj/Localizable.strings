@@ -88,6 +88,10 @@
 "hideUI" = "UI ဖျောက်";
 "watermark" = "ရေစာ";
 "proLightMode" = "Pro Light မုဒ်";
+"play_section_play_mode" = "Play Mode";
+"play_section_performance" = "Performance";
+"play_section_display" = "Display";
+"play_section_tools" = "Tools";
 
 /* Version */
 "update_available" = "အပ်ဒိတ်ရနိုင်ပါသည်";

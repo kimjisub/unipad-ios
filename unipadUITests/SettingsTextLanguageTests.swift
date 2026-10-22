@@ -43,9 +43,8 @@ final class SettingsTextLanguageTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[language.notConnected].waitForExistence(timeout: 5),
                       "[\(language.code)] MIDI status is not \"\(language.notConnected)\"")
         let tapToCopy = app.staticTexts[language.tapToCopy]
-        for _ in 0..<4 where !tapToCopy.isHittable {
-            app.scrollViews.firstMatch.swipeUp()
-        }
+        XCTAssertTrue(UITestSupport.scrollIntoView(tapToCopy, in: app.scrollViews.firstMatch, app: app, maxSwipes: 4),
+                      "[\(language.code)] push identifier hint never scrolled into view")
         XCTAssertTrue(tapToCopy.exists, "[\(language.code)] push identifier hint is not \"\(language.tapToCopy)\"")
         UITestSupport.attachScreenshot("\(language.code)-settings-info", to: self)
         if language.code != "en" {

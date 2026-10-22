@@ -88,6 +88,10 @@
 "hideUI" = "Itago ang UI";
 "watermark" = "Watermark";
 "proLightMode" = "Pro Light Mode";
+"play_section_play_mode" = "Play Mode";
+"play_section_performance" = "Performance";
+"play_section_display" = "Display";
+"play_section_tools" = "Tools";
 
 /* Version */
 "update_available" = "May available na update";

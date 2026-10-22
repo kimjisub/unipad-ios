@@ -8,7 +8,6 @@ nonisolated class UniPackFolder: UniPack {
     private let rootFolder: URL
 
     private var infoFile: URL?
-    private var infoJsonFile: URL?
     private var soundsDir: URL?
     private var keySoundFile: URL?
     private var keyLedDir: URL?
@@ -93,8 +92,6 @@ nonisolated class UniPackFolder: UniPack {
             switch name {
             case "info":
                 infoFile = item.isFileURL && !isDir ? item : nil
-            case "info.json":
-                infoJsonFile = item.isFileURL && !isDir ? item : nil
             case "sounds":
                 soundsDir = isDir ? item : nil
             case "keysound":
@@ -108,12 +105,12 @@ nonisolated class UniPackFolder: UniPack {
             }
         }
 
-        logger.info("checkFile: info=\(self.infoFile != nil), infoJson=\(self.infoJsonFile != nil), keySound=\(self.keySoundFile != nil), sounds=\(self.soundsDir != nil), keyLed=\(self.keyLedDir != nil), autoPlay=\(self.autoPlayFile != nil)")
+        logger.info("checkFile: info=\(self.infoFile != nil), keySound=\(self.keySoundFile != nil), sounds=\(self.soundsDir != nil), keyLed=\(self.keyLedDir != nil), autoPlay=\(self.autoPlayFile != nil)")
 
-        if infoFile == nil && infoJsonFile == nil { addErr("info doesn't exist") }
+        if infoFile == nil { addErr("info doesn't exist") }
         if keySoundFile == nil { addErr("keySound doesn't exist") }
-        if infoFile == nil && infoJsonFile == nil && keySoundFile == nil { addErr("It does not seem to be UniPack.") }
-        if (infoFile == nil && infoJsonFile == nil) || keySoundFile == nil {
+        if infoFile == nil && keySoundFile == nil { addErr("It does not seem to be UniPack.") }
+        if infoFile == nil || keySoundFile == nil {
             criticalError = true
         }
     }
@@ -147,51 +144,22 @@ nonisolated class UniPackFolder: UniPack {
 
             for rawLine in data.components(separatedBy: .newlines) {
                 let s = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-                if s.isEmpty { continue }
-
-                let split = s.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                guard split.count == 2 else {
-                    addErr("info : [\(s)] format is not found")
-                    continue
-                }
-                let key = split[0]
-                let value = split[1]
+                // A line without "=" is skipped without a warning, as on the web (info.mdx).
+                guard let separator = s.firstIndex(of: "=") else { continue }
+                let key = s[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = s[s.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
 
                 switch key {
                 case "title": title = value
                 case "producerName": producerName = value
-                case "buttonX": buttonX = Int(value) ?? 0
-                case "buttonY": buttonY = Int(value) ?? 0
+                case "buttonX": buttonX = gridSize(key, value)
+                case "buttonY": buttonY = gridSize(key, value)
                 case "chain": chain = Int(value) ?? 0
                 case "squareButton": squareButton = value == "true"
                 case "website": website = value
                 default: break
                 }
             }
-        } else if let infoJsonFile {
-            guard
-                let data = try? Data(contentsOf: infoJsonFile),
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else {
-                addErr("info.json : file could not be decoded")
-                criticalError = true
-                return
-            }
-
-            if let value = json["title"] as? String { title = value }
-            if let value = json["producerName"] as? String { producerName = value }
-            if let value = json["buttonX"] as? Int { buttonX = value }
-            else if let value = json["buttonX"] as? String { buttonX = Int(value) ?? 0 }
-            if let value = json["buttonY"] as? Int { buttonY = value }
-            else if let value = json["buttonY"] as? String { buttonY = Int(value) ?? 0 }
-            if let value = json["chain"] as? Int { chain = value }
-            else if let value = json["chain"] as? String { chain = Int(value) ?? 0 }
-            if let value = json["squareButton"] as? Bool { squareButton = value }
-            else if let value = json["squareButton"] as? String {
-                let lower = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                squareButton = lower == "true" || lower == "1" || lower == "yes" || lower == "y"
-            }
-            if let value = json["website"] as? String { website = value }
         }
 
         if title.isEmpty { addErr("info : title was missing") }
@@ -209,6 +177,17 @@ nonisolated class UniPackFolder: UniPack {
             addErr("info : buttonX/buttonY out of range")
             criticalError = true
         }
+    }
+
+    /// A grid size that is not an integer (`buttonX=abc`) refuses the pack (info.mdx); reading it as
+    /// 0 opened a pack with no pads.
+    private func gridSize(_ key: String, _ value: String) -> Int {
+        guard let size = Int(value) else {
+            addErr("info : \(key) is not a number")
+            criticalError = true
+            return 0
+        }
+        return size
     }
 
     private static let maxGridSize = 64
@@ -233,6 +212,7 @@ nonisolated class UniPackFolder: UniPack {
             return
         }
         logger.info("parseKeySound: parsing file at \(keySoundFile.path)")
+        let soundFinder = PackFileFinder()
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -248,9 +228,9 @@ nonisolated class UniPackFolder: UniPack {
                 continue
             }
 
-            guard let c = Int(split[0]).map({ $0 - 1 }),
-                  let x = Int(split[1]).map({ $0 - 1 }),
-                  let y = Int(split[2]).map({ $0 - 1 }) else {
+            guard let c = Self.packInt(split[0]).map({ $0 - 1 }),
+                  let x = Self.packInt(split[1]).map({ $0 - 1 }),
+                  let y = Self.packInt(split[2]).map({ $0 - 1 }) else {
                 addErr("keySound : [\(s)] format is incorrect")
                 continue
             }
@@ -260,18 +240,27 @@ nonisolated class UniPackFolder: UniPack {
             var wormhole = Sound.noWormhole
 
             if split.count >= 5 {
-                guard let loopRaw = Int(split[4]) else {
+                guard let loopRaw = Self.packInt(split[4]) else {
                     addErr("keySound : [\(s)] format is incorrect")
                     continue
                 }
                 loop = loopRaw - 1
             }
             if split.count >= 6 {
-                guard let wormholeRaw = Int(split[5]) else {
+                guard let wormholeRaw = Self.packInt(split[5]) else {
                     addErr("keySound : [\(s)] format is incorrect")
                     continue
                 }
                 wormhole = wormholeRaw - 1
+            }
+
+            // The sound still plays and moves to the nearest chain the pack has. A chain it lacks
+            // would become autoPlay's current chain, and practice would light that chain's button
+            // past the end of the round button table. Checked before the other fields, as on Android and
+            // the web, so a line skipped for one of them still reports its wormhole.
+            if wormhole != Sound.noWormhole && !(0..<chain).contains(wormhole) {
+                addErr("keySound : [\(s)] wormhole is incorrect")
+                wormhole = min(max(wormhole, 0), chain - 1)
             }
 
             guard (0..<chain).contains(c) else {
@@ -288,8 +277,7 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("keySound : [\(s)] sounds directory not found"); continue
             }
 
-            let soundFile = soundsDir.appendingPathComponent(soundURL)
-            guard FileManager.default.fileExists(atPath: soundFile.path) else {
+            guard let soundFile = soundFinder.file(soundURL, in: soundsDir) else {
                 addErr("keySound : [\(s)] sound was not found"); continue
             }
 
@@ -319,22 +307,24 @@ nonisolated class UniPackFolder: UniPack {
 
         let sortedFiles = files
             .filter { !$0.hasDirectoryPath }
-            .sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
+            .map { (key: Self.keyLedOrderKey($0.lastPathComponent), file: $0) }
+            .sorted { $0.key.lexicographicallyPrecedes($1.key) }
+            .map(\.file)
 
         for file in sortedFiles {
             let fileName = file.lastPathComponent.trimmingCharacters(in: .whitespaces)
             let split1 = fileName.split(whereSeparator: { $0.isWhitespace }).map(String.init)
             guard split1.count > 2 else { continue }
 
-            guard let c = Int(split1[0]).map({ $0 - 1 }),
-                  let x = Int(split1[1]).map({ $0 - 1 }),
-                  let y = Int(split1[2]).map({ $0 - 1 }) else {
+            guard let c = Self.packInt(split1[0]).map({ $0 - 1 }),
+                  let x = Self.packInt(split1[1]).map({ $0 - 1 }),
+                  let y = Self.packInt(split1[2]).map({ $0 - 1 }) else {
                 addErr("keyLed : [\(fileName)] format is incorrect"); continue
             }
 
             var loop = 1
             if split1.count >= 4 {
-                guard let loopRaw = Int(split1[3]) else {
+                guard let loopRaw = Self.packInt(split1[3]) else {
                     addErr("keyLed : [\(fileName)] format is incorrect"); continue
                 }
                 loop = loopRaw
@@ -376,7 +366,7 @@ nonisolated class UniPackFolder: UniPack {
                     var velToken: String?
 
                     if xToken == "*" || xToken == "mc" {
-                        guard (4...5).contains(split2.count), let py = Int(split2[2]) else {
+                        guard (4...5).contains(split2.count), let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         // Round LEDs are 1...32; index 32 is reserved for the logo token.
@@ -406,7 +396,7 @@ nonisolated class UniPackFolder: UniPack {
                             colorToken = split2[3]
                         }
                     } else {
-                        guard (4...5).contains(split2.count), let px = Int(xToken), let py = Int(split2[2]) else {
+                        guard (4...5).contains(split2.count), let px = Self.packInt(xToken), let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = px - 1
@@ -420,7 +410,7 @@ nonisolated class UniPackFolder: UniPack {
 
                     // Once a velocity is supplied it must parse; never fall back to color-only.
                     if let vStr = velToken {
-                        guard let velocity = Int(vStr) else {
+                        guard let velocity = Self.packInt(vStr) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledVelocity = velocity
@@ -447,7 +437,7 @@ nonisolated class UniPackFolder: UniPack {
                     var ledY: Int
 
                     if xToken == "*" || xToken == "mc" {
-                        guard split2.count >= 3, let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         guard (1...32).contains(py) else { continue }
@@ -457,7 +447,7 @@ nonisolated class UniPackFolder: UniPack {
                         ledX = -1
                         ledY = 32
                     } else {
-                        guard split2.count >= 3, let px = Int(xToken), let py = Int(split2[2]) else {
+                        guard split2.count >= 3, let px = Self.packInt(xToken), let py = Self.packInt(split2[2]) else {
                             addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                         }
                         ledX = px - 1
@@ -467,13 +457,13 @@ nonisolated class UniPackFolder: UniPack {
                     ledList.append(.off(x: ledX, y: ledY))
 
                 case "delay", "d":
-                    guard let delayValue = Int(split2[1]) else {
+                    guard let delayValue = Self.packInt(split2[1]) else {
                         addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                     }
                     ledList.append(.delay(delay: delayValue))
 
                 case "chain", "c":
-                    guard let chainValue = Int(split2[1]) else {
+                    guard let chainValue = Self.packInt(split2[1]) else {
                         addErr("keyLed : [\(fileName)].[\(s)] format is incorrect"); continue
                     }
                     ledList.append(.chain(chain: chainValue - 1))
@@ -513,6 +503,11 @@ nonisolated class UniPackFolder: UniPack {
         autoPlayTable = autoPlay
         var map = Array(repeating: [Int](repeating: 0, count: buttonY), count: buttonX)
         var currChain = 0
+        func moveToChain(_ c: Int) {
+            currChain = c
+            autoPlay.elements.append(.chain(c: currChain))
+            for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+        }
 
         for rawLine in data.components(separatedBy: .newlines) {
             let s = rawLine.trimmingCharacters(in: .whitespaces)
@@ -525,8 +520,8 @@ nonisolated class UniPackFolder: UniPack {
 
             switch option {
             case "on", "o", "off", "f", "touch", "t":
-                guard let px = Int(split[safe: 1] ?? "").map({ $0 - 1 }),
-                      let py = Int(split[safe: 2] ?? "").map({ $0 - 1 }) else {
+                guard let px = Self.packInt(split[safe: 1]).map({ $0 - 1 }),
+                      let py = Self.packInt(split[safe: 2]).map({ $0 - 1 }) else {
                     addErr("autoPlay : [\(s)] format is incorrect"); continue
                 }
                 x = px; y = py
@@ -538,7 +533,7 @@ nonisolated class UniPackFolder: UniPack {
                 }
 
             case "chain", "c":
-                guard let cv = Int(split[safe: 1] ?? "").map({ $0 - 1 }) else {
+                guard let cv = Self.packInt(split[safe: 1]).map({ $0 - 1 }) else {
                     addErr("autoPlay : [\(s)] format is incorrect"); continue
                 }
                 chainVal = cv
@@ -547,7 +542,7 @@ nonisolated class UniPackFolder: UniPack {
                 }
 
             case "delay", "d":
-                guard let dv = Int(split[safe: 1] ?? "") else {
+                guard let dv = Self.packInt(split[safe: 1]) else {
                     addErr("autoPlay : [\(s)] format is incorrect"); continue
                 }
                 delay = dv
@@ -556,29 +551,25 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("autoPlay : [\(s)] format is incorrect"); continue
             }
 
+            // `touch` is `on` and `off` in one line: both count the pad's next sound and follow
+            // that sound's wormhole.
             switch option {
-            case "on", "o":
+            case "on", "o", "touch", "t":
                 autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
+                if option == "touch" || option == "t" {
+                    autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
+                }
                 let sound = soundGet(c: currChain, x: x, y: y, num: map[x][y])
                 map[x][y] += 1
                 if let sound, sound.wormhole != Sound.noWormhole {
-                    currChain = sound.wormhole
-                    autoPlay.elements.append(.chain(c: currChain))
-                    for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                    moveToChain(sound.wormhole)
                 }
 
             case "off", "f":
                 autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
 
-            case "touch", "t":
-                autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
-                autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
-                map[x][y] += 1
-
             case "chain", "c":
-                currChain = chainVal
-                autoPlay.elements.append(.chain(c: currChain))
-                for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+                moveToChain(chainVal)
 
             case "delay", "d":
                 autoPlay.elements.append(.delay(delay: delay))
@@ -592,6 +583,21 @@ nonisolated class UniPackFolder: UniPack {
     }
 
     // MARK: - Utility
+
+    /// A number field of keySound, keyLED or autoPlay, read as Android's `toInt()` reads it: a signed
+    /// decimal that fits in 32 bits. A larger value is a format error rather than a number outside the
+    /// pack, and turning it into a 0-based index (`- 1`) cannot overflow.
+    private static func packInt(_ token: String?) -> Int? {
+        token.flatMap { Int32($0) }.map(Int.init)
+    }
+
+    /// Where a keyLed file goes in its pad's queue, the order Android and the web use: the name composed
+    /// (NFC), lower-cased, as UTF-16 code units. Names in composed and decomposed form then sort alike,
+    /// and characters past U+FFFF sort by their surrogates rather than by code point, as `<` would.
+    /// Files with equal keys keep the order the folder listed them in.
+    private static func keyLedOrderKey(_ fileName: String) -> [UInt16] {
+        Array(fileName.precomposedStringWithCanonicalMapping.lowercased().utf16)
+    }
 
     private static func folderSize(_ url: URL) -> Int64 {
         let fm = FileManager.default

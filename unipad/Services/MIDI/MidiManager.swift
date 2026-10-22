@@ -73,7 +73,7 @@ final class MidiManager: ObservableObject {
 
     // MARK: - Device Registry
 
-    private struct DriverEntry {
+    struct DriverEntry {
         let name: String
         let factory: () -> MidiDriver
         let preferredPort: Int
@@ -323,10 +323,10 @@ final class MidiManager: ObservableObject {
         ("pro (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("mk2 (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("mk2 (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("lps (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("lps (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("mini (midi)",        DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
-        ("mini (daw)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
+        ("lps (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
+        ("lps (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
+        ("mini (midi)",        DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
+        ("mini (daw)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver(ledColors: .redGreen) }, preferredPort: 1)),
         ("lpx (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("lpx (daw)",          DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
         ("mini mk3 (midi)",    DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
@@ -341,6 +341,14 @@ final class MidiManager: ObservableObject {
         ("matrix pro",   DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
         ("matrix",       DriverEntry(name: "Mystrix", factory: { MatrixDriver() }, preferredPort: 0)),
     ]
+
+    /// CoreFW endpoints are always named "<target> (PORT)", which stock firmware never uses.
+    static func coreFWDriverEntry(sourceName: String) -> DriverEntry? {
+        let lowered = sourceName.lowercased()
+        return sourceNameDriverMap.first { mapping in
+            mapping.entry.name == "Launchpad (CoreFW)" && lowered.hasPrefix(mapping.prefix)
+        }?.entry
+    }
 
     private func findDriverForSource(_ source: MIDIEndpointRef) -> DriverEntry? {
         let sourceName = getMIDIObjectName(source)
@@ -363,12 +371,9 @@ final class MidiManager: ObservableObject {
             }
         }
 
-        // 1. Check CoreFW by source/endpoint name first (CoreFW endpoints are always "<target> (PORT)")
-        let loweredSrc = sourceName.lowercased()
-        for mapping in Self.sourceNameDriverMap where mapping.entry.name == "Launchpad (CoreFW)" {
-            if loweredSrc.hasPrefix(mapping.prefix) {
-                return mapping.entry
-            }
+        // 1. Check CoreFW by source/endpoint name first
+        if let coreFW = Self.coreFWDriverEntry(sourceName: sourceName) {
+            return coreFW
         }
 
         // 2. Check sourceName, displayName, deviceName, entityName, and modelName against sourceNameDriverMap
@@ -571,57 +576,72 @@ final class MidiManager: ObservableObject {
         let destination = connectedDawDestination != 0 ? connectedDawDestination : connectedDestination
         guard destination != 0 else { return }
 
-        // One message per hop, the next one 50 ms later via asyncAfter: a Thread.sleep on the
-        // shared serial sendQueue froze every pad-LED message for the whole burst (~150 ms at
-        // connect on a Pro), and a failed MIDISendSysex never ran the completion, leaking the
-        // request and its buffer.
-        func sendMessage(at index: Int) {
-            guard index < messages.count else { return }
-            let message = messages[index]
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
-            buffer.initialize(from: message, count: message.count)
+        let queue = sendQueue
+        let onFailure: @Sendable (OSStatus) -> Void = { [weak self] status in
+            Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
+        }
+        queue.async {
+            Self.sendSysExMessage(messages, at: 0, to: destination, on: queue, onFailure: onFailure)
+        }
+    }
 
-            // MIDISysexSendRequest must remain valid until completion callback fires.
-            // CoreMIDI advances `data` and decrements `bytesToSend` during send,
-            // so store the original buffer pointer in completionRefCon for deallocation.
-            let context = Unmanaged.passRetained(
-                SysExContext(buffer: buffer, count: message.count)
-            ).toOpaque()
+    // One message per hop, the next one 50 ms later via asyncAfter: a Thread.sleep on the
+    // shared serial sendQueue froze every pad-LED message for the whole burst (~150 ms at
+    // connect on a Pro), and a failed MIDISendSysex never ran the completion, leaking the
+    // request and its buffer.
+    private nonisolated static func sendSysExMessage(
+        _ messages: [[UInt8]],
+        at index: Int,
+        to destination: MIDIEndpointRef,
+        on queue: DispatchQueue,
+        onFailure: @escaping @Sendable (OSStatus) -> Void
+    ) {
+        guard index < messages.count else { return }
+        let message = messages[index]
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
+        buffer.initialize(from: message, count: message.count)
 
-            let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
-            requestPtr.initialize(to: MIDISysexSendRequest(
-                destination: destination,
-                data: UnsafePointer(buffer),
-                bytesToSend: UInt32(message.count),
-                complete: false,
-                reserved: (0, 0, 0),
-                completionProc: { completedPtr in
-                    if let refCon = completedPtr.pointee.completionRefCon {
-                        let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
-                        ctx.buffer.deinitialize(count: ctx.count)
-                        ctx.buffer.deallocate()
-                    }
-                    completedPtr.deinitialize(count: 1)
-                    completedPtr.deallocate()
-                },
-                completionRefCon: context
-            ))
-            let status = MIDISendSysex(requestPtr)
-            if status != noErr {
-                // The completion will not run; release what it would have released.
-                let ctx = Unmanaged<SysExContext>.fromOpaque(context).takeRetainedValue()
-                ctx.buffer.deinitialize(count: ctx.count)
-                ctx.buffer.deallocate()
-                requestPtr.deinitialize(count: 1)
-                requestPtr.deallocate()
-                Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
-                return
-            }
-            if index + 1 < messages.count {
-                sendQueue.asyncAfter(deadline: .now() + 0.05) { sendMessage(at: index + 1) }
+        // MIDISysexSendRequest must remain valid until completion callback fires.
+        // CoreMIDI advances `data` and decrements `bytesToSend` during send,
+        // so store the original buffer pointer in completionRefCon for deallocation.
+        let context = Unmanaged.passRetained(
+            SysExContext(buffer: buffer, count: message.count)
+        ).toOpaque()
+
+        let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
+        requestPtr.initialize(to: MIDISysexSendRequest(
+            destination: destination,
+            data: UnsafePointer(buffer),
+            bytesToSend: UInt32(message.count),
+            complete: false,
+            reserved: (0, 0, 0),
+            completionProc: { completedPtr in
+                if let refCon = completedPtr.pointee.completionRefCon {
+                    let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
+                    ctx.buffer.deinitialize(count: ctx.count)
+                    ctx.buffer.deallocate()
+                }
+                completedPtr.deinitialize(count: 1)
+                completedPtr.deallocate()
+            },
+            completionRefCon: context
+        ))
+        let status = MIDISendSysex(requestPtr)
+        if status != noErr {
+            // The completion will not run; release what it would have released.
+            let ctx = Unmanaged<SysExContext>.fromOpaque(context).takeRetainedValue()
+            ctx.buffer.deinitialize(count: ctx.count)
+            ctx.buffer.deallocate()
+            requestPtr.deinitialize(count: 1)
+            requestPtr.deallocate()
+            onFailure(status)
+            return
+        }
+        if index + 1 < messages.count {
+            queue.asyncAfter(deadline: .now() + 0.05) {
+                sendSysExMessage(messages, at: index + 1, to: destination, on: queue, onFailure: onFailure)
             }
         }
-        sendQueue.async { sendMessage(at: 0) }
     }
 
     // MARK: - Driver Listener Setup
@@ -662,7 +682,7 @@ final class MidiManager: ObservableObject {
 
 }
 
-private final class SysExContext {
+nonisolated private final class SysExContext {
     let buffer: UnsafeMutablePointer<UInt8>
     let count: Int
     init(buffer: UnsafeMutablePointer<UInt8>, count: Int) {
