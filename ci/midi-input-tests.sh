@@ -1,8 +1,12 @@
 #!/bin/zsh
-# Runs unipadTests/PlayUsageRecordTests/MidiInputPathTests against devices published in the simulator's
-# own MIDI server, so their messages reach the app through CoreMIDI as a USB device's do:
+# Runs unipadTests/PlayUsageRecordTests/MidiInputPathTests, or the tests <only-testing> names, against
+# devices published in the simulator's own MIDI server, so their messages reach the app through CoreMIDI
+# as a USB device's do:
 #
-#   ci/midi-input-tests.sh <simulator-udid> <derived-data> <result-folder>
+#   ci/midi-input-tests.sh <simulator-udid> <derived-data> <result-folder> [<only-testing>]
+#
+# unipadUITests/VirtualMidiPlayScreenUITests shows the same devices' input on the play screen, with a
+# screenshot of every step in the result bundle.
 #
 # Builds ci/virtual-midi-device.c for the simulator, runs it there for the length of the tests, and
 # runs the tests with `test-without-building` from <derived-data> (build-for-testing first). The tests
@@ -14,13 +18,14 @@
 # in the Universal MIDI Packet group. Hardware port order is not exercised.
 set -euo pipefail
 
-if (( $# != 3 )); then
-  print -u2 "usage: $0 <simulator-udid> <derived-data> <result-folder>"
+if (( $# != 3 && $# != 4 )); then
+  print -u2 "usage: $0 <simulator-udid> <derived-data> <result-folder> [<only-testing>]"
   exit 2
 fi
 udid=$1
 derived=${2:A}
 results=${3:A}
+only=${4:-unipadTests/PlayUsageRecordTests/MidiInputPathTests}
 mkdir -p $results
 device=$results/device
 rm -rf $device $results/MidiInput.xcresult
@@ -54,7 +59,7 @@ xcrun --sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -
   -o $build/virtual-midi-device ${0:A:h}/virtual-midi-device.c
 codesign -s - -f $build/virtual-midi-device >/dev/null
 
-xcrun simctl spawn $udid $build/virtual-midi-device 300 $device > $results/virtual-midi-device.log 2>&1 &
+xcrun simctl spawn $udid $build/virtual-midi-device 600 $device > $results/virtual-midi-device.log 2>&1 &
 tool=$!
 for _ in {1..100}; do
   grep -q '^ready:' $results/virtual-midi-device.log 2>/dev/null && break
@@ -67,7 +72,7 @@ set +e
 TEST_RUNNER_UNIPAD_VIRTUAL_MIDI_DIR=$device xcodebuild test-without-building \
   -project unipad.xcodeproj -scheme unipad -configuration Debug \
   -destination "id=$udid" -derivedDataPath $derived -parallel-testing-enabled NO \
-  -only-testing:unipadTests/PlayUsageRecordTests/MidiInputPathTests \
+  -only-testing:$only \
   -resultBundlePath $results/MidiInput.xcresult > $results/midi-input-tests.log 2>&1
 code=$?
 set -e

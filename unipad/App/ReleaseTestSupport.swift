@@ -164,10 +164,12 @@ nonisolated enum ReleaseTestSupport {
 
     /// Packs for the play screen's input edge checks. "Input Edges" loops a silent sample forever
     /// on every pad of both chains and has no LEDs, so each pressed pad shows the feedback light
-    /// only while held. The "Grid" packs are one grid size with and without `squareButton`.
+    /// only while held. "Virtual MIDI" is the same with all 24 chains, for MIDI devices' chain
+    /// buttons. The "Grid" packs are one grid size with and without `squareButton`.
     static func makeInputEdgePacks(in library: URL) throws {
         let packs: [(folder: String, title: String, rows: Int, columns: Int, chains: Int, square: Bool)] = [
             ("InputEdges", "Input Edges", 8, 8, 2, true),
+            ("VirtualMIDI", "Virtual MIDI", 8, 8, 24, true),
             ("Grid8x8Square", "Grid 8x8 square", 8, 8, 1, true),
             ("Grid8x8Rect", "Grid 8x8 rect", 8, 8, 1, false),
             ("Grid4x3Square", "Grid 4x3 square", 4, 3, 1, true),
