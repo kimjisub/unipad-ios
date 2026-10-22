@@ -520,6 +520,7 @@ final class PlayViewModel {
     }
 
     func selectChain(_ c: Int) {
+        soundEngine?.cancelPendingWormholes()
         chain.setValue(c)
     }
 
@@ -1435,7 +1436,7 @@ private final class PlayMidiControllerAdapter: MidiController {
             guard let vm = self?.viewModel else { return }
             if !vm.isOptionWindowVisible && upDown {
                 if let unipack = vm.unipack, unipack.chain > c {
-                    vm.chain.setValue(c)
+                    vm.selectChain(c)
                 }
             }
         }

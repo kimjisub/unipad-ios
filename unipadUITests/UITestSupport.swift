@@ -500,6 +500,31 @@ enum UITestSupport {
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
     }
 
+    /// Closes the play screen's option panel by tapping the uncovered strip at the window's leading
+    /// edge, then waits until the panel is gone and the menu button is back. The tap is placed in
+    /// the app's window, not the whole screen: an iPad window can sit anywhere on the screen.
+    static func closePlayMenu(in app: XCUIApplication) {
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let quit = app.buttons["rectangle.portrait.and.arrow.right"]
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: quit)
+        XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the play menu did not close")
+        XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 5), "no menu button after closing the menu")
+    }
+
+    /// Fails unless the app's window covers the whole landscape screen, the only setup the app
+    /// lays out for. iPadOS can open an app in a smaller window (windowed apps), and a portrait
+    /// or shrunk window would make layout checks pass or fail for the wrong reason.
+    static func assertFullScreenLandscape(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch.frame
+        let shot = XCUIScreen.main.screenshot().image
+        let scale = shot.scale / UIScreen.main.scale
+        let long = max(shot.size.width, shot.size.height) * scale
+        let short = min(shot.size.width, shot.size.height) * scale
+        XCTAssertEqual(window, CGRect(x: 0, y: 0, width: long, height: short),
+                       "the app window \(window) does not fill the \(long)x\(short) landscape screen; " +
+                       "set the simulator's multitasking to full screen apps")
+    }
+
     /// Opens the Playback Stop fixture's play screen from home. Launch with
     /// `isolatedLibraryLaunchArguments`, whose library has the fixture; a missing fixture fails the check.
     static func openPlaybackStopFixture(in app: XCUIApplication, playButtonTitle: String = "Play") {

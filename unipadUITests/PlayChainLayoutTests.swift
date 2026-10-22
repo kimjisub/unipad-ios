@@ -1,16 +1,18 @@
 import XCTest
 
-/// Opens two packs made for this check in a library of its own: a 4x3 pack with 24 chains,
-/// shaped like conformance case INF-002, and an 8x8 pack with 6 chains, shaped like the bundled
-/// Faded pack (ReleaseTestSupport.makeChainLayoutPacks). The simulator's own packs are neither
-/// used nor changed, so copies of Faded or of other conformance cases there cannot make a title
-/// ambiguous. A missing or ambiguous pack fails this required regression check.
+/// Opens packs made for this check in a library of its own: a 4x3 pack with 24 chains, shaped
+/// like conformance case INF-002, an 8x8 pack with 6 chains, shaped like the bundled Faded pack,
+/// and a tall 8x4 pack (ReleaseTestSupport.makeChainLayoutPacks). The simulator's own packs are
+/// neither used nor changed, so copies of Faded or of other conformance cases there cannot make a
+/// title ambiguous. A missing or ambiguous pack fails this required regression check.
+/// The bundled midifighter theme is selected so the play screen always shows a logo.
 final class PlayChainLayoutTests: XCTestCase {
     private let app = XCUIApplication()
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments() + ["-UniPadReleaseChainLayout", "YES"]
+        app.launchArguments += ["-SelectedTheme", "bundled://midifighter"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
     }
@@ -34,6 +36,17 @@ final class PlayChainLayoutTests: XCTestCase {
         let alert = app.alerts.firstMatch
         if alert.waitForExistence(timeout: 2) { alert.buttons.firstMatch.tap() }
         XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 30))
+        UITestSupport.assertFullScreenLandscape(app)
+    }
+
+    /// Switches Pro Light Mode in the play menu, closes the menu and returns its button.
+    private func setProLightMode(_ on: Bool) -> XCUIElement {
+        let menu = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        UITestSupport.setPlayOption("Pro Light Mode", on: on, in: app)
+        UITestSupport.closePlayMenu(in: app)
+        return menu
     }
 
     private func safeArea(_ window: CGRect) throws -> CGRect {
@@ -48,11 +61,7 @@ final class PlayChainLayoutTests: XCTestCase {
 
     private func assertChains(rows: Int, columns: Int, count: Int, pro: Bool, name: String) throws {
         let grid = app.otherElements["playPadGrid"]
-        let menu = app.buttons["line.3.horizontal"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5))
-        menu.tap()
-        UITestSupport.setPlayOption("Pro Light Mode", on: pro, in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let menu = setProLightMode(pro)
         let safe = try safeArea(app.windows.firstMatch.frame)
         let bounds = safe.insetBy(dx: -1, dy: -1)
         let chains = (1...count).map { app.buttons["playChain.\($0)"] }
@@ -129,5 +138,56 @@ final class PlayChainLayoutTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeRight
         openPack(title: "Chain Layout 8x8")
         try assertChains(rows: 8, columns: 8, count: 6, pro: true, name: "eight-pro")
+    }
+
+    /// An 8x8 pack in normal mode fills the height of a large window and leaves no room for the
+    /// logo, so `logoMayBeHidden` lets it go undrawn there; every other shape must show it, which
+    /// also proves the theme took effect.
+    private func assertLogoLayout(title: String, pro: Bool, name: String, logoMayBeHidden: Bool = false) throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        openPack(title: title)
+        let menu = setProLightMode(pro)
+        let logo = app.images["playLogo"]
+        let grid = app.otherElements["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        let logoShown = logo.waitForExistence(timeout: 5)
+        UITestSupport.attachScreenshot(name, to: self)
+        guard logoShown else {
+            print("LOGO \(name) hidden grid=\(grid.frame) menu=\(menu.frame)")
+            XCTAssertTrue(logoMayBeHidden, "the bundled theme must show its logo")
+            return
+        }
+        print("LOGO \(name) logo=\(logo.frame) grid=\(grid.frame) menu=\(menu.frame)")
+        // The logo sits at the top, clear of the home indicator, so the window bounds it where no
+        // measured safe area is known for this window size.
+        let window = app.windows.firstMatch.frame
+        XCTAssertTrue(((try? safeArea(window)) ?? window).contains(logo.frame), "logo leaves the screen: \(logo.frame)")
+        XCTAssertFalse(logo.frame.intersects(grid.frame), "logo covers the pads")
+        XCTAssertFalse(logo.frame.intersects(menu.frame), "logo covers the menu")
+        let controls = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@", "playChain.", "playFunction."))
+        XCTAssertGreaterThan(controls.count, 0)
+        for control in controls.allElementsBoundByIndex {
+            XCTAssertFalse(logo.frame.intersects(control.frame), "logo covers \(control.identifier): \(control.frame)")
+        }
+    }
+
+    @MainActor func testTallPackLogoInNormalMode() throws {
+        try assertLogoLayout(title: "Chain Layout 8x4", pro: false, name: "logo-tall-normal")
+    }
+    @MainActor func testTallPackLogoInProLightMode() throws {
+        try assertLogoLayout(title: "Chain Layout 8x4", pro: true, name: "logo-tall-pro")
+    }
+    @MainActor func testSquarePackLogoInNormalMode() throws {
+        try assertLogoLayout(title: "Chain Layout 8x8", pro: false, name: "logo-square-normal", logoMayBeHidden: true)
+    }
+    @MainActor func testSquarePackLogoInProLightMode() throws {
+        try assertLogoLayout(title: "Chain Layout 8x8", pro: true, name: "logo-square-pro")
+    }
+    @MainActor func testSmallPackLogoInNormalMode() throws {
+        try assertLogoLayout(title: "Chain Layout 4x3", pro: false, name: "logo-small-normal")
+    }
+    @MainActor func testSmallPackLogoInProLightMode() throws {
+        try assertLogoLayout(title: "Chain Layout 4x3", pro: true, name: "logo-small-pro")
     }
 }
