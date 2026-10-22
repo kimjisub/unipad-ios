@@ -104,6 +104,78 @@ extension PlayUsageRecordTests {
                 #expect(s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil, "the pad lit again after the lights were turned off")
             }
         }
+
+        // MARK: Launchpad output while covered
+
+        /// Records what the play screen asks the Launchpad to show, in place of a connected one.
+        final class LaunchpadRecorder: BaseMidiDriver {
+            enum Command: Equatable {
+                case pad(x: Int, y: Int, velocity: Int)
+                case functionKey(f: Int, velocity: Int)
+                case clear
+            }
+
+            private(set) var sent: [Command] = []
+
+            override func sendPadLed(x: Int, y: Int, velocity: Int) { sent.append(.pad(x: x, y: y, velocity: velocity)) }
+            override func sendFunctionKeyLed(f: Int, velocity: Int) { sent.append(.functionKey(f: f, velocity: velocity)) }
+            override func sendClearLed() { sent.append(.clear) }
+
+            func forget() { sent.removeAll() }
+        }
+
+        private func recordTheLaunchpad(_ body: (LaunchpadRecorder) async throws -> Void) async throws {
+            let launchpad = LaunchpadRecorder()
+            MidiManager.shared.overrideDriver(launchpad)
+            defer { MidiManager.shared.overrideDriver(NotingDriver()) }
+            try await body(launchpad)
+        }
+
+        /// A pad's light animation outlasts the press. The device screen opened meanwhile has the
+        /// Launchpad to itself: the play screen's light goes on, on the screen only, and reaches the
+        /// Launchpad again when the play screen is shown.
+        @Test func lightsOfAPadPlayedBeforeTheDeviceScreenOpenedStayOffTheLaunchpadUntilTheReturn() async throws {
+            let blink = String(repeating: "on 1 1 a 5\ndelay 100\noff 1 1\ndelay 100\n", count: 15)
+            try await PlayUsageScenario.run(keyLed: ["1 1 1": blink]) { s in
+                try await recordTheLaunchpad { launchpad in
+                    try await s.loadReady()
+                    s.press(0, 0); s.release(0, 0)
+                    try await s.waitWhile(timeout: 2) { !launchpad.sent.contains(.pad(x: 0, y: 0, velocity: 5)) }
+                    #expect(launchpad.sent.contains(.pad(x: 0, y: 0, velocity: 5)), "the pad's light never reached the Launchpad")
+
+                    s.vm.screenCovered()
+                    launchpad.forget()
+                    try await Task.sleep(for: .milliseconds(1_000))
+                    #expect(launchpad.sent.isEmpty, "the covered play screen sent \(launchpad.sent.count) commands to the Launchpad")
+
+                    s.vm.screenShown()
+                    #expect(launchpad.sent.first == .clear, "the Launchpad was not redrawn when the play screen was shown")
+                }
+            }
+        }
+
+        /// Step practice shows where to press next on the Launchpad. The device screen opened meanwhile
+        /// gets the Launchpad without that guide, and it comes back when the play screen is shown.
+        @Test func theStepPracticeGuideLeavesTheLaunchpadToTheDeviceScreenAndComesBack() async throws {
+            try await PlayUsageScenario.run { s in
+                try await recordTheLaunchpad { launchpad in
+                    try await s.loadReady()
+                    let guideVelocity = 17
+                    s.vm.switchPlayMode(.stepPractice)
+                    try await s.waitWhile(timeout: 2) { !launchpad.sent.contains(.pad(x: 0, y: 0, velocity: guideVelocity)) }
+                    #expect(launchpad.sent.contains(.pad(x: 0, y: 0, velocity: guideVelocity)), "the guide never reached the Launchpad")
+
+                    s.vm.screenCovered()
+                    launchpad.forget()
+                    try await Task.sleep(for: .milliseconds(500))
+                    #expect(launchpad.sent.isEmpty, "the covered play screen sent \(launchpad.sent.count) commands to the Launchpad")
+
+                    s.vm.screenShown()
+                    #expect(launchpad.sent.contains(.pad(x: 0, y: 0, velocity: guideVelocity)), "the guide did not come back to the Launchpad")
+                    #expect(s.vm.playMode == .stepPractice)
+                }
+            }
+        }
     }
 }
 #endif
