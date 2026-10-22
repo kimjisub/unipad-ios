@@ -175,5 +175,4 @@ final class PlayChainLayoutTests: XCTestCase {
     @MainActor func testSmallPackLogoInProLightMode() throws {
         try assertLogoLayout(title: "Chain Layout 4x3", pro: true, name: "logo-small-pro")
     }
-
 }
