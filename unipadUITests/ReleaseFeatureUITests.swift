@@ -74,6 +74,10 @@ final class ReleaseFeatureUITests: XCTestCase {
         firstPad.tap()
 
         let lockState = try LockState()
+        // A failure while locked must not leave the shared simulator locked for the tests after it.
+        addTeardownBlock { @MainActor in
+            if let state = try? LockState() { Self.unlock(state) }
+        }
         try pressLockButton()
         XCTAssertTrue(lockState.wait(locked: true, timeout: 10), "the screen did not lock")
         let behindLock = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -82,11 +86,7 @@ final class ReleaseFeatureUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [behindLock], timeout: 10), .completed,
                        "the app stayed in front of the lock screen")
         UITestSupport.attachScreenshot("lock-screen", to: self)
-        // The simulator has no passcode: Home wakes the screen and a second Home unlocks it.
-        XCUIDevice.shared.press(.home)
-        Thread.sleep(forTimeInterval: 1)
-        XCUIDevice.shared.press(.home)
-        XCTAssertTrue(lockState.wait(locked: false, timeout: 10), "the screen did not unlock")
+        XCTAssertTrue(Self.unlock(lockState), "the screen did not unlock")
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15), "unlocking did not return to the app")
         XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 10),
                       "the play screen is gone: the app was relaunched")
@@ -130,6 +130,18 @@ final class ReleaseFeatureUITests: XCTestCase {
             } while Date() < deadline
             return false
         }
+    }
+
+    /// The simulator has no passcode: Home wakes the screen and a second Home unlocks it.
+    /// Home is pressed only while the screen is still locked, so it never sends the app away.
+    @MainActor @discardableResult
+    private static func unlock(_ lockState: LockState) -> Bool {
+        for _ in 0..<3 {
+            if lockState.wait(locked: false, timeout: 0) { return true }
+            XCUIDevice.shared.press(.home)
+            if lockState.wait(locked: false, timeout: 3) { return true }
+        }
+        return false
     }
 
     /// XCUIDevice has no public lock button; its private one is what Simulator's Lock uses.
