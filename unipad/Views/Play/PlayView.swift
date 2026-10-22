@@ -4,6 +4,9 @@ struct PlayView: View {
     let packPath: String
     @Environment(AppRouter.self) private var router
     @State private var vm = PlayViewModel()
+    /// How many screens the navigation stack held with this one on top. Fewer means it was closed;
+    /// as many or more, another screen covers it.
+    @State private var stackDepth = 0
     @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = false
 
     private var theme: ThemeResourcesProtocol { ThemeManager.shared.activeResources }
@@ -68,6 +71,8 @@ struct PlayView: View {
             if quit { router.pop() }
         }
         .onAppear {
+            stackDepth = router.path.count
+            vm.screenShown()
             ThemeManager.shared.reloadActiveTheme()
             if let themeError = ThemeManager.shared.lastLoadError {
                 vm.toastMessage = themeError
@@ -88,7 +93,15 @@ struct PlayView: View {
             #if canImport(UIKit)
             UIApplication.shared.isIdleTimerDisabled = false
             #endif
-            vm.cleanup()
+            if router.path.count >= stackDepth {
+                vm.screenCovered()
+            } else {
+                vm.cleanup()
+            }
+        }
+        .onChange(of: router.path.count) { _, count in
+            // Closed while covered, with no disappearance left to report it.
+            if count < stackDepth { vm.cleanup() }
         }
         #if canImport(UIKit)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in

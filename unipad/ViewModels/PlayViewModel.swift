@@ -162,6 +162,9 @@ final class PlayViewModel {
     // MARK: - Load
 
     func loadUnipack(path: String) async throws {
+        // PlayView starts this again when the screen is shown again after another one covered it;
+        // a pack already built for this screen goes on as it was.
+        guard unipack == nil else { return }
         logger.info("loadUnipack: path=\(path)")
         usageSession.loadStarted()
         unipackLoading = true
@@ -1068,6 +1071,8 @@ final class PlayViewModel {
     // MARK: - Lifecycle
 
     func onPause() {
+        autoPlayRunner?.appWentAway()
+        ledRunner?.appWentAway()
         if let adapter = midiControllerAdapter {
             MidiManager.shared.removeController(adapter)
         }
@@ -1076,8 +1081,11 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        autoPlayRunner?.appReturned()
+        ledRunner?.appReturned()
         soundEngine?.appBecameActive()
-        guard uiLoaded else { return }
+        // A covered screen leaves the launchpad and the volume to the screen on top until it is shown.
+        guard uiLoaded, !isCovered else { return }
         setupMidiController()
         redrawAllLaunchpadLeds()
         startVolumeObserver()
@@ -1088,9 +1096,40 @@ final class PlayViewModel {
         usageSession.screenLayoutChanged(layout)
     }
 
+    // MARK: - Covered by another screen
+
+    /// Another screen was pushed over this one (the device screen opened from the connection banner).
+    @ObservationIgnored private var isCovered = false
+    @ObservationIgnored private var resumesAutoPlayWhenShown = false
+
+    /// The performance stays, paused, for when this screen is shown again: held pads are released,
+    /// a playing autoplay pauses, and the launchpad and the volume buttons go to the screen on top.
+    func screenCovered() {
+        guard enable, !isCovered else { return }
+        isCovered = true
+        padInit()
+        resumesAutoPlayWhenShown = playMode != .none && autoPlayRunner?.playmode == true
+        if resumesAutoPlayWhenShown { pauseAutoPlay() }
+        onPause()
+    }
+
+    /// This screen is shown again after `screenCovered()`. An autoplay that was playing goes on from
+    /// where it paused, as after a call that lets playback resume, and only with sound.
+    func screenShown() {
+        guard enable, isCovered else { return }
+        isCovered = false
+        onResume()
+        if resumesAutoPlayWhenShown, playMode != .none, soundEngine?.isPlaybackSuppressed != true {
+            resumeAutoPlay()
+        }
+        resumesAutoPlayWhenShown = false
+    }
+
     // MARK: - Cleanup
 
+    /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
+        guard enable else { return }
         activePadInputs.removeAll()
         usageSession.ended()
         enable = false
@@ -1131,9 +1170,11 @@ final class PlayViewModel {
         // launchpad LEDs and the volume observer stayed dead until the screen was re-entered.
         uiLoaded = true
         initSetting()
+        updateVolumeUI()
+        // A covered screen gets these when it is shown again.
+        guard !isCovered else { return }
         setupMidiController()
         startVolumeObserver()
-        updateVolumeUI()
         logger.info("Sound loading complete, startReady=true")
     }
 
@@ -1203,7 +1244,9 @@ final class LedListenerAdapter: LedRunner.Listener {
 
     nonisolated func onLedBatch(_ events: [LedRunner.LedEvent]) {
         Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel, let cm = vm.channelManager else { return }
+            // A batch the runner worked out just before it was stopped (lights turned off, the screen
+            // left) arrives after the lights were cleared, and must not light them again.
+            guard let vm = self?.viewModel, let cm = vm.channelManager, vm.ledRunner?.active == true else { return }
             for event in events {
                 switch event {
                 case .padOn(let x, let y, let color, let velocity):

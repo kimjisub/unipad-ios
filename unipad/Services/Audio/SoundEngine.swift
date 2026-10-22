@@ -30,8 +30,8 @@ final class SoundEngine {
     private let buffersLock = NSLock()
     private var buffers: [Int: AVAudioPCMBuffer] = [:]
     private var destroyed = false
-    /// False until the worker has configured the session and started the engine, and for good when
-    /// that failed.
+    /// False until the worker has set the engine up, and for good when that failed. Whether the engine
+    /// renders is the gate's to say.
     private var isUsable = false
     private var observerTokens: [NSObjectProtocol] = []
     private var playerNodes: [AVAudioPlayerNode] = []
@@ -219,17 +219,26 @@ final class SoundEngine {
         })
     }
 
+    nonisolated private struct SetUp {
+        let format: AVAudioFormat
+        /// False when another app held the session (a call in progress): the engine was not started.
+        let hasSession: Bool
+    }
+
     /// Runs on the worker. Configures the session before reading the engine's format, so the nodes
-    /// are connected at the session's sample rate.
+    /// are connected at the session's sample rate. A session that cannot be activated says nothing
+    /// about the pack or the device: the nodes are connected anyway and the engine starts when the
+    /// session is taken back, as after an interruption.
     nonisolated private static func setUp(
         _ engine: AVAudioEngine, nodes: [AVAudioPlayerNode], activateSession: () throws -> Void
-    ) -> Result<AVAudioFormat, Error> {
+    ) -> Result<SetUp, Error> {
+        var hasSession = true
         do {
             try activateSession()
             logger.info("AVAudioSession configured for playback")
         } catch {
             logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
-            return .failure(error)
+            hasSession = false
         }
         let format = engine.mainMixerNode.outputFormat(forBus: 0)
         logger.info("Playback format: sampleRate=\(format.sampleRate), channels=\(format.channelCount)")
@@ -238,6 +247,7 @@ final class SoundEngine {
             engine.connect(node, to: engine.mainMixerNode, format: format)
         }
         engine.prepare()
+        guard hasSession else { return .success(SetUp(format: format, hasSession: false)) }
         do {
             try engine.start()
             logger.info("AVAudioEngine started successfully with \(nodes.count) player nodes")
@@ -245,15 +255,16 @@ final class SoundEngine {
             logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
             return .failure(error)
         }
-        return .success(format)
+        return .success(SetUp(format: format, hasSession: true))
     }
 
-    private func finishSetUp(_ result: Result<AVAudioFormat, Error>, table: [[[Deque<Sound>?]]]?, soundCount: Int) {
+    private func finishSetUp(_ result: Result<SetUp, Error>, table: [[[Deque<Sound>?]]]?, soundCount: Int) {
         guard !isDestroyed() else { return }
         let playbackFormat: AVAudioFormat
         switch result {
-        case .success(let format):
-            playbackFormat = format
+        case .success(let setUp):
+            playbackFormat = setUp.format
+            if !setUp.hasSession { gate.startedWithoutSession() }
         case .failure(let error):
             // Nothing will play on this engine; a later notification must not start it.
             gate.shutDown()

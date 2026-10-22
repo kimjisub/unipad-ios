@@ -127,6 +127,17 @@ final class AudioSessionGate {
         logSuppressionOnce("audio session interrupted; playback suppressed")
     }
 
+    /// The engine was set up without the session: another app held it (a call in progress). Playback
+    /// starts suppressed as during an interruption, and is taken back the same ways: the app coming
+    /// back to the front, or a pad press at most once per `interruptedRetryInterval`.
+    func startedWithoutSession() {
+        guard state != .shutDown else { return }
+        state = .interrupted
+        lastInterruptedAttempt = hooks.now()
+        suppressionLogCount = 0
+        logSuppressionOnce("the audio session could not be activated; playback suppressed")
+    }
+
     /// `AVAudioSession.interruptionNotification` with type `.ended`.
     ///
     /// Only `.shouldResume` makes us re-activate right away. Without it the gate stays suppressed and
