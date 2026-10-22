@@ -209,6 +209,14 @@ enum UITestSupport {
             activity.add(XCTAttachment(screenshot: XCUIScreen.main.screenshot()))
         }
         icon.tap()
+        // A busy picker can drop a tap on a settled, hittable icon and stay open with
+        // nothing chosen. Choosing the file closes the picker, so tap the icon's screen
+        // point again only while the picker still shows it where a tap reaches it.
+        for _ in 0..<2 {
+            guard !cell.waitForNonExistence(timeout: 10), visible() else { return }
+            attachPickerDiagnostics(in: app, details: "the archive tap left the picker open")
+            tapOnScreen(icon, in: app)
+        }
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself
