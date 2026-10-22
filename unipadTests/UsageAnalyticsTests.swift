@@ -63,11 +63,11 @@ struct UsageAnalyticsTests {
         let sink = RecordingAnalytics()
         let analytics = UsageAnalytics(sink: sink)
 
-        analytics.packImportFailed(source: .code, error: CancellationError())
+        analytics.packImportFailed(source: .file, error: CancellationError())
         analytics.packImportFailed(source: .store, error: URLError(.cancelled))
 
         #expect(sink.events.map(\.parameters) == [
-            ["result": "cancelled", "import_source": "code"],
+            ["result": "cancelled", "import_source": "file"],
             ["result": "cancelled", "import_source": "store"],
         ])
     }
@@ -79,8 +79,6 @@ struct UsageAnalyticsTests {
         (UniPackDownloader.DownloadError.httpError(statusCode: 404), .notFound),
         (UniPackDownloader.DownloadError.httpError(statusCode: 503), .server),
         (UniPackDownloader.DownloadError.writeFailed, .storage),
-        (APIError.httpError(statusCode: 404), .notFound),
-        (APIError.decodingFailed, .server),
         (URLError(.notConnectedToInternet), .networkOffline),
         (CocoaError(.fileReadNoPermission), .fileAccess),
         (CocoaError(.fileWriteOutOfSpace), .storage),
@@ -234,7 +232,7 @@ struct UsageAnalyticsTests {
         session.ended()
 
         let categorical = Set(
-            ["success", "failure", "cancelled", "file", "open_in", "store", "code", "pad", "autoplay", "screen", "midi",
+            ["success", "failure", "cancelled", "file", "open_in", "store", "pad", "autoplay", "screen", "midi",
              "lt_1s", "1s_3s", "3s_10s", "10s_30s", "30s_2m", "2m_10m", "10m_30m", "30m_plus",
              "landscape", "portrait", "lt_600dp", "600dp_839dp", "840dp_plus", "full_screen", "multi_window"]
         ).union([
