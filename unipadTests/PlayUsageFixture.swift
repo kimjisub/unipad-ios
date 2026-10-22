@@ -15,18 +15,19 @@ final class PlayUsageScenario {
     nonisolated static let defaultKeySound = "1 1 1 a.wav\n1 1 2 a.wav\n1 1 3 a.wav\n"
     nonisolated static let defaultAutoPlay = "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n"
 
-    init(keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
+    init(keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, grid: PackGrid = PackGrid()) throws {
         vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink))
         packFolder = FileManager.default.temporaryDirectory.appendingPathComponent("PlayUsage-\(UUID().uuidString)")
-        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay)
+        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, grid: grid)
     }
 
     static func run(
         keySound: String = defaultKeySound,
         autoPlay: String = defaultAutoPlay,
+        grid: PackGrid = PackGrid(),
         _ body: (PlayUsageScenario) async throws -> Void
     ) async throws {
-        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay)
+        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay, grid: grid)
         defer { s.finish() }
         try await body(s)
     }
@@ -88,9 +89,19 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
-    static func writePack(to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
+    /// The pack's `buttonX`, `buttonY` and `chain` lines.
+    struct PackGrid {
+        var buttonX = 8
+        var buttonY = 8
+        var chain = 1
+    }
+
+    static func writePack(
+        to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, grid: PackGrid = PackGrid()
+    ) throws {
+        let info = "title=PlayUsage\nproducerName=Tester\nbuttonX=\(grid.buttonX)\nbuttonY=\(grid.buttonY)\nchain=\(grid.chain)\nsquareButton=true\n"
         let files: [(String, Data)] = [
-            ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n".utf8)),
+            ("info", Data(info.utf8)),
             ("keySound", Data(keySound.utf8)),
             ("autoPlay", Data(autoPlay.utf8)),
             ("sounds/a.wav", silentWav(milliseconds: 60)),
