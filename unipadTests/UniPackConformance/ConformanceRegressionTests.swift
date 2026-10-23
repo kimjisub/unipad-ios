@@ -174,6 +174,17 @@ struct ConformanceRegressionTests {
         #expect(saved["error"]?.string == String(describing: ConformanceCorpus.LoadError.missing))
     }
 
+    @Test func archiveIdentityComparesCodePointsAndContents() throws {
+        let data = Data(#"{"assets":{},"cases":[{"id":"identity","layer":"parse","title":"identity","files":[],"fingerprint":"test","expectation":"determined","soundIdentity":true,"expected":{"archiveEntry":"sounds/한.wav","sha256":"first"}}]}"#.utf8)
+        let sample = try #require(ConformanceCorpus.parse(data, source: "test").cases.first)
+        let exact: JSONValue = ["archiveEntry": .string("sounds/한.wav"), "sha256": "first"]
+        let otherName: JSONValue = ["archiveEntry": .string("sounds/한.wav".decomposedStringWithCanonicalMapping), "sha256": "first"]
+        let otherContents: JSONValue = ["archiveEntry": .string("sounds/한.wav"), "sha256": "second"]
+        #expect(sample.classify(exact).status == "pass")
+        #expect(sample.classify(otherName).status == "fail")
+        #expect(sample.classify(otherContents).status == "fail")
+    }
+
     @Test func loadingListenerDistinguishesEngineAndDecodeFailures() {
         let engine = TestSoundLoadListener()
         engine.onException(ConformanceHarness.ConformanceError.harness("start"))

@@ -71,12 +71,17 @@ enum ConformanceHarness {
     /// Whether files whose names differ only in letter case are different files where the packs are
     /// written. Where they are not, a parser that opens only the exact name of `info` passes too.
     static let caseSensitiveFileSystem: Bool = {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
+        let dir = fileSystemRoot.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil,
               FileManager.default.createFile(atPath: dir.appendingPathComponent("a").path, contents: Data()) else { return false }
         return !FileManager.default.fileExists(atPath: dir.appendingPathComponent("A").path)
     }()
+
+    private static var fileSystemRoot: URL {
+        ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.temporaryDirectory
+    }
 
     private static func soundNames(root: URL) -> (URL) -> String {
         let base = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
@@ -92,7 +97,7 @@ enum ConformanceHarness {
         }
     }
 
-    static func parseResult(_ pack: UniPack, root: URL) -> JSONValue {
+    static func parseResult(_ pack: UniPack, root: URL, archiveEntries: [URL: String]? = nil) -> JSONValue {
         if pack.criticalError { return ["loaded": false] }
 
         var info: [String: JSONValue] = [
@@ -110,7 +115,16 @@ enum ConformanceHarness {
                 for y in 0..<pack.buttonY {
                     if let queue = pack.soundTable?[c][x][y], !queue.isEmpty {
                         sounds.append(["c": .int(c), "x": .int(x), "y": .int(y), "queue": .array(queue.map { sound in
-                            ["file": .string(soundName(sound.file)), "loop": .int(sound.loop), "wormhole": .int(sound.wormhole)]
+                            var entry: [String: JSONValue] = ["loop": .int(sound.loop), "wormhole": .int(sound.wormhole)]
+                            if let archiveEntries {
+                                entry["archiveEntry"] = archiveEntries[sound.file].map(JSONValue.string) ?? .null
+                                entry["sha256"] = (try? Data(contentsOf: sound.file)).map {
+                                    .string(ConformanceCorpus.sha256Hex($0))
+                                } ?? .null
+                            } else {
+                                entry["file"] = .string(soundName(sound.file))
+                            }
+                            return .object(entry)
                         })])
                     }
                     if let queue = pack.ledAnimationTable?[c][x][y], !queue.isEmpty {
@@ -154,20 +168,39 @@ enum ConformanceHarness {
 
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
-        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
+        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
+           !(conformanceCase.requiresCaseSensitiveFiles && caseSensitiveFileSystem) { return .unverified(reason) }
         if conformanceCase.layer == "palette" {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
         }
 
-        let root = FileManager.default.temporaryDirectory
+        var root = fileSystemRoot
             .appendingPathComponent("unipad-conformance-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent(conformanceCase.id, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
-        try write(conformanceCase.files, to: root, corpus: corpus)
+        let temporary = root.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        var archiveEntries: [URL: String]?
+        if conformanceCase.soundIdentity {
+            // Direct writes would merge NFC/NFD siblings before the importer ever sees them.
+            let files = try conformanceCase.files.map { ($0.path, try corpus.bytes(of: $0)) }
+            let workspace = temporary.appendingPathComponent("library", isDirectory: true)
+            try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+            root = try await UniPackImporter(stagingRoot: temporary.appendingPathComponent("staging"))
+                .importPack(data: TestZip.stored(files), fileName: "pack.zip", to: workspace, delegate: nil)
+            let folders = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            guard let sounds = folders.first(where: { $0.lastPathComponent.lowercased() == "sounds" }),
+                  let originals = ImportedSoundPaths.read(in: sounds) else {
+                return .failed("import did not retain original archive sound names")
+            }
+            archiveEntries = Dictionary(originals.map { (sounds.appendingPathComponent($0.stored), "sounds/" + $0.name) },
+                                        uniquingKeysWith: { _, last in last })
+        } else {
+            try write(conformanceCase.files, to: root, corpus: corpus)
+        }
 
         let pack = deps.load(root)
         guard conformanceCase.layer == "run", !pack.criticalError else {
-            return .value(conformanceCase.layer == "run" ? ["loaded": false] : parseResult(pack, root: root))
+            return .value(conformanceCase.layer == "run" ? ["loaded": false] : parseResult(pack, root: root, archiveEntries: archiveEntries))
         }
         return try await runScenario(conformanceCase, pack: pack, root: root, deps: deps)
     }

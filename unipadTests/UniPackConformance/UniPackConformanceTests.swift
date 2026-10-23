@@ -12,6 +12,8 @@ import Testing
 /// - UNIPACK_CONFORMANCE_ONLY: run only the cases whose id starts with this (a partial run, see
 ///   ConformanceReport.onlyPrefix).
 /// - UNIPACK_CONFORMANCE_DUMP: exactly `1` makes a record-only run (see ConformanceReport.recordOnly).
+/// - UNIPACK_CONFORMANCE_ROOT: an external directory containing unchanged corpus.json and
+///   corpus.sha256, to verify a newer reference without updating the repository's copy.
 @MainActor
 @Suite(.serialized)
 struct UniPackConformanceTests {

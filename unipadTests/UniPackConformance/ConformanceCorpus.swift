@@ -33,6 +33,8 @@ struct ConformanceCase {
     let known: [String: ConformanceKnown]
     /// Per platform, why its harness cannot observe this case; it is unverified there and not run.
     let unobserved: [String: String]
+    var soundIdentity = false
+    var requiresCaseSensitiveFiles = false
 }
 
 struct ConformanceCorpus {
@@ -72,7 +74,10 @@ struct ConformanceCorpus {
         let bundle = Bundle(for: BundleLocator.self)
         let url: URL
         let source: String
-        if let bundled = bundle.url(forResource: "corpus", withExtension: "json")
+        if let external = ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ROOT"], !external.isEmpty {
+            url = URL(fileURLWithPath: external).appendingPathComponent("corpus.json")
+            source = "external"
+        } else if let bundled = bundle.url(forResource: "corpus", withExtension: "json")
             ?? bundle.url(forResource: "corpus", withExtension: "json", subdirectory: "UniPackConformance") {
             url = bundled
             source = "bundle"
@@ -141,7 +146,9 @@ struct ConformanceCorpus {
                 question: value["question"]?.string,
                 scenario: value["scenario"]?.array ?? [],
                 known: known,
-                unobserved: (value["unobserved"]?.object ?? [:]).compactMapValues(\.string)
+                unobserved: (value["unobserved"]?.object ?? [:]).compactMapValues(\.string),
+                soundIdentity: value["soundIdentity"] == .bool(true),
+                requiresCaseSensitiveFiles: value["requiresCaseSensitiveFiles"] == .bool(true)
             )
         }
         return ConformanceCorpus(sha256: sha256Hex(data), source: source, assets: assets, cases: cases)
@@ -204,7 +211,12 @@ extension ConformanceCase {
             return ConformanceOutcome(status: ConformanceStatus.unverified.rawValue, unexpected: false, detail: "no doc or stated intent decides this: \(question ?? "")")
         }
         let pin = known[platform]
-        if actual == expected {
+        // Archive identity includes original Unicode code points; Swift String equality alone
+        // would consider an NFC entry and its different NFD sibling identical.
+        let matchesExpected = soundIdentity
+            ? expected.map { Array(actual.serialized().utf8) == Array($0.serialized().utf8) } == true
+            : actual == expected
+        if matchesExpected {
             return pin == nil
                 ? ConformanceOutcome(status: ConformanceStatus.pass.rawValue, unexpected: false, detail: "")
                 : ConformanceOutcome(status: ConformanceStatus.pass.rawValue, unexpected: true, detail: "a pinned difference no longer occurs; update divergences.json")
