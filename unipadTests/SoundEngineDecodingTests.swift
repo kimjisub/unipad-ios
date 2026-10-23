@@ -5,10 +5,7 @@ import Testing
 @testable import unipad
 
 /// Which sound files the real engine decodes, and what a pad does with one it cannot decode.
-// These fixtures decode hundreds of megabytes; run them one at a time so the pack-memory
-// probes do not compete with other decoder fixtures for the unchanged loading deadline.
 @MainActor
-@Suite(.serialized)
 struct SoundEngineDecodingTests {
     private func fixture(_ name: String, _ ext: String) throws -> URL {
         try #require(Bundle(for: OnePadPack.self).url(forResource: name, withExtension: ext))
@@ -108,31 +105,37 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
-    /// Every 10-minute silence passed the per-sound limits as a few KB of AAC or Ogg and took about
-    /// 230 MB decoded; a pack of them filled the memory until the system killed the app. The sounds
-    /// past the pack's limit are now skipped like any other that cannot be decoded.
+    /// Real compressed files exercise the loader's shared budget and playback after a refusal.
+    /// Keep the fixtures short: the production 512 MiB boundary is checked by SoundFileLimitsTests,
+    /// without making this functional check decode hundreds of MB against a wall-clock deadline.
     @Test(arguments: ["m4a", "ogg"])
     func soundsPastThePackMemoryLimitAreSkippedAndTheRestPlay(_ ext: String) async throws {
-        let silence = ext == "ogg"
-            ? try fixture("vorbis-at-limit", "ogg")
-            : try SoundEngineTestSupport.writeSilentAAC(seconds: 590)
+        let silence = try fixture(ext == "ogg" ? "vorbis-tone" : "aac-tone", ext)
+        let source = try SoundEngine.loadAudioBuffer(from: silence)
+        func bytes(at rate: Double) throws -> UInt64 {
+            let frames = try SoundFileLimits.resampledFrameCount(source.frameLength,
+                from: source.format.sampleRate, to: rate, channels: 2)
+            return UInt64(frames) * 2 * 4
+        }
+        // Both simulator playback rates must admit two copies and the final short WAV, but not three.
+        let limit = try 2 * bytes(at: 48_000) + 8_000
+        #expect(try 3 * bytes(at: 44_100) > limit)
         let copies = try (0..<3).map { index in
             let copy = FileManager.default.temporaryDirectory
                 .appending(path: "SoundEngineDecodingTests-\(UUID().uuidString)-\(index).\(ext)")
             try FileManager.default.copyItem(at: silence, to: copy)
             return copy
         }
-        let good = try SoundEngineTestSupport.writeWav(sampleRate: 48_000, frames: 4_800)
+        let good = try SoundEngineTestSupport.writeWav(sampleRate: 48_000, frames: 480)
         defer {
             for url in copies + [good] { try? FileManager.default.removeItem(at: url) }
-            if ext != "ogg" { try? FileManager.default.removeItem(at: silence) }
         }
         let pack = OnePadPack(chains: [copies.map { Sound(file: $0, loop: 0) } + [Sound(file: good, loop: 0)]])
-        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack, packBudget: .init(limit: limit))
         defer { engine.destroy() }
         #expect(listener.failure == nil)
 
-        // Two fit at 44.1 and 48 kHz (SoundFileLimitsTests); the third is past the limit.
+        // The third is refused; that pad still advances to the final playable WAV.
         for expected in [1, 2, 2, 3] {
             engine.soundOn(x: 0, y: 0)
             #expect(engine.playsStarted == expected)

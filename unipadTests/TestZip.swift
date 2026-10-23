@@ -14,6 +14,20 @@ enum TestZip {
         archive(files, deflated: true, corruptingSizeOf: nil)
     }
 
+    /// A deflate-compressed archive whose central directory declares `declaredSize` as every
+    /// entry's uncompressed size, as a corrupt or carelessly written archive may.
+    static func deflated(_ files: [(name: String, data: Data)], declaringUncompressedSize declaredSize: UInt32) -> Data {
+        archive(files, deflated: true, corruptingSizeOf: nil, declaredUncompressedSize: declaredSize)
+    }
+
+    /// A deflated archive of one entry of `count` copies of `byte`, encoded in chunks so a test of
+    /// an entry of hundreds of megabytes never holds it whole. Its CRC is zero; nothing checks it.
+    static func deflatedRepeating(_ byte: UInt8, count: Int, name: String) -> Data {
+        let body = deflate(repeating: byte, count: count)
+        return build([Entry(name: Data(name.utf8), body: body, method: 8, crc: 0, size: UInt32(count),
+                            declaredCompressedSize: UInt32(body.count), declaredSize: UInt32(count))], flags: 0x0800)
+    }
+
     /// Raw entry names and flags, independent of the text encoding of each file's contents.
     static func storedRawNames(_ files: [(name: Data, data: Data)], utf8Flag: Bool) -> Data {
         archive(files.enumerated().map { (name: String($0.offset), data: $0.element.data) },
@@ -21,48 +35,66 @@ enum TestZip {
                 rawNames: files.map(\.name), flags: utf8Flag ? 0x0800 : 0)
     }
 
+    private struct Entry {
+        let name: Data
+        let body: Data
+        let method: UInt16
+        let crc: UInt32
+        let size: UInt32
+        let declaredCompressedSize: UInt32
+        let declaredSize: UInt32
+    }
+
     private static func archive(_ files: [(name: String, data: Data)], deflated: Bool, corruptingSizeOf corrupted: String?,
-                                rawNames: [Data]? = nil, flags: UInt16 = 0x0800) -> Data {
+                                rawNames: [Data]? = nil, flags: UInt16 = 0x0800,
+                                declaredUncompressedSize: UInt32? = nil) -> Data {
+        let entries = files.enumerated().map { index, file in
+            let body = deflated ? deflate(file.data) : file.data
+            let corrupt = file.name == corrupted
+            return Entry(
+                name: rawNames?[index] ?? Data(file.name.utf8), body: body, method: deflated ? 8 : 0,
+                crc: crc32(file.data), size: UInt32(file.data.count),
+                declaredCompressedSize: corrupt ? UInt32.max / 2 : UInt32(body.count),
+                declaredSize: corrupt ? UInt32.max / 2 : declaredUncompressedSize ?? UInt32(file.data.count)
+            )
+        }
+        return build(entries, flags: flags)
+    }
+
+    private static func build(_ entries: [Entry], flags: UInt16) -> Data {
         var archive = Data()
         var centralDirectory = Data()
-        let method: UInt16 = deflated ? 8 : 0
 
-        for (index, file) in files.enumerated() {
-            let name = rawNames?[index] ?? Data(file.name.utf8)
-            let crc = crc32(file.data)
-            let body = deflated ? deflate(file.data) : file.data
-            let size = UInt32(file.data.count)
-            let compressedSize = UInt32(body.count)
-            let declaredSize = file.name == corrupted ? UInt32.max / 2 : compressedSize
+        for entry in entries {
             let localHeaderOffset = UInt32(archive.count)
 
             archive.append(le32(0x0403_4B50))
-            archive.append(le16(20)); archive.append(le16(flags)); archive.append(le16(method))
+            archive.append(le16(20)); archive.append(le16(flags)); archive.append(le16(entry.method))
             archive.append(le16(0)); archive.append(le16(0))
-            archive.append(le32(crc)); archive.append(le32(compressedSize)); archive.append(le32(size))
-            archive.append(le16(UInt16(name.count))); archive.append(le16(0))
-            archive.append(name)
-            archive.append(body)
+            archive.append(le32(entry.crc)); archive.append(le32(UInt32(entry.body.count))); archive.append(le32(entry.size))
+            archive.append(le16(UInt16(entry.name.count))); archive.append(le16(0))
+            archive.append(entry.name)
+            archive.append(entry.body)
 
             centralDirectory.append(le32(0x0201_4B50))
             centralDirectory.append(le16(20)); centralDirectory.append(le16(20))
-            centralDirectory.append(le16(flags)); centralDirectory.append(le16(method))
+            centralDirectory.append(le16(flags)); centralDirectory.append(le16(entry.method))
             centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
-            centralDirectory.append(le32(crc)); centralDirectory.append(le32(declaredSize))
-            centralDirectory.append(le32(file.name == corrupted ? declaredSize : size))
-            centralDirectory.append(le16(UInt16(name.count)))
+            centralDirectory.append(le32(entry.crc)); centralDirectory.append(le32(entry.declaredCompressedSize))
+            centralDirectory.append(le32(entry.declaredSize))
+            centralDirectory.append(le16(UInt16(entry.name.count)))
             centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
             centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
             centralDirectory.append(le32(0))
             centralDirectory.append(le32(localHeaderOffset))
-            centralDirectory.append(name)
+            centralDirectory.append(entry.name)
         }
 
         let centralDirectoryOffset = UInt32(archive.count)
         archive.append(centralDirectory)
         archive.append(le32(0x0605_4B50))
         archive.append(le16(0)); archive.append(le16(0))
-        archive.append(le16(UInt16(files.count))); archive.append(le16(UInt16(files.count)))
+        archive.append(le16(UInt16(entries.count))); archive.append(le16(UInt16(entries.count)))
         archive.append(le32(UInt32(centralDirectory.count))); archive.append(le32(centralDirectoryOffset))
         archive.append(le16(0))
         return archive
@@ -84,6 +116,36 @@ enum TestZip {
         }
         precondition(written > 0, "deflate failed")
         return output.prefix(written)
+    }
+
+    private static func deflate(repeating byte: UInt8, count: Int) -> Data {
+        let chunk = [UInt8](repeating: byte, count: 1 << 20)
+        var output = [UInt8](repeating: 0, count: 1 << 16)
+        var result = Data()
+        let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
+        defer { stream.deallocate() }
+        precondition(compression_stream_init(stream, COMPRESSION_STREAM_ENCODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK)
+        defer { compression_stream_destroy(stream) }
+        var remaining = count
+        chunk.withUnsafeBufferPointer { input in
+            output.withUnsafeMutableBufferPointer { out in
+                var status = COMPRESSION_STATUS_OK
+                while status == COMPRESSION_STATUS_OK {
+                    if stream.pointee.src_size == 0, remaining > 0 {
+                        stream.pointee.src_ptr = input.baseAddress!
+                        stream.pointee.src_size = min(remaining, input.count)
+                        remaining -= stream.pointee.src_size
+                    }
+                    stream.pointee.dst_ptr = out.baseAddress!
+                    stream.pointee.dst_size = out.count
+                    let flags = remaining == 0 ? Int32(COMPRESSION_STREAM_FINALIZE.rawValue) : 0
+                    status = compression_stream_process(stream, flags)
+                    result.append(out.baseAddress!, count: out.count - stream.pointee.dst_size)
+                }
+                precondition(status == COMPRESSION_STATUS_END, "deflate failed")
+            }
+        }
+        return result
     }
 
     private static func le16(_ value: UInt16) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }

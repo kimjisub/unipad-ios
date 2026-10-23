@@ -70,6 +70,15 @@ class ReleaseFeaturesPlanTests(unittest.TestCase):
         for entry in self.plan["testTargets"]:
             self.assertFalse(entry.get("parallelizable", True), "release checks share one simulator in order")
 
+    def test_app_never_reaches_the_retired_share_service(self):
+        # The share-code service is gone; naming it anywhere in the app, test fixtures included,
+        # would let a link request it again or let a fixture answer pass for the live service.
+        for path in (ROOT / "unipad").rglob("*"):
+            if path.is_file():
+                text = path.read_bytes().lower()
+                for name in (b"api.unipad.io", b"unishare"):
+                    self.assertFalse(name in text, f"{path.relative_to(ROOT)} names the retired share service")
+
 
 if __name__ == "__main__":
     unittest.main()

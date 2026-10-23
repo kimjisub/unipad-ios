@@ -58,6 +58,13 @@ if container=$(xcrun simctl get_app_container $udid kim.jisub.unipad data 2>/dev
     chflags -R nouchg $leftover && rm -rf $leftover
   done
 fi
+
+# Picker tests must find their files past other folders named like the app, which shared
+# simulators often show; this one sorts first in On My iPhone (ci/same-name-folder.sh).
+ci/same-name-folder.sh add $udid || exit 1
+trap "ci/same-name-folder.sh remove $udid" EXIT
+trap 'exit 130' INT TERM HUP
+
 export TEST_RUNNER_UNIPAD_RELEASE_SUITE=1
 ci/host-keys.sh $udid $output/DerivedData test \
   -project unipad.xcodeproj -scheme unipad -configuration $configuration \

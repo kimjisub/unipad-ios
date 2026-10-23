@@ -48,9 +48,11 @@ struct ThemeView: View {
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
-                vm.importTheme(from: url)
-                if vm.importResultMessage != nil {
-                    showImportResultAlert = true
+                Task {
+                    await vm.importTheme(from: url)
+                    if vm.importResultMessage != nil {
+                        showImportResultAlert = true
+                    }
                 }
             }
         }
