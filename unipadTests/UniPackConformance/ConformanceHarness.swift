@@ -168,6 +168,9 @@ enum ConformanceHarness {
 
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
+        if conformanceCase.screenInputs || conformanceCase.scenario.contains(where: { $0["input"] != nil }) {
+            return .unverified("this runner does not drive distinct screen and MIDI input sources; use the native input tests")
+        }
         if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
            !(conformanceCase.requiresCaseSensitiveFiles && caseSensitiveFileSystem) { return .unverified(reason) }
         if conformanceCase.layer == "palette" {

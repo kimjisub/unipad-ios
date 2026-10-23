@@ -35,6 +35,7 @@ struct ConformanceCase {
     let unobserved: [String: String]
     var soundIdentity = false
     var requiresCaseSensitiveFiles = false
+    var screenInputs = false
 }
 
 struct ConformanceCorpus {
@@ -148,7 +149,8 @@ struct ConformanceCorpus {
                 known: known,
                 unobserved: (value["unobserved"]?.object ?? [:]).compactMapValues(\.string),
                 soundIdentity: value["soundIdentity"] == .bool(true),
-                requiresCaseSensitiveFiles: value["requiresCaseSensitiveFiles"] == .bool(true)
+                requiresCaseSensitiveFiles: value["requiresCaseSensitiveFiles"] == .bool(true),
+                screenInputs: value["screenInputs"] == .bool(true)
             )
         }
         return ConformanceCorpus(sha256: sha256Hex(data), source: source, assets: assets, cases: cases)

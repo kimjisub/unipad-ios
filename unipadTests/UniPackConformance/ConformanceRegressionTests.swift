@@ -174,6 +174,20 @@ struct ConformanceRegressionTests {
         #expect(saved["error"]?.string == String(describing: ConformanceCorpus.LoadError.missing))
     }
 
+    @Test func distinctInputSourcesAreNeverReportedAsVerified() async throws {
+        for flags in [#""screenInputs":true,"scenario":[]"#,
+                      #""scenario":[{"do":"press","input":"pointer:1"}]"#] {
+            let data = Data((#"{"assets":{},"cases":[{"id":"inputs","layer":"run","title":"inputs","files":[],"fingerprint":"test","expectation":"determined","expected":{},"#
+                + flags + "}]}").utf8)
+            let corpus = try ConformanceCorpus.parse(data, source: "test")
+            let sample = try #require(corpus.cases.first)
+            guard case .unverified = try await ConformanceHarness.actual(for: sample, corpus: corpus) else {
+                Issue.record("a scenario whose screen input sources are not driven must be unverified")
+                continue
+            }
+        }
+    }
+
     @Test func archiveIdentityComparesCodePointsAndContents() throws {
         let data = Data(#"{"assets":{},"cases":[{"id":"identity","layer":"parse","title":"identity","files":[],"fingerprint":"test","expectation":"determined","soundIdentity":true,"expected":{"archiveEntry":"sounds/한.wav","sha256":"first"}}]}"#.utf8)
         let sample = try #require(ConformanceCorpus.parse(data, source: "test").cases.first)
