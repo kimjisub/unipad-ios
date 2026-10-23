@@ -70,6 +70,11 @@
 			path = unipadUITests;
 			sourceTree = "<group>";
 		};
+		16CE2BC52F5E6CE300402705 /* unipadTestSupport */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = unipadTestSupport;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +116,7 @@
 				16CE2B922F5E6CE100402705 /* unipad */,
 				16CE2BA22F5E6CE300402705 /* unipadTests */,
 				16CE2BAC2F5E6CE300402705 /* unipadUITests */,
+				16CE2BC52F5E6CE300402705 /* unipadTestSupport */,
 				16CE2B912F5E6CE100402705 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -172,6 +178,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				16CE2BA22F5E6CE300402705 /* unipadTests */,
+				16CE2BC52F5E6CE300402705 /* unipadTestSupport */,
 			);
 			name = unipadTests;
 			packageProductDependencies = (
@@ -195,6 +202,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				16CE2BAC2F5E6CE300402705 /* unipadUITests */,
+				16CE2BC52F5E6CE300402705 /* unipadTestSupport */,
 			);
 			name = unipadUITests;
 			packageProductDependencies = (

@@ -59,7 +59,7 @@ xcrun --sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -
   -o $build/virtual-midi-device ${0:A:h}/virtual-midi-device.c
 codesign -s - -f $build/virtual-midi-device >/dev/null
 
-xcrun simctl spawn $udid $build/virtual-midi-device 600 $device > $results/virtual-midi-device.log 2>&1 &
+xcrun simctl spawn $udid $build/virtual-midi-device 3600 $device > $results/virtual-midi-device.log 2>&1 &
 tool=$!
 for _ in {1..100}; do
   grep -q '^ready:' $results/virtual-midi-device.log 2>/dev/null && break

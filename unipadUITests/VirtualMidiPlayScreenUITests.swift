@@ -72,7 +72,7 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
         try device.send(0x90, 36, 0)
         XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "matrix-2-note-on-velocity-0"), [],
                        "a note on with velocity 0 left the pad pressed")
-        for (step, (note, chain)) in [(101, 2), (123, 9), (116, 16), (115, 17), (108, 24)].enumerated() {
+        for (step, (note, chain)) in [(UInt32(101), 2), (123, 9), (116, 16), (115, 17), (108, 24)].enumerated() {
             try device.send(0x90, note, 127)
             XCTAssertTrue(waitForSelectedChain(chain, picture: "matrix-\(step + 3)-ring-note-\(note)-chain-\(chain)"),
                           "ring note \(note) did not select chain \(chain)")
@@ -138,46 +138,4 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
         UITestSupport.attachScreenshot(picture, to: self)
         return result
     }
-}
-
-/// ci/virtual-midi-device.c, driven through its command file: each line appended is one command,
-/// acknowledged by its line number in `acks`.
-final class VirtualMidiDevice {
-    private let folder: URL
-    private var commandCount: Int
-
-    init(folder: URL) throws {
-        self.folder = folder
-        let commands = try String(contentsOf: folder.appendingPathComponent("commands"), encoding: .utf8)
-        commandCount = commands.split(separator: "\n").count
-    }
-
-    /// One MIDI 1.0 channel message as a Universal MIDI Packet word, its group naming the port.
-    func send(_ status: Int, _ data1: Int, _ data2: Int, port: Int = 0) throws {
-        let word = 0x2000_0000 | UInt32(port) << 24 | UInt32(status) << 16 | UInt32(data1) << 8 | UInt32(data2)
-        try run("send " + String(word, radix: 16))
-    }
-
-    func run(_ line: String) throws {
-        let commands = try FileHandle(forWritingTo: folder.appendingPathComponent("commands"))
-        defer { try? commands.close() }
-        try commands.seekToEnd()
-        try commands.write(contentsOf: Data((line + "\n").utf8))
-        commandCount += 1
-        let number = "\(commandCount) "
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline {
-            let acks = (try? String(contentsOf: folder.appendingPathComponent("acks"), encoding: .utf8)) ?? ""
-            if let ack = acks.split(separator: "\n").first(where: { $0.hasPrefix(number) }) {
-                guard ack.hasSuffix(" ok") else { throw VirtualMidiDeviceError(description: "\(line) → \(ack)") }
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        throw VirtualMidiDeviceError(description: "\(line) → no answer")
-    }
-}
-
-struct VirtualMidiDeviceError: Error, CustomStringConvertible {
-    let description: String
 }

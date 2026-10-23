@@ -26,11 +26,6 @@ protocol MidiTestDevice: AnyObject {
     func close() async
 }
 
-/// A MIDI 1.0 channel message as one Universal MIDI Packet word, on port 0.
-nonisolated func midiWord(_ status: UInt32, _ data1: UInt32, _ data2: UInt32) -> UInt32 {
-    0x2000_0000 | status << 16 | data1 << 8 | data2
-}
-
 nonisolated struct MidiTestDeviceError: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
@@ -65,25 +60,25 @@ final class ParserMidiDevice: MidiTestDevice, MidiDriverSendSignalListener {
     func onSendRaw(messages: [[UInt8]], cableNumber: Int) {}
 }
 
-/// Drives ci/virtual-midi-device.c through its command file. A virtual endpoint has no entities, so
-/// MidiManager connects it as port 0; another port travels in the Universal MIDI Packet group.
+/// Drives ci/virtual-midi-device.c. A virtual endpoint has no entities, so MidiManager connects it as
+/// port 0; another port travels in the Universal MIDI Packet group.
 @MainActor
 final class SimulatorMidiDevice: MidiTestDevice {
-    private let folder: URL
+    let tool: VirtualMidiDevice
+    private var folder: URL { tool.folder }
     private let port: UInt32
-    private var commandCount = 0
     private var skippedArrivals = 0
 
-    private init(folder: URL, port: Int) {
-        self.folder = folder
+    private init(folder: URL, port: Int) throws {
+        tool = try VirtualMidiDevice(folder: folder)
         self.port = UInt32(port)
     }
 
     static func open(folder: URL, name: String, port: Int, expects: (MidiDriver) -> Bool) async throws -> SimulatorMidiDevice {
         let manager = MidiManager.shared
         try #require(!manager.isConnected, "another MIDI device is connected: \(manager.connectedDeviceName ?? "?")")
-        let device = SimulatorMidiDevice(folder: folder, port: port)
-        try await device.command("open \(name)")
+        let device = try SimulatorMidiDevice(folder: folder, port: port)
+        try device.tool.run("open \(name)")
         manager.start()
         try await PlayUsageScenario.waitWhile { !(manager.isConnected && expects(manager.driver)) }
         guard manager.isConnected && expects(manager.driver) else {
@@ -106,29 +101,12 @@ final class SimulatorMidiDevice: MidiTestDevice {
     }
 
     func send(_ words: [UInt32]) async throws {
-        let grouped = words.map { $0 >> 28 == 0x2 ? $0 | port << 24 : $0 }
-        try await command("send " + grouped.map { String($0, radix: 16) }.joined(separator: " "))
+        try tool.send(words.map { $0 >> 28 == 0x2 ? $0 | port << 24 : $0 })
     }
 
     func close() async {
-        try? await command("close")
+        try? tool.run("close")
         try? await PlayUsageScenario.waitWhile { MidiManager.shared.isConnected }
-    }
-
-    private func command(_ line: String) async throws {
-        let commands = try FileHandle(forWritingTo: folder.appending(path: "commands"))
-        defer { try? commands.close() }
-        try commands.seekToEnd()
-        try commands.write(contentsOf: Data((line + "\n").utf8))
-        commandCount += 1
-        let number = "\(commandCount) "
-        var ack: Substring?
-        try await PlayUsageScenario.waitWhile(timeout: 5) {
-            let acks = (try? String(contentsOf: folder.appending(path: "acks"), encoding: .utf8)) ?? ""
-            ack = acks.split(separator: "\n").first { $0.hasPrefix(number) }
-            return ack == nil
-        }
-        guard ack?.hasSuffix(" ok") == true else { throw MidiTestDeviceError("virtual MIDI device: \(line) → \(ack ?? "no answer")") }
     }
 }
 
@@ -258,6 +236,37 @@ extension PlayUsageRecordTests {
                     #expect(!pressed(s, 7, 0), "a note off with a release velocity left the pad pressed")
                 }
             }
+        }
+
+        /// Returning to the app scans for devices, as does every device plugged in. Another keyboard leaves
+        /// the connected one in place; a device with its own driver takes over.
+        @Test(.enabled(if: MidiTestDeviceKind.folder != nil, "needs ci/midi-input-tests.sh"))
+        func connectedKeyboardStaysUntilALaunchpadAppears() async throws {
+            try await PlayUsageScenario.run { s in
+                try await s.loadReady()
+                try await withDevice(.coreMIDI, "UniPad Test Keyboard", driver: { MasterKeyboardDriver() }) { device in
+                    let tool = try #require(device as? SimulatorMidiDevice).tool
+                    let manager = MidiManager.shared
+                    let keyboard = manager.driver
+                    try tool.run("add Second Test Keyboard")
+                    try await Task.sleep(for: .milliseconds(300))
+                    manager.scanForDevices()
+                    try await Task.sleep(for: .milliseconds(200))
+                    #expect(manager.driver === keyboard, "a second keyboard took over the connected one")
+
+                    try tool.run("add LPProMK3 MIDI")
+                    try await waitFor { manager.driver is LaunchpadProMK3Driver }
+                    #expect(manager.driver is LaunchpadProMK3Driver, "a Launchpad plugged in beside a keyboard was not connected")
+                }
+            }
+        }
+
+        /// Every command waits for its own answer, also after earlier tests' commands in the same run.
+        @Test(.enabled(if: MidiTestDeviceKind.folder != nil, "needs ci/midi-input-tests.sh"))
+        func virtualDeviceReportsAFailedCommand() throws {
+            let folder = URL(fileURLWithPath: try #require(MidiTestDeviceKind.folder))
+            try VirtualMidiDevice(folder: folder).run("close")
+            #expect(throws: VirtualMidiDeviceError.self) { try VirtualMidiDevice(folder: folder).run("send 20904064") }
         }
 
         @Test(arguments: MidiTestDeviceKind.available)

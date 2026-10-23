@@ -7,9 +7,11 @@
 // The tests append commands to <folder>/commands, one per line; each one done is acknowledged with a
 // line "<number> ok" or "<number> error <status>" in <folder>/acks:
 //   open <name>       publish a source and a destination called <name>, replacing any open ones
-//   send <hex words>  send the Universal MIDI Packet words (MIDI 1.0 protocol) as one event packet
-//   close             remove the open source and destination
-// Every MIDI 1.0 channel message the app sends to the destination becomes one line "<status> <data1>
+//   add <name>        publish another pair called <name> beside the open ones, as a second device plugged in
+//   send <hex words>  send the Universal MIDI Packet words (MIDI 1.0 protocol) as one event packet from
+//                     the first device opened
+//   close             remove every open source and destination
+// Every MIDI 1.0 channel message the app sends to a destination becomes one line "<status> <data1>
 // <data2>" in hex in <folder>/arrivals. Creating endpoints needs the audio background mode, which the
 // app and its test host do not declare; this process carries its own Info.plist that does.
 #include <CoreMIDI/CoreMIDI.h>
@@ -29,7 +31,9 @@ static void stop(int sig) { (void)sig; stopped = 1; }
 static FILE *arrivals;
 static pthread_mutex_t arrivalsLock = PTHREAD_MUTEX_INITIALIZER;
 static MIDIClientRef client;
-static MIDIEndpointRef source, destination;
+enum { maxDevices = 4 };
+static MIDIEndpointRef sources[maxDevices], destinations[maxDevices];
+static int deviceCount;
 
 static CFStringRef cfs(const char *s) { return CFStringCreateWithCString(NULL, s, kCFStringEncodingUTF8); }
 
@@ -48,18 +52,23 @@ static void receive(const MIDIEventList *list, void *refCon) {
     pthread_mutex_unlock(&arrivalsLock);
 }
 
-static void closeDevice(void) {
-    if (source) MIDIEndpointDispose(source);
-    if (destination) MIDIEndpointDispose(destination);
-    source = destination = 0;
+static void closeDevices(void) {
+    for (int i = 0; i < deviceCount; i++) {
+        if (sources[i]) MIDIEndpointDispose(sources[i]);
+        if (destinations[i]) MIDIEndpointDispose(destinations[i]);
+        sources[i] = destinations[i] = 0;
+    }
+    deviceCount = 0;
 }
 
-static OSStatus openDevice(const char *name) {
-    closeDevice();
+static OSStatus addDevice(const char *name) {
+    if (deviceCount == maxDevices) return -4;
+    MIDIEndpointRef *source = &sources[deviceCount], *destination = &destinations[deviceCount];
+    deviceCount++;
     CFStringRef cfName = cfs(name);
-    OSStatus status = MIDISourceCreateWithProtocol(client, cfName, kMIDIProtocol_1_0, &source);
+    OSStatus status = MIDISourceCreateWithProtocol(client, cfName, kMIDIProtocol_1_0, source);
     if (status == noErr) {
-        status = MIDIDestinationCreateWithProtocol(client, cfName, kMIDIProtocol_1_0, &destination,
+        status = MIDIDestinationCreateWithProtocol(client, cfName, kMIDIProtocol_1_0, destination,
                                                    ^(const MIDIEventList *list, void *refCon) { receive(list, refCon); });
     }
     CFRelease(cfName);
@@ -67,7 +76,7 @@ static OSStatus openDevice(const char *name) {
 }
 
 static OSStatus sendWords(char *hex) {
-    if (!source) return -1;
+    if (deviceCount == 0 || !sources[0]) return -1;
     UInt32 words[256];
     UInt32 count = 0;
     for (char *field = strtok(hex, " "); field && count < 256; field = strtok(NULL, " ")) {
@@ -79,14 +88,15 @@ static OSStatus sendWords(char *hex) {
     MIDIEventPacket *packet = MIDIEventListInit(list, kMIDIProtocol_1_0);
     packet = MIDIEventListAdd(list, sizeof(buffer), packet, 0, count, words);
     if (!packet) return -2;
-    return MIDIReceivedEventList(source, list);
+    return MIDIReceivedEventList(sources[0], list);
 }
 
 static OSStatus run(char *line) {
     line[strcspn(line, "\r\n")] = 0;
-    if (strncmp(line, "open ", 5) == 0) return openDevice(line + 5);
+    if (strncmp(line, "open ", 5) == 0) { closeDevices(); return addDevice(line + 5); }
+    if (strncmp(line, "add ", 4) == 0) return addDevice(line + 4);
     if (strncmp(line, "send ", 5) == 0) return sendWords(line + 5);
-    if (strcmp(line, "close") == 0) { closeDevice(); return noErr; }
+    if (strcmp(line, "close") == 0) { closeDevices(); return noErr; }
     return -3;
 }
 
@@ -139,7 +149,7 @@ int main(int argc, char **argv) {
         }
         usleep(5000);
     }
-    closeDevice();
+    closeDevices();
     MIDIClientDispose(client);
     fclose(acks);
     fclose(arrivals);
