@@ -56,14 +56,7 @@ final class StoreViewModel {
             do {
                 let firestoreItems = try await firebaseManager.firestore.fetchStoreItems()
 
-                let downloadedPackIds = Set(
-                    workspaceManager.getUnipackFolders(workspace: workspaceManager.downloadWorkspace)
-                        .compactMap { folderURL -> String? in
-                            let pack = UniPackFolder(rootFolder: folderURL)
-                            pack.load()
-                            return pack.id
-                        }
-                )
+                let downloadedPackIds = await Self.installedPackIds(in: workspaceManager.downloadWorkspace)
 
                 storeItems = firestoreItems.map { item in
                     let isDownloaded = downloadedPackIds.contains(item.id)
@@ -86,6 +79,15 @@ final class StoreViewModel {
             }
             isLoading = false
         }
+    }
+
+    /// Reads every installed pack off the main actor; with a large library this held up the screen.
+    @concurrent private static func installedPackIds(in workspace: WorkspaceManager.Workspace) async -> Set<String> {
+        Set(WorkspaceManager.unipackFolders(in: workspace).compactMap { folderURL -> String? in
+            let pack = UniPackFolder(rootFolder: folderURL)
+            pack.load()
+            return pack.id
+        })
     }
 
     func toggleSelection(_ item: StoreItem) {

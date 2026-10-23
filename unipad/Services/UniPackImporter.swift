@@ -87,7 +87,8 @@ actor UniPackImporter {
         }
     }
 
-    /// Import from Data (e.g., from share sheet or document picker)
+    /// Import an archive held in memory. Files the user picks or opens in UniPad are imported
+    /// from their location instead, so a pack of hundreds of megabytes is never read into memory.
     @discardableResult
     func importPack(data: Data, fileName: String, to workspace: URL, delegate: Delegate?) async throws -> URL {
         var staging: UniPackStaging?
@@ -142,8 +143,13 @@ actor UniPackImporter {
 // MARK: - FileManager ZIP Extension
 
 nonisolated extension FileManager {
+    /// The most one entry may unpack to. The sizes an archive records are not trusted, so this is
+    /// what bounds an archive that decodes to far more than it claims.
+    static let maxZipEntrySize = 512 * 1024 * 1024
+
     /// ZIP extraction using zlib (available on all Apple platforms).
     /// Parses central directory entries first (like zip tools) to support data-descriptor ZIPs.
+    /// Stops between entries when the task is cancelled.
     func unzipItem(at sourceURL: URL, to destinationURL: URL) throws {
         // Mapped: a 300 MB store pack read into memory and re-copied per entry peaked well past
         // twice its size and got the app killed on low-memory devices.
@@ -207,8 +213,12 @@ nonisolated extension FileManager {
 
         var entries: [Entry] = []
         var cursor = centralDirOffset
-        for _ in 0..<totalEntries {
-            guard cursor + 46 <= data.count, readUInt32LE(at: cursor) == 0x0201_4B50 else { break }
+        for index in 0..<totalEntries {
+            // A list shorter than the end record says means a cut or damaged archive; unpacking the
+            // entries that happen to be readable would install part of a pack.
+            guard cursor + 46 <= data.count, readUInt32LE(at: cursor) == 0x0201_4B50 else {
+                throw UniPackImporter.ImportError.extractionFailed("Central directory ends after \(index) of \(totalEntries) entries")
+            }
 
             guard
                 let generalPurposeFlags = readUInt16LE(at: cursor + 8),
@@ -249,10 +259,8 @@ nonisolated extension FileManager {
         }
 
         for entry in entries {
-            // Prevent path traversal and absolute-path extraction.
-            if entry.fileName.hasPrefix("/") || entry.fileName.contains("..") {
-                continue
-            }
+            try Task.checkCancellation()
+            guard Self.isContainedEntryName(entry.fileName) else { continue }
 
             let entryPath = destinationURL.appendingPathComponent(entry.fileName)
             if entry.fileName.hasSuffix("/") {
@@ -284,10 +292,9 @@ nonisolated extension FileManager {
 
             let compressedData = data[dataStart..<dataEnd]
             if entry.compressionMethod == 0 {
-                try Data(compressedData).write(to: entryPath)
+                try compressedData.write(to: entryPath)
             } else if entry.compressionMethod == 8 {
-                let decompressed = try decompressDeflate(Data(compressedData), expectedSize: entry.uncompressedSize)
-                try decompressed.write(to: entryPath)
+                try inflate(compressedData, declaredSize: entry.uncompressedSize, to: entryPath)
             } else {
                 throw UniPackImporter.ImportError.extractionFailed(
                     "Unsupported compression method \(entry.compressionMethod) for \(entry.fileName)"
@@ -309,48 +316,62 @@ nonisolated extension FileManager {
         return String(data: raw, encoding: .isoLatin1) ?? ""
     }
 
-    /// Decompress deflate data using Apple's Compression framework with dynamic buffer growth
-    private func decompressDeflate(_ compressedData: Data, expectedSize: Int) throws -> Data {
-        // A zero-byte entry stored with method 8 (an empty autoPlay is common) decodes to 0 bytes,
-        // which the loop below would report as a failure and abort the whole import.
-        if expectedSize == 0 || compressedData.isEmpty { return Data() }
-        // The central directory's size is untrusted; a corrupt 0xFFFFFFF0 meant an immediate
-        // multi-gigabyte allocation.
-        let maxBufferSize = 512 * 1024 * 1024
-        guard expectedSize <= maxBufferSize else {
-            throw UniPackImporter.ImportError.extractionFailed("Entry too large (\(expectedSize) bytes)")
+    /// An entry name is a path inside the archive. One that starts at the root or steps up with a
+    /// `..` component would be written outside the destination; dots elsewhere (`Hey...wav`) are
+    /// part of an ordinary name.
+    static func isContainedEntryName(_ name: String) -> Bool {
+        !name.hasPrefix("/") && !name.split(separator: "/").contains("..")
+    }
+
+    /// Decodes a deflated entry into `file` one block at a time, so memory use does not grow with
+    /// the entry, and stops once the output passes the limit whatever size the archive declared.
+    private func inflate(_ compressed: Data, declaredSize: Int, to file: URL) throws {
+        let limit = Self.maxZipEntrySize
+        guard declaredSize <= limit else {
+            throw UniPackImporter.ImportError.extractionFailed("Entry too large (\(declaredSize) bytes)")
         }
-        var bufferSize = max(expectedSize, 65536)
+        try Data().write(to: file)
+        // A zero-byte entry stored with method 8 (an empty autoPlay is common) has nothing to decode.
+        guard !compressed.isEmpty else { return }
 
-        while true {
-            guard bufferSize <= maxBufferSize else {
-                throw UniPackImporter.ImportError.extractionFailed("Decompressed entry exceeds \(maxBufferSize) bytes")
-            }
-            let destBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-            let decompressedSize = compressedData.withUnsafeBytes { srcPtr -> Int in
-                guard let srcBase = srcPtr.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return 0 }
-                return compression_decode_buffer(
-                    destBuffer, bufferSize,
-                    srcBase, compressedData.count,
-                    nil,
-                    COMPRESSION_ZLIB
-                )
-            }
+        let handle = try FileHandle(forWritingTo: file)
+        defer { try? handle.close() }
+        let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
+        defer { stream.deallocate() }
+        guard compression_stream_init(stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
+            throw UniPackImporter.ImportError.extractionFailed("Decompression failed")
+        }
+        defer { compression_stream_destroy(stream) }
+        let blockSize = 1 << 20
+        let block = UnsafeMutablePointer<UInt8>.allocate(capacity: blockSize)
+        defer { block.deallocate() }
 
-            if decompressedSize == 0 {
-                destBuffer.deallocate()
-                throw UniPackImporter.ImportError.extractionFailed("Decompression failed")
+        var written = 0
+        try compressed.withUnsafeBytes { (source: UnsafeRawBufferPointer) in
+            stream.pointee.src_ptr = source.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            stream.pointee.src_size = source.count
+            while true {
+                stream.pointee.dst_ptr = block
+                stream.pointee.dst_size = blockSize
+                let status = compression_stream_process(stream, 0)
+                let produced = blockSize - stream.pointee.dst_size
+                written += produced
+                guard written <= limit else {
+                    throw UniPackImporter.ImportError.extractionFailed("Decompressed entry exceeds \(limit) bytes")
+                }
+                if produced > 0 {
+                    try handle.write(contentsOf: Data(bytesNoCopy: block, count: produced, deallocator: .none))
+                }
+                switch status {
+                case COMPRESSION_STATUS_END:
+                    return
+                case COMPRESSION_STATUS_OK where produced > 0 || stream.pointee.src_size > 0:
+                    continue
+                default:
+                    // An error, or all input read without reaching the end of the stream: the data is cut short.
+                    throw UniPackImporter.ImportError.extractionFailed("Decompression failed")
+                }
             }
-
-            if decompressedSize < bufferSize {
-                let result = Data(bytes: destBuffer, count: decompressedSize)
-                destBuffer.deallocate()
-                return result
-            }
-
-            // Buffer was fully used — data may have been truncated; retry with larger buffer
-            destBuffer.deallocate()
-            bufferSize *= 2
         }
     }
 }

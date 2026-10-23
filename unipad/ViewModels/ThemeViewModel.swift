@@ -120,8 +120,7 @@ final class ThemeViewModel {
         themeManager.applyTheme(id: themes[index].id)
     }
 
-    func importTheme(from url: URL) {
-        let fm = FileManager.default
+    func importTheme(from url: URL) async {
         let themesDir = Self.themesDirectory
         let sourceName = FileManagerExtensions.filterFilename(url.deletingPathExtension().lastPathComponent)
         let destDir = FileManagerExtensions.makeNextPath(dir: themesDir, name: sourceName, extension: "")
@@ -129,28 +128,32 @@ final class ThemeViewModel {
         guard url.startAccessingSecurityScopedResource() else { return }
         defer { url.stopAccessingSecurityScopedResource() }
 
+        guard url.pathExtension.lowercased() == "zip" else {
+            importResultMessage = "\(String(localized: "theme_import_invalid"))"
+            return
+        }
+
         do {
-            if url.pathExtension.lowercased() == "zip" {
-                try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
-                try fm.unzipItem(at: url, to: destDir)
-                try FileManagerExtensions.removeDoubleFolder(at: destDir)
-                try normalizeThemeResources(at: destDir)
-                _ = try FolderThemeResources(themeDir: destDir, fullLoad: false)
-            } else {
-                try? fm.removeItem(at: destDir)
-                importResultMessage = "\(String(localized: "theme_import_invalid"))"
-                return
-            }
+            try await Self.unpackTheme(from: url, to: destDir)
+            _ = try FolderThemeResources(themeDir: destDir, fullLoad: false)
 
             loadThemes()
             importResultMessage = String(localized: "theme_import_success")
         } catch {
-            try? fm.removeItem(at: destDir)
+            try? FileManager.default.removeItem(at: destDir)
             importResultMessage = "\(String(localized: "theme_import_failed"))\n\(error.localizedDescription)"
         }
     }
 
-    private func normalizeThemeResources(at dir: URL) throws {
+    /// Unpacks the theme archive off the main actor, so a large theme does not hold up the screen.
+    @concurrent private static func unpackTheme(from archive: URL, to destDir: URL) async throws {
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+        try FileManager.default.unzipItem(at: archive, to: destDir)
+        try FileManagerExtensions.removeDoubleFolder(at: destDir)
+        try normalizeThemeResources(at: destDir)
+    }
+
+    private nonisolated static func normalizeThemeResources(at dir: URL) throws {
         let fm = FileManager.default
 
         func fileURL(named name: String) -> URL {
