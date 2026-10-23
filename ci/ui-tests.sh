@@ -7,6 +7,9 @@
 #
 # Without test selections every UI test runs. Pass selections to split a long
 # run into parts; together the parts must name every test class.
+# `-testPlan ReleaseFeatures` runs the release basic-feature checks (unit and UI);
+# with UNIPAD_UI_TEST_CONFIGURATION=Release they run against a Release build that
+# compiles in only the test fixtures (README, "Release feature checks").
 # Results go to $UNIPAD_UI_TEST_OUTPUT (default build/ui-tests): ui-tests.log,
 # UITests.xcresult and summary.json. The last line printed is
 #   UI tests: <passed> passed, <failed> failed, <skipped> skipped; <total> total; exit <code>
@@ -35,6 +38,10 @@ not_run=(
   -skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain
 )
 
+configuration=${UNIPAD_UI_TEST_CONFIGURATION:-Debug}
+fixture_settings=()
+[[ $configuration == Release ]] && fixture_settings=(UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS ENABLE_TESTABILITY=YES)
+
 cd ${0:A:h:h}
 output=${UNIPAD_UI_TEST_OUTPUT:-build/ui-tests}
 mkdir -p $output
@@ -51,13 +58,20 @@ if container=$(xcrun simctl get_app_container $udid kim.jisub.unipad data 2>/dev
     chflags -R nouchg $leftover && rm -rf $leftover
   done
 fi
+
+# Picker tests must find their files past other folders named like the app, which shared
+# simulators often show; this one sorts first in On My iPhone (ci/same-name-folder.sh).
+ci/same-name-folder.sh add $udid || exit 1
+trap "ci/same-name-folder.sh remove $udid" EXIT
+trap 'exit 130' INT TERM HUP
+
 export TEST_RUNNER_UNIPAD_RELEASE_SUITE=1
 ci/host-keys.sh $udid $output/DerivedData test \
-  -project unipad.xcodeproj -scheme unipad -configuration Debug \
+  -project unipad.xcodeproj -scheme unipad -configuration $configuration \
   -onlyUsePackageVersionsFromResolvedFile \
   $selection $not_run \
   -resultBundlePath $output/UITests.xcresult \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO $fixture_settings \
   UNIPAD_WARNINGS_AS_ERRORS=YES >$output/ui-tests.log 2>&1
 xcodebuild_exit=$?
 

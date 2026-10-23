@@ -132,7 +132,7 @@ class UIHostKeysTests(unittest.TestCase):
                 except ProcessLookupError:
                     pass
 
-    def run_script(self, exit_code=0, summary=None, args=(), container=None, inspect=None):
+    def run_script(self, exit_code=0, summary=None, args=(), container=None, inspect=None, environment=None):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
@@ -162,7 +162,7 @@ class UIHostKeysTests(unittest.TestCase):
                 path.chmod(0o755)
             output = folder / "out"
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
-                       UNIPAD_TEST_TMPDIR=str(folder), UNIPAD_UI_TEST_OUTPUT=str(output))
+                       UNIPAD_TEST_TMPDIR=str(folder), UNIPAD_UI_TEST_OUTPUT=str(output), **(environment or {}))
             result = subprocess.run(["ci/ui-tests.sh", "leased-device", *args],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=15)
             log = (output / "ui-tests.log").read_text()
@@ -224,6 +224,25 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("-only-testing:unipadUITests/PackWarningUITests", probe["args"])
         self.assertNotIn("-only-testing:unipadUITests", probe["args"])
+
+    def test_full_ui_command_builds_debug_without_extra_conditions(self):
+        result, probe = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        configuration = probe["args"].index("-configuration")
+        self.assertEqual(probe["args"][configuration + 1], "Debug")
+        self.assertFalse([arg for arg in probe["args"] if arg.startswith(("UNIPAD_TEST_CONDITIONS=", "ENABLE_TESTABILITY="))])
+
+    def test_release_feature_plan_runs_on_a_release_build_with_fixtures(self):
+        result, probe = self.run_script(args=["-testPlan", "ReleaseFeatures"],
+                                        environment={"UNIPAD_UI_TEST_CONFIGURATION": "Release"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = probe["args"]
+        self.assertEqual(args[args.index("-configuration") + 1], "Release")
+        self.assertEqual(args[args.index("-testPlan") + 1], "ReleaseFeatures")
+        self.assertNotIn("-only-testing:unipadUITests", args)
+        self.assertIn("UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS", args)
+        self.assertIn("ENABLE_TESTABILITY=YES", args)
+        self.assertEqual(probe["fixtures"], "1")
 
     def test_skipped_test_fails_the_run_even_when_xcodebuild_succeeds(self):
         result, _ = self.run_script(summary=dict(totalTestCount=3, passedTests=2, failedTests=0, skippedTests=1))

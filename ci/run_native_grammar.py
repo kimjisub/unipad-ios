@@ -17,6 +17,8 @@ import time
 from native_grammar_results import write_report
 
 ROOT = Path(__file__).resolve().parent.parent
+# The scheme has more than one test plan; build-for-testing writes an xctestrun per plan built.
+TEST_PLAN = "AllTests"
 
 
 def capture(command):
@@ -99,15 +101,15 @@ def main():
         return result.returncode
 
     build = ["xcodebuild", "build-for-testing", "-quiet", "-project", "unipad.xcodeproj", "-scheme", "unipad",
-             "-configuration", "Debug", "-destination", destination, "-derivedDataPath", str(args.derived_data),
+             "-testPlan", TEST_PLAN, "-configuration", "Debug", "-destination", destination, "-derivedDataPath", str(args.derived_data),
              "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "UNIPAD_WARNINGS_AS_ERRORS=YES"]
     build_started = time.time()
     code = run(build, "build")
     tree = {"testNodes": [], "devices": []}
     if code == 0:
         products = args.derived_data / "Build/Products"
-        candidates = [p for p in products.glob("*.xctestrun")
-                      if not p.name.startswith("native-grammar-") and p.stat().st_mtime >= build_started]
+        candidates = [p for p in products.glob(f"*_{TEST_PLAN}_*.xctestrun")
+                      if p.stat().st_mtime >= build_started]
         if len(candidates) != 1:
             raise RuntimeError(f"Expected exactly one built xctestrun: {candidates}")
         config = plistlib.loads(candidates[0].read_bytes())

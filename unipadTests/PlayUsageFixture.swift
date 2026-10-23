@@ -15,18 +15,21 @@ final class PlayUsageScenario {
     nonisolated static let defaultKeySound = "1 1 1 a.wav\n1 1 2 a.wav\n1 1 3 a.wav\n"
     nonisolated static let defaultAutoPlay = "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n"
 
-    init(keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
+    /// `keyLed` maps a keyLED file name ("1 1 1") to its text.
+    init(keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:], chains: Int = 1) throws {
         vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink))
         packFolder = FileManager.default.temporaryDirectory.appendingPathComponent("PlayUsage-\(UUID().uuidString)")
-        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay)
+        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, chains: chains)
     }
 
     static func run(
         keySound: String = defaultKeySound,
         autoPlay: String = defaultAutoPlay,
+        keyLed: [String: String] = [:],
+        chains: Int = 1,
         _ body: (PlayUsageScenario) async throws -> Void
     ) async throws {
-        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay)
+        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, chains: chains)
         defer { s.finish() }
         try await body(s)
     }
@@ -88,13 +91,16 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
-    static func writePack(to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay) throws {
+    static func writePack(
+        to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:],
+        chains: Int = 1
+    ) throws {
         let files: [(String, Data)] = [
-            ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=true\n".utf8)),
+            ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=\(chains)\nsquareButton=true\n".utf8)),
             ("keySound", Data(keySound.utf8)),
             ("autoPlay", Data(autoPlay.utf8)),
             ("sounds/a.wav", silentWav(milliseconds: 60)),
-        ]
+        ] + keyLed.map { ("keyLED/\($0.key)", Data($0.value.utf8)) }
         for (name, data) in files {
             let url = folder.appending(path: name)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

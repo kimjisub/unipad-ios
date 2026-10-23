@@ -30,8 +30,8 @@ final class SoundEngine {
     private let buffersLock = NSLock()
     private var buffers: [Int: AVAudioPCMBuffer] = [:]
     private var destroyed = false
-    /// False until the worker has configured the session and started the engine, and for good when
-    /// that failed.
+    /// False until the worker has set the engine up, and for good when that failed. Whether the engine
+    /// renders is the gate's to say.
     private var isUsable = false
     private var observerTokens: [NSObjectProtocol] = []
     private var playerNodes: [AVAudioPlayerNode] = []
@@ -63,6 +63,9 @@ final class SoundEngine {
         let isInfinite: Bool
     }
     private var inputPlayback: [Input: StartedPlayback] = [:]
+    /// Wormhole chain changes still waiting out their delay, by the press that made them.
+    private var pendingWormholes: [Int: Task<Void, Never>] = [:]
+    private var nextWormholeID = 0
 
     private func input(x: Int, y: Int, id: UUID?) -> Input {
         id.map(Input.identified) ?? .pad(x, y)
@@ -104,6 +107,9 @@ final class SoundEngine {
     /// Tests can deliver real finite-completion callbacks at corpus checkpoints, independently
     /// of how long the simulator stalls the main queue. Normal playback leaves this nil.
     var playbackCompletionDelivery: ((Int, String?, @escaping () -> Void) -> Void)?
+    /// Waits out the time between a sound with a wormhole and its chain change. A test seam: tests
+    /// hold it open to act inside that window.
+    var wormholeDelay: () async -> Void = { try? await Task.sleep(nanoseconds: 100_000_000) }
     /// Takes the session back when playback recovers. A test seam: a simulator always hands the
     /// session back, so tests replace this to make it refuse as another app holding it would.
     var activateSessionForRecovery: () throws -> Void {
@@ -123,10 +129,13 @@ final class SoundEngine {
         func onException(_ error: Error)
     }
 
+    /// `activateSession` applies the category and activates the session, on the worker. A test seam: a
+    /// simulator always grants the session, and a test makes it refuse as a call in progress would.
     init(
         unipack: UniPack,
         chain: ChainObserver,
-        loadingListener: LoadingListener
+        loadingListener: LoadingListener,
+        activateSession: @escaping () throws -> Void = SoundEngine.configureSession
     ) {
         self.unipack = unipack
         self.chain = chain
@@ -139,7 +148,7 @@ final class SoundEngine {
         let engineRestarts = self.engineRestarts
         self.gate = AudioSessionGate(hooks: AudioSessionGate.Hooks(
             isEngineRunning: { engine.isRunning },
-            activateSession: { try Self.configureSession() },
+            activateSession: activateSession,
             startEngine: {
                 engineRestarts.withLock { $0 += 1 }
                 try engine.start()
@@ -180,7 +189,7 @@ final class SoundEngine {
         observeSession()
 
         let nodes = playerNodes
-        worker.run({ Self.setUp(engine, nodes: nodes) }, then: { [weak self] result in
+        worker.run({ Self.setUp(engine, nodes: nodes, activateSession: activateSession) }, then: { [weak self] result in
             self?.finishSetUp(result, table: table, soundCount: soundCount)
         })
     }
@@ -216,15 +225,26 @@ final class SoundEngine {
         })
     }
 
+    nonisolated private struct SetUp {
+        let format: AVAudioFormat
+        /// False when another app held the session (a call in progress): the engine was not started.
+        let hasSession: Bool
+    }
+
     /// Runs on the worker. Configures the session before reading the engine's format, so the nodes
-    /// are connected at the session's sample rate.
-    nonisolated private static func setUp(_ engine: AVAudioEngine, nodes: [AVAudioPlayerNode]) -> Result<AVAudioFormat, Error> {
+    /// are connected at the session's sample rate. A session that cannot be activated says nothing
+    /// about the pack or the device: the nodes are connected anyway and the engine starts when the
+    /// session is taken back, as after an interruption.
+    nonisolated private static func setUp(
+        _ engine: AVAudioEngine, nodes: [AVAudioPlayerNode], activateSession: () throws -> Void
+    ) -> Result<SetUp, Error> {
+        var hasSession = true
         do {
-            try configureSession()
+            try activateSession()
             logger.info("AVAudioSession configured for playback")
         } catch {
             logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
-            return .failure(error)
+            hasSession = false
         }
         let format = engine.mainMixerNode.outputFormat(forBus: 0)
         logger.info("Playback format: sampleRate=\(format.sampleRate), channels=\(format.channelCount)")
@@ -233,6 +253,7 @@ final class SoundEngine {
             engine.connect(node, to: engine.mainMixerNode, format: format)
         }
         engine.prepare()
+        guard hasSession else { return .success(SetUp(format: format, hasSession: false)) }
         do {
             try engine.start()
             logger.info("AVAudioEngine started successfully with \(nodes.count) player nodes")
@@ -240,15 +261,16 @@ final class SoundEngine {
             logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
             return .failure(error)
         }
-        return .success(format)
+        return .success(SetUp(format: format, hasSession: true))
     }
 
-    private func finishSetUp(_ result: Result<AVAudioFormat, Error>, table: [[[Deque<Sound>?]]]?, soundCount: Int) {
+    private func finishSetUp(_ result: Result<SetUp, Error>, table: [[[Deque<Sound>?]]]?, soundCount: Int) {
         guard !isDestroyed() else { return }
         let playbackFormat: AVAudioFormat
         switch result {
-        case .success(let format):
-            playbackFormat = format
+        case .success(let setUp):
+            playbackFormat = setUp.format
+            if !setUp.hasSession { gate.startedWithoutSession() }
         case .failure(let error):
             // Nothing will play on this engine; a later notification must not start it.
             gate.shutDown()
@@ -492,7 +514,7 @@ final class SoundEngine {
     #if canImport(UIKit)
     /// Applies the category and the low-latency preferences and activates the session. Idempotent on
     /// purpose: recovery runs it again, and after a media services reset the configuration is gone.
-    nonisolated private static func configureSession() throws {
+    nonisolated static func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setPreferredSampleRate(48_000)
@@ -500,7 +522,7 @@ final class SoundEngine {
         try session.setActive(true)
     }
     #else
-    nonisolated private static func configureSession() throws {}
+    nonisolated static func configureSession() throws {}
     #endif
 
     #if canImport(UIKit)
@@ -660,11 +682,22 @@ final class SoundEngine {
 
         if sound.wormhole != Sound.noWormhole {
             let wormhole = sound.wormhole
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                chain.setValue(wormhole)
+            let delay = wormholeDelay
+            let id = nextWormholeID
+            nextWormholeID += 1
+            pendingWormholes[id] = Task { @MainActor [weak self] in
+                await delay()
+                guard let self, self.pendingWormholes.removeValue(forKey: id) != nil else { return }
+                self.chain.setValue(wormhole)
             }
         }
+    }
+
+    /// Drops the wormhole chain changes still waiting out their delay: a chain the player picks
+    /// after a press is the one that stays.
+    func cancelPendingWormholes() {
+        for task in pendingWormholes.values { task.cancel() }
+        pendingWormholes.removeAll()
     }
 
     func soundOff(x: Int, y: Int, inputID: UUID? = nil) {
@@ -677,6 +710,7 @@ final class SoundEngine {
 
     func destroy() {
         inputPlayback.removeAll()
+        cancelPendingWormholes()
         // Terminal: a notification that lands after this must not restart the engine we just stopped.
         gate.shutDown()
         for i in nodePlayID.indices { nodePlayID[i] = 0 }
