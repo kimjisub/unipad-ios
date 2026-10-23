@@ -81,6 +81,10 @@ final class MidiManager: ObservableObject {
         let name: String
         let factory: () -> MidiDriver
         let preferredPort: Int
+
+        static let masterKeyboard = DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+
+        var isMasterKeyboard: Bool { name == Self.masterKeyboard.name }
     }
 
     // MARK: - Initialization
@@ -277,9 +281,10 @@ final class MidiManager: ObservableObject {
             log("Source[\(i)]: \(name)")
 
             if let matchedDriver = findDriverForSource(source) {
-                // A connected keyboard matches itself on every scan, and returning to the app scans;
-                // reconnecting it could drop a key released in between and leave its pad pressed.
-                if connectedSource != 0 && isConnectedDevice(source) { continue }
+                // Only a device with its own driver replaces a connected keyboard. Returning to the app scans,
+                // and reconnecting it, or moving to another keyboard, could drop a key released in between and
+                // leave its pad pressed.
+                if connectedSource != 0 && matchedDriver.isMasterKeyboard { continue }
                 if connectedSource != 0 { disconnect() }
                 connectToDevice(sourceIndex: i, driverEntry: matchedDriver)
                 return
@@ -304,22 +309,6 @@ final class MidiManager: ObservableObject {
 
     private var isGenericConnection: Bool {
         driver is MasterKeyboardDriver
-    }
-
-    /// Whether `source` belongs to the connected device: the connected endpoint itself, or another port
-    /// of the same device.
-    private func isConnectedDevice(_ source: MIDIEndpointRef) -> Bool {
-        if source == connectedSource { return true }
-        let device = deviceOf(source)
-        return device != 0 && device == deviceOf(connectedSource)
-    }
-
-    private func deviceOf(_ endpoint: MIDIEndpointRef) -> MIDIDeviceRef {
-        var entity: MIDIEntityRef = 0
-        MIDIEndpointGetEntity(endpoint, &entity)
-        var device: MIDIDeviceRef = 0
-        if entity != 0 { MIDIEntityGetDevice(entity, &device) }
-        return device
     }
 
     private func isVirtualSource(name: String) -> Bool {
@@ -425,7 +414,7 @@ final class MidiManager: ObservableObject {
         for candidate in candidateNames where !candidate.isEmpty {
             let lowered = candidate.lowercased()
             if lowered.contains("keyboard") || lowered.contains("piano") {
-                return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+                return DriverEntry.masterKeyboard
             }
         }
 
@@ -442,7 +431,7 @@ final class MidiManager: ObservableObject {
         }
 
         if lowered.contains("keyboard") || lowered.contains("piano") {
-            return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+            return DriverEntry.masterKeyboard
         }
 
         return nil
