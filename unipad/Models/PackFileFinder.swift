@@ -6,8 +6,8 @@ import Foundation
 /// `fx\sweep.wav`), leading slashes, `.` and repeated slashes are dropped, and a name with `..` is
 /// never looked up, so it cannot reach a file outside the folder.
 ///
-/// The exact stored path wins; then one that is the same composed (NFC); then one that differs only in
-/// letter case. Packs are written on Windows and macOS disks, which ignore case, so a keySound line may
+/// The exact original path wins; otherwise NFC paths are compared without letter case. Packs are
+/// written on Windows and macOS disks, which ignore case, so a keySound line may
 /// name `End.wav` for a file stored as `END.wav`; an iPhone's disk tells them apart. Whole paths are
 /// compared, and of several candidates the first in UTF-16 order is taken. The folder is listed once
 /// per finder.
@@ -36,11 +36,10 @@ nonisolated final class PackFileFinder {
         return components.isEmpty ? nil : components.joined(separator: "/")
     }
 
-    /// Stored paths keyed by their exact, composed and composed lower-cased spelling. Swift compares
+    /// Stored paths keyed by their exact and composed lower-cased spelling. Swift compares
     /// and hashes strings by canonical equivalence, so the keys are UTF-8 bytes.
     struct Index {
         private var exact: [[UInt8]: String] = [:]
-        private var composed: [[UInt8]: String] = [:]
         private var folded: [[UInt8]: String] = [:]
 
         init(paths: [String]) {
@@ -52,14 +51,13 @@ nonisolated final class PackFileFinder {
                 let path = entry.name
                 let nfc = path.precomposedStringWithCanonicalMapping
                 exact[Array(path.utf8)] = exact[Array(path.utf8)] ?? entry.stored
-                composed[Array(nfc.utf8)] = composed[Array(nfc.utf8)] ?? entry.stored
                 folded[Array(nfc.lowercased().utf8)] = folded[Array(nfc.lowercased().utf8)] ?? entry.stored
             }
         }
 
         func match(_ path: String) -> String? {
             let nfc = path.precomposedStringWithCanonicalMapping
-            return exact[Array(path.utf8)] ?? composed[Array(nfc.utf8)] ?? folded[Array(nfc.lowercased().utf8)]
+            return exact[Array(path.utf8)] ?? folded[Array(nfc.lowercased().utf8)]
         }
     }
 
