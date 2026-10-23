@@ -78,6 +78,89 @@ struct UniPackArchiveEntryTests {
         #expect(FileManager.default.fileExists(atPath: installed.appending(path: "sounds/a.wav").path))
     }
 
+    // Distinct ZIP entries can have canonically equivalent names even though APFS cannot store
+    // them beside each other. Assert the selected entry's contents after installation and reload.
+    @Test(arguments: [false, true])
+    func canonicallyEquivalentEntriesKeepTheirOwnContents(reverse: Bool) async throws {
+        let nfc = "한.wav"
+        let nfd = nfc.decomposedStringWithCanonicalMapping
+        var sounds = [("Pack/sounds/\(nfc)", Data([1])), ("Pack/sounds/\(nfd)", Data([2]))]
+        if reverse { sounds.reverse() }
+        let archive = TestZip.stored([
+            ("Pack/info", Self.info),
+            ("Pack/keySound", Data("1 1 1 \(nfc)\n1 2 1 \(nfd)\n".utf8)),
+        ] + sounds)
+        let (pack, installed, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(pack.errorDetail == nil)
+        for (pad, expected) in [(0, Data([1])), (1, Data([2]))] {
+            let sound = try #require(pack.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+        }
+        let reloaded = UniPackFolder(rootFolder: installed)
+        reloaded.load()
+        reloaded.loadDetail()
+        for (pad, expected) in [(0, Data([1])), (1, Data([2]))] {
+            let sound = try #require(reloaded.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func canonicalFallbackUsesOriginalUTF16Order(reverse: Bool) async throws {
+        let nfc = "한.wav"
+        let nfd = nfc.decomposedStringWithCanonicalMapping
+        // Neither entry matches the mixed normalization of the request exactly.
+        let request = "한".decomposedStringWithCanonicalMapping + "글.wav"
+        var sounds = [("sounds/한글.wav", Data([1])),
+                      ("sounds/" + "한글.wav".decomposedStringWithCanonicalMapping, Data([2]))]
+        if reverse { sounds.reverse() }
+        let archive = TestZip.stored([
+            ("info", Self.info), ("keySound", Data("1 1 1 \(request)\n".utf8)),
+        ] + sounds)
+        let (pack, _, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(pack.errorDetail == nil)
+        #expect(nfd.utf16.lexicographicallyPrecedes(nfc.utf16))
+        let sound = try #require(pack.soundTable?[0][0][0]?.first)
+        #expect(try Data(contentsOf: sound.file) == Data([2]))
+    }
+
+    @Test func canonicalFolderNamesKeepTheOriginalFullSoundPath() async throws {
+        let nfc = "소리"
+        let nfd = nfc.decomposedStringWithCanonicalMapping
+        let archive = TestZip.stored([
+            ("Pack/info", Self.info),
+            ("Pack/keySound", Data("1 1 1 \(nfc)/a.wav\n1 2 1 \(nfd)/a.wav\n".utf8)),
+            ("Pack/sounds/\(nfc)/a.wav", Data([1])),
+            ("Pack/sounds/\(nfd)/a.wav", Data([2])),
+        ])
+        let (pack, _, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for (pad, expected) in [(0, Data([1])), (1, Data([2]))] {
+            let sound = try #require(pack.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+        }
+    }
+
+    @Test func aPackFileCannotReplaceTheImportedSoundIndex() async throws {
+        let archive = TestZip.stored([
+            ("info", Self.info),
+            ("keySound", Data("1 1 1 .unipad-sound-paths.json\n1 2 1 a.wav\n1 3 1 .unipad-sound-paths.json/b.wav\n".utf8)),
+            ("sounds/.unipad-sound-paths.json", Data([1])),
+            ("sounds/a.wav", Data([2])),
+            ("sounds/a.wav", Data([3])),
+            ("sounds/.unipad-sound-paths.json/b.wav", Data([4])),
+        ])
+        let (pack, _, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(pack.errorDetail == nil)
+        for (pad, expected) in [(0, Data([1])), (1, Data([3])), (2, Data([4]))] {
+            let sound = try #require(pack.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+        }
+    }
+
     // MARK: Name encodings
 
     @Test func aCP949NameMarkedUTF8IsReadAsCP949() async throws {

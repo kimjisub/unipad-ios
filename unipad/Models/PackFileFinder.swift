@@ -44,11 +44,16 @@ nonisolated final class PackFileFinder {
         private var folded: [[UInt8]: String] = [:]
 
         init(paths: [String]) {
-            for path in paths.sorted(by: { $0.utf16.lexicographicallyPrecedes($1.utf16) }) {
+            self.init(entries: paths.map { ImportedSoundPaths.Entry(name: $0, stored: $0) })
+        }
+
+        init(entries: [ImportedSoundPaths.Entry]) {
+            for entry in entries.sorted(by: { $0.name.utf16.lexicographicallyPrecedes($1.name.utf16) }) {
+                let path = entry.name
                 let nfc = path.precomposedStringWithCanonicalMapping
-                exact[Array(path.utf8)] = exact[Array(path.utf8)] ?? path
-                composed[Array(nfc.utf8)] = composed[Array(nfc.utf8)] ?? path
-                folded[Array(nfc.lowercased().utf8)] = folded[Array(nfc.lowercased().utf8)] ?? path
+                exact[Array(path.utf8)] = exact[Array(path.utf8)] ?? entry.stored
+                composed[Array(nfc.utf8)] = composed[Array(nfc.utf8)] ?? entry.stored
+                folded[Array(nfc.lowercased().utf8)] = folded[Array(nfc.lowercased().utf8)] ?? entry.stored
             }
         }
 
@@ -65,7 +70,16 @@ nonisolated final class PackFileFinder {
             return fileManager.fileExists(atPath: directory.appendingPathComponent(path).path, isDirectory: &isDirectory)
                 && !isDirectory.boolValue
         }
-        let index = Index(paths: paths)
+        let manifest = ImportedSoundPaths.read(in: directory)
+        let imported = (manifest ?? []).filter { entry in
+            var isDirectory: ObjCBool = false
+            return fileManager.fileExists(atPath: directory.appendingPathComponent(entry.stored).path, isDirectory: &isDirectory)
+                && !isDirectory.boolValue
+        }
+        let mapped = Set(imported.map(\.stored))
+        let additional = paths.filter { (manifest == nil || $0 != ImportedSoundPaths.fileName) && !mapped.contains($0) }
+            .map { ImportedSoundPaths.Entry(name: $0, stored: $0) }
+        let index = Index(entries: imported + additional)
         indexes[directory.path] = index
         return index
     }

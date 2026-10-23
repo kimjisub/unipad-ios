@@ -249,10 +249,13 @@ nonisolated extension FileManager {
         }
 
         var folders = ArchiveFolderNames()
+        var soundFiles = ArchiveSoundFiles()
         for entry in entries {
             guard let path = Self.entryPath(entry.fileName) else { continue }
 
-            let entryPath = destinationURL.appendingPathComponent(folders.place(path.components, isDirectory: path.isDirectory))
+            let placed = folders.place(path.components, isDirectory: path.isDirectory)
+            let entryPath = path.isDirectory ? destinationURL.appendingPathComponent(placed)
+                : soundFiles.destination(original: path.components, placed: placed, root: destinationURL, fileManager: self)
             if path.isDirectory {
                 try createDirectory(at: entryPath, withIntermediateDirectories: true)
                 continue
@@ -292,6 +295,7 @@ nonisolated extension FileManager {
                 )
             }
         }
+        try soundFiles.save(in: destinationURL)
     }
 
     /// Where an entry goes below the destination, or nil for one that must not be written. `\`
@@ -407,9 +411,49 @@ nonisolated struct ArchiveFolderNames {
             let path = placed.isEmpty ? component : placed + "/" + component
             guard index < folderCount else { return path }
             let key = path.precomposedStringWithCanonicalMapping.lowercased()
-            placed = spelled[key] ?? path
+            let reserved = index > 0 && components[index - 1].lowercased() == "sounds"
+                && component.lowercased() == ImportedSoundPaths.fileName
+            let firstSpelling = reserved ? placed + "/.unipad-sound-folder-" + UUID().uuidString : path
+            placed = spelled[key] ?? firstSpelling
             spelled[key] = placed
         }
         return placed
+    }
+}
+
+/// Keeps every sound entry even when the destination disk merges its spelling with another entry.
+/// The index stays inside sounds/, so removing wrapper folders and publishing the pack move it with
+/// the files. Byte keys distinguish canonically equivalent names that Swift String keys merge.
+nonisolated struct ArchiveSoundFiles {
+    private var directories: [String: [[UInt8]: ImportedSoundPaths.Entry]] = [:]
+
+    mutating func destination(original: [String], placed: String, root: URL, fileManager: FileManager) -> URL {
+        let target = root.appendingPathComponent(placed)
+        guard let soundIndex = original.dropLast().firstIndex(where: { $0.lowercased() == "sounds" }) else { return target }
+        let components = placed.split(separator: "/").map(String.init)
+        let directory = components.prefix(soundIndex + 1).joined(separator: "/")
+        let name = original.dropFirst(soundIndex + 1).joined(separator: "/")
+        let key = Array(name.utf8)
+        let soundDirectory = root.appendingPathComponent(directory)
+        // Repeated entries with the identical original path retain ZIP's last-entry-wins behavior.
+        if let existing = directories[directory]?[key] {
+            return soundDirectory.appendingPathComponent(existing.stored)
+        }
+
+        var stored = components.dropFirst(soundIndex + 1).joined(separator: "/")
+        let reserved = stored.lowercased() == ImportedSoundPaths.fileName
+        if reserved || fileManager.fileExists(atPath: target.path) {
+            let ext = target.pathExtension
+            let alias = ".unipad-sound-" + UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
+            stored = (components.dropFirst(soundIndex + 1).dropLast() + [alias]).joined(separator: "/")
+        }
+        directories[directory, default: [:]][key] = ImportedSoundPaths.Entry(name: name, stored: stored)
+        return soundDirectory.appendingPathComponent(stored)
+    }
+
+    func save(in root: URL) throws {
+        for (directory, entries) in directories {
+            try ImportedSoundPaths.write(Array(entries.values), in: root.appendingPathComponent(directory))
+        }
     }
 }

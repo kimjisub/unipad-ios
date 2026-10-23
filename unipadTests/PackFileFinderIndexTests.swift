@@ -20,4 +20,17 @@ struct PackFileFinderIndexTests {
         #expect(index.match(decomposed).map { Array($0.unicodeScalars) } == Array(decomposed.unicodeScalars))
         #expect(index.match(composed).map { Array($0.unicodeScalars) } == Array(composed.unicodeScalars))
     }
+
+    @Test func aStoredPathFromMetadataCannotLeaveTheSoundFolder() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "SoundIndex-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appending(path: "sounds")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data([1]).write(to: directory.appending(path: "a.wav"))
+        try Data([2]).write(to: root.appending(path: "outside.wav"))
+        try Data(#"{"version":1,"entries":[{"name":"a.wav","stored":"../outside.wav"}]}"#.utf8)
+            .write(to: directory.appending(path: ".unipad-sound-paths.json"))
+        let selected = try #require(PackFileFinder().file("a.wav", in: directory))
+        #expect(try Data(contentsOf: selected) == Data([1]))
+    }
 }
