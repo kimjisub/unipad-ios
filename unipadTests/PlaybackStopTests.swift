@@ -494,6 +494,11 @@ final class PlaybackStopTests: XCTestCase {
         var failure: Error?
         do { try await body(mix, rate) } catch { failure = error }
         await onAudioWorker { audio.mainMixerNode.removeTap(onBus: 0) }
+        try attachMix(mix, rate: rate)
+        if let failure { throw failure }
+    }
+
+    private func attachMix(_ mix: MixRecording, rate: Double) throws {
         let wav = FileManager.default.temporaryDirectory.appendingPathComponent("mix-\(UUID().uuidString).wav")
         try mix.write(to: wav, sampleRate: rate)
         defer { try? FileManager.default.removeItem(at: wav) }
@@ -501,7 +506,6 @@ final class PlaybackStopTests: XCTestCase {
         recording.name = "final-mix.wav"
         recording.lifetime = .keepAlways
         add(recording)
-        if let failure { throw failure }
     }
 
     private func report(_ text: String) {
@@ -535,9 +539,35 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertEqual(engine.playerNodesStopped, 0, "the node the first sound freed was stopped")
     }
 
-    /// The final mix of the real-time engine, recorded while a three-play sound ends and the next pad
-    /// takes over its freed player node (the first idle one). The last repeat has to reach the mix in full
-    /// before the node is handed on, and the reused node has to play the next sound in full.
+    /// Drive the production graph without a hardware deadline. A host output underrun must not
+    /// replace part of the scheduled sound with silence before this test can inspect it.
+    /// Loading, decoding, pad presses, repeat supply, completion and voice reuse stay real.
+    private func recordingOfflineMix(
+        of engine: SoundEngine,
+        _ body: (AVAudioEngine, MixRecording, Double) async throws -> Void
+    ) async throws {
+        let audio = try audioEngine(of: engine)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let preparation: Result<Void, Error> = await withCheckedContinuation { continuation in
+            AudioSessionWorker.shared.run({
+                Result {
+                    audio.stop()
+                    try audio.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 480)
+                    try audio.start()
+                }
+            }, then: { continuation.resume(returning: $0) })
+        }
+        try preparation.get()
+        let mix = MixRecording()
+        var failure: Error?
+        do { try await body(audio, mix, format.sampleRate) } catch { failure = error }
+        await onAudioWorker { audio.stop() }
+        try attachMix(mix, rate: format.sampleRate)
+        if let failure { throw failure }
+    }
+
+    /// The last repeat must reach the final mix in full before the next pad takes the freed node.
+    /// Render exactly the requested frames even if the host pauses between render calls.
     func testLastRepeatPlaysInFullBeforeTheNextPadReusesItsVoice() async throws {
         let root = try pack(loop: 3)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -547,24 +577,82 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         defer { vm.cleanup() }
         let engine = try XCTUnwrap(vm.soundEngine)
-        try await recordingMix(of: engine) { mix, rate in
+        try await recordingOfflineMix(of: engine) { audio, mix, rate in
+            let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: audio.manualRenderingFormat, frameCapacity: 480))
+            var firstPlay: Int?
+            var firstSlot: Int?
+            var nextPressed = false
+            engine.playbackCompletionDelivery = { playID, failure, complete in
+                XCTAssertNil(failure)
+                complete()
+                guard playID == firstPlay, !nextPressed else { return }
+                nextPressed = true
+                // Take the first idle node at the very callback that frees it, without a wall-clock wait.
+                MainActor.assumeIsolated {
+                    vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+                    XCTAssertEqual(try? self.activeVoiceSlot(of: engine), firstSlot, "the next pad did not reuse the freed node")
+                }
+            }
+            defer { engine.playbackCompletionDelivery = nil }
             vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
-            try await wait(for: "three plays", until: { engine.activeVoiceCount == 0 })
-            vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
-            try await wait(for: "the next pad", until: { engine.activeVoiceCount == 0 })
-            try await wait(for: "the mix after both sounds", until: { mix.silentFramesAfterLastSound(below: 0.01) >= Int(rate * 0.2) })
-
-            let samples = mix.samples
-            let repeated = try XCTUnwrap(stretch(at: 0.125, in: samples))
-            // The next sound's rise passes through the repeated level on a sample of its own, which a
-            // plain count would add.
-            let nextStart = try XCTUnwrap(samples[repeated.upperBound...].firstIndex { abs($0 - 0.25) < 0.02 })
-            let next = samples[nextStart...].filter { abs($0 - 0.25) < 0.02 }.count
-            let pause = Double(nextStart - repeated.upperBound) / rate
-            report("MIX rate=\(rate) unbrokenRepeatedFrames=\(repeated.count) expected=\(Int(rate * 0.3)) nextFrames=\(next) expected=\(Int(rate * 0.1)) pauseBeforeNextMs=\(Int(pause * 1000))")
-            XCTAssertEqual(Double(repeated.count), rate * 0.3, accuracy: rate * 0.003, "the three plays did not reach the mix whole and unbroken")
-            XCTAssertEqual(Double(next), rate * 0.1, accuracy: rate * 0.003, "the reused node did not play the next sound in full")
+            firstPlay = engine.activePlayIDs.first
+            firstSlot = try activeVoiceSlot(of: engine)
+            XCTAssertNotNil(firstPlay)
+            XCTAssertEqual(engine.repeatedBuffersScheduled, 2, "the initial lookahead must not depend on this render loop")
+            // 800 ms includes both sounds and 200 ms of silence even with render-quantum latency.
+            for step in 0..<80 {
+                if step == 10 {
+                    // As in the busy-screen test, allow the real supplier to append the last repeat
+                    // before rendering past the second buffer. Do not fabricate any audio samples.
+                    try await wait(for: "the last repeat to be queued", until: { engine.repeatedBuffersScheduled == 3 })
+                }
+                if step == 6 { holdScreen() }
+                XCTAssertEqual(try audio.renderOffline(480, to: output), .success)
+                XCTAssertEqual(output.frameLength, 480)
+                mix.record(output)
+                // Deliver the real completion on the main queue before the next render quantum.
+                await onAudioWorker {}
+            }
+            XCTAssertTrue(nextPressed, "the final repeat never freed its voice")
+            XCTAssertEqual(engine.activeVoiceCount, 0)
+            XCTAssertEqual(engine.playsStarted, 2)
+            XCTAssertEqual(engine.playerNodesStopped, 0, "the next pad must take the freed node without stopping it")
+            try checkVoiceReuseMix(mix.samples, rate: rate)
         }
+    }
+
+    private func activeVoiceSlot(of engine: SoundEngine) throws -> Int {
+        let slots = try XCTUnwrap(Mirror(reflecting: engine).children.first { $0.label == "nodePlayID" }?.value as? [Int])
+        XCTAssertEqual(slots.filter { $0 != 0 }.count, 1)
+        return try XCTUnwrap(slots.firstIndex { $0 != 0 })
+    }
+
+    /// Keep the real output check and its defect controls on the same decision path.
+    private func checkVoiceReuseMix(_ samples: [Float], rate: Double) throws {
+        guard let repeated = stretch(at: 0.125, in: samples),
+              let next = stretch(at: 0.25, in: samples, from: repeated.upperBound),
+              !samples[..<repeated.lowerBound].contains(where: { abs($0 - 0.25) < 0.02 }) else {
+            throw WaitFailed(errorDescription: "missing repeated or next sound")
+        }
+        report("MIX rate=\(rate) unbrokenRepeatedFrames=\(repeated.count) expected=\(Int(rate * 0.3)) unbrokenNextFrames=\(next.count) expected=\(Int(rate * 0.1))")
+        guard abs(Double(repeated.count) - rate * 0.3) <= rate * 0.003,
+              abs(Double(next.count) - rate * 0.1) <= rate * 0.003 else {
+            throw WaitFailed(errorDescription: "the voices did not reach the mix whole and unbroken")
+        }
+    }
+
+    func testVoiceReuseMixRejectsInternalSilenceAndCutTails() throws {
+        let repeated = [Float](repeating: 0.125, count: 14_400)
+        let next = [Float](repeating: 0.25, count: 4_800)
+        let silence = [Float](repeating: 0, count: 1_348)
+        XCTAssertNoThrow(try checkVoiceReuseMix(repeated + next, rate: 48_000))
+        XCTAssertThrowsError(try checkVoiceReuseMix(
+            Array(repeated.prefix(3_054)) + silence + Array(repeated.dropFirst(4_402)) + next, rate: 48_000))
+        XCTAssertThrowsError(try checkVoiceReuseMix(Array(repeated.dropLast(1_348)) + next, rate: 48_000))
+        XCTAssertThrowsError(try checkVoiceReuseMix(repeated + Array(next.dropLast(1_348)), rate: 48_000))
+        XCTAssertThrowsError(try checkVoiceReuseMix(
+            repeated + Array(next.prefix(1_000)) + silence + Array(next.dropFirst(1_000)), rate: 48_000))
+        XCTAssertThrowsError(try checkVoiceReuseMix(next + repeated + next, rate: 48_000))
     }
 
     /// A one-shot frees its player node once the node has read the last of it, which can be before the
