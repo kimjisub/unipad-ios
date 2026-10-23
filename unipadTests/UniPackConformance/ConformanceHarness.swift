@@ -6,9 +6,12 @@ enum ConformanceActual {
     case value(JSONValue)
     case unverified(String)
     case failed(String)
+    case observedFailure(JSONValue, String)
 
     func classified(for conformanceCase: ConformanceCase) -> (outcome: ConformanceOutcome, actual: JSONValue) {
         switch self {
+        case .observedFailure(let actual, let reason):
+            return (ConformanceOutcome(status: "fail", unexpected: true, detail: reason), actual)
         case .failed(let reason):
             return (ConformanceOutcome(status: "fail", unexpected: true, detail: reason), .null)
         case .unverified(let reason):
@@ -71,7 +74,7 @@ enum ConformanceHarness {
     /// Whether files whose names differ only in letter case are different files where the packs are
     /// written. Where they are not, a parser that opens only the exact name of `info` passes too.
     static let caseSensitiveFileSystem: Bool = {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
+        let dir = ConformanceSoundIdentity.observationRoot.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil,
               FileManager.default.createFile(atPath: dir.appendingPathComponent("a").path, contents: Data()) else { return false }
@@ -155,6 +158,9 @@ enum ConformanceHarness {
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
         if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
+        if conformanceCase.soundIdentity {
+            return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps)
+        }
         if conformanceCase.layer == "palette" {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
         }
@@ -184,6 +190,7 @@ enum ConformanceHarness {
             print("UNIPACK-CONFORMANCE-SELF-CHECK-SKIPPED \(reason)")
             return false
         case .failed(let reason): throw ConformanceError.harness(reason)
+        case .observedFailure(_, let reason): throw ConformanceError.harness(reason)
         case .value: return true
         }
     }
