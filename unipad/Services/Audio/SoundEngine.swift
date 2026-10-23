@@ -122,6 +122,15 @@ final class SoundEngine {
     var isAppInFront: () -> Bool = { UIApplication.shared.applicationState == .active }
     #endif
 
+    /// Optional observations let tests distinguish queue waits from decoding and callback delivery.
+    nonisolated enum LoadingEvent: String {
+        case setupQueued, setupStarted, setupFinished, setupDelivered
+        case loadQueued, loadStarted, soundStarted, soundFinished
+        case completionQueued, completionDelivered
+    }
+    private let packBudget: SoundFileLimits.PackBudget
+    private let observeLoading: (LoadingEvent) -> Void
+
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
         func onProgressTick()
@@ -135,8 +144,12 @@ final class SoundEngine {
         unipack: UniPack,
         chain: ChainObserver,
         loadingListener: LoadingListener,
-        activateSession: @escaping () throws -> Void = SoundEngine.configureSession
+        activateSession: @escaping () throws -> Void = SoundEngine.configureSession,
+        packBudget: SoundFileLimits.PackBudget = .init(),
+        observeLoading: @escaping (LoadingEvent) -> Void = { _ in }
     ) {
+        self.packBudget = packBudget
+        self.observeLoading = observeLoading
         self.unipack = unipack
         self.chain = chain
         self.loadingListener = loadingListener
@@ -189,7 +202,13 @@ final class SoundEngine {
         observeSession()
 
         let nodes = playerNodes
-        worker.run({ Self.setUp(engine, nodes: nodes, activateSession: activateSession) }, then: { [weak self] result in
+        observeLoading(.setupQueued)
+        worker.run({
+            observeLoading(.setupStarted)
+            defer { observeLoading(.setupFinished) }
+            return Self.setUp(engine, nodes: nodes, activateSession: activateSession)
+        }, then: { [weak self] result in
+            observeLoading(.setupDelivered)
             self?.finishSetUp(result, table: table, soundCount: soundCount)
         })
     }
@@ -284,11 +303,14 @@ final class SoundEngine {
 
     private func load(_ table: [[[Deque<Sound>?]]]?, as playbackFormat: AVAudioFormat) {
         let unipack = self.unipack
+        observeLoading(.loadQueued)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
+            self.observeLoading(.loadStarted)
             guard let table else {
                 DispatchQueue.main.async { [weak self] in
                     self?.loadingListener?.onEnd()
+                    self?.observeLoading(.completionDelivered)
                 }
                 return
             }
@@ -318,6 +340,8 @@ final class SoundEngine {
                                     throw failure
                                 } else {
                                     do {
+                                        self.observeLoading(.soundStarted)
+                                        defer { self.observeLoading(.soundFinished) }
                                         playBuffer = try Self.decode(sound.file, as: playbackFormat, within: &budget)
                                     } catch {
                                         failedFiles[sound.file] = error
@@ -341,13 +365,16 @@ final class SoundEngine {
                 }
             }
             if self.isDestroyed() { return }
+            self.observeLoading(.completionQueued)
             if loaded == 0, let firstError {
                 DispatchQueue.main.async { [weak self] in
                     self?.loadingListener?.onException(firstError)
+                    self?.observeLoading(.completionDelivered)
                 }
             } else {
                 DispatchQueue.main.async { [weak self] in
                     self?.loadingListener?.onEnd()
+                    self?.observeLoading(.completionDelivered)
                 }
             }
         }

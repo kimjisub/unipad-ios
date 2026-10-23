@@ -80,24 +80,6 @@ enum SoundEngineTestSupport {
         return url
     }
 
-    /// Silence of `seconds` at 8 kHz mono AAC: a few KB on disk that decode to hundreds of MB at the
-    /// device rate.
-    static func writeSilentAAC(seconds: Int) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "SoundEngineTestSupport-\(UUID().uuidString).m4a")
-        let file = try AVAudioFile(forWriting: url, settings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 8_000,
-            AVNumberOfChannelsKey: 1,
-        ])
-        let chunk = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 8_000 * 10))
-        chunk.frameLength = chunk.frameCapacity
-        for _ in 0..<(seconds / 10) {
-            try file.write(from: chunk)
-        }
-        return url
-    }
-
     /// The bundled MP3 tone with the Info header of a song `claimingPackets` MP3 frames long, as
     /// MP3s cut from a song keep it. Both its frame and byte counts are scaled: a byte count that
     /// matches the file makes the decoder count the frames itself.
@@ -123,17 +105,119 @@ enum SoundEngineTestSupport {
     }
 
     /// Starts a real engine on `pack` and waits until it has finished loading the sounds.
-    static func loadedEngine(_ pack: UniPack, chain: ChainObserver? = nil) async throws -> (SoundEngine, TestSoundLoadListener) {
+    static func loadedEngine(
+        _ pack: UniPack, chain: ChainObserver? = nil,
+        packBudget: SoundFileLimits.PackBudget = .init()
+    ) async throws -> (SoundEngine, TestSoundLoadListener) {
         let listener = TestSoundLoadListener()
-        let engine = SoundEngine(unipack: pack, chain: chain ?? ChainObserver(), loadingListener: listener)
+        let trace = SoundLoadingTrace()
+        let engine = SoundEngine(unipack: pack, chain: chain ?? ChainObserver(), loadingListener: listener,
+                                 packBudget: packBudget, observeLoading: trace.record)
 
-        // The loader runs on a utility queue and reports back on the main queue. Bounded wait.
-        let deadline = Date().addingTimeInterval(20)
-        while !listener.finished, Date() < deadline {
+        try await waitForLoad(listener, trace: trace)
+        return (engine, listener)
+    }
+
+    static func waitForLoad(
+        _ listener: TestSoundLoadListener, trace: SoundLoadingTrace,
+        timeout: Duration = .seconds(20)
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while !listener.finished, ContinuousClock.now < deadline {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         #expect(listener.finished, "the pack did not finish loading within 20 s")
-        return (engine, listener)
+    }
+}
+
+nonisolated final class SoundLoadingTrace: @unchecked Sendable {
+    private let lock = NSLock()
+    private let start = DispatchTime.now().uptimeNanoseconds
+    private var events: [(SoundEngine.LoadingEvent, Double)] = []
+
+    func record(_ event: SoundEngine.LoadingEvent) {
+        lock.lock()
+        defer { lock.unlock() }
+        events.append((event, Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000))
+    }
+
+    var lastEvent: SoundEngine.LoadingEvent? {
+        lock.lock()
+        defer { lock.unlock() }
+        return events.last?.0
+    }
+
+    var pendingPhase: String {
+        switch lastEvent {
+        case .none: return "engine creation"
+        case .setupQueued: return "session queue"
+        case .setupStarted: return "session setup"
+        case .setupFinished: return "session callback"
+        case .setupDelivered, .loadQueued: return "load queue"
+        case .loadStarted, .soundStarted, .soundFinished: return "decoding"
+        case .completionQueued: return "completion callback"
+        case .completionDelivered: return "finished"
+        }
+    }
+
+    var summary: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return events.map { "\($0.0.rawValue)=\(String(format: "%.3f", $0.1))s" }.joined(separator: ", ")
+    }
+}
+struct SoundLoadTimeout: Error {
+    let phase: String
+    let trace: String
+}
+
+@MainActor
+struct SoundEngineLoadingWaitTests {
+    /// Hold each real worker stage until after a deliberately expired deadline. An unfinished
+    /// engine must never escape the helper and cause misleading playback failures afterwards.
+    @Test(arguments: [SoundEngine.LoadingEvent.setupStarted, .soundStarted, .completionQueued])
+    func anUnfinishedLoadThrowsWithItsPendingStage(_ heldEvent: SoundEngine.LoadingEvent) async throws {
+        let sound = try SoundEngineTestSupport.writeSilentSound()
+        defer { try? FileManager.default.removeItem(at: sound) }
+        let trace = SoundLoadingTrace()
+        let listener = TestSoundLoadListener()
+        let gate = DispatchSemaphore(value: 0)
+        let engine = SoundEngine(unipack: OnePadPack(soundFile: sound), chain: ChainObserver(),
+            loadingListener: listener, observeLoading: { event in
+                trace.record(event)
+                if event == heldEvent { gate.wait() }
+            })
+        defer { gate.signal(); engine.destroy() }
+        try await PlayUsageScenario.waitWhile(timeout: 20) { trace.lastEvent != heldEvent }
+        #expect(trace.lastEvent == heldEvent, "the worker never reached the controlled hold: \(trace.summary)")
+        do {
+            try await SoundEngineTestSupport.waitForLoad(listener, trace: trace, timeout: .zero)
+            Issue.record("an unfinished engine was returned to the playback assertions")
+        } catch let error as SoundLoadTimeout {
+            let expected = heldEvent == .setupStarted ? "session setup"
+                : heldEvent == .soundStarted ? "decoding" : "completion callback"
+            #expect(error.phase == expected)
+            #expect(error.trace.contains(heldEvent.rawValue))
+        }
+        gate.signal()
+        try await SoundEngineTestSupport.waitForLoad(listener, trace: trace)
+        #expect(listener.failure == nil)
+        #expect(trace.lastEvent == .completionDelivered)
+    }
+
+    @Test func aFinishedLoadDoesNotFailAnExpiredDeadline() async throws {
+        let listener = TestSoundLoadListener()
+        listener.onEnd()
+        try await SoundEngineTestSupport.waitForLoad(listener, trace: SoundLoadingTrace(), timeout: .zero)
+    }
+
+    @Test func queueWaitsAreDistinctFromWorkerAndCallbackTime() {
+        let trace = SoundLoadingTrace()
+        for (event, expected) in [(SoundEngine.LoadingEvent.setupQueued, "session queue"),
+                                 (.setupFinished, "session callback"), (.loadQueued, "load queue")] {
+            trace.record(event)
+            #expect(trace.pendingPhase == expected)
+        }
     }
 }
 #endif
