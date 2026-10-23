@@ -148,7 +148,7 @@ final class LedTimingTests: XCTestCase {
     // release and stays unfinished at the unchanged observation cutoff.
     func testUnfinishedAnimationIsNotRecordedAfterGiveUp() async throws {
         let recording = try await record(
-            keyLed: ["2 2 2 1": "o 2 2 a 9\nd 1000\n"],
+            keyLed: ["2 2 2 1": "o 2 2 a 9\nd 1000\nf 2 2\n"],
             autoPlay: "c 2\no 2 2\nd 10\nc 1\n", releaseAll: 100, giveUp: 625
         )
         XCTAssertEqual(recording.cutoffMs, 625)

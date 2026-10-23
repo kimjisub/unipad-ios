@@ -5,7 +5,10 @@ import Testing
 @testable import unipad
 
 /// Which sound files the real engine decodes, and what a pad does with one it cannot decode.
+// These fixtures decode hundreds of megabytes; run them one at a time so the pack-memory
+// probes do not compete with other decoder fixtures for the unchanged loading deadline.
 @MainActor
+@Suite(.serialized)
 struct SoundEngineDecodingTests {
     private func fixture(_ name: String, _ ext: String) throws -> URL {
         try #require(Bundle(for: OnePadPack.self).url(forResource: name, withExtension: ext))
