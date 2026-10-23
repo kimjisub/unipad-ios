@@ -146,7 +146,10 @@ nonisolated enum FileManagerExtensions {
             var deferred: [(parked: URL, dest: URL)] = []
             for item in sourceContents {
                 let dest = target.appendingPathComponent(item.lastPathComponent)
-                if dest.standardizedFileURL.path == sourcePath || sameFile(source, dest) {
+                // The simulator can report a differently cased alias as missing but still
+                // refuse the move because that alias is the source. Parking a possible alias
+                // is safe on case-sensitive disks too, and avoids relying on that lookup.
+                if dest.standardizedFileURL.path.lowercased() == sourcePath.lowercased() || sameFile(source, dest) {
                     let parked = target.appendingPathComponent(".unipad-move-" + UUID().uuidString)
                     try fm.moveItem(at: item, to: parked)
                     deferred.append((parked: parked, dest: dest))

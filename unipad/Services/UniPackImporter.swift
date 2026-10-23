@@ -460,6 +460,14 @@ nonisolated struct ArchiveSoundFiles {
 
     func save(in root: URL) throws {
         for (directory, entries) in directories {
+            // Plain ASCII names already survive unchanged on disk. Keep ordinary imports free of
+            // extra files; only a spelling the filesystem cannot preserve needs a catalog.
+            let needsCatalog = entries.values.contains { entry in
+                !entry.name.utf8.allSatisfy({ $0 < 0x80 })
+                    || entry.name != directory + "/" + entry.stored
+                    || entry.archiveEntry != entry.name
+            }
+            guard needsCatalog else { continue }
             try ImportedSoundPaths.write(Array(entries.values), in: root.appendingPathComponent(directory))
         }
     }
