@@ -114,7 +114,13 @@ enum SoundEngineTestSupport {
         let engine = SoundEngine(unipack: pack, chain: chain ?? ChainObserver(), loadingListener: listener,
                                  packBudget: packBudget, observeLoading: trace.record)
 
-        try await waitForLoad(listener, trace: trace)
+        do {
+            try await waitForLoad(listener, trace: trace)
+        } catch {
+            engine.destroy()
+            throw error
+        }
+        print("SOUND-LOAD \(trace.summary)")
         return (engine, listener)
     }
 
@@ -126,7 +132,9 @@ enum SoundEngineTestSupport {
         while !listener.finished, ContinuousClock.now < deadline {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        #expect(listener.finished, "the pack did not finish loading within 20 s")
+        guard listener.finished else {
+            throw SoundLoadTimeout(phase: trace.pendingPhase, trace: trace.summary)
+        }
     }
 }
 
@@ -166,9 +174,11 @@ nonisolated final class SoundLoadingTrace: @unchecked Sendable {
         return events.map { "\($0.0.rawValue)=\(String(format: "%.3f", $0.1))s" }.joined(separator: ", ")
     }
 }
-struct SoundLoadTimeout: Error {
+struct SoundLoadTimeout: Error, CustomStringConvertible {
     let phase: String
     let trace: String
+
+    var description: String { "pack loading deadline expired during \(phase); \(trace)" }
 }
 
 @MainActor

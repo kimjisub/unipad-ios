@@ -308,6 +308,7 @@ final class SoundEngine {
             guard let self else { return }
             self.observeLoading(.loadStarted)
             guard let table else {
+                self.observeLoading(.completionQueued)
                 DispatchQueue.main.async { [weak self] in
                     self?.loadingListener?.onEnd()
                     self?.observeLoading(.completionDelivered)
@@ -325,7 +326,7 @@ final class SoundEngine {
             // A file that failed fails again for every line that maps it; decoding it again could
             // cost a whole sound's memory and time each time before the same error.
             var failedFiles: [URL: Error] = [:]
-            var budget = SoundFileLimits.PackBudget()
+            var budget = self.packBudget
             outer: for i in 0..<unipack.chain {
                 for j in 0..<unipack.buttonX {
                     for k in 0..<unipack.buttonY {
