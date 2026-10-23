@@ -566,8 +566,10 @@ final class PlaybackStopTests: XCTestCase {
         if let failure { throw failure }
     }
 
-    /// The last repeat must reach the final mix in full before the next pad takes the freed node.
-    /// Render exactly the requested frames even if the host pauses between render calls.
+    /// Check continuous samples and same-node reuse through the production graph's offline output.
+    /// One render call both consumes and records samples, so this recording cannot expose a real-time
+    /// tail cut between consumption and output. The no-stop assertion below and the callback-type
+    /// check in testLastFiniteRepeatDoesNotWaitForPlayedBackAudio guard that case separately.
     func testLastRepeatPlaysInFullBeforeTheNextPadReusesItsVoice() async throws {
         let root = try pack(loop: 3)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -606,18 +608,23 @@ final class PlaybackStopTests: XCTestCase {
                     // before rendering past the second buffer. Do not fabricate any audio samples.
                     try await wait(for: "the last repeat to be queued", until: { engine.repeatedBuffersScheduled == 3 })
                 }
-                if step == 6 { holdScreen() }
                 XCTAssertEqual(try audio.renderOffline(480, to: output), .success)
                 XCTAssertEqual(output.frameLength, 480)
                 mix.record(output)
-                // Deliver the real completion on the main queue before the next render quantum.
-                await onAudioWorker {}
+                if step == 29 {
+                    // All 14,400 repeated frames have rendered. Wait for the scheduler and main-queue
+                    // completion to press the next pad before advancing the offline output again.
+                    try await wait(for: "the final repeat to free its voice", until: { nextPressed })
+                }
             }
             XCTAssertTrue(nextPressed, "the final repeat never freed its voice")
+            try await wait(for: "the next sound to free its voice", until: { engine.activeVoiceCount == 0 })
             XCTAssertEqual(engine.activeVoiceCount, 0)
             XCTAssertEqual(engine.playsStarted, 2)
             XCTAssertEqual(engine.playerNodesStopped, 0, "the next pad must take the freed node without stopping it")
-            try checkVoiceReuseMix(mix.samples, rate: rate)
+            let measured = try checkVoiceReuseMix(mix.samples, rate: rate)
+            let pause = Double(measured.next.lowerBound - measured.repeated.upperBound) / rate
+            report("MIX rate=\(rate) unbrokenRepeatedFrames=\(measured.repeated.count) expected=\(Int(rate * 0.3)) unbrokenNextFrames=\(measured.next.count) expected=\(Int(rate * 0.1)) pauseBeforeNextMs=\(Int(pause * 1000))")
         }
     }
 
@@ -628,17 +635,18 @@ final class PlaybackStopTests: XCTestCase {
     }
 
     /// Keep the real output check and its defect controls on the same decision path.
-    private func checkVoiceReuseMix(_ samples: [Float], rate: Double) throws {
+    @discardableResult
+    private func checkVoiceReuseMix(_ samples: [Float], rate: Double) throws -> (repeated: Range<Int>, next: Range<Int>) {
         guard let repeated = stretch(at: 0.125, in: samples),
               let next = stretch(at: 0.25, in: samples, from: repeated.upperBound),
               !samples[..<repeated.lowerBound].contains(where: { abs($0 - 0.25) < 0.02 }) else {
             throw WaitFailed(errorDescription: "missing repeated or next sound")
         }
-        report("MIX rate=\(rate) unbrokenRepeatedFrames=\(repeated.count) expected=\(Int(rate * 0.3)) unbrokenNextFrames=\(next.count) expected=\(Int(rate * 0.1))")
         guard abs(Double(repeated.count) - rate * 0.3) <= rate * 0.003,
               abs(Double(next.count) - rate * 0.1) <= rate * 0.003 else {
             throw WaitFailed(errorDescription: "the voices did not reach the mix whole and unbroken")
         }
+        return (repeated, next)
     }
 
     func testVoiceReuseMixRejectsInternalSilenceAndCutTails() throws {
