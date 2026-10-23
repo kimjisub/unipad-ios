@@ -58,11 +58,9 @@ final class SoundEngine {
         // MIDI has paired pad events without a touch identity.
         case pad(Int, Int)
     }
-    private struct StartedPlayback {
-        let playID: Int
-        let isInfinite: Bool
-    }
-    private var inputPlayback: [Input: StartedPlayback] = [:]
+    /// The endless voices each input started and has not released, on whatever chain they began.
+    /// Its release stops all of them: a second press of the same input never orphans the first.
+    private var inputPlayback: [Input: [Int]] = [:]
     /// Wormhole chain changes still waiting out their delay, by the press that made them.
     private var pendingWormholes: [Int: Task<Void, Never>] = [:]
     private var nextWormholeID = 0
@@ -591,7 +589,6 @@ final class SoundEngine {
 
     func soundOn(x: Int, y: Int, inputID: UUID? = nil) {
         let input = input(x: x, y: y, id: inputID)
-        inputPlayback.removeValue(forKey: input)
         guard isUsable else { return }
         let c = chain.value
         guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
@@ -671,7 +668,12 @@ final class SoundEngine {
             return
         }
         playsStarted += 1
-        inputPlayback[input] = StartedPlayback(playID: playID, isInfinite: sound.loop == -1)
+        if sound.loop == -1 {
+            // Voices already replaced or stolen are dropped, so repeated presses do not pile up.
+            var voices = inputPlayback[input, default: []].filter(nodePlayID.contains)
+            voices.append(playID)
+            inputPlayback[input] = voices
+        }
 
         advance(past: sound, c: c, x: x, y: y)
     }
@@ -702,10 +704,10 @@ final class SoundEngine {
 
     func soundOff(x: Int, y: Int, inputID: UUID? = nil) {
         // Consume once. Neither a new chain nor the next sound in a pad's sequence can
-        // change which voice this input started; a stolen/finished play ID is harmless.
-        guard let started = inputPlayback.removeValue(forKey: input(x: x, y: y, id: inputID)),
-              started.isInfinite else { return }
-        stopByPlayID(started.playID)
+        // change which voices this input started; a stolen/replaced play ID is harmless.
+        for playID in inputPlayback.removeValue(forKey: input(x: x, y: y, id: inputID)) ?? [] {
+            stopByPlayID(playID)
+        }
     }
 
     func destroy() {

@@ -277,6 +277,76 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertTrue(engine.activePlayIDs.isEmpty, "the lift after the option change was ignored")
     }
 
+    func testFirstFingerLiftKeepsTheLastFingerSoundingAndLit() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let first = UUID(), last = UUID()
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: first)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: last)
+        let sounding = engine.activePlayIDs
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: last)
+        XCTAssertEqual(engine.activePlayIDs, sounding, "one finger still holds the pad")
+        XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed)
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: first)
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+        XCTAssertNil(vm.padItems[0][0])
+    }
+
+    func testFingerLiftKeepsTheControllerHoldSoundingAndLit() async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let finger = UUID()
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.midi))
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: finger)
+        let sounding = engine.activePlayIDs
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: finger)
+        XCTAssertEqual(engine.activePlayIDs, sounding)
+        XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed)
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.midi))
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+        XCTAssertNil(vm.padItems[0][0])
+    }
+
+    func testPlayerReleaseLeavesTheNewAutoplaySoundAndLight() async throws {
+        try await checkOverlappingLight(first: .pad(.screen), last: .autoplay)
+    }
+
+    func testAutoplayReleaseLeavesTheNewPlayerSoundAndLight() async throws {
+        try await checkOverlappingLight(first: .autoplay, last: .pad(.screen))
+    }
+
+    private func checkOverlappingLight(first: PlayTrigger, last: PlayTrigger) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let leds = root.appendingPathComponent("keyLed")
+        try FileManager.default.createDirectory(at: leds, withIntermediateDirectories: true)
+        try "on 1 1 a 5\ndelay 100\n".write(to: leds.appendingPathComponent("1 1 1 0"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.ledRunner)
+        let earlier = UUID(), later = UUID()
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: first, inputID: earlier)
+        runner.loop()
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: last, inputID: later)
+        runner.loop()
+        let sounding = engine.activePlayIDs
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: first, inputID: earlier)
+        runner.loop()
+        XCTAssertEqual(engine.activePlayIDs, sounding, "the other source owns the replacement sound")
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0), "the other source owns the replacement light")
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: last, inputID: later)
+        runner.loop()
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+        XCTAssertFalse(runner.isEventExist(x: 0, y: 0))
+    }
+
     func testStoppingAutoplayReleasesItsInfiniteSound() async throws {
         try await checkAutoplayRelease { $0.stopAutoPlay() }
     }
