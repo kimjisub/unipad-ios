@@ -3,9 +3,10 @@ import unittest
 from unittest.mock import patch, Mock
 import argparse
 from pathlib import Path
+import signal
 import sys
 import tempfile
-from virtual_launchpad_roundtrip import assess, Run, snapshot, scoped_log
+from virtual_launchpad_roundtrip import assess, main, Run, snapshot, scoped_log
 
 
 class RoundTripVerdictTests(unittest.TestCase):
@@ -130,6 +131,49 @@ class SafetyTests(unittest.TestCase):
             removed = [call.args[0][-1] for call in commands.call_args_list if 'uninstall' in call.args[0]]
             self.assertEqual(removed, [run.bundle])
             self.assertTrue(run.report['test_app_removed'])
+
+    def test_cleanup_removes_the_test_app_when_stopping_a_process_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30,
+                                         simulator='test-device', derived_data=Path(temporary) / 'dd'))
+            installed = {run.bundle, run.bundle + '.xctrunner'}
+            run.install_attempts = set(installed)
+
+            def external(command, **kwargs):
+                if 'uninstall' in command:
+                    installed.discard(command[-1])
+                return Mock(returncode=0)
+
+            with patch.object(run, 'container', side_effect=lambda bundle, required=True:
+                              '/installed/' + bundle if bundle in installed else None), \
+                    patch.object(run, 'stop_device', side_effect=RuntimeError('device did not stop')), \
+                    patch('virtual_launchpad_roundtrip.subprocess.run', side_effect=external):
+                with self.assertRaisesRegex(RuntimeError, 'device did not stop'):
+                    run.cleanup()
+            self.assertEqual(installed, set())
+            self.assertTrue(run.report['test_app_removed'])
+
+    def test_hang_up_stops_the_run_and_cleanup_ignores_further_stops(self):
+        stops = [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]
+        for stop in stops:
+            self.addCleanup(signal.signal, stop, signal.getsignal(stop))
+        seen = {}
+
+        def execute(run):
+            seen['run'] = {stop: signal.getsignal(stop) for stop in stops}
+            raise RuntimeError('stopped')
+
+        def cleanup(run):
+            seen['cleanup'] = {stop: signal.getsignal(stop) for stop in stops}
+
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(sys, 'argv', ['roundtrip', '--simulator', 'test-device', '--output',
+                                           str(Path(temporary) / 'result'), '--derived-data', temporary]), \
+                patch.object(Run, 'execute', execute), patch.object(Run, 'cleanup', cleanup), \
+                patch('builtins.print'):
+            self.assertEqual(main(), 1)
+        self.assertTrue(all(callable(handler) for handler in seen['run'].values()), seen['run'])
+        self.assertEqual(set(seen['cleanup'].values()), {signal.SIG_IGN})
 
     def test_timeout_names_the_wait_and_cleanup_reaps_child(self):
         with tempfile.TemporaryDirectory() as temporary:
