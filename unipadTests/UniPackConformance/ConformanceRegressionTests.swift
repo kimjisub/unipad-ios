@@ -5,6 +5,18 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test func screenInputsUseTheRunnersVirtualLEDClock() async throws {
+        let corpus = try ConformanceCorpus.load()
+        var sample = try #require(corpus.cases.first { $0.id == "RUN-L-003" })
+        sample.screenInputs = true
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        guard case .value(let value) = actual else {
+            Issue.record("screen LED input was not measured: \(actual)")
+            return
+        }
+        #expect(value == sample.expected, "screen input must reach the LED runner on its virtual clock: \(value.serialized())")
+    }
+
     @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005", "RUN-S-008", "RUN-S-009", "RUN-S-010", "RUN-S-012", "RUN-S-013"])
     func playbackCasesAreMeasured(id: String) async throws {
         let corpus = try ConformanceCorpus.load()

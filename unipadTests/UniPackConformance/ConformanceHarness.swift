@@ -441,7 +441,7 @@ enum ConformanceHarness {
                 let before = engine.playsStarted
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
-                    screen.padTouch(x: x, y: y, isDown: true, trigger: trigger, inputID: identity)
+                    screen.padTouch(x: x, y: y, isDown: true, trigger: trigger, inputID: identity, ledTimeMs: clock.read())
                 } else { engine.soundOn(x: x, y: y) }
                 // A replacement's stop precedes the next start. The removed IDs belong to the
                 // engine, not the current chain or the pad's already-advanced queue head.
@@ -461,7 +461,7 @@ enum ConformanceHarness {
             } else {
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
-                    screen.padTouch(x: x, y: y, isDown: false, trigger: trigger, inputID: identity)
+                    screen.padTouch(x: x, y: y, isDown: false, trigger: trigger, inputID: identity, ledTimeMs: clock.read())
                 } else {
                     deps.soundOff(engine, x, y)
                     led.eventOff(x: x, y: y)
