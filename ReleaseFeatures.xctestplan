@@ -1,0 +1,193 @@
+{
+  "configurations": [
+    {
+      "id": "D8837B0C-81D1-4A64-A142-D8A2C6D65E70",
+      "name": "Release features",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false,
+    "preferredScreenCaptureFormat": "screenshots",
+    "environmentVariableEntries": [
+      {
+        "key": "UNIPAD_RELEASE_SUITE",
+        "value": "1"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2B9E2F5E6CE300402705",
+        "name": "unipadTests"
+      },
+      "parallelizable": false,
+      "selectedTests": {
+        "suites": [
+          {
+            "name": "MainListReadTests"
+          },
+          {
+            "name": "ImportResultWarningTests"
+          },
+          {
+            "name": "ImportResultDialogTests"
+          },
+          {
+            "name": "AppRouterDeepLinkTests"
+          },
+          {
+            "name": "UniPackImporterOverlapTests"
+          },
+          {
+            "name": "UniPackInterruptedInstallTests"
+          },
+          {
+            "name": "LedRunnerTests"
+          },
+          {
+            "name": "AutoPlayRelaunchTests"
+          },
+          {
+            "name": "LaunchpadCoreCFWDriverTests"
+          },
+          {
+            "name": "LaunchpadProCFWDriverTests"
+          },
+          {
+            "name": "PlayViewModelLoadTests"
+          },
+          {
+            "name": "MidiConnectionHelpTests"
+          },
+          {
+            "name": "UniPackDownloaderTests"
+          },
+          {
+            "name": "StoreDownloadFailureTests"
+          },
+          {
+            "name": "PackDeletionTests"
+          },
+          {
+            "name": "LocalizationBundleTests"
+          },
+          {
+            "name": "PlayLayoutTests"
+          },
+          {
+            "name": "PlayInterruptionTests"
+          },
+          {
+            "name": "SoundEngineInterruptionTests"
+          },
+          {
+            "name": "AudioSessionGateTests"
+          },
+          {
+            "name": "AutoPlayInterruptionPolicyTests"
+          },
+          {
+            "name": "SystemTerminationReporterTests"
+          }
+        ],
+        "xctestClasses": [
+          {
+            "name": "MultiTouchPlayTests"
+          },
+          {
+            "name": "ChainReleaseTests"
+          },
+          {
+            "name": "PlaybackStopTests"
+          },
+          {
+            "name": "AutoPlayRunnerTests"
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2BA82F5E6CE300402705",
+        "name": "unipadUITests"
+      },
+      "parallelizable": false,
+      "selectedTests": {
+        "xctestClasses": [
+          {
+            "name": "AppLanguageTests"
+          },
+          {
+            "name": "AudioLifecycleUITests"
+          },
+          {
+            "name": "AutoPlayRelaunchUITests"
+          },
+          {
+            "name": "ChainReleaseUITests"
+          },
+          {
+            "name": "ExternalFileImportTests"
+          },
+          {
+            "name": "FirstPackGuideTests"
+          },
+          {
+            "name": "HomeCardVisibilityTests"
+          },
+          {
+            "name": "HomeGuidingCardsTests",
+            "xctestMethods": [
+              "testCardsSurviveRotation()"
+            ]
+          },
+          {
+            "name": "HomeSettingsEntryTests"
+          },
+          {
+            "name": "ImportResultDialogFlowTests"
+          },
+          {
+            "name": "MultiTouchPlayUITests"
+          },
+          {
+            "name": "PackDeletionUITests"
+          },
+          {
+            "name": "PlayChainLayoutTests"
+          },
+          {
+            "name": "PlayThemeLayoutTests"
+          },
+          {
+            "name": "PlaybackStopUITests"
+          },
+          {
+            "name": "ReleaseFeatureUITests"
+          },
+          {
+            "name": "RetiredShareLinkTests"
+          },
+          {
+            "name": "SettingsBackNavigationTests"
+          },
+          {
+            "name": "StoreDownloadFailureUITests"
+          },
+          {
+            "name": "StoreDownloadTests",
+            "xctestMethods": [
+              "testDownloadContinuesDuringBriefHomeVisit()",
+              "testInterruptedDownloadRecovers()"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "version": 2
+}
