@@ -82,6 +82,32 @@ final class ExternalFileImportTests: XCTestCase {
 
     func testNormalFromEmptyLibrary() throws { try open("Normal"); assertNormal() }
 
+    func testWindowsPathsWithDotsImportAndOpenForPlay() throws {
+        try open("WindowsPaths")
+        XCTAssertEqual(title.label, "Pack imported!")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "Archive Paths")
+        XCTAssertTrue(play.isHittable)
+        play.tap()
+        let grid = app.descendants(matching: .any)["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 30))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.125, dy: 0.125)).tap()
+        UITestSupport.attachScreenshot("windows-paths-ready-to-play", to: self)
+    }
+
+    func testAnEmptyWebsiteDoesNotShowAButton() throws {
+        try open("EmptyWebsite")
+        XCTAssertEqual(title.label, "Pack imported!")
+        ok.tap()
+        let list = app.scrollViews["main.packList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 30))
+        let pack = list.staticTexts["Empty Website"].firstMatch
+        XCTAssertTrue(pack.waitForExistence(timeout: 15))
+        pack.tap()
+        XCTAssertTrue(app.buttons["Play"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["main.pack.website"].exists)
+        UITestSupport.attachScreenshot("empty-website-pack-panel", to: self)
+    }
+
     /// The pack folder sits next to a readme.txt at the top of the archive.
     func testPackFolderBesideAReadmeImports() throws {
         try open("BesideReadme")

@@ -82,6 +82,7 @@ struct MainPackPanel: View {
                                 .foregroundStyle(Color(hex: 0x555555))
                         }
                         .frame(width: 32, height: 32)
+                        .accessibilityIdentifier("main.pack.website")
                     }
                 }
 
