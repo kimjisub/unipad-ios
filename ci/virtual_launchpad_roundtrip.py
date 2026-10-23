@@ -195,7 +195,8 @@ class Run:
         self.report['commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         for bundle in [self.bundle, self.bundle + '.xctrunner']:
             if self.container(bundle, required=False) is not None:
-                raise RuntimeError(f'{bundle} already installed; refusing to replace its data')
+                raise RuntimeError(f'{bundle} already installed; refusing to replace its data. A run stopped '
+                                   f'by force leaves it: xcrun simctl uninstall {self.args.simulator} {bundle}')
         self.shared = self.container('kim.jisub.unipad', required=False)
         if self.shared is not None:
             command = self.sim + ['terminate', self.args.simulator, 'kim.jisub.unipad']
@@ -309,29 +310,37 @@ class Run:
             self.report.setdefault('stopped_collector_pids', []).append(self.collector_pid)
             self.collector_pid = None
 
+    def remove_test_app(self):
+        if not self.install_attempts:
+            return
+        # Both identifiers were absent at preflight. Remove only installations
+        # left by a command that this run actually attempted, including partial failures.
+        for bundle in [self.bundle + '.xctrunner', self.bundle]:
+            if bundle not in self.install_attempts or self.container(bundle, required=False) is None:
+                continue
+            subprocess.run(self.sim + ['terminate', self.args.simulator, bundle], capture_output=True, timeout=15)
+            subprocess.run(self.sim + ['uninstall', self.args.simulator, bundle], capture_output=True, timeout=30)
+            self.report.setdefault('removed_test_bundles', []).append(bundle)
+        self.report['test_app_removed'] = all(self.container(bundle, required=False) is None
+                                              for bundle in [self.bundle, self.bundle + '.xctrunner'])
+        if not self.report['test_app_removed']:
+            raise RuntimeError('test app was not removed')
+
     def cleanup(self):
-        self.stop_device()
-        self.stop_collector()
-        for child in reversed(self.children):
-            self.stop(child)
-        for pid in set(self.report.get('app_pids', {}).values()):
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-        if self.install_attempts:
-            # Both identifiers were absent at preflight. Remove only installations
-            # left by a command that this run actually attempted, including partial failures.
-            for bundle in [self.bundle + '.xctrunner', self.bundle]:
-                if bundle not in self.install_attempts or self.container(bundle, required=False) is None:
-                    continue
-                subprocess.run(self.sim + ['terminate', self.args.simulator, bundle], capture_output=True, timeout=15)
-                subprocess.run(self.sim + ['uninstall', self.args.simulator, bundle], capture_output=True, timeout=30)
-                self.report.setdefault('removed_test_bundles', []).append(bundle)
-            self.report['test_app_removed'] = all(self.container(bundle, required=False) is None
-                                                  for bundle in [self.bundle, self.bundle + '.xctrunner'])
-            if not self.report['test_app_removed']:
-                raise RuntimeError('test app was not removed')
+        try:
+            self.stop_device()
+            self.stop_collector()
+            for child in reversed(self.children):
+                self.stop(child)
+            for pid in set(self.report.get('app_pids', {}).values()):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+        finally:
+            # A test app left installed shows the file picker a second "UniPad" folder
+            # and makes the next run refuse to start, so it goes even when a stop fails.
+            self.remove_test_app()
         if getattr(self, 'before', None) is not None:
             # The shared app's container path can migrate too; compare its current data,
             # not a now-missing former location.
@@ -360,9 +369,9 @@ def main():
         if sig == signal.SIGALRM:
             raise TimeoutError(f'overall {args.timeout}s limit while waiting for {run.report.get("active_wait", "setup")}')
         raise InterruptedError(f'interrupted by signal {sig}')
-    signal.signal(signal.SIGINT, interrupted)
-    signal.signal(signal.SIGTERM, interrupted)
-    signal.signal(signal.SIGALRM, interrupted)
+    stops = [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]
+    for stop in stops + [signal.SIGALRM]:
+        signal.signal(stop, interrupted)
     signal.alarm(args.timeout)
     status = 0
     try:
@@ -374,6 +383,9 @@ def main():
         status = 1
     finally:
         signal.alarm(0)
+        # A second stop request must not cut cleanup short; each of its steps is bounded.
+        for stop in stops:
+            signal.signal(stop, signal.SIG_IGN)
         try:
             run.cleanup()
         except Exception as error:
