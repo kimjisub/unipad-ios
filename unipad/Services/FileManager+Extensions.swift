@@ -133,20 +133,20 @@ nonisolated enum FileManagerExtensions {
 
     /// Moves the contents of `source` into `target` and removes `source`. Directories that exist
     /// on both sides are merged (as Android's FileManager.moveDirectory does); an item whose
-    /// destination is `source` itself (zip layout Pack/Pack/info) is parked beside the tree and
-    /// moved in after `source` is gone. The old version deleted the destination first, which for
+    /// destination is `source` itself (including another spelling on a case-insensitive disk) is
+    /// parked beside the tree and moved in after `source` is gone. The old version deleted the destination first, which for
     /// that layout deleted the source subtree and destroyed the pack being imported.
     static func moveDirectory(from source: URL, to target: URL) throws {
         let fm = FileManager.default
         let sourcePath = source.standardizedFileURL.path
-        guard sourcePath != target.standardizedFileURL.path else { return }
+        guard sourcePath != target.standardizedFileURL.path, !sameFile(source, target) else { return }
         do {
             let sourceContents = try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey])
 
             var deferred: [(parked: URL, dest: URL)] = []
             for item in sourceContents {
                 let dest = target.appendingPathComponent(item.lastPathComponent)
-                if dest.standardizedFileURL.path == sourcePath {
+                if dest.standardizedFileURL.path == sourcePath || sameFile(source, dest) {
                     let parked = target.appendingPathComponent(".unipad-move-" + UUID().uuidString)
                     try fm.moveItem(at: item, to: parked)
                     deferred.append((parked: parked, dest: dest))
@@ -173,6 +173,16 @@ nonisolated enum FileManagerExtensions {
             logger.error("moveDirectory failed: \(error.localizedDescription)")
             throw error
         }
+    }
+
+    private static func sameFile(_ first: URL, _ second: URL) -> Bool {
+        guard let lhs = try? FileManager.default.attributesOfItem(atPath: first.path),
+              let rhs = try? FileManager.default.attributesOfItem(atPath: second.path),
+              let leftDevice = lhs[.systemNumber] as? NSNumber,
+              let rightDevice = rhs[.systemNumber] as? NSNumber,
+              let leftFile = lhs[.systemFileNumber] as? NSNumber,
+              let rightFile = rhs[.systemFileNumber] as? NSNumber else { return false }
+        return leftDevice == rightDevice && leftFile == rightFile
     }
 
     static func copyDirectory(from source: URL, to target: URL) throws {

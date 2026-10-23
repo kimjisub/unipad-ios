@@ -65,21 +65,7 @@ nonisolated final class PackFileFinder {
 
     private func index(of directory: URL) -> Index {
         if let cached = indexes[directory.path] { return cached }
-        let paths = ((try? fileManager.subpathsOfDirectory(atPath: directory.path)) ?? []).filter { path in
-            var isDirectory: ObjCBool = false
-            return fileManager.fileExists(atPath: directory.appendingPathComponent(path).path, isDirectory: &isDirectory)
-                && !isDirectory.boolValue
-        }
-        let manifest = ImportedSoundPaths.read(in: directory)
-        let imported = (manifest ?? []).filter { entry in
-            var isDirectory: ObjCBool = false
-            return fileManager.fileExists(atPath: directory.appendingPathComponent(entry.stored).path, isDirectory: &isDirectory)
-                && !isDirectory.boolValue
-        }
-        let mapped = Set(imported.map(\.stored))
-        let additional = paths.filter { (manifest == nil || $0 != ImportedSoundPaths.fileName) && !mapped.contains($0) }
-            .map { ImportedSoundPaths.Entry(name: $0, stored: $0) }
-        let index = Index(entries: imported + additional)
+        let index = Index(entries: ImportedSoundPaths.files(in: directory, fileManager: fileManager))
         indexes[directory.path] = index
         return index
     }

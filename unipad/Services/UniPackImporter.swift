@@ -255,7 +255,8 @@ nonisolated extension FileManager {
 
             let placed = folders.place(path.components, isDirectory: path.isDirectory)
             let entryPath = path.isDirectory ? destinationURL.appendingPathComponent(placed)
-                : soundFiles.destination(original: path.components, placed: placed, root: destinationURL, fileManager: self)
+                : soundFiles.destination(original: path.components, archiveEntry: entry.fileName, placed: placed,
+                                         root: destinationURL, fileManager: self)
             if path.isDirectory {
                 try createDirectory(at: entryPath, withIntermediateDirectories: true)
                 continue
@@ -407,48 +408,54 @@ nonisolated struct ArchiveFolderNames {
     mutating func place(_ components: [String], isDirectory: Bool) -> String {
         let folderCount = isDirectory ? components.count : components.count - 1
         var placed = ""
+        var insideSounds = false
         for (index, component) in components.enumerated() {
             let path = placed.isEmpty ? component : placed + "/" + component
             guard index < folderCount else { return path }
             let key = path.precomposedStringWithCanonicalMapping.lowercased()
-            let reserved = index > 0 && components[index - 1].lowercased() == "sounds"
-                && component.lowercased() == ImportedSoundPaths.fileName
+            let reserved = insideSounds && component.lowercased() == ImportedSoundPaths.fileName
             let firstSpelling = reserved ? placed + "/.unipad-sound-folder-" + UUID().uuidString : path
             placed = spelled[key] ?? firstSpelling
             spelled[key] = placed
+            if component.lowercased() == "sounds" { insideSounds = true }
         }
         return placed
     }
 }
 
 /// Keeps every sound entry even when the destination disk merges its spelling with another entry.
-/// The index stays inside sounds/, so removing wrapper folders and publishing the pack move it with
-/// the files. Byte keys distinguish canonically equivalent names that Swift String keys merge.
+/// Each index stays beside its files, so wrapper removal moves them together. Byte keys distinguish
+/// canonically equivalent names that Swift String keys merge.
 nonisolated struct ArchiveSoundFiles {
     private var directories: [String: [[UInt8]: ImportedSoundPaths.Entry]] = [:]
+    private var placedFiles: [[UInt8]: String] = [:]
 
-    mutating func destination(original: [String], placed: String, root: URL, fileManager: FileManager) -> URL {
+    mutating func destination(original: [String], archiveEntry: String, placed: String, root: URL, fileManager: FileManager) -> URL {
         let target = root.appendingPathComponent(placed)
-        guard let soundIndex = original.dropLast().firstIndex(where: { $0.lowercased() == "sounds" }) else { return target }
+        guard original.dropLast().contains(where: { $0.lowercased() == "sounds" }) else { return target }
         let components = placed.split(separator: "/").map(String.init)
-        let directory = components.prefix(soundIndex + 1).joined(separator: "/")
-        let name = original.dropFirst(soundIndex + 1).joined(separator: "/")
+        let directory = components.dropLast().joined(separator: "/")
+        let name = original.joined(separator: "/")
         let key = Array(name.utf8)
-        let soundDirectory = root.appendingPathComponent(directory)
+        let parent = root.appendingPathComponent(directory)
         // Repeated entries with the identical original path retain ZIP's last-entry-wins behavior.
-        if let existing = directories[directory]?[key] {
-            return soundDirectory.appendingPathComponent(existing.stored)
+        if let existing = placedFiles[key] {
+            let stored = existing.split(separator: "/").last.map(String.init) ?? ""
+            directories[directory, default: [:]][key] = ImportedSoundPaths.Entry(name: name, stored: stored,
+                                                                              archiveEntry: archiveEntry)
+            return root.appendingPathComponent(existing)
         }
 
-        var stored = components.dropFirst(soundIndex + 1).joined(separator: "/")
+        var stored = components.last ?? ""
         let reserved = stored.lowercased() == ImportedSoundPaths.fileName
         if reserved || fileManager.fileExists(atPath: target.path) {
             let ext = target.pathExtension
-            let alias = ".unipad-sound-" + UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
-            stored = (components.dropFirst(soundIndex + 1).dropLast() + [alias]).joined(separator: "/")
+            stored = ".unipad-sound-" + UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
         }
-        directories[directory, default: [:]][key] = ImportedSoundPaths.Entry(name: name, stored: stored)
-        return soundDirectory.appendingPathComponent(stored)
+        directories[directory, default: [:]][key] = ImportedSoundPaths.Entry(name: name, stored: stored,
+                                                                          archiveEntry: archiveEntry)
+        placedFiles[key] = directory + "/" + stored
+        return parent.appendingPathComponent(stored)
     }
 
     func save(in root: URL) throws {

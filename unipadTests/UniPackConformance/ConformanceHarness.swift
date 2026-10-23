@@ -191,11 +191,14 @@ enum ConformanceHarness {
             root = try await UniPackImporter(stagingRoot: temporary.appendingPathComponent("staging"))
                 .importPack(data: TestZip.stored(files), fileName: "pack.zip", to: workspace, delegate: nil)
             let folders = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-            guard let sounds = folders.first(where: { $0.lastPathComponent.lowercased() == "sounds" }),
-                  let originals = ImportedSoundPaths.read(in: sounds) else {
+            guard let sounds = folders.first(where: { $0.lastPathComponent.lowercased() == "sounds" }) else {
                 return .failed("import did not retain original archive sound names")
             }
-            archiveEntries = Dictionary(originals.map { (sounds.appendingPathComponent($0.stored), "sounds/" + $0.name) },
+            let originals = ImportedSoundPaths.files(in: sounds)
+            archiveEntries = Dictionary(originals.compactMap { entry -> (URL, String)? in
+                guard let original = entry.archiveEntry else { return nil }
+                return (sounds.appendingPathComponent(entry.stored), original)
+            },
                                         uniquingKeysWith: { _, last in last })
         } else {
             try write(conformanceCase.files, to: root, corpus: corpus)

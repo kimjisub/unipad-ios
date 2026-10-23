@@ -80,15 +80,15 @@ struct UniPackArchiveEntryTests {
 
     // Distinct ZIP entries can have canonically equivalent names even though APFS cannot store
     // them beside each other. Assert the selected entry's contents after installation and reload.
-    @Test(arguments: [false, true])
-    func canonicallyEquivalentEntriesKeepTheirOwnContents(reverse: Bool) async throws {
+    @Test(arguments: [false, true], ["Pack", "sounds", "Sounds", "SOUNDS"])
+    func canonicallyEquivalentEntriesKeepTheirOwnContents(reverse: Bool, wrapper: String) async throws {
         let nfc = "한.wav"
         let nfd = nfc.decomposedStringWithCanonicalMapping
-        var sounds = [("Pack/sounds/\(nfc)", Data([1])), ("Pack/sounds/\(nfd)", Data([2]))]
+        var sounds = [("\(wrapper)/sounds/\(nfc)", Data([1])), ("\(wrapper)/sounds/\(nfd)", Data([2]))]
         if reverse { sounds.reverse() }
         let archive = TestZip.stored([
-            ("Pack/info", Self.info),
-            ("Pack/keySound", Data("1 1 1 \(nfc)\n1 2 1 \(nfd)\n".utf8)),
+            ("\(wrapper)/info", Self.info),
+            ("\(wrapper)/keySound", Data("1 1 1 \(nfc)\n1 2 1 \(nfd)\n".utf8)),
         ] + sounds)
         let (pack, installed, root) = try await Self.importArchive(archive)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -161,6 +161,37 @@ struct UniPackArchiveEntryTests {
         }
     }
 
+    @Test func nestedCatalogNamesKeepThePackFilesAndHideGeneratedCatalogs() async throws {
+        let archive = TestZip.stored([
+            ("info", Self.info),
+            ("keySound", Data("1 1 1 fx/.unipad-sound-paths.json\n1 2 1 fx/.unipad-sound-paths.json/b.wav\n1 3 1 sounds/a.wav\n1 4 1 sounds/.unipad-sound-paths.json\n".utf8)),
+            ("sounds/fx/.unipad-sound-paths.json", Data([1])),
+            ("sounds/fx/.unipad-sound-paths.json/b.wav", Data([2])),
+            ("sounds/sounds/a.wav", Data([3])),
+        ])
+        let (pack, _, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for (pad, expected) in [(0, Data([1])), (1, Data([2])), (2, Data([3]))] {
+            let sound = try #require(pack.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+        }
+        #expect(pack.soundTable?[0][3][0]?.first == nil)
+        #expect(pack.errorDetail == "keySound : [1 4 1 sounds/.unipad-sound-paths.json] sound was not found")
+    }
+
+    @Test func aNormalizedDuplicateRetainsTheLastOriginalEntry() async throws {
+        let archive = TestZip.stored([
+            ("info", Self.info), ("keySound", Data("1 1 1 a.wav\n".utf8)),
+            ("/sounds/a.wav", Data([1])), ("sounds\\a.wav", Data([2])),
+        ])
+        let (pack, installed, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sound = try #require(pack.soundTable?[0][0][0]?.first)
+        #expect(try Data(contentsOf: sound.file) == Data([2]))
+        let entry = ImportedSoundPaths.files(in: installed.appending(path: "sounds")).first { $0.name == "a.wav" }
+        #expect(entry?.archiveEntry == "sounds\\a.wav")
+    }
+
     // MARK: Name encodings
 
     @Test func aCP949NameMarkedUTF8IsReadAsCP949() async throws {
@@ -205,6 +236,23 @@ struct UniPackArchiveEntryTests {
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"] != nil,
                 "Requires an explicitly configured case-sensitive volume"))
 struct CaseSensitiveArchiveEntryTests {
+    @Test func aWrapperNamedSoundsKeepsBothOriginalEntries() async throws {
+        let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"] ?? "/", isDirectory: true)
+        let nfc = "한.wav", nfd = "한.wav".decomposedStringWithCanonicalMapping
+        let archive = TestZip.stored([
+            ("Sounds/info", UniPackArchiveEntryTests.info),
+            ("Sounds/keySound", Data("1 1 1 \(nfc)\n1 2 1 \(nfd)\n".utf8)),
+            ("Sounds/sounds/\(nfc)", Data([1])),
+            ("Sounds/sounds/\(nfd)", Data([2])),
+        ])
+        let (pack, _, root) = try await UniPackArchiveEntryTests.importArchive(archive, base: base)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for (pad, expected) in [(0, Data([1])), (1, Data([2]))] {
+            let sound = try #require(pack.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+        }
+    }
+
     @Test func foldersSpelledInTwoCasesBecomeOne() async throws {
         let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"] ?? "/", isDirectory: true)
         let archive = TestZip.stored([
