@@ -81,10 +81,6 @@ final class MidiManager: ObservableObject {
         let name: String
         let factory: () -> MidiDriver
         let preferredPort: Int
-
-        static let masterKeyboard = DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
-
-        var isMasterKeyboard: Bool { name == Self.masterKeyboard.name }
     }
 
     // MARK: - Initialization
@@ -281,10 +277,6 @@ final class MidiManager: ObservableObject {
             log("Source[\(i)]: \(name)")
 
             if let matchedDriver = findDriverForSource(source) {
-                // Only a device with its own driver replaces a connected keyboard. Returning to the app scans,
-                // and reconnecting it, or moving to another keyboard, could drop a key released in between and
-                // leave its pad pressed.
-                if connectedSource != 0 && matchedDriver.isMasterKeyboard { continue }
                 if connectedSource != 0 { disconnect() }
                 connectToDevice(sourceIndex: i, driverEntry: matchedDriver)
                 return
@@ -414,7 +406,7 @@ final class MidiManager: ObservableObject {
         for candidate in candidateNames where !candidate.isEmpty {
             let lowered = candidate.lowercased()
             if lowered.contains("keyboard") || lowered.contains("piano") {
-                return DriverEntry.masterKeyboard
+                return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
             }
         }
 
@@ -431,7 +423,7 @@ final class MidiManager: ObservableObject {
         }
 
         if lowered.contains("keyboard") || lowered.contains("piano") {
-            return DriverEntry.masterKeyboard
+            return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
         }
 
         return nil

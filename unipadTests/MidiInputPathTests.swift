@@ -211,11 +211,10 @@ extension PlayUsageRecordTests {
         }
 
         @Test(arguments: MidiTestDeviceKind.available)
-        func keyboardReleasesOnNoteOffAndKeepsItsConnectionOnReturn(kind: MidiTestDeviceKind) async throws {
+        func keyboardReleasesOnNoteOffAndIgnoresAftertouch(kind: MidiTestDeviceKind) async throws {
             try await PlayUsageScenario.run { s in
                 try await s.loadReady()
                 try await withDevice(kind, "UniPad Test Keyboard", driver: { MasterKeyboardDriver() }) { device in
-                    let driver = MidiManager.shared.driver
                     try await device.send([midiWord(Self.noteOn, 36, 100)])
                     try await waitFor { pressed(s, 7, 0) }
                     #expect(pressed(s, 7, 0), "the lowest key did not press the bottom-left pad")
@@ -224,39 +223,9 @@ extension PlayUsageRecordTests {
                     try await Task.sleep(for: .milliseconds(200))
                     #expect(pressed(s, 7, 0), "aftertouch easing off released the pad")
 
-                    if kind == .coreMIDI {
-                        // What returning to the app does; it needs a real endpoint to find.
-                        MidiManager.shared.scanForDevices()
-                        try await Task.sleep(for: .milliseconds(200))
-                        #expect(MidiManager.shared.driver === driver, "returning to the app reconnected the keyboard")
-                    }
-
                     try await device.send([midiWord(Self.noteOff, 36, 64)])
                     try await waitFor { !pressed(s, 7, 0) }
                     #expect(!pressed(s, 7, 0), "a note off with a release velocity left the pad pressed")
-                }
-            }
-        }
-
-        /// Returning to the app scans for devices, as does every device plugged in. Another keyboard leaves
-        /// the connected one in place; a device with its own driver takes over.
-        @Test(.enabled(if: MidiTestDeviceKind.folder != nil, "needs ci/midi-input-tests.sh"))
-        func connectedKeyboardStaysUntilALaunchpadAppears() async throws {
-            try await PlayUsageScenario.run { s in
-                try await s.loadReady()
-                try await withDevice(.coreMIDI, "UniPad Test Keyboard", driver: { MasterKeyboardDriver() }) { device in
-                    let tool = try #require(device as? SimulatorMidiDevice).tool
-                    let manager = MidiManager.shared
-                    let keyboard = manager.driver
-                    try tool.run("add Second Test Keyboard")
-                    try await Task.sleep(for: .milliseconds(300))
-                    manager.scanForDevices()
-                    try await Task.sleep(for: .milliseconds(200))
-                    #expect(manager.driver === keyboard, "a second keyboard took over the connected one")
-
-                    try tool.run("add LPProMK3 MIDI")
-                    try await waitFor { manager.driver is LaunchpadProMK3Driver }
-                    #expect(manager.driver is LaunchpadProMK3Driver, "a Launchpad plugged in beside a keyboard was not connected")
                 }
             }
         }
