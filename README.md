@@ -101,6 +101,55 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   ci/ui-tests.sh <simulator-udid> -only-testing:unipadUITests/PackWarningUITests -only-testing:unipadUITests/PlayChainLayoutTests
   ```
 
+## Release feature checks
+
+`ReleaseFeatures.xctestplan` selects the unit and UI tests that cover the app's
+basic features, so a release candidate can be checked in one run without the
+whole UI target. Run it against a Release build on an iPhone simulator:
+
+```bash
+UNIPAD_UI_TEST_CONFIGURATION=Release ci/ui-tests.sh <simulator-udid> -testPlan ReleaseFeatures
+```
+
+With `UNIPAD_UI_TEST_CONFIGURATION=Release` the script builds the Release
+configuration with `UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS`, which compiles in
+only the generated libraries and fixture network answers, and
+`ENABLE_TESTABILITY=YES` for the unit tests. A store build never sets either.
+The result line counts unit and UI tests together, and any skip fails the run.
+`python3 -m unittest ci.test_release_features_plan` checks that every test the
+plan names still exists, that the UI script does not leave any of them out, and
+that nothing in the app, test fixtures included, names the retired share-code
+service.
+
+In these builds the store list and pack downloads come from the fixture
+answers, which fail every request they do not know instead of reaching a
+server. A pass therefore says nothing about the live store and download
+servers: features marked "fixture" below are checked against them by hand.
+
+| Feature | Checked by | Not checked on a simulator |
+| --- | --- | --- |
+| Launch, empty and filled pack list, Settings and back | `HomeCardVisibilityTests`, `HomeSettingsEntryTests`, `SettingsBackNavigationTests`, `MainListReadTests` | |
+| Import from a file, the result, opening the pack; share codes are retired, and an old share-code link leaves home as it is without a request | `ExternalFileImportTests`, `ImportResultDialogFlowTests`, `FirstPackGuideTests`, `RetiredShareLinkTests`, `AppRouterDeepLinkTests`, importer unit tests | Another app opening a `unipad://` link |
+| Pad sound requests, `keyLed` lights, chain changes, several fingers | `MultiTouchPlayTests`, `MultiTouchPlayUITests`, `PlayChainLayoutTests`, `ChainReleaseTests`, `ChainReleaseUITests`, `LedRunnerTests`, `PlaybackStopTests` | Audible sound and touch latency; several real fingers on screen (synthetic input only) |
+| Autoplay start, pause, resume and stop; practice modes | `ReleaseFeatureUITests`, `AutoPlayRelaunchUITests`, `PlaybackStopUITests`, `AutoPlayRunnerTests`, `AutoPlayRelaunchTests` | |
+| Launchpad and MIDI: discovery, input, LED output | `LaunchpadCoreCFWDriverTests`, `LaunchpadProCFWDriverTests`, `PlayViewModelLoadTests`, `MidiConnectionHelpTests`; the virtual MK2 round trip below | A physical Launchpad over USB, models other than MK2, unplugging and replugging |
+| Store download (fixture), pack deletion with play history and bookmarks | `StoreDownloadTests`, `StoreDownloadFailureUITests`, `ReleaseFeatureUITests` (download then open), `PackDeletionUITests`, `UniPackDownloaderTests`, `PackDeletionTests` | The live store and download servers |
+| Language, theme, rotation, notch and home indicator | `AppLanguageTests`, `LocalizationBundleTests`, `PlayThemeLayoutTests`, `HomeGuidingCardsTests`, `PlayChainLayoutTests`, `PlayLayoutTests` | Language follows the system setting; the app has no language switch of its own |
+| Leaving for Home or locking the screen during play, then returning | `AudioLifecycleUITests`, `ReleaseFeatureUITests` (lock), `PlayInterruptionTests`, `SoundEngineInterruptionTests`, `AudioSessionGateTests`, `AutoPlayInterruptionPolicyTests`, `SystemTerminationReporterTests` | Locking a real device with a passcode; phone calls and other apps taking the audio |
+
+The virtual Launchpad round trip needs a virtual MIDI device on the Mac, so it
+runs on its own after the plan:
+
+```bash
+python3 ci/virtual_launchpad_roundtrip.py --simulator <simulator-udid> --output build/virtual-launchpad --derived-data build/virtual-launchpad/DerivedData
+```
+
+What a simulator cannot show is checked by hand on a device with the release
+candidate: connect a supported Launchpad, press two pads together and change
+chains while listening, unplug and replug it during play, lock and unlock the
+device and switch to another app and back during play, download a pack from the
+live store and play it, and open an old share-code link from another app.
+
 ## Open source notices
 
 Settings > Open Source License shows every third-party component built into the

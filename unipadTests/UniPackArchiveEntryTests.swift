@@ -107,6 +107,26 @@ struct UniPackArchiveEntryTests {
     }
 
     @Test(arguments: [false, true])
+    func collidingNamesWithLongExtensionsKeepBothContents(reverse: Bool) async throws {
+        let nfc = "é." + String(repeating: "a", count: 220)
+        let nfd = nfc.decomposedStringWithCanonicalMapping
+        var sounds = [("sounds/\(nfc)", Data([1])), ("sounds/\(nfd)", Data([2]))]
+        if reverse { sounds.reverse() }
+        let archive = TestZip.stored([
+            ("info", Self.info),
+            ("keySound", Data("1 1 1 \(nfc)\n1 2 1 \(nfd)\n".utf8)),
+        ] + sounds)
+        let (pack, _, root) = try await Self.importArchive(archive)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(pack.errorDetail == nil)
+        for (pad, expected) in [(0, Data([1])), (1, Data([2]))] {
+            let sound = try #require(pack.soundTable?[0][pad][0]?.first)
+            #expect(try Data(contentsOf: sound.file) == expected)
+            #expect(sound.file.lastPathComponent.utf8.count <= 255)
+        }
+    }
+
+    @Test(arguments: [false, true])
     func canonicalFallbackUsesOriginalUTF16Order(reverse: Bool) async throws {
         let nfc = "한.wav"
         let nfd = nfc.decomposedStringWithCanonicalMapping

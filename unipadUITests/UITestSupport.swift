@@ -74,14 +74,11 @@ enum UITestSupport {
     /// Browsing avoids relying on Spotlight to have indexed a freshly created file.
     static func selectPreparedArchive(token: String, in app: XCUIApplication) throws {
         _ = try XCTUnwrap(settledFilePickerCancelButton(in: app, timeout: 20))
-        func tapRow(_ names: [String]) {
-            let row = app.descendants(matching: .any)
-                .matching(NSPredicate(format: "label IN %@", names)).firstMatch
+        func reveal(_ row: XCUIElement, _ names: [String]) {
             let found = row.waitForExistence(timeout: 10)
             if !found { attachPickerDiagnostics(in: app, details: "missing row: \(names)") }
             XCTAssertTrue(found, "missing file picker row: \(names)")
-            let window = app.windows.firstMatch.frame
-            let viewport = window.insetBy(dx: 0, dy: 24)
+            let viewport = app.windows.firstMatch.frame.insetBy(dx: 0, dy: 24)
             let deadline = Date().addingTimeInterval(20)
             while row.exists && !viewport.contains(row.frame) && Date() < deadline {
                 // Locations may restore its scroll offset after a previous import.
@@ -112,7 +109,22 @@ enum UITestSupport {
             if !settled { attachPickerDiagnostics(in: app, details: "row \(row.frame), viewport \(viewport)") }
             XCTAssertTrue(settled, "the file picker row must be fully visible and stable")
             XCTAssertTrue(waitUntilHittable(row, timeout: 5))
-            row.tap()
+        }
+        // Grid folder titles can accept a synthetic tap without opening the folder.
+        // Select its fully visible thumbnail, by its on-screen point.
+        func openFolder(_ folder: XCUIElement, _ name: String) {
+            reveal(folder, [name])
+            let icon = folder.images.firstMatch
+            let viewport = app.windows.firstMatch.frame.insetBy(dx: 0, dy: 24)
+            XCTAssertTrue(waitForSettledFrame(timeout: 10,
+                waitForArrival: { icon.waitForExistence(timeout: $0) },
+                frame: {
+                    guard icon.exists else { return nil }
+                    let current = icon.frame
+                    return viewport.contains(current) ? current : nil
+                }), "the \(name) folder icon must be fully visible and stable")
+            XCTAssertTrue(waitUntilHittable(icon, timeout: 5))
+            tapOnScreen(icon, in: app)
         }
         let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen"])).firstMatch
         if browse.exists { browse.tap() }
@@ -129,22 +141,39 @@ enum UITestSupport {
             XCTAssertTrue(waitUntilHittable(back, timeout: 5))
             back.tap()
         }
-        tapRow(localNames)
-        tapRow(["UniPad", "unipad"])
-        // Grid folder titles can accept a synthetic tap without opening the folder.
-        // Select its fully visible thumbnail once, by its on-screen point.
+        reveal(localStorage, localNames)
+        localStorage.tap()
+        // Every app named UniPad has a folder here, such as a test build installed under
+        // another bundle identifier, and the order of same-named folders is not fixed.
+        // Open each in turn until one holds this launch's import folder.
+        let appNames = ["UniPad", "unipad"]
+        let appFolders = app.cells.containing(NSPredicate(format: "label IN %@", appNames))
         let fixtureFolder = app.cells.containing(.staticText, identifier: "00-ReleaseTestImports").firstMatch
-        let folderIcon = fixtureFolder.images.firstMatch
-        let folderViewport = app.windows.firstMatch.frame.insetBy(dx: 0, dy: 24)
-        XCTAssertTrue(waitForSettledFrame(timeout: 10,
-            waitForArrival: { folderIcon.waitForExistence(timeout: $0) },
-            frame: {
-                guard folderIcon.exists else { return nil }
-                let current = folderIcon.frame
-                return folderViewport.contains(current) ? current : nil
-            }), "the isolated picker folder icon must be fully visible and stable")
-        XCTAssertTrue(waitUntilHittable(folderIcon, timeout: 5))
-        tapOnScreen(folderIcon, in: app)
+        for index in 0... {
+            let folder = appFolders.element(boundBy: index)
+            guard folder.waitForExistence(timeout: 10) else {
+                attachPickerDiagnostics(in: app, details: "no folder named UniPad after \(index)")
+                XCTFail("none of the \(index) folders named UniPad holds this launch's import folder")
+                return
+            }
+            openFolder(folder, "UniPad")
+            // The list's folders leave the screen once one of them opens.
+            guard appFolders.firstMatch.waitForNonExistence(timeout: 10) else {
+                attachPickerDiagnostics(in: app, details: "UniPad folder \(index + 1) did not open")
+                XCTFail("the file picker did not open a folder named UniPad")
+                return
+            }
+            // A folder lists its items together, and the import folder sorts first, so it
+            // is there soon after the folder shows anything.
+            let contents = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH 'DOC.browsingRoot'"))
+                .firstMatch.cells.firstMatch
+            if contents.waitForExistence(timeout: 10) && fixtureFolder.waitForExistence(timeout: 3) { break }
+            XCTContext.runActivity(named: "UniPad folder \(index + 1) holds no import folder") { _ in }
+            let back = app.buttons["DOC.navBarButton.backInHistory"]
+            XCTAssertTrue(waitUntilHittable(back, timeout: 5))
+            back.tap()
+        }
+        openFolder(fixtureFolder, "isolated picker")
         let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
         let icon = cell.images.firstMatch
         let list = app.collectionViews.firstMatch
@@ -208,6 +237,18 @@ enum UITestSupport {
             activity.add(XCTAttachment(screenshot: XCUIScreen.main.screenshot()))
         }
         icon.tap()
+        // A busy picker can drop a tap on a settled, hittable icon and stay open with
+        // nothing chosen. Choosing the file closes the picker, so tap the icon's screen
+        // point again, at most twice, only while the picker still shows it where a tap
+        // reaches it. A picker still open after that has not chosen the file.
+        for retry in 0...2 {
+            if cell.waitForNonExistence(timeout: 10) { return }
+            guard retry < 2, visible() else { break }
+            attachPickerDiagnostics(in: app, details: "the archive tap left the picker open")
+            tapOnScreen(icon, in: app)
+        }
+        attachPickerDiagnostics(in: app, details: "the picker stayed open after choosing the archive")
+        XCTFail("the file picker must close once the prepared archive is chosen")
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself

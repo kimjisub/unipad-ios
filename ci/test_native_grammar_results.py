@@ -44,7 +44,7 @@ class NativeGrammarResultsTests(unittest.TestCase):
                 if "build-for-testing" in command:
                     products = root / "build/Build/Products"
                     products.mkdir(parents=True)
-                    (products / "fixture.xctestrun").write_bytes(plistlib.dumps({
+                    (products / "unipad_AllTests_iphonesimulator27.0-arm64.xctestrun").write_bytes(plistlib.dumps({
                         "TestConfigurations": [{"TestTargets": [{"EnvironmentVariables": {}}]}]}))
                 elif "test-without-building" in command:
                     (output / "NativeGrammar.xcresult").mkdir()
@@ -67,6 +67,39 @@ class NativeGrammarResultsTests(unittest.TestCase):
                 self.assertEqual(report["environment"], [])
                 self.assertTrue(all(rule["status"] == "unverified" for rule in report["rules"].values()))
             self.assertEqual(*reports)
+
+    def test_build_uses_the_full_test_plan_when_the_scheme_has_two(self):
+        # Without -testPlan, build-for-testing writes one xctestrun per scheme test plan.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "run"
+            argv = ["run_native_grammar.py", "--udid", "sim", "--case-sensitive-root", str(root),
+                    "--derived-data", str(root / "build"), "--out", str(output),
+                    "--grammar-version", "G2", "--grammar-revision", "revision"]
+            builds = []
+
+            def fake_run(command, **kwargs):
+                if "build-for-testing" in command:
+                    builds.append(command)
+                    products = root / "build/Build/Products"
+                    products.mkdir(parents=True, exist_ok=True)
+                    plans = [command[command.index("-testPlan") + 1]] if "-testPlan" in command \
+                        else ["AllTests", "ReleaseFeatures"]
+                    for plan in plans:
+                        (products / f"unipad_{plan}_iphonesimulator27.0-arm64.xctestrun").write_bytes(plistlib.dumps({
+                            "TestConfigurations": [{"TestTargets": [{"EnvironmentVariables": {"PLAN": plan}}]}]}))
+                elif "test-without-building" in command:
+                    (output / "NativeGrammar.xcresult").mkdir()
+                return SimpleNamespace(returncode=0, stdout=json.dumps({"testNodes": []}), stderr="")
+
+            with patch("sys.argv", argv), patch.object(run_native_grammar, "capture", return_value=""), \
+                    patch.object(run_native_grammar.subprocess, "check_output", return_value=b""), \
+                    patch.object(run_native_grammar.subprocess, "run", side_effect=fake_run):
+                self.assertEqual(run_native_grammar.main(), 0)
+            self.assertEqual(builds[0][builds[0].index("-testPlan") + 1], "AllTests")
+            configured = plistlib.loads((output / "configured.xctestrun").read_bytes())
+            self.assertEqual(configured["TestConfigurations"][0]["TestTargets"][0]["EnvironmentVariables"]["PLAN"],
+                             "AllTests")
 
     def test_raw_bundle_digest_binds_names_and_contents_independently_of_creation_order(self):
         with tempfile.TemporaryDirectory() as temporary:

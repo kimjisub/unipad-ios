@@ -89,33 +89,24 @@ struct MainView: View {
                     showImportResult = true
                     return
                 }
-                defer { url.stopAccessingSecurityScopedResource() }
+                vm.isImportingInProgress = true
 
-                do {
-                    let zipData = try Data(contentsOf: url)
-                    let fileName = url.lastPathComponent
-
-                    vm.isImportingInProgress = true
-
-                    Task {
-                        let workspace = WorkspaceManager.shared.downloadWorkspace.url
-                        let importer = UniPackImporter()
-                        let delegate = MainViewImportDelegate(viewModel: vm)
-                        // The delegate already shows the error; the thrown value is only reported.
-                        var importedFolder: URL?
-                        do {
-                            importedFolder = try await importer.importPack(data: zipData, fileName: fileName, to: workspace, delegate: delegate)
-                            UsageAnalytics.shared.packImportSucceeded(source: .file)
-                        } catch {
-                            UsageAnalytics.shared.packImportFailed(source: .file, error: error)
-                        }
-
-                        await completeImport(importedFolder: importedFolder)
+                // The importer copies the file from where it is; access lasts until it is done.
+                Task {
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    let workspace = WorkspaceManager.shared.downloadWorkspace.url
+                    let importer = UniPackImporter()
+                    let delegate = MainViewImportDelegate(viewModel: vm)
+                    // The delegate already shows the error; the thrown value is only reported.
+                    var importedFolder: URL?
+                    do {
+                        importedFolder = try await importer.importPack(from: url, to: workspace, delegate: delegate)
+                        UsageAnalytics.shared.packImportSucceeded(source: .file)
+                    } catch {
+                        UsageAnalytics.shared.packImportFailed(source: .file, error: error)
                     }
-                } catch {
-                    UsageAnalytics.shared.packImportFailed(source: .file, error: error)
-                    vm.showImportError(error.localizedDescription)
-                    showImportResult = true
+
+                    await completeImport(importedFolder: importedFolder)
                 }
             case .failure(let error):
                 UsageAnalytics.shared.packImportFailed(source: .file, error: error)
