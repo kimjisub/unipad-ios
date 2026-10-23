@@ -108,6 +108,32 @@ final class ExternalFileImportTests: XCTestCase {
         UITestSupport.attachScreenshot("empty-website-pack-panel", to: self)
     }
 
+    func testAWebsiteWithoutASchemeOpensItsHTTPSAddress() throws {
+        try open("SchemeLessWebsite")
+        XCTAssertEqual(title.label, "Pack imported!")
+        ok.tap()
+        let list = app.scrollViews["main.packList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 30))
+        let pack = list.staticTexts["Website Address"].firstMatch
+        XCTAssertTrue(pack.waitForExistence(timeout: 15))
+        pack.tap()
+        let website = app.buttons["main.pack.website"]
+        XCTAssertTrue(website.waitForExistence(timeout: 15))
+        website.tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
+        defer { safari.terminate(); app.activate() }
+        // .invalid needs no live website. This checks the browser destination, not page loading.
+        let address = safari.descendants(matching: .any)
+            .matching(NSPredicate(format: "value CONTAINS[c] 'example.invalid' OR label CONTAINS[c] 'example.invalid'"))
+            .firstMatch
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        let capture = XCTAttachment(screenshot: safari.screenshot())
+        capture.name = "scheme-less-website-browser-destination"
+        capture.lifetime = .keepAlways
+        add(capture)
+    }
+
     /// The pack folder sits next to a readme.txt at the top of the archive.
     func testPackFolderBesideAReadmeImports() throws {
         try open("BesideReadme")

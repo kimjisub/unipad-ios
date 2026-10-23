@@ -11,6 +11,8 @@ WindowsPaths uses backslashes for ZIP folders beneath `Faded...`, a backslash
 in the keySound path, a short quiet 440 Hz WAV, and a red LED command. It opens
 as `Archive Paths`. EmptyWebsite is a valid pack with an empty `website=` line;
 its detail panel must not show a website button.
+SchemeLessWebsite uses `website=example.invalid`; it must open that HTTPS
+destination in Safari without requiring a live website to load.
 
 `ExternalFileImportTests` opens the bundled files with `XCUIApplication.open`
 so iOS delivers a document URL through the normal external import route. Each
