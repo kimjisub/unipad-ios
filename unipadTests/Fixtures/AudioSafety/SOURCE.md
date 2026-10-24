@@ -2,7 +2,9 @@
 
 This directory copies the complete third revision of the generated audio admission
 inputs from [unipad-android at cab0f17c373e6830c750c6f289d059c40907f4eb](https://github.com/kimjisub/unipad-android/tree/cab0f17c373e6830c750c6f289d059c40907f4eb/app/src/sharedTest/assets/audio-safety).
-The binary files, `cases.json`, and `README.md` are byte-for-byte copies.
+The binary files, `cases.json`, and `AudioSafetyREADME.md` (upstream `README.md`)
+are byte-for-byte copies. The guide has a unique resource name to avoid collisions
+with other fixture guides in the test bundle.
 The manifest SHA-256 is `b16e4f635d671b3ab2d20222cea55bec72cce91e496d6b2ea87ccf6525c193c4`.
 `AudioAdmissionTests` checks that hash and every binary hash without changing expectations.
 These inputs are separate from the historical parser conformance corpus.
