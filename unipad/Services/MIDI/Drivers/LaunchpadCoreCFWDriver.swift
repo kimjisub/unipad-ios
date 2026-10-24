@@ -2,6 +2,7 @@ import Foundation
 
 /// Unified driver for Novation Launchpad devices running the "Launchpad Core Firmware" (CoreFW).
 /// Compatible with Launchpad Pro, MK2, S, Mini mk1, X, Mini MK3, and Pro MK3 running CoreFW.
+/// Its performance layout is already active, so connecting sends no mode or clear messages.
 final class LaunchpadCoreCFWDriver: BaseMidiDriver {
     /// How the device reads a note-on velocity as an LED colour.
     enum LedColors {
@@ -19,27 +20,6 @@ final class LaunchpadCoreCFWDriver: BaseMidiDriver {
 
     init(ledColors: LedColors = .palette) {
         self.ledColors = ledColors
-    }
-
-    /// CoreFW boots in its own performance mode, which is the layout this driver speaks. The stock
-    /// firmwares' mode and layout selection messages are left out so they cannot switch it away.
-    override func getInitSysEx() -> (messages: [[UInt8]], cableNumber: Int)? {
-        return (messages: [
-            // Pro: set all LEDs to colour 0
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0E, 0x00, 0xF7],
-            // MK2: set all LEDs to colour 0
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x0E, 0x00, 0xF7],
-            // X: clear session, drum rack and CC LEDs
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x12, 0x01, 0x01, 0x01, 0xF7],
-            // Mini MK3: clear session and CC LEDs
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x12, 0x01, 0x00, 0x01, 0xF7],
-        ], cableNumber: 0)
-    }
-
-    override func initialize() {
-        if let initData = getInitSysEx() {
-            sendRawSignals(messages: initData.messages, cableNumber: initData.cableNumber)
-        }
     }
 
     override func getSignal(cmd: Int, sig: Int, note: Int, velocity: Int) {
