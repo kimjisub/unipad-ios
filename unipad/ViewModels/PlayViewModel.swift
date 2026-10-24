@@ -579,10 +579,10 @@ final class PlayViewModel {
         let y: Int
         let byAutoPlay: Bool
     }
-    /// A Launchpad note has no identity of its own; the pad is its identity.
-    private enum PadInput: Hashable {
-        case identified(UUID)
-        case unidentified
+    /// A screen input may omit its identity too; its source still distinguishes it from a controller.
+    private struct PadInput: Hashable {
+        let id: UUID?
+        let isController: Bool
     }
     /// The inputs holding each hold, and the owner its sounds and lights were started under. The
     /// hold ends, stopping its endless sounds and lights on any chain, when its last input lifts.
@@ -604,10 +604,11 @@ final class PlayViewModel {
         let ledTimeMs = ledTimeMs ?? Int64(CACurrentMediaTime() * 1000)
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
+        let input = PadInput(id: inputID, isController: trigger == .pad(.midi))
         if isDown {
             let hold = PadHold(x: x, y: y, byAutoPlay: trigger == .autoplay)
             var held = padHolds[hold] ?? (owner: UUID(), inputs: [])
-            held.inputs.insert(inputID.map(PadInput.identified) ?? .unidentified)
+            held.inputs.insert(input)
             padHolds[hold] = held
             usageSession.playTriggered(trigger)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
@@ -639,7 +640,7 @@ final class PlayViewModel {
             ledRunner?.eventOn(x: x, y: y, pressedAt: ledTimeMs, owner: held.owner)
         } else {
             padRelease(x: x, y: y, byAutoPlay: trigger == .autoplay,
-                       input: inputID.map(PadInput.identified) ?? .unidentified, ledTimeMs: ledTimeMs)
+                       input: input, ledTimeMs: ledTimeMs)
         }
     }
 
@@ -656,7 +657,9 @@ final class PlayViewModel {
     /// keep their own inputs; the shared player hold ends only if no finger remains.
     fileprivate func releaseControllerPads() {
         for hold in Array(padHolds.keys) where !hold.byAutoPlay {
-            padRelease(x: hold.x, y: hold.y, byAutoPlay: false, input: .unidentified)
+            for input in padHolds[hold]?.inputs ?? [] where input.isController {
+                padRelease(x: hold.x, y: hold.y, byAutoPlay: false, input: input)
+            }
         }
     }
 
