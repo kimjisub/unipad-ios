@@ -32,7 +32,8 @@ the published pack and uses `soundGet` to inspect each queue item selected for
 the sound engine. The selected file's actual bytes and relative path must
 identify exactly one original entry. Neither expected results nor expected
 asset names participate in that lookup. Missing or ambiguous provenance is
-unverified. Lost source contents fail even if the chosen sound happens to match.
+unverified, including when content loss is also detected. With traceable provenance,
+lost source contents fail even if the chosen sound happens to match.
 
 `ios.json` carries `archiveEntry`, `sha256`, `loop`, and `wormhole` in each
 sound queue. Separate `*-identity.json` diagnostics retain the raw archive
@@ -43,7 +44,13 @@ canonical String equality.
 
 `SoundIdentityTests` checks wrong entries, wrong bytes, overwritten contents,
 ambiguous provenance, and independence from expectations. These checks run in
-the normal unit suite. They do not assert that every observation passes on the
+the normal unit suite. They do not publish identity diagnostics to the shared evidence
+folder. Only the opt-in observation suite explicitly passes the shared report; a
+caller can instead pass a report with its own temporary directory. To check this
+boundary, set `TEST_RUNNER_UNIPACK_CONFORMANCE_OUT` to an empty folder and run
+`-only-testing:unipadTests/SoundIdentityTests`: no `*-identity.json` file may appear
+there. An explicit private-report check also verifies that diagnostics are retained
+in that report's directory. They do not assert that every observation passes on the
 current app. No app extraction, parser, or playback logic is changed. The
 observed boundary ends at the file bytes selected for the sound engine; it does
 not establish decoded audio or speaker output.

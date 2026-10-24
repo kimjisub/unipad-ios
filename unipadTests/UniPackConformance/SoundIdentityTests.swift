@@ -10,6 +10,32 @@ struct SoundIdentityTests {
         return (corpus, try #require(corpus.cases.first { $0.id == id }))
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_OUT"] != nil &&
+                   ProcessInfo.processInfo.environment["UNIPACK_SOUND_IDENTITY_OBSERVE"] != "1",
+                   "Requires a shared evidence folder for ordinary unit checks"))
+    func ordinaryChecksDoNotWriteIdentityDiagnosticsToSharedEvidence() async throws {
+        let (corpus, sample) = try reference("KS-G601")
+        let path = try #require(ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_OUT"])
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        _ = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        let files = try FileManager.default.contentsOfDirectory(atPath: path)
+        #expect(!files.contains { $0.hasSuffix("-identity.json") },
+                "ordinary self-checks must not publish synthetic observations as shared evidence")
+    }
+
+    @Test func anExplicitReportKeepsDiagnosticsInItsOwnDirectory() async throws {
+        let (corpus, sample) = try reference("KS-G601")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sound-identity-report-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try await ConformanceHarness.actual(for: sample, corpus: corpus,
+                                               identityReport: ConformanceReport(directory: directory))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["KS-G601-identity.json"])
+        let diagnostic = try JSONValue(data: Data(contentsOf: directory.appendingPathComponent("KS-G601-identity.json")))
+        #expect(diagnostic["selections"]?.array?.first?["sha256"]?.string ==
+                "c92bf9a21f15a6d98067e19814d8c12724b8eeae3b5fda492b82391e32b11f0d")
+    }
+
     @Test func originalArchiveSpellingIsComparedExactly() {
         let composed: JSONValue = ["archiveEntry": "sounds/caf\u{e9}.wav", "sha256": "same"]
         let decomposed: JSONValue = ["archiveEntry": "sounds/cafe\u{301}.wav", "sha256": "same"]

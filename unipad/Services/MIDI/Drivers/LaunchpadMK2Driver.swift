@@ -21,23 +21,23 @@ final class LaunchpadMK2Driver: BaseMidiDriver {
     ]
 
     override func getSignal(cmd: Int, sig: Int, note: Int, velocity: Int) {
-        if cmd == 9 {
-            let x = 9 - note / 10
-            let y = note % 10
-            if (1...8).contains(y) {
-                onPadTouch(x: x - 1, y: y - 1, upDown: velocity != 0, velocity: velocity)
-            } else if y == 9 {
-                onChainTouch(c: x - 1, upDown: velocity != 0)
-                onFunctionKeyTouch(f: x - 1 + 8, upDown: velocity != 0)
+        if let down = Self.noteTouch(cmd: cmd, velocity: velocity) {
+            let row = 9 - note / 10
+            let column = note % 10
+            guard (1...8).contains(row) else { return }
+            if (1...8).contains(column) {
+                onPadTouch(x: row - 1, y: column - 1, upDown: down, velocity: velocity)
+            } else if column == 9 {
+                onChainTouch(c: row - 1, upDown: down)
+                onFunctionKeyTouch(f: row - 1 + 8, upDown: down)
             }
-        } else if cmd == 11 {
-            if (104...111).contains(note) {
-                onFunctionKeyTouch(f: note - 104, upDown: velocity != 0)
-            }
+        } else if Self.isControlChange(cmd) && (104...111).contains(note) {
+            onFunctionKeyTouch(f: note - 104, upDown: velocity != 0)
         }
     }
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
+        guard Self.isOnGrid(x: x, y: y) else { return }
         sendSignal(cmd: 9, sig: -112, note: 10 * (8 - x) + y + 1, velocity: velocity)
     }
 

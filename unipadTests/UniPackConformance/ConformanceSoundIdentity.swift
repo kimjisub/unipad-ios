@@ -64,7 +64,9 @@ enum ConformanceSoundIdentity {
     }
 
     @MainActor
-    static func actual(for sample: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps) async throws -> ConformanceActual {
+    /// Only an explicit report publishes diagnostics. Self-checks may mutate the imported pack
+    /// and must never write those synthetic results to the shared observation folder.
+    static func actual(for sample: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps, report: ConformanceReport? = nil) async throws -> ConformanceActual {
         let fm = FileManager.default
         let scratch = observationRoot.appendingPathComponent("sound-identity-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -122,14 +124,14 @@ enum ConformanceSoundIdentity {
         } catch {
             diagnostic["selections"] = .array(selections)
             diagnostic["traceError"] = .string(String(describing: error))
-            try ConformanceReport.shared.writeIdentityDiagnostic(id: sample.id, value: .object(diagnostic))
+            try report?.writeIdentityDiagnostic(id: sample.id, value: .object(diagnostic))
             return .unverified("cannot uniquely trace the selected bytes to an original archive entry: \(error)")
         }
         if !pack.criticalError { parsed["sounds"] = .array(sounds) }
         let actual = JSONValue.object(parsed)
         diagnostic["selections"] = .array(selections)
         diagnostic["actual"] = actual
-        try ConformanceReport.shared.writeIdentityDiagnostic(id: sample.id, value: .object(diagnostic))
+        try report?.writeIdentityDiagnostic(id: sample.id, value: .object(diagnostic))
         // Even a correct selection cannot excuse other source contents overwritten during import.
         if !lost.isEmpty { return .observedFailure(actual, "archive sound contents lost during import: \(lost.map(\.path))") }
         return .value(actual)

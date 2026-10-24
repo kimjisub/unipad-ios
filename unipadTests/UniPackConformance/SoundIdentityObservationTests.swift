@@ -13,7 +13,7 @@ struct SoundIdentityObservationTests {
         let sample = try #require(corpus.cases.first { $0.id == id })
         try corpus.verifyFingerprint(of: sample)
         let observed: ConformanceActual
-        do { observed = try await ConformanceHarness.actual(for: sample, corpus: corpus) }
+        do { observed = try await ConformanceHarness.actual(for: sample, corpus: corpus, identityReport: .shared) }
         catch { observed = .failed(String(describing: error)) }
         let result = observed.classified(for: sample)
         ConformanceReport.shared.record(sample, outcome: result.outcome, actual: result.actual, corpus: corpus)

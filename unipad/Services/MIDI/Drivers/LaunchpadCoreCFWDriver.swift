@@ -47,12 +47,11 @@ final class LaunchpadCoreCFWDriver: BaseMidiDriver {
         guard cin == 8 || cin == 9 else { return }
         let isDown = cin == 9 && velocity > 0
 
+        if let pad = DrumRackLayout.pad(note: note) {
+            onPadTouch(x: pad.x, y: pad.y, upDown: isDown, velocity: velocity)
+            return
+        }
         switch note {
-        case 36...99:
-            let index = note - 36
-            let row = 7 - (index % 32) / 4
-            let col = index < 32 ? index % 4 : (index % 4) + 4
-            onPadTouch(x: row, y: col, upDown: isDown, velocity: velocity)
         case 28...35:
             onFunctionKeyTouch(f: note - 28, upDown: isDown)
         case 100...107:
@@ -75,9 +74,7 @@ final class LaunchpadCoreCFWDriver: BaseMidiDriver {
     }
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
-        guard (0...7).contains(x), (0...7).contains(y) else { return }
-        let rowInverted = 7 - x
-        let note = y < 4 ? 36 + rowInverted * 4 + y : 68 + rowInverted * 4 + (y - 4)
+        guard let note = DrumRackLayout.note(x: x, y: y) else { return }
         sendLed(note: note, velocity: velocity)
     }
 

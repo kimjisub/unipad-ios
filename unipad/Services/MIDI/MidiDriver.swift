@@ -109,4 +109,55 @@ class BaseMidiDriver: MidiDriver {
     func sendRawSignals(messages: [[UInt8]], cableNumber: Int = 0) {
         sendSignalListener?.onSendRaw(messages: messages, cableNumber: cableNumber)
     }
+
+    // MARK: - Shared Input and LED Rules
+
+    /// The message kind in a received `cmd`: 8 note off, 9 note on, 10 aftertouch, 11 control change,
+    /// 13 channel pressure. MidiManager puts the port the message came in on above it; the connection
+    /// already chose the port, so the same message means the same button on any port.
+    static func messageKind(_ cmd: Int) -> Int {
+        cmd & 0x0F
+    }
+
+    /// Whether a note message presses (true) or releases (false) its button. A note on with a velocity
+    /// presses; a note off with any release velocity, or a note on with velocity 0, releases. nil for
+    /// every other message, aftertouch included.
+    static func noteTouch(cmd: Int, velocity: Int) -> Bool? {
+        switch messageKind(cmd) {
+        case 9: velocity > 0
+        case 8: false
+        default: nil
+        }
+    }
+
+    static func isControlChange(_ cmd: Int) -> Bool {
+        messageKind(cmd) == 11
+    }
+
+    /// Pack coordinates come from its info file and can exceed a controller's 8x8 pads; those pads
+    /// light nothing rather than another button.
+    static func isOnGrid(x: Int, y: Int) -> Bool {
+        (0...7).contains(x) && (0...7).contains(y)
+    }
+
+    /// Reports a note message on the drum-rack layout as a pad press or release.
+    func reportDrumRackPad(cmd: Int, note: Int, velocity: Int) {
+        guard let down = Self.noteTouch(cmd: cmd, velocity: velocity), let pad = DrumRackLayout.pad(note: note) else { return }
+        onPadTouch(x: pad.x, y: pad.y, upDown: down, velocity: velocity)
+    }
+}
+
+/// Notes 36...99 as two 4-column blocks running bottom-up, the left block first: a drum rack's layout,
+/// which Matrix, Midi Fighter, master keyboards and the Launchpad custom firmwares share.
+enum DrumRackLayout {
+    static func pad(note: Int) -> (x: Int, y: Int)? {
+        guard (36...99).contains(note) else { return nil }
+        let index = note - 36
+        return (x: 7 - (index % 32) / 4, y: index % 4 + (index < 32 ? 0 : 4))
+    }
+
+    static func note(x: Int, y: Int) -> Int? {
+        guard BaseMidiDriver.isOnGrid(x: x, y: y) else { return nil }
+        return 36 + (y < 4 ? 0 : 32) + (7 - x) * 4 + y % 4
+    }
 }

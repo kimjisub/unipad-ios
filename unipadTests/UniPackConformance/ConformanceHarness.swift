@@ -156,10 +156,10 @@ enum ConformanceHarness {
     // MARK: - Running a case
 
     @MainActor
-    static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps()) async throws -> ConformanceActual {
+    static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps(), identityReport: ConformanceReport? = nil) async throws -> ConformanceActual {
         if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
         if conformanceCase.soundIdentity {
-            return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps)
+            return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps, report: identityReport)
         }
         if conformanceCase.layer == "palette" {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
