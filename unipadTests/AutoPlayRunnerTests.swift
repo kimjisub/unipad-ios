@@ -9,6 +9,7 @@ final class AutoPlayRunnerTests: XCTestCase {
         var onFinish: (() -> Void)?
         var guidePads: [Int] = []
         var pressTimes: [Int64] = []
+        var pressedPads: [Int] = []
         var releaseTimes: [Int64] = []
         var inputBoundaries: [Int64?] = []
         /// Guide pads on screen, as the play screen tracks them.
@@ -17,7 +18,10 @@ final class AutoPlayRunnerTests: XCTestCase {
         func onEnd() { ends += 1; onFinish?() }
         func onPadTouchOn(x: Int, y: Int, inputID: UUID) {}
         func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {}
-        func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) { pressTimes.append(scheduledAtMs) }
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+            pressedPads.append(x * 256 + y)
+            pressTimes.append(scheduledAtMs)
+        }
         func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) { releaseTimes.append(scheduledAtMs) }
         func onInputTimeThrough(_ at: Int64?) { inputBoundaries.append(at) }
         func onChainChange(c: Int) {}
@@ -98,6 +102,70 @@ final class AutoPlayRunnerTests: XCTestCase {
         runner.stepMode = true
         runner.playmode = false
         runner.launch()
+    }
+
+
+    /// The guided chord is still owed until its pads are pressed. Scanning past it must not
+    /// discard it when either transport resumes playback, even at the end of the table.
+    func testStepToAutoplayKeepsUnplayedPadsAcrossBothControlsAndPauseDurations() async throws {
+        for useModeButton in [true, false] {
+            for pausedMs: Int64 in [0, 1, 300, 3_000] {
+                for partialChord in [false, true] {
+                    for lastGroup in [false, true] {
+                        let label = "modeButton=\(useModeButton), pause=\(pausedMs), partial=\(partialChord), final=\(lastGroup)"
+                        let pack = UniPack()
+                        var elements: [AutoPlay.Element] = [
+                            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
+                            .on(x: 0, y: 1, currChain: 0, num: 0),
+                            .on(x: 0, y: 2, currChain: 0, num: 0),
+                        ]
+                        if !lastGroup {
+                            elements += [.delay(delay: 250), .on(x: 0, y: 3, currChain: 0, num: 0)]
+                        }
+                        pack.autoPlayTable = AutoPlay(elements: elements)
+                        let clock = TestManualClock()
+                        let recorder = Recorder()
+                        var ticks = 0
+                        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                                    clock: { clock.read() }, sleep: { _ in
+                            ticks += 1
+                            await Task.yield()
+                        })
+                        let vm = PlayViewModel()
+                        vm.autoPlayRunner = runner
+                        defer { runner.stop() }
+                        vm.switchPlayMode(.stepPractice)
+                        try await wait { recorder.guidePads == [0] }
+                        runner.stepPadPressed(x: 0, y: 0)
+                        try await wait { recorder.guidePads == [0, 1, 2] }
+                        // Leave this press queued, as a user's press can arrive just before
+                        // the mode button in the same tick.
+                        if partialChord { runner.stepPadPressed(x: 0, y: 1) }
+                        clock.advance(pausedMs)
+                        let resumedAt = clock.read()
+                        if useModeButton { vm.switchPlayMode(.autoPlay) }
+                        else { vm.autoPlayResume() }
+                        let nextTick = ticks + 2
+                        try await wait { ticks >= nextTick || !runner.active }
+                        let pending = partialChord ? [2] : [1, 2]
+                        XCTAssertEqual(recorder.pressedPads, pending, label)
+                        XCTAssertEqual(recorder.pressTimes, Array(repeating: resumedAt, count: pending.count), label)
+                        if !lastGroup {
+                            clock.advance(249)
+                            let nextTick = ticks + 2
+                            try await wait { ticks >= nextTick || !runner.active }
+                            XCTAssertEqual(recorder.pressedPads, pending, label)
+                            clock.advance(1)
+                            let finalTick = ticks + 2
+                            try await wait { ticks >= finalTick || !runner.active }
+                            XCTAssertEqual(recorder.pressedPads, pending + [3], label)
+                            XCTAssertEqual(recorder.pressTimes.last, resumedAt + 250, label)
+                        }
+                        XCTAssertFalse(runner.active, label)
+                    }
+                }
+            }
+        }
     }
 
     func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
