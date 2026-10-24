@@ -93,6 +93,37 @@ final class AutoPlayRunnerTests: XCTestCase {
         return pack
     }
 
+    func testPausePreservesTheRemainingDelay() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0),
+            .delay(delay: 1000), .on(x: 0, y: 1, currChain: 0, num: 0)])
+        let recorder = Recorder()
+        let clock = TestManualClock()
+        var tick = 0
+        var runner: AutoPlayRunner!
+        runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+            clock: { clock.read() }, sleep: { _ in
+                tick += 1
+                switch tick {
+                case 1: clock.advance(500)
+                case 2: runner.playmode = false; clock.advance(3000)
+                case 3: runner.playmode = true
+                case 4:
+                    XCTAssertEqual(recorder.pressTimes.count, 1, "resume consumed the outstanding delay")
+                    clock.advance(499)
+                case 5:
+                    XCTAssertEqual(recorder.pressTimes.count, 1, "the second pad played before its remaining 500 ms")
+                    clock.advance(1)
+                default: clock.advance(1000)
+                }
+                await Task.yield()
+            })
+        defer { runner.stop(); runner = nil }
+        runner.launch()
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.pressTimes, [1000, 5000])
+    }
+
     private func startStepPractice(_ runner: AutoPlayRunner) {
         runner.practiceGuide = true
         runner.stepMode = true
