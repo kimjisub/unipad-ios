@@ -24,7 +24,10 @@ final class ConformanceReport: @unchecked Sendable {
 
     /// UNIPACK_CONFORMANCE_ONLY: only the cases whose id starts with it run; the others are left out of
     /// ios.json (unverified in the report). Such a run is never a pass either.
-    static var onlyPrefix: String? { onlyPrefix(in: ProcessInfo.processInfo.environment) }
+    static var onlyPrefix: String? {
+        let environment = ProcessInfo.processInfo.environment
+        return onlyPrefix(in: environment) ?? (environment["UNIPACK_SOUND_IDENTITY_OBSERVE"] == "1" ? "KS-G6" : nil)
+    }
     static func onlyPrefix(in environment: [String: String]) -> String? {
         environment["UNIPACK_CONFORMANCE_ONLY"].flatMap { $0.isEmpty ? nil : $0 }
     }
@@ -95,5 +98,13 @@ final class ConformanceReport: @unchecked Sendable {
         } catch {
             print("UNIPACK-CONFORMANCE-OUT-FAILED \(error)")
         }
+    }
+
+    /// Kept outside actual, so storage spelling is diagnostic and never part of the expectation.
+    func writeIdentityDiagnostic(id: String, value: JSONValue) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data((value.serialized() + "\n").utf8).write(
+            to: directory.appendingPathComponent(id + "-identity.json"), options: .atomic)
+        print("UNIPACK-SOUND-IDENTITY \(id) \(value.serialized())")
     }
 }
