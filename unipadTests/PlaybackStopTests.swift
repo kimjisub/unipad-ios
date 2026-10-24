@@ -277,7 +277,76 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertTrue(engine.activePlayIDs.isEmpty, "the lift after the option change was ignored")
     }
 
-    func testFirstFingerLiftKeepsTheLastFingerSoundingAndLit() async throws {
+    func testOpeningOptionsReleasesControllerHoldBeforeAnotherFingerPlays() async throws {
+        try await checkControllerReleaseBoundary { $0.toggleOptionWindow(true) }
+    }
+
+    func testPausingReleasesControllerHoldBeforeAnotherFingerPlays() async throws {
+        try await checkControllerReleaseBoundary { $0.onPause() }
+    }
+
+    func testDisconnectingReleasesControllerHoldBeforeAnotherFingerPlays() async throws {
+        try await checkControllerReleaseBoundary { vm in
+            vm.setupMidiController()
+            MidiManager.shared.controller?.onDetach()
+            // The controller callback is dispatched to the main actor.
+            let deadline = Date().addingTimeInterval(3)
+            while vm.padItems[0][0] != nil && Date() < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+    }
+
+    func testOpeningOptionsPreservesAFingerSharingTheControllerPad() async throws {
+        try await checkControllerReleaseBoundary(keepingFinger: true) { $0.toggleOptionWindow(true) }
+    }
+
+    func testPausingPreservesAFingerSharingTheControllerPad() async throws {
+        try await checkControllerReleaseBoundary(keepingFinger: true) { $0.onPause() }
+    }
+
+    private func checkControllerReleaseBoundary(
+        keepingFinger: Bool = false,
+        boundary: (PlayViewModel) async throws -> Void
+    ) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let leds = root.appendingPathComponent("keyLed")
+        try FileManager.default.createDirectory(at: leds, withIntermediateDirectories: true)
+        try "on 1 1 a 5\ndelay 100\n".write(to: leds.appendingPathComponent("1 1 1 0"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.ledRunner)
+        let finger = UUID()
+        vm.scbFeedbackLight.setChecked(true)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.midi))
+        if keepingFinger {
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: finger)
+        }
+        runner.loop()
+        let held = engine.activePlayIDs
+        try await boundary(vm)
+        runner.loop()
+        if keepingFinger {
+            XCTAssertEqual(engine.activePlayIDs, held, "a real finger still holds the pad")
+            XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed)
+            XCTAssertTrue(runner.isEventExist(x: 0, y: 0))
+        } else {
+            XCTAssertTrue(engine.activePlayIDs.isEmpty, "a disconnected controller must not keep sounding")
+            XCTAssertNil(vm.padItems[0][0])
+            XCTAssertFalse(runner.isEventExist(x: 0, y: 0))
+            vm.toggleOptionWindow(false)
+            vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: finger)
+        }
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: finger)
+        runner.loop()
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "a lost controller release stranded a later finger's sound")
+        XCTAssertNil(vm.padItems[0][0], "a lost controller release stranded the press light")
+        XCTAssertFalse(runner.isEventExist(x: 0, y: 0), "a lost controller release stranded an endless light")
+    }
+
+    func testLastFingerLiftKeepsTheFirstFingerSoundingAndLit() async throws {
         let root = try pack(loop: 0)
         defer { try? FileManager.default.removeItem(at: root) }
         let vm = try await loaded(root)

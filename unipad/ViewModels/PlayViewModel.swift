@@ -652,6 +652,14 @@ final class PlayViewModel {
         if padHolds[hold]?.inputs.isEmpty == true { releaseHold(hold, ledTimeMs: ledTimeMs) }
     }
 
+    /// A disconnected controller cannot deliver its remaining releases. Fingers and autoplay
+    /// keep their own inputs; the shared player hold ends only if no finger remains.
+    fileprivate func releaseControllerPads() {
+        for hold in Array(padHolds.keys) where !hold.byAutoPlay {
+            padRelease(x: hold.x, y: hold.y, byAutoPlay: false, input: .unidentified)
+        }
+    }
+
     private func releaseHold(_ hold: PadHold, ledTimeMs: Int64? = nil) {
         guard let owner = padHolds.removeValue(forKey: hold)?.owner else { return }
         soundEngine?.soundOff(x: hold.x, y: hold.y, inputID: owner)
@@ -763,8 +771,10 @@ final class PlayViewModel {
     // MARK: - Option Window
 
     func toggleOptionWindow(_ show: Bool? = nil) {
+        let showing = show ?? !isOptionWindowVisible
+        if showing { releaseControllerPads() }
         withAnimation(.easeInOut(duration: 0.3)) {
-            isOptionWindowVisible = show ?? !isOptionWindowVisible
+            isOptionWindowVisible = showing
         }
         refreshWatermark()
     }
@@ -1116,6 +1126,7 @@ final class PlayViewModel {
     // MARK: - Lifecycle
 
     func onPause() {
+        releaseControllerPads()
         autoPlayRunner?.appWentAway()
         ledRunner?.appWentAway()
         if let adapter = midiControllerAdapter {
@@ -1456,7 +1467,11 @@ private final class PlayMidiControllerAdapter: MidiController {
         }
     }
 
-    func onDetach() {}
+    func onDetach() {
+        Task { @MainActor [weak self] in
+            self?.viewModel?.releaseControllerPads()
+        }
+    }
 
     func onPadTouch(x: Int, y: Int, upDown: Bool, velocity: Int) {
         Task { @MainActor [weak self] in

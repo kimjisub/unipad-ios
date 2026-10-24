@@ -48,6 +48,23 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpeningOptionsReleasesAControllerPadWhoseNoteOffIsHidden() throws {
+        let idle = try openPlayScreen(device: "UniPad Test Keyboard", connectedAs: "Master Keyboard", picture: "options-release")
+        try device.send(0x90, 36, 100)
+        XCTAssertEqual(try waitForLitPads(["8,1"], comparedWith: idle, picture: "options-release-1-held"), ["8,1"])
+        app.buttons["line.3.horizontal"].tap()
+        let quit = app.buttons["Quit"]
+        XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        try device.send(0x80, 36, 64)
+        UITestSupport.attachScreenshot("options-release-2-hidden-note-off", to: self)
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: quit)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+        XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "options-release-3-closed"), [],
+                       "a note-off hidden by the options left the controller pad held")
+    }
+
+    @MainActor
     func testKeyboardReleasesOnNoteOffWithVelocityAndIgnoresAftertouch() throws {
         let idle = try openPlayScreen(device: "UniPad Test Keyboard", connectedAs: "Master Keyboard", picture: "keyboard")
         try device.send(0x90, 36, 100)

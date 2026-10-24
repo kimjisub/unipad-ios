@@ -1,7 +1,7 @@
 import XCTest
 
 /// A generated silent pack keeps its first pad red and moves to chain two. Its release must
-/// clear that original endless light. The same gesture and screenshots also run before the fix.
+/// clear that original endless light.
 final class HeldLightReleaseUITests: XCTestCase {
     @MainActor
     func testReleasingAfterTheLightChangesChainGoesDark() throws {
