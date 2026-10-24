@@ -23,8 +23,9 @@ final class AutoPlayRunner {
                 if let pausedAt { pendingPauseMs += clock() - pausedAt }
                 pausedAt = nil
             } else {
-                // An app-return gap reported before this pause still belongs to the timeline.
-                if waitingForChain < 0 { pendingPauseMs += pendingSkipMs }
+                // Preserve an app suspension even if its return notification arrives after this pause.
+                let skipped = suspendedTime.tick(at: clock()) + pendingSkipMs
+                if waitingForChain < 0 { pendingPauseMs += skipped }
                 pausedAt = clock()
                 releaseHeldPads()
             }
@@ -446,6 +447,8 @@ final class AutoPlayRunner {
 
     /// The app left the front (`willResignActive`); it may be suspended before it comes back.
     func appWentAway() {
+        // Foreground time since the last tick still belongs to the song.
+        pendingSkipMs += suspendedTime.tick(at: clock())
         suspendedTime.appWentAway()
     }
 
