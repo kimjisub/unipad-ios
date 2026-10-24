@@ -74,6 +74,7 @@ set +e
 TEST_RUNNER_UNIPAD_VIRTUAL_MIDI_DIR=$device xcodebuild test-without-building \
   -project unipad.xcodeproj -scheme unipad -configuration Debug \
   -destination "id=$udid" -derivedDataPath $derived -parallel-testing-enabled NO \
+  -collect-test-diagnostics never \
   "${selection[@]}" \
   -resultBundlePath $results/MidiInput.xcresult > $results/midi-input-tests.log 2>&1
 code=$?
