@@ -151,7 +151,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                     } else if tick == 2 {
                         XCTAssertEqual(recorder.pressTimes.count, 1)
                         clock.advance(499)
-                    } else {
+                    } else if tick == 3 {
                         XCTAssertEqual(recorder.pressTimes.count, 1)
                         clock.advance(1)
                     }
