@@ -107,12 +107,13 @@ enum SoundEngineTestSupport {
     /// Starts a real engine on `pack` and waits until it has finished loading the sounds.
     static func loadedEngine(
         _ pack: UniPack, chain: ChainObserver? = nil,
-        packBudget: SoundFileLimits.PackBudget = .init()
+        packBudget: SoundFileLimits.PackBudget = .init(),
+        openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) }
     ) async throws -> (SoundEngine, TestSoundLoadListener) {
         let listener = TestSoundLoadListener()
         let trace = SoundLoadingTrace()
         let engine = SoundEngine(unipack: pack, chain: chain ?? ChainObserver(), loadingListener: listener,
-                                 packBudget: packBudget, observeLoading: trace.record)
+                                 packBudget: packBudget, openAudioFile: openAudioFile, observeLoading: trace.record)
 
         do {
             try await waitForLoad(listener, trace: trace)

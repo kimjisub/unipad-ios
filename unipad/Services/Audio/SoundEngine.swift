@@ -128,6 +128,8 @@ final class SoundEngine {
         case loadQueued, loadStarted, soundStarted, soundFinished
         case completionQueued, completionDelivered
     }
+    /// Lets tests exercise older systems whose file reader does not support Ogg Opus.
+    private let openAudioFile: (URL) throws -> AVAudioFile
     private let packBudget: SoundFileLimits.PackBudget
     private let observeLoading: (LoadingEvent) -> Void
 
@@ -146,8 +148,10 @@ final class SoundEngine {
         loadingListener: LoadingListener,
         activateSession: @escaping () throws -> Void = SoundEngine.configureSession,
         packBudget: SoundFileLimits.PackBudget = .init(),
+        openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
         observeLoading: @escaping (LoadingEvent) -> Void = { _ in }
     ) {
+        self.openAudioFile = openAudioFile
         self.packBudget = packBudget
         self.observeLoading = observeLoading
         self.unipack = unipack
@@ -343,7 +347,7 @@ final class SoundEngine {
                                     do {
                                         self.observeLoading(.soundStarted)
                                         defer { self.observeLoading(.soundFinished) }
-                                        playBuffer = try Self.decode(sound.file, as: playbackFormat, within: &budget)
+                                        playBuffer = try Self.decode(sound.file, as: playbackFormat, within: &budget, opening: self.openAudioFile)
                                     } catch {
                                         failedFiles[sound.file] = error
                                         throw error
@@ -395,9 +399,12 @@ final class SoundEngine {
 
     /// Decodes `url` in `playbackFormat`. A sound that would take the pack past `budget` is refused
     /// before each buffer for it is allocated, by the length its header claims.
-    static func decode(_ url: URL, as playbackFormat: AVAudioFormat, within budget: inout SoundFileLimits.PackBudget) throws -> AVAudioPCMBuffer {
+    static func decode(
+        _ url: URL, as playbackFormat: AVAudioFormat, within budget: inout SoundFileLimits.PackBudget,
+        opening openAudioFile: (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) }
+    ) throws -> AVAudioPCMBuffer {
         let spent = budget
-        let source = try decodeAudioBuffer(from: url) { format, frames in
+        let source = try decodeAudioBuffer(from: url, opening: openAudioFile) { format, frames in
             let claimed = try SoundFileLimits.resampledFrameCount(
                 frames, from: format.sampleRate, to: playbackFormat.sampleRate, channels: playbackFormat.channelCount)
             try spent.check(claimed, channels: playbackFormat.channelCount)
@@ -423,11 +430,12 @@ final class SoundEngine {
     /// it holds.
     private static func decodeAudioBuffer(
         from url: URL,
+        opening openAudioFile: (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
         admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void
     ) throws -> AVAudioPCMBuffer {
         let audioFile: AVAudioFile
         do {
-            audioFile = try AVAudioFile(forReading: url)
+            audioFile = try openAudioFile(url)
         } catch _ where OggVorbisDecoder.isOgg(url) {
             return try OggAudioDecoder.decode(url, admitting: admit)
         }

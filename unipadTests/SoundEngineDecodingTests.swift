@@ -166,6 +166,15 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("opus-tone", "ogg"), recordMix: true)
     }
 
+    /// The current OS can decode Opus itself; force the refusal older systems return so this
+    /// check still exercises the app's fallback on a modern simulator.
+    @Test func anOggOpusSoundPlaysWithoutNativeSupport() async throws {
+        try await expectPlays(try fixture("opus-tone", "ogg"), recordMix: true) { url in
+            if OggVorbisDecoder.isOgg(url) { throw CocoaError(.fileReadUnknown) }
+            return try AVAudioFile(forReading: url)
+        }
+    }
+
     @Test(arguments: ["vorbis-overlong", "vorbis-over-budget", "opus-overlong"])
     func anOversizedOggIsSilentAndAdvancesToTheNextSound(_ name: String) async throws {
         let good = try SoundEngineTestSupport.writeSilentSound()
@@ -199,7 +208,10 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
-    private func expectPlays(_ file: URL, requiresSignal: Bool = true, recordMix: Bool = false) async throws {
+    private func expectPlays(
+        _ file: URL, requiresSignal: Bool = true, recordMix: Bool = false,
+        openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) }
+    ) async throws {
         let pack: OnePadPack
         if recordMix {
             // Keep the pre-fix mixer running so an unsupported sound records silence.
@@ -208,7 +220,7 @@ struct SoundEngineDecodingTests {
         } else {
             pack = OnePadPack(soundFile: file)
         }
-        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack, openAudioFile: openAudioFile)
         defer { engine.destroy() }
         #expect(listener.failure == nil, "\(file.lastPathComponent) could not be decoded: \(String(describing: listener.failure))")
         guard requiresSignal else {
@@ -274,7 +286,9 @@ private final class RenderedAudio: @unchecked Sendable {
         }
         let url = FileManager.default.temporaryDirectory.appending(path: "opus-mixer-\(UUID().uuidString).wav")
         defer { try? FileManager.default.removeItem(at: url) }
-        try AVAudioFile(forWriting: url, settings: format.settings).write(from: pcm)
+        var settings = format.settings
+        settings[AVLinearPCMIsNonInterleaved] = false
+        try AVAudioFile(forWriting: url, settings: settings).write(from: pcm)
         Attachment.record(try Data(contentsOf: url), named: "opus-mixer.wav")
     }
     var hasSignal: Bool { lock.lock(); defer { lock.unlock() }; return signal }
