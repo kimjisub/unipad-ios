@@ -17,6 +17,59 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test(arguments: [false, true])
+        func rectangularPackOptionsIgnoreControllerInput(_ hasLED: Bool) async throws {
+            try await PlayUsageScenario.run(keyLed: hasLED ? ["1 1 1": "on 1 1 00FF00\nd 100\n"] : [:],
+                                            grid: .init(squareButton: false)) { s in
+                try await s.loadReady()
+                // Exercise the actual MK2 receiver with the option window closed and open.
+                for open in [false, true] {
+                    s.vm.toggleOptionWindow(open)
+                    if open {
+                        let channels = try #require(s.vm.channelManager)
+                        for key in 0...2 {
+                            #expect(channels.get(x: -1, y: key, channel: .ui) == nil)
+                        }
+                    }
+                    for note in [104, 105, 106] {
+                        try await s.midi(cmd: 11, note: note, velocity: 127)
+                        try await s.midi(cmd: 11, note: note, velocity: 0)
+                    }
+                    #expect(s.vm.scbFeedbackLight.checked == !hasLED)
+                    #expect(s.vm.scbLed.checked == hasLED)
+                    #expect(s.vm.ledRunner?.active == (hasLED ? true : nil))
+                    #expect(s.vm.playMode == .none)
+                    #expect(!s.vm.isAutoPlayPlaying)
+                    #expect(!s.vm.autoPlayControlVisible)
+                }
+                // Hidden trace and recording controls must also reject user changes.
+                s.vm.scbTraceLog.toggleChecked()
+                s.vm.scbRecord.toggleChecked()
+                #expect(!s.vm.scbTraceLog.checked)
+                #expect(!s.vm.scbRecord.checked)
+            }
+        }
+
+        @Test func squarePackOptionsRemainAvailableFromController() async throws {
+            try await PlayUsageScenario.run(keyLed: ["1 1 1": "on 1 1 00FF00\nd 100\n"]) { s in
+                try await s.loadReady()
+                s.vm.toggleOptionWindow(true)
+                let channels = try #require(s.vm.channelManager)
+                for key in 0...2 {
+                    #expect(channels.get(x: -1, y: key, channel: .ui) != nil)
+                }
+                try await s.midi(cmd: 11, note: 104, velocity: 127)
+                #expect(s.vm.scbFeedbackLight.checked)
+                try await s.midi(cmd: 11, note: 105, velocity: 127)
+                #expect(!s.vm.scbLed.checked)
+                try await s.midi(cmd: 11, note: 106, velocity: 127)
+                #expect(s.vm.playMode == .autoPlay)
+                #expect(s.vm.autoPlayControlVisible)
+                #expect(s.vm.scbLed.checked)
+                #expect(!s.vm.scbFeedbackLight.checked)
+            }
+        }
+
         @Test func startingAutoplayRestoresPlaybackLights() async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1": "on 1 1 00FF00\nd 100\n"]) { s in
                 try await s.loadReady()

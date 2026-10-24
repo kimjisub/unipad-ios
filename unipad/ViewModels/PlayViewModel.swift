@@ -289,9 +289,10 @@ final class PlayViewModel {
             scbAutoPlay.locked = true
         }
         if !unipack.squareButton {
-            // Shape hides the controls, without disabling the pack's playback defaults.
+            // Hide and lock user controls; internal initialization still applies light defaults.
             [scbFeedbackLight, scbLed, scbAutoPlay, scbTraceLog, scbRecord].forEach {
                 $0.visible = false
+                $0.locked = true
             }
         }
     }
@@ -456,10 +457,10 @@ final class PlayViewModel {
         isOptionWindowVisible = false
 
         if unipack.keyLedExist {
-            scbFeedbackLight.setChecked(false)
-            scbLed.setChecked(true)
+            scbFeedbackLight.forceSetChecked(false)
+            scbLed.forceSetChecked(true)
         } else {
-            scbFeedbackLight.setChecked(true)
+            scbFeedbackLight.forceSetChecked(true)
         }
         logger.info("initSetting: visible feedback=\(self.scbFeedbackLight.visible), led=\(self.scbLed.visible), autoplay=\(self.scbAutoPlay.visible), trace=\(self.scbTraceLog.visible), record=\(self.scbRecord.visible)")
         proLightMode(scbProLightMode.checked)
@@ -929,6 +930,7 @@ final class PlayViewModel {
     }
 
     func cyclePlayMode() {
+        guard !scbAutoPlay.locked else { return }
         switch playMode {
         case .none: switchPlayMode(.autoPlay)
         case .autoPlay: switchPlayMode(.guidePlay)
@@ -949,9 +951,9 @@ final class PlayViewModel {
 
     fileprivate func restorePlaybackLights() {
         let hasLED = unipack?.keyLedExist == true
-        if hasLED { scbLed.setChecked(true) }
+        if hasLED { scbLed.forceSetChecked(true) }
         // Preserve held inputs without invoking the feedback callback's padInit.
-        scbFeedbackLight.setChecked(!hasLED, notify: false)
+        scbFeedbackLight.setCheckedSilently(!hasLED)
     }
 
     private func resumeAutoPlay() {
