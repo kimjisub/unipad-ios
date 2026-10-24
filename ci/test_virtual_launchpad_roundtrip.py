@@ -4,6 +4,7 @@ from unittest.mock import patch, Mock
 import argparse
 from pathlib import Path
 import signal
+import subprocess
 import sys
 import tempfile
 from virtual_launchpad_roundtrip import assess, assess_pro_initialization, main, Run, snapshot, scoped_log
@@ -195,6 +196,68 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(main(), 1)
         self.assertTrue(all(callable(handler) for handler in seen['run'].values()), seen['run'])
         self.assertEqual(set(seen['cleanup'].values()), {signal.SIG_IGN})
+
+    def test_stop_queries_only_its_child_tree(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30))
+            child = Mock(pid=7101)
+            child.poll.return_value = None
+            replies = {'7101': '7102\n', '7102': '7103\n', '7103': ''}
+
+            def query(command, **kwargs):
+                self.assertEqual(command[:2], ['pgrep', '-P'])
+                return Mock(returncode=0 if replies[command[2]] else 1,
+                            stdout=replies[command[2]], stderr='')
+
+            with patch('virtual_launchpad_roundtrip.subprocess.check_output',
+                       side_effect=AssertionError('must not enumerate the whole Mac')), \
+                    patch('virtual_launchpad_roundtrip.subprocess.run', side_effect=query) as queries, \
+                    patch('virtual_launchpad_roundtrip.os.kill') as stop:
+                run.stop(child)
+            self.assertEqual({call.args[0][2] for call in queries.call_args_list}, set(replies))
+            self.assertEqual({call.args[0] for call in stop.call_args_list}, {7102, 7103})
+            child.terminate.assert_called_once()
+            child.wait.assert_called_once_with(timeout=10)
+
+    def test_failed_child_query_still_reaps_the_direct_child(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30))
+            child = run.start([sys.executable, '-c', 'import time; time.sleep(60)'], 'child.log')
+            try:
+                with patch('virtual_launchpad_roundtrip.subprocess.check_output',
+                           side_effect=subprocess.TimeoutExpired('ps', 10)), \
+                        patch('virtual_launchpad_roundtrip.subprocess.run',
+                              side_effect=subprocess.TimeoutExpired('pgrep', 10)):
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        run.stop(child)
+                self.assertIsNotNone(child.poll())
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    child.wait(timeout=10)
+                for handle in run.handles:
+                    handle.close()
+
+    def test_cleanup_reaps_other_children_after_a_query_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(argparse.Namespace(output=Path(temporary) / 'result', timeout=30))
+            children = [run.start([sys.executable, '-c', 'import time; time.sleep(60)'],
+                                  f'child-{index}.log') for index in range(2)]
+            try:
+                with patch('virtual_launchpad_roundtrip.subprocess.check_output',
+                           side_effect=subprocess.TimeoutExpired('ps', 10)), \
+                        patch('virtual_launchpad_roundtrip.subprocess.run',
+                              side_effect=subprocess.TimeoutExpired('pgrep', 10)):
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        run.cleanup()
+                self.assertTrue(all(child.poll() is not None for child in children))
+            finally:
+                for child in children:
+                    if child.poll() is None:
+                        child.terminate()
+                        child.wait(timeout=10)
+                for handle in run.handles:
+                    handle.close()
 
     def test_timeout_names_the_wait_and_cleanup_reaps_child(self):
         with tempfile.TemporaryDirectory() as temporary:

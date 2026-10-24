@@ -26,6 +26,7 @@ final class MidiManager: ObservableObject {
     private var inputPort: MIDIPortRef = 0
     private var outputPort: MIDIPortRef = 0
     private var connectedSource: MIDIEndpointRef = 0
+    private var connectedPriority = DevicePriority.generic
     private var connectedDestination: MIDIEndpointRef = 0
     private var connectedDawDestination: MIDIEndpointRef = 0
     private var connectedDeviceEntity: MIDIEntityRef = 0
@@ -72,7 +73,7 @@ final class MidiManager: ObservableObject {
     weak var listener: MidiManagerListener?
 
     // Send queue for batching MIDI output
-    private let sendQueue = MidiOutputQueue()
+    private let sendQueue: MidiOutputQueue
     private var driverVersion = 0
     private let inputDecoder = MidiInputDecoder()
 
@@ -87,15 +88,33 @@ final class MidiManager: ObservableObject {
 
     // MARK: - Device Registry
 
+    enum DevicePriority: Int {
+        case generic, keyboard, dedicated
+    }
+
     struct DriverEntry {
         let name: String
         let factory: () -> MidiDriver
         let preferredPort: Int
+        let priority: DevicePriority
+
+        init(name: String, factory: @escaping () -> MidiDriver, preferredPort: Int, priority: DevicePriority = .dedicated) {
+            self.name = name
+            self.factory = factory
+            self.preferredPort = preferredPort
+            self.priority = priority
+        }
     }
+
+    private static let keyboardDriver = DriverEntry(
+        name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0, priority: .keyboard
+    )
 
     // MARK: - Initialization
 
-    private init() {}
+    init(sendQueue: MidiOutputQueue = MidiOutputQueue()) {
+        self.sendQueue = sendQueue
+    }
 
     func start() {
         log("MidiManager.start()")
@@ -249,43 +268,43 @@ final class MidiManager: ObservableObject {
 
         log("MIDI scan: \(sourceCount) sources, \(destCount) destinations")
 
-        // If already connected to a known (non-generic) driver, skip
-        if connectedSource != 0 && !isGenericConnection {
+        // Dedicated drivers already have the highest priority. Preserve manual model choices too.
+        if connectedSource != 0 && !(driver is MasterKeyboardDriver) {
             log("Already connected to \(connectedDeviceName ?? "?"), skip scan")
             return
         }
 
-        // First pass: look for a known driver match
+        // Rank the whole list before the first connection. GenericDriver aliases MasterKeyboardDriver,
+        // so the discovered entry, rather than the driver's type, distinguishes fallback from keyboard.
+        var best: (index: Int, source: MIDIEndpointRef, entry: DriverEntry)?
         for i in 0..<sourceCount {
             let source = MIDIGetSource(i)
             let name = getMIDIObjectName(source)
             log("Source[\(i)]: \(name)")
 
-            if let matchedDriver = findDriverForSource(source) {
-                if connectedSource != 0 { disconnect() }
-                connectToDevice(sourceIndex: i, driverEntry: matchedDriver)
-                return
-            }
-        }
-
-        // Second pass: generic fallback, skip virtual/network sources
-        if connectedSource == 0 {
-            for i in 0..<sourceCount {
-                let source = MIDIGetSource(i)
-                let name = getMIDIObjectName(source)
+            let entry: DriverEntry
+            if let matched = findDriverForSource(source) {
+                entry = matched
+            } else {
                 if isVirtualSource(name: name) {
                     log("Skipping virtual: \(name)")
                     continue
                 }
-                let entry = DriverEntry(name: name, factory: { GenericDriver() }, preferredPort: 0)
-                connectToDevice(sourceIndex: i, driverEntry: entry)
+                entry = DriverEntry(name: name, factory: { GenericDriver() }, preferredPort: 0, priority: .generic)
+            }
+            if let best, best.entry.priority.rawValue >= entry.priority.rawValue { continue }
+            best = (i, source, entry)
+        }
+
+        guard let best else { return }
+        if connectedSource != 0 {
+            guard best.source != connectedSource, best.entry.priority.rawValue > connectedPriority.rawValue else {
+                log("Keeping connection to \(connectedDeviceName ?? "?")")
                 return
             }
+            disconnect()
         }
-    }
-
-    private var isGenericConnection: Bool {
-        driver is MasterKeyboardDriver
+        connectToDevice(sourceIndex: best.index, driverEntry: best.entry)
     }
 
     private func isVirtualSource(name: String) -> Bool {
@@ -387,7 +406,7 @@ final class MidiManager: ObservableObject {
         for candidate in candidateNames {
             let lowered = candidate.lowercased()
             if lowered.contains("keyboard") || lowered.contains("piano") {
-                return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+                return Self.keyboardDriver
             }
         }
 
@@ -397,7 +416,18 @@ final class MidiManager: ObservableObject {
     /// The driver whose prefix starts a CoreMIDI source, display, device, entity or model name.
     static func driverEntry(forName name: String) -> DriverEntry? {
         let lowered = name.lowercased()
-        return sourceNameDriverMap.first { lowered.hasPrefix($0.prefix) }?.entry
+
+        for mapping in Self.sourceNameDriverMap {
+            if lowered.hasPrefix(mapping.prefix) {
+                return mapping.entry
+            }
+        }
+
+        if lowered.contains("keyboard") || lowered.contains("piano") {
+            return Self.keyboardDriver
+        }
+
+        return nil
     }
 
     // MARK: - Connection
@@ -452,6 +482,7 @@ final class MidiManager: ObservableObject {
         }
 
         connectedSource = source
+        connectedPriority = driverEntry.priority
         connectedDeviceName = driverEntry.name
 
         // Resolve destination: use DAW entity (entity 0) for SysEx, MIDI entity for pad LEDs
@@ -518,6 +549,7 @@ final class MidiManager: ObservableObject {
         driver.cycleListener?.onDisconnected()
 
         connectedSource = 0
+        connectedPriority = .generic
         connectedDestination = 0
         connectedDawDestination = 0
         connectedDeviceEntity = 0

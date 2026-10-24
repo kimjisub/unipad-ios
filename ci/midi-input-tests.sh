@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Runs unipadTests/PlayUsageRecordTests/MidiInputPathTests, or the tests <only-testing> names, against
+# Runs the MIDI input and device-selection suites, or the tests <only-testing> names, against
 # devices published in the simulator's own MIDI server, so their messages reach the app through CoreMIDI
 # as a USB device's do:
 #
-#   ci/midi-input-tests.sh <simulator-udid> <derived-data> <result-folder> [<only-testing>]
+#   ci/midi-input-tests.sh <simulator-udid> <derived-data> <result-folder> [<only-testing> ...]
 #
 # unipadUITests/VirtualMidiPlayScreenUITests shows the same devices' input on the play screen, with a
 # screenshot of every step in the result bundle.
@@ -18,14 +18,23 @@
 # in the Universal MIDI Packet group. Hardware port order is not exercised.
 set -euo pipefail
 
-if (( $# != 3 && $# != 4 )); then
-  print -u2 "usage: $0 <simulator-udid> <derived-data> <result-folder> [<only-testing>]"
+if (( $# < 3 )); then
+  print -u2 "usage: $0 <simulator-udid> <derived-data> <result-folder> [<only-testing> ...]"
   exit 2
 fi
 udid=$1
 derived=${2:A}
 results=${3:A}
-only=${4:-unipadTests/PlayUsageRecordTests/MidiInputPathTests}
+selection=(-only-testing:unipadTests/PlayUsageRecordTests/MidiInputPathTests
+           -only-testing:unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests)
+# Keep related suites on one client: restarting the last client between suites
+# can connect to the simulator MIDI server while it is shutting down.
+if (( $# > 3 )); then
+  selection=()
+  for suite in "${@:4}"; do
+    selection+=("-only-testing:$suite")
+  done
+fi
 mkdir -p $results
 device=$results/device
 rm -rf $device $results/MidiInput.xcresult
@@ -72,7 +81,8 @@ set +e
 TEST_RUNNER_UNIPAD_VIRTUAL_MIDI_DIR=$device xcodebuild test-without-building \
   -project unipad.xcodeproj -scheme unipad -configuration Debug \
   -destination "id=$udid" -derivedDataPath $derived -parallel-testing-enabled NO \
-  -only-testing:$only \
+  -collect-test-diagnostics never \
+  "${selection[@]}" \
   -resultBundlePath $results/MidiInput.xcresult > $results/midi-input-tests.log 2>&1
 code=$?
 set -e

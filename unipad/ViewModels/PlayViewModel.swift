@@ -524,19 +524,21 @@ final class PlayViewModel {
         chain.setValue(c)
     }
 
-    /// Clear all pad states by simulating release on every pad
+    /// Clears the press light of every pad nobody holds. A held pad goes on sounding and lighting
+    /// until its own release.
     func padInit() {
         guard let unipack else { return }
-        let inputs = activePadInputs
-        for (id, pad) in inputs {
-            padRelease(x: pad.x, y: pad.y, inputID: id)
-        }
-        controllerHeldPads.removeAll()
         for i in 0..<unipack.buttonX {
-            for j in 0..<unipack.buttonY {
-                padRelease(x: i, y: j)
+            for j in 0..<unipack.buttonY where !isHeld(x: i, y: j) {
+                clearPressedLight(x: i, y: j)
             }
         }
+    }
+
+    /// Releases every held pad, for when the touches that hold them will never end here.
+    private func releaseAllPads() {
+        for hold in Array(padHolds.keys) { releaseHold(hold) }
+        padInit()
     }
 
     /// Clear all LED runner states from channel manager
@@ -569,7 +571,25 @@ final class PlayViewModel {
     // MARK: - Pad Touch
 
     private static let pressedVelocity = 3 // LED_RED
-    private var activePadInputs: [UUID: (x: Int, y: Int)] = [:]
+
+    /// Groups the inputs pressing a pad, keeping autoplay identities separate from player inputs.
+    private struct PadHold: Hashable {
+        let x: Int
+        let y: Int
+        let byAutoPlay: Bool
+    }
+    /// A screen input may omit its identity; its source still distinguishes it from a controller.
+    private struct PadInput: Hashable {
+        let id: UUID?
+        let isController: Bool
+    }
+    /// Each input owns its sounds and lights across chains. Only press feedback waits for the
+    /// last input; repeated presses by the same input keep one owner until its release.
+    private var padHolds: [PadHold: [PadInput: UUID]] = [:]
+
+    private func isHeld(x: Int, y: Int) -> Bool {
+        padHolds.keys.contains { $0.x == x && $0.y == y }
+    }
 
     /// What the on-screen pad grid (`PadGridView.onPadTouch`) calls for each finger.
     var screenPadTouch: (Int, Int, Bool, UUID) -> Void {
@@ -578,46 +598,23 @@ final class PlayViewModel {
         }
     }
 
-    /// Pads held down on the MIDI controller. The controller sends no release once it is unplugged or
-    /// stops being this screen's controller, so these are let go then.
-    private var controllerHeldPads: [PadPosition] = []
-
-    private struct PadPosition: Equatable {
-        let x: Int
-        let y: Int
-    }
-
-    /// A pad pressed or released on the MIDI controller. Presses are ignored while the option window is
-    /// open, where the controller's buttons change settings; the release of a pad that was played still
-    /// goes through so it does not stay held.
+    /// Settings consume new controller presses. A release still reaches its own hold,
+    /// even if the options opened after that press; other inputs keep their owners.
     func controllerPadTouch(x: Int, y: Int, isDown: Bool) {
-        let pad = PadPosition(x: x, y: y)
-        if isDown {
-            guard !isOptionWindowVisible else { return }
-            if !controllerHeldPads.contains(pad) { controllerHeldPads.append(pad) }
-        } else {
-            guard let index = controllerHeldPads.firstIndex(of: pad) else { return }
-            controllerHeldPads.remove(at: index)
-        }
+        guard !isDown || !isOptionWindowVisible else { return }
         padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.midi))
     }
 
-    /// Lets go of the controller's holds, leaving any finger still pressing on the screen.
-    func releaseControllerPads() {
-        let pads = controllerHeldPads
-        controllerHeldPads.removeAll()
-        for pad in pads {
-            padTouch(x: pad.x, y: pad.y, isDown: false, trigger: .pad(.midi))
-        }
-    }
-
-    /// `trigger` says who pressed the pad; a release does the same whoever caused it.
+    /// `trigger` and `inputID` identify the input whose sounds and lights its release will end.
     func padTouch(x: Int, y: Int, isDown: Bool, trigger: PlayTrigger, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
         let ledTimeMs = ledTimeMs ?? Int64(CACurrentMediaTime() * 1000)
         guard let unipack, x >= 0, x < unipack.buttonX, y >= 0, y < unipack.buttonY else { return }
 
+        let input = PadInput(id: inputID, isController: trigger == .pad(.midi))
         if isDown {
-            if let inputID { activePadInputs[inputID] = (x, y) }
+            let hold = PadHold(x: x, y: y, byAutoPlay: trigger == .autoplay)
+            let owner = padHolds[hold]?[input] ?? UUID()
+            padHolds[hold, default: [:]][input] = owner
             usageSession.playTriggered(trigger)
             logger.debug("padTouch DOWN x=\(x) y=\(y) chain=\(self.chain.value)")
 
@@ -625,7 +622,7 @@ final class PlayViewModel {
                 autoPlayRunner?.stepPadPressed(x: x, y: y)
             }
 
-            soundEngine?.soundOn(x: x, y: y, inputID: inputID)
+            soundEngine?.soundOn(x: x, y: y, inputID: owner)
 
             if scbRecord.checked {
                 let currTime = Self.currentTimeMs()
@@ -645,29 +642,51 @@ final class PlayViewModel {
                     setPadColor(x: x, y: y, color: .red)
                 }
             }
-            ledRunner?.eventOn(x: x, y: y, pressedAt: ledTimeMs)
+            ledRunner?.eventOn(x: x, y: y, pressedAt: ledTimeMs, owner: owner)
         } else {
-            padRelease(x: x, y: y, inputID: inputID, ledTimeMs: ledTimeMs)
+            padRelease(x: x, y: y, byAutoPlay: trigger == .autoplay,
+                       input: input, ledTimeMs: ledTimeMs)
         }
     }
 
     /// `x` and `y` must be a pad of the loaded pack.
-    private func padRelease(x: Int, y: Int, inputID: UUID? = nil, ledTimeMs: Int64? = nil) {
-        // An ended touch can be reported again after a fresh press. Ignore the
-        // duplicate for both sound and pressed light, without clearing other pads.
-        if let inputID, activePadInputs.removeValue(forKey: inputID) == nil { return }
-        soundEngine?.soundOff(x: x, y: y, inputID: inputID)
-        // Releasing the controller must not clear feedback for a finger still
-        // holding this pad. Sound and animation releases keep their own rules.
-        if !activePadInputs.values.contains(where: { $0.x == x && $0.y == y }) {
-            if let cm = channelManager {
-                cm.remove(x: x, y: y, channel: .pressed)
-                refreshPadFromChannel(x: x, y: y)
-            } else {
-                clearPadColor(x: x, y: y)
+    private func padRelease(x: Int, y: Int, byAutoPlay: Bool, input: PadInput, ledTimeMs: Int64? = nil) {
+        // An ended touch can be reported again after a fresh press: an input that holds nothing
+        // releases nothing, on this pad or another.
+        let hold = PadHold(x: x, y: y, byAutoPlay: byAutoPlay)
+        guard let owner = padHolds[hold]?.removeValue(forKey: input) else { return }
+        if padHolds[hold]?.isEmpty == true { padHolds.removeValue(forKey: hold) }
+        soundEngine?.soundOff(x: x, y: y, inputID: owner)
+        if !isHeld(x: x, y: y) { clearPressedLight(x: x, y: y) }
+        ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs, owner: owner)
+    }
+
+    /// Retires controller inputs whose releases will be lost during options, pause or detachment.
+    /// Fingers and autoplay keep their own sounds, lights and press feedback.
+    fileprivate func releaseControllerPads() {
+        for hold in Array(padHolds.keys) where !hold.byAutoPlay {
+            guard let inputs = padHolds[hold] else { continue }
+            for input in inputs.keys where input.isController {
+                padRelease(x: hold.x, y: hold.y, byAutoPlay: false, input: input)
             }
         }
-        ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs)
+    }
+
+    private func releaseHold(_ hold: PadHold, ledTimeMs: Int64? = nil) {
+        guard let inputs = padHolds[hold] else { return }
+        for input in inputs.keys {
+            padRelease(x: hold.x, y: hold.y, byAutoPlay: hold.byAutoPlay,
+                       input: input, ledTimeMs: ledTimeMs)
+        }
+    }
+
+    private func clearPressedLight(x: Int, y: Int) {
+        if let cm = channelManager {
+            cm.remove(x: x, y: y, channel: .pressed)
+            refreshPadFromChannel(x: x, y: y)
+        } else {
+            clearPadColor(x: x, y: y)
+        }
     }
 
     // MARK: - LED
@@ -771,8 +790,10 @@ final class PlayViewModel {
     // MARK: - Option Window
 
     func toggleOptionWindow(_ show: Bool? = nil) {
+        let showing = show ?? !isOptionWindowVisible
+        if showing { releaseControllerPads() }
         withAnimation(.easeInOut(duration: 0.3)) {
-            isOptionWindowVisible = show ?? !isOptionWindowVisible
+            isOptionWindowVisible = showing
         }
         refreshWatermark()
     }
@@ -1128,12 +1149,12 @@ final class PlayViewModel {
     // MARK: - Lifecycle
 
     func onPause() {
+        releaseControllerPads()
         autoPlayRunner?.appWentAway()
         ledRunner?.appWentAway()
         if let adapter = midiControllerAdapter {
             MidiManager.shared.removeController(adapter)
         }
-        releaseControllerPads()
         launchpad?.sendClearLed()
         stopVolumeObserver()
     }
@@ -1164,7 +1185,7 @@ final class PlayViewModel {
     /// a playing autoplay pauses, and the launchpad and the volume buttons go to the screen on top.
     func screenCovered() {
         guard enable, !isCovered else { return }
-        padInit()
+        releaseAllPads()
         resumesAutoPlayWhenShown = playMode != .none && autoPlayRunner?.playmode == true
         if resumesAutoPlayWhenShown { pauseAutoPlay() }
         onPause()
@@ -1194,7 +1215,7 @@ final class PlayViewModel {
     /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
         guard enable else { return }
-        activePadInputs.removeAll()
+        padHolds.removeAll()
         usageSession.ended()
         enable = false
         stopVolumeObserver()

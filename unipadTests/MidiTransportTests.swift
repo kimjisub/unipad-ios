@@ -102,6 +102,61 @@ struct MidiTransportTests {
         #expect(sent.values == ["error", "next light"])
     }
 
+    @Test func missingSysExCompletionReleasesLightsAndLateCompletionKeepsOrder() async throws {
+        let sent = Capture()
+        let requests = HeldSysExRequests()
+        defer { requests.finishAll() }
+        let output = MidiOutputQueue(sysexSend: { request in
+            requests.add(request)
+            sent.add("sysex \(requests.count)")
+            return noErr
+        }, noteSend: { bytes, _, _ in sent.add("pad \(bytes[2])") })
+        let message: [UInt8] = [0xF0, 0x7D, 0xF7]
+        let submittedAt = ProcessInfo.processInfo.systemUptime
+        output.sendSysEx([message], destination: 1) { _ in sent.add("error") }
+        output.send([0x90, 81, 5], port: 1, destination: 1)
+        output.sendSysEx([message], destination: 1) { _ in sent.add("error") }
+        output.send([0x90, 82, 9], port: 1, destination: 1)
+
+        // The first request never calls back: the next light must still be sent.
+        try await sent.waitForCount(3)
+        #expect(sent.values == ["sysex 1", "pad 5", "sysex 2"])
+        #expect(try #require(sent.time("pad 5")) - submittedAt >= 1)
+        #expect(requests.bytes(at: 0) == message, "CoreMIDI still owns this buffer after the timeout")
+        requests.finish(at: 0)
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(sent.values == ["sysex 1", "pad 5", "sysex 2"],
+                "the late first completion must not release the second request's light")
+        #expect(requests.bytes(at: 1) == message)
+        requests.finish(at: 1)
+        try await sent.waitForCount(4)
+        #expect(sent.values == ["sysex 1", "pad 5", "sysex 2", "pad 9"])
+    }
+
+    private final class HeldSysExRequests: @unchecked Sendable {
+        private let lock = NSLock()
+        private var requests: [UnsafeMutablePointer<MIDISysexSendRequest>?] = []
+        var count: Int { lock.withLock { requests.count } }
+        func add(_ request: UnsafeMutablePointer<MIDISysexSendRequest>) {
+            lock.withLock { requests.append(request) }
+        }
+        func bytes(at index: Int) -> [UInt8] {
+            lock.withLock {
+                guard let request = requests[index] else { return [] }
+                return Array(UnsafeBufferPointer(start: request.pointee.data, count: Int(request.pointee.bytesToSend)))
+            }
+        }
+        func finish(at index: Int) {
+            let request = lock.withLock {
+                let request = requests[index]
+                requests[index] = nil
+                return request
+            }
+            if let request { request.pointee.completionProc(request) }
+        }
+        func finishAll() { for index in 0..<count { finish(at: index) } }
+    }
+
     @Test func aRemovedDevicesLateCompletionCannotAdvanceTheNewConnection() async throws {
         let output = MidiOutputQueue()
         let sent = Capture()

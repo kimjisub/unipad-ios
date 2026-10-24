@@ -15,6 +15,7 @@
 		A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */; };
 		A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */; };
 		A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B6B /* CVorbis */; };
+		A1B2C3D4E5F60718293A4B6E /* COpusFile in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B6D /* COpusFile */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +90,7 @@
 				A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */,
 				A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */,
 				A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */,
+				A1B2C3D4E5F60718293A4B6E /* COpusFile in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -158,6 +160,7 @@
 				A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */,
 				A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */,
 				A1B2C3D4E5F60718293A4B6B /* CVorbis */,
+				A1B2C3D4E5F60718293A4B6D /* COpusFile */,
 			);
 			productName = unipad;
 			productReference = 16CE2B902F5E6CE100402705 /* unipad.app */;
@@ -759,6 +762,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */;
 			productName = CVorbis;
+		};
+		A1B2C3D4E5F60718293A4B6D /* COpusFile */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */;
+			productName = COpusFile;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

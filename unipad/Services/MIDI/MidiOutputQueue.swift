@@ -1,8 +1,8 @@
 import Foundation
 import CoreMIDI
 
-/// A message owns its place until the transport completes it. Notes, SysEx and mode
-/// settling share this FIFO, so neither a later light nor a redraw can overtake them.
+/// Notes, SysEx and mode settling share one FIFO. SysEx waits for transport
+/// completion for up to one second so a missing callback cannot strand later lights.
 nonisolated final class MidiOutputQueue: @unchecked Sendable {
     typealias Operation = @Sendable (@escaping @Sendable () -> Void) -> Void
     private let queue = DispatchQueue(label: "com.kimjisub.unipad.midi.send")
@@ -10,6 +10,7 @@ nonisolated final class MidiOutputQueue: @unchecked Sendable {
     private var next = 0
     private var sending = false
     private var generation: UInt64 = 0
+    private var operationID: UInt64 = 0
     private let sysexSend: @Sendable (UnsafeMutablePointer<MIDISysexSendRequest>) -> OSStatus
     private let noteSend: @Sendable ([UInt8], MIDIPortRef, MIDIEndpointRef) -> Void
 
@@ -57,10 +58,12 @@ nonisolated final class MidiOutputQueue: @unchecked Sendable {
         sending = true
         let operation = pending[next]
         let generation = self.generation
+        operationID &+= 1
+        let operationID = self.operationID
         next += 1
         operation {
             self.queue.async {
-                guard self.generation == generation else { return }
+                guard self.generation == generation, self.operationID == operationID, self.sending else { return }
                 self.sending = false
                 if self.next == self.pending.count {
                     self.pending.removeAll(keepingCapacity: true)
@@ -91,6 +94,10 @@ nonisolated final class MidiOutputQueue: @unchecked Sendable {
         for (index, message) in messages.enumerated() where !message.isEmpty {
             if index > 0 { wait(0.05) }
             enqueue { done in
+                // Advancing the FIFO never frees the request: CoreMIDI still owns its
+                // buffer until the real completion. The operation ID rejects a late
+                // completion after this deadline or after a connection reset.
+                self.queue.asyncAfter(deadline: .now() + 1, execute: done)
                 Self.sendSysExMessage(message, destination: destination, sender: self.sysexSend,
                                      onFailure: onFailure, completion: done)
             }
