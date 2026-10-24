@@ -26,13 +26,11 @@ final class LaunchpadProCFWDriver: BaseMidiDriver {
         guard cin == 8 || cin == 9 || cin == 11 else { return }
         let isDown = (cin == 9 || cin == 11) && velocity > 0
 
+        if let pad = DrumRackLayout.pad(note: note) {
+            onPadTouch(x: pad.x, y: pad.y, upDown: isDown, velocity: velocity)
+            return
+        }
         switch note {
-        case 36...99:
-            // Pads (8x8): notes run bottom-up in two 4-wide column blocks
-            let index = note - 36
-            let row = 7 - (index % 32) / 4
-            let col = index < 32 ? index % 4 : (index % 4) + 4
-            onPadTouch(x: row, y: col, upDown: isDown, velocity: velocity)
         case 28...35:
             // Top row (f 0...7), left to right
             onFunctionKeyTouch(f: note - 28, upDown: isDown)
@@ -60,10 +58,7 @@ final class LaunchpadProCFWDriver: BaseMidiDriver {
     }
 
     override func sendPadLed(x: Int, y: Int, velocity: Int) {
-        // UniPad passes x as row, y as column; the CFW grid is 8x8
-        guard (0...7).contains(x), (0...7).contains(y) else { return }
-        let rowInverted = 7 - x
-        let note = y < 4 ? 36 + rowInverted * 4 + y : 68 + rowInverted * 4 + (y - 4)
+        guard let note = DrumRackLayout.note(x: x, y: y) else { return }
         sendSignal(cmd: Self.cinNoteOn, sig: Self.statusNoteOn, note: note, velocity: velocity)
     }
 

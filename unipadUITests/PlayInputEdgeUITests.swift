@@ -216,14 +216,7 @@ final class PlayInputEdgeUITests: XCTestCase {
     /// The pads' pixels once two consecutive shots agree, so a fading press is not compared.
     @MainActor
     private func settledPads() throws -> PadPixels {
-        var last = try PadPixels(grid.screenshot())
-        for _ in 0..<10 {
-            Thread.sleep(forTimeInterval: 0.3)
-            let next = try PadPixels(grid.screenshot())
-            if next.changedPads(comparedWith: last).isEmpty { return next }
-            last = next
-        }
-        return last
+        try PadPixels.settled(grid)
     }
 
     @MainActor
