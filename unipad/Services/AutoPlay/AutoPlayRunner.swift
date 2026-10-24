@@ -23,6 +23,8 @@ final class AutoPlayRunner {
                 if let pausedAt { pendingPauseMs += clock() - pausedAt }
                 pausedAt = nil
             } else {
+                // An app-return gap reported before this pause still belongs to the timeline.
+                if waitingForChain < 0 { pendingPauseMs += pendingSkipMs }
                 pausedAt = clock()
                 releaseHeldPads()
             }
