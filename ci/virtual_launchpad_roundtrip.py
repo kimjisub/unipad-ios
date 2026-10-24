@@ -135,30 +135,38 @@ class Run:
     def stop(self, child):
         if child.poll() is not None:
             return
-        # Record descendants before stopping the wrapper (compiler, simctl, log stream).
-        rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid='], text=True, timeout=10)
-        pairs = [tuple(map(int, row.split())) for row in rows.splitlines()]
+        # Ask only for this wrapper's children, rather than formatting the whole Mac's
+        # process table. Keep every discovered PID so a later lookup failure still reaps it.
         owned = {child.pid}
-        while True:
-            more = {pid for pid, parent in pairs if parent in owned} - owned
-            if not more:
-                break
-            owned.update(more)
-        descendants = owned - {child.pid}
-        self.report.setdefault('descendant_pids', []).extend(sorted(descendants))
-        self.save()
-        for pid in descendants:
+        pending = [child.pid]
+        try:
+            while pending:
+                parent = pending.pop()
+                result = subprocess.run(['pgrep', '-P', str(parent)], capture_output=True,
+                                        text=True, timeout=10)
+                if result.returncode not in (0, 1):
+                    raise RuntimeError(f'cannot list children of {parent}: {result.stderr}')
+                more = {int(pid) for pid in result.stdout.split()} - owned
+                owned.update(more)
+                pending.extend(more)
+        finally:
+            descendants = owned - {child.pid}
             try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-        if child.poll() is None:
-            child.terminate()
-            try:
-                child.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait(timeout=10)
+                self.report.setdefault('descendant_pids', []).extend(sorted(descendants))
+                self.save()
+            finally:
+                for pid in descendants:
+                    try:
+                        os.kill(pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait(timeout=10)
 
     def wait(self, predicate, seconds, description, child=None):
         self.report['active_wait'] = description
@@ -327,11 +335,15 @@ class Run:
             raise RuntimeError('test app was not removed')
 
     def cleanup(self):
+        errors = []
         try:
             self.stop_device()
             self.stop_collector()
             for child in reversed(self.children):
-                self.stop(child)
+                try:
+                    self.stop(child)
+                except Exception as error:
+                    errors.append((child.pid, error))
             for pid in set(self.report.get('app_pids', {}).values()):
                 try:
                     os.kill(pid, signal.SIGTERM)
@@ -353,7 +365,11 @@ class Run:
         self.report['process_exit_codes'] = {str(c.pid): c.poll() for c in self.children}
         for handle in self.handles:
             handle.close()
+        if errors:
+            self.report['cleanup_errors'] = [{'pid': pid, 'error': str(error)} for pid, error in errors]
         self.save()
+        if errors:
+            raise errors[0][1]
 
 
 def main():

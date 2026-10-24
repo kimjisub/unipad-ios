@@ -33,6 +33,8 @@ struct ConformanceCase {
     let known: [String: ConformanceKnown]
     /// Per platform, why its harness cannot observe this case; it is unverified there and not run.
     let unobserved: [String: String]
+    /// Presses go through the play screen with distinct input identities, never the runners directly.
+    var screenInputs = false
     var soundIdentity = false
 }
 
@@ -143,6 +145,7 @@ struct ConformanceCorpus {
                 scenario: value["scenario"]?.array ?? [],
                 known: known,
                 unobserved: (value["unobserved"]?.object ?? [:]).compactMapValues(\.string),
+                screenInputs: value["screenInputs"] == .bool(true),
                 soundIdentity: value["soundIdentity"] == .bool(true)
             )
         }

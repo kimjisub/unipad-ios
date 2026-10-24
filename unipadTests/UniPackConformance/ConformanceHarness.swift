@@ -372,7 +372,8 @@ enum ConformanceHarness {
         let soundName = soundNames(root: root)
         // Chain scenarios install the play screen's real queue-reset observer. Autoplay-off cases
         // also use its input/transport path so manual and scripted presses keep separate identities.
-        let usesScreenInputs = conformanceCase.scenario.contains { $0["do"]?.string == "autoplayOff" }
+        let usesScreenInputs = conformanceCase.screenInputs
+            || conformanceCase.scenario.contains { $0["do"]?.string == "autoplayOff" }
         let usesChainSelection = conformanceCase.scenario.contains { $0["do"]?.string == "chain" }
         let screen = usesScreenInputs || usesChainSelection ? PlayViewModel() : nil
         let inputScreen = usesScreenInputs ? screen : nil
@@ -427,10 +428,16 @@ enum ConformanceHarness {
             }
         }
 
-        func touch(_ x: Int, _ y: Int, _ down: Bool, inputID: UUID? = nil) {
-            let key = "\(x),\(y)"
+        /// `input` is the scenario's player input name: `pointer:n` is one finger on the screen and
+        /// `midi:n` a Launchpad note, which reaches the screen without an identity of its own.
+        func touch(_ x: Int, _ y: Int, _ down: Bool, inputID: UUID? = nil, input: String? = nil) {
+            let key = input ?? "\(x),\(y)"
             let identity: UUID?
-            if inputScreen != nil, inputID == nil {
+            var trigger: PlayTrigger = inputID == nil ? .pad(.screen) : .autoplay
+            if input?.hasPrefix("midi:") == true {
+                identity = nil
+                trigger = .pad(.midi)
+            } else if inputScreen != nil, inputID == nil {
                 if down { manualInputs[key] = UUID() }
                 identity = manualInputs[key]
                 if !down { manualInputs.removeValue(forKey: key) }
@@ -441,8 +448,7 @@ enum ConformanceHarness {
                 let before = engine.playsStarted
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
-                    screen.padTouch(x: x, y: y, isDown: true,
-                                    trigger: inputID == nil ? .pad(.screen) : .autoplay, inputID: identity)
+                    screen.padTouch(x: x, y: y, isDown: true, trigger: trigger, inputID: identity, ledTimeMs: clock.read())
                 } else { engine.soundOn(x: x, y: y) }
                 // A replacement's stop precedes the next start. The removed IDs belong to the
                 // engine, not the current chain or the pad's already-advanced queue head.
@@ -462,8 +468,7 @@ enum ConformanceHarness {
             } else {
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
-                    screen.padTouch(x: x, y: y, isDown: false,
-                                    trigger: inputID == nil ? .pad(.screen) : .autoplay, inputID: identity)
+                    screen.padTouch(x: x, y: y, isDown: false, trigger: trigger, inputID: identity, ledTimeMs: clock.read())
                 } else {
                     deps.soundOff(engine, x, y)
                     led.eventOff(x: x, y: y)
@@ -497,9 +502,9 @@ enum ConformanceHarness {
                         if failure != nil { complete() }
                     }
                 case "press":
-                    touch(x, y, true)
+                    touch(x, y, true, input: step["input"]?.string)
                 case "release":
-                    touch(x, y, false)
+                    touch(x, y, false, input: step["input"]?.string)
                 case "autoplay":
                     let toPads = step["toPads"] == .bool(true)
                     let listener = AutoRecorder(log: log, clock: autoClock, chain: chain) { x, y, down, ids in
