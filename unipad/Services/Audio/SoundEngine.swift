@@ -429,7 +429,7 @@ final class SoundEngine {
         do {
             audioFile = try AVAudioFile(forReading: url)
         } catch _ where OggVorbisDecoder.isOgg(url) {
-            return try OggVorbisDecoder.decode(url, admitting: admit)
+            return try OggAudioDecoder.decode(url, admitting: admit)
         }
         let format = audioFile.processingFormat
         let frameCount = try SoundFileLimits.sourceFrameCount(

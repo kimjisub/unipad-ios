@@ -108,9 +108,9 @@ struct SoundEngineDecodingTests {
     /// Real compressed files exercise the loader's shared budget and playback after a refusal.
     /// Keep the fixtures short: the production 512 MiB boundary is checked by SoundFileLimitsTests,
     /// without making this functional check decode hundreds of MB against a wall-clock deadline.
-    @Test(arguments: ["m4a", "ogg"])
-    func soundsPastThePackMemoryLimitAreSkippedAndTheRestPlay(_ ext: String) async throws {
-        let silence = try fixture(ext == "ogg" ? "vorbis-tone" : "aac-tone", ext)
+    @Test(arguments: [("aac-tone", "m4a"), ("vorbis-tone", "ogg"), ("opus-tone", "ogg")])
+    func soundsPastThePackMemoryLimitAreSkippedAndTheRestPlay(_ name: String, _ ext: String) async throws {
+        let silence = try fixture(name, ext)
         let source = try SoundEngine.loadAudioBuffer(from: silence)
         func bytes(at rate: Double) throws -> UInt64 {
             let frames = try SoundFileLimits.resampledFrameCount(source.frameLength,
@@ -162,7 +162,11 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("vorbis-tone", "ogg"))
     }
 
-    @Test(arguments: ["vorbis-overlong", "vorbis-over-budget"])
+    @Test func anOggOpusSoundPlays() async throws {
+        try await expectPlays(try fixture("opus-tone", "ogg"), recordMix: true)
+    }
+
+    @Test(arguments: ["vorbis-overlong", "vorbis-over-budget", "opus-overlong"])
     func anOversizedOggIsSilentAndAdvancesToTheNextSound(_ name: String) async throws {
         let good = try SoundEngineTestSupport.writeSilentSound()
         let pack = OnePadPack(chains: [[
@@ -195,8 +199,16 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
-    private func expectPlays(_ file: URL, requiresSignal: Bool = true) async throws {
-        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(OnePadPack(soundFile: file))
+    private func expectPlays(_ file: URL, requiresSignal: Bool = true, recordMix: Bool = false) async throws {
+        let pack: OnePadPack
+        if recordMix {
+            // Keep the pre-fix mixer running so an unsupported sound records silence.
+            let silence = try SoundEngineTestSupport.writeSilentSound()
+            pack = OnePadPack(chains: [[Sound(file: file, loop: 0), Sound(file: silence, loop: 0)]])
+        } else {
+            pack = OnePadPack(soundFile: file)
+        }
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
         defer { engine.destroy() }
         #expect(listener.failure == nil, "\(file.lastPathComponent) could not be decoded: \(String(describing: listener.failure))")
         guard requiresSignal else {
@@ -207,7 +219,7 @@ struct SoundEngineDecodingTests {
         // Inspect the existing engine only in tests, without adding a product audio hook. This
         // deliberately fails if that field changes: a missing observation is never a pass.
         let audio = try #require(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine)
-        let output = RenderedAudio()
+        let output = RenderedAudio(capturesAudio: recordMix)
         await withCheckedContinuation { continuation in
             AudioSessionWorker.shared.run {
                 audio.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
@@ -225,7 +237,9 @@ struct SoundEngineDecodingTests {
             await removeMixerTap(from: audio)
             throw error
         }
+        if recordMix { try await Task.sleep(for: .milliseconds(600)) }
         await removeMixerTap(from: audio)
+        if recordMix { try output.attachRecording() }
     }
 
     private func removeMixerTap(from audio: AVAudioEngine) async {
@@ -240,6 +254,29 @@ struct SoundEngineDecodingTests {
 private final class RenderedAudio: @unchecked Sendable {
     private let lock = NSLock()
     private var signal = false
+    private let capturesAudio: Bool
+    private var samples: [Float] = []
+    private var sampleRate = 48_000.0
+    init(capturesAudio: Bool = false) { self.capturesAudio = capturesAudio }
+
+    func attachRecording() throws {
+        lock.lock()
+        let samples = samples
+        let rate = sampleRate
+        lock.unlock()
+        let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 2)!
+        let frames = max(1, samples.count / 2)
+        let pcm = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        pcm.frameLength = AVAudioFrameCount(frames)
+        for frame in 0..<frames {
+            pcm.floatChannelData![0][frame] = samples.isEmpty ? 0 : samples[frame * 2]
+            pcm.floatChannelData![1][frame] = samples.isEmpty ? 0 : samples[frame * 2 + 1]
+        }
+        let url = FileManager.default.temporaryDirectory.appending(path: "opus-mixer-\(UUID().uuidString).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try AVAudioFile(forWriting: url, settings: format.settings).write(from: pcm)
+        Attachment.record(try Data(contentsOf: url), named: "opus-mixer.wav")
+    }
     var hasSignal: Bool { lock.lock(); defer { lock.unlock() }; return signal }
     func record(_ buffer: AVAudioPCMBuffer) {
         guard let channels = buffer.floatChannelData else { return }
@@ -252,6 +289,14 @@ private final class RenderedAudio: @unchecked Sendable {
         }
         lock.lock()
         signal = signal || audible
+        if capturesAudio {
+            sampleRate = buffer.format.sampleRate
+            let frames = min(Int(buffer.frameLength), max(0, Int(sampleRate) - samples.count / 2))
+            for frame in 0..<frames {
+                samples.append(channels[0][frame])
+                samples.append(channels[min(1, Int(buffer.format.channelCount) - 1)][frame])
+            }
+        }
         lock.unlock()
     }
 }

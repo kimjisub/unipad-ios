@@ -35,7 +35,7 @@ ogg="$work/libogg-$OGG_VERSION"
 vorbis="$work/libvorbis-$VORBIS_VERSION"
 for fix in "$package"/patches/*.patch; do patch -d "$vorbis" -p1 --forward --quiet < "$fix"; done
 
-rm -rf "$package/Sources"
+rm -rf "$package/Sources/COgg" "$package/Sources/CVorbis"
 mkdir -p "$package/Sources/COgg/include/ogg" "$package/Sources/CVorbis/include/vorbis"
 cp "$ogg/src/bitwise.c" "$ogg/src/framing.c" "$ogg/src/crctable.h" "$package/Sources/COgg/"
 cp "$ogg/include/ogg/ogg.h" "$ogg/include/ogg/os_types.h" "$package/Sources/COgg/include/ogg/"

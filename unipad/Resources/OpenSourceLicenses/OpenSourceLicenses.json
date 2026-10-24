@@ -27,6 +27,46 @@
       }
     },
     {
+      "name": "libopus",
+      "version": "1.6.1",
+      "license": "BSD 3-Clause License",
+      "url": "https://opus-codec.org/",
+      "file": "license-libopus.txt",
+      "package": "XiphVorbis",
+      "source": {
+        "path": "Vendor/XiphVorbis",
+        "version": {
+          "file": "vendor_opus.py",
+          "pattern": "OPUS_VERSION = '([^']+)'"
+        },
+        "files": [
+          {
+            "path": "COPYING.libopus"
+          }
+        ]
+      }
+    },
+    {
+      "name": "libopusfile",
+      "version": "0.12",
+      "license": "BSD 3-Clause License",
+      "url": "https://opus-codec.org/",
+      "file": "license-libopusfile.txt",
+      "package": "XiphVorbis",
+      "source": {
+        "path": "Vendor/XiphVorbis",
+        "version": {
+          "file": "vendor_opus.py",
+          "pattern": "OPUSFILE_VERSION = '([^']+)'"
+        },
+        "files": [
+          {
+            "path": "COPYING.libopusfile"
+          }
+        ]
+      }
+    },
+    {
       "name": "Firebase Apple SDK",
       "version": "13.0.1",
       "license": "Apache License 2.0, MIT License",

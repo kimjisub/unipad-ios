@@ -98,6 +98,19 @@ extension PlayUsageRecordTests {
             #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 500\nd 400\nt 1 3\nd 60\n")
         }
 
+        /// Opus trimming gives the same half-second wait that playback actually renders.
+        @Test func anOggOpusSoundGetsItsLength() async throws {
+            let tone = try #require(Bundle(for: OnePadPack.self).url(forResource: "opus-tone", withExtension: "ogg"))
+            let pack = try MapperPack(keySound: "1 1 1 a.wav\n1 1 2 tone.ogg\n1 1 3 a.wav\n", sounds: ["tone.ogg": tone])
+            defer { pack.remove() }
+            let listener = RecordingListener()
+
+            await UniPackAutoMapper(unipack: pack.unipack, listener: listener).start().value
+
+            #expect(listener.events.last == "done")
+            #expect(try pack.autoPlay() == "t 1 1\nd 60\nd 400\nt 1 2\nd 500\nd 400\nt 1 3\nd 60\n")
+        }
+
         /// Playback refuses these Ogg Vorbis sounds, so they add no wait: one declaring 601 s, and
         /// one whose declared length at 192 kHz exceeds the buffer budget.
         @Test(arguments: ["vorbis-overlong", "vorbis-over-budget"])
