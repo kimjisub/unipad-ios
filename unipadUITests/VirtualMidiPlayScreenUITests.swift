@@ -28,6 +28,12 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     }
 
     @MainActor
+    func testFirstConnectionPrefersLaunchpadOverKeyboard() throws {
+        _ = try openPlayScreen(device: "Test Keyboard", additionalDevices: ["Launchpad MK2"],
+                               connectedAs: "Launchpad MK2", picture: "initial-device-priority")
+    }
+
+    @MainActor
     func testLaunchpadProMK3SecondPortPressesReleasesAndSelectsAChain() throws {
         let idle = try openPlayScreen(device: "LPProMK3 MIDI", connectedAs: "Launchpad Pro MK3", picture: "pro-mk3")
         try device.send(0x90, 81, 100, port: 1)
@@ -83,8 +89,11 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     /// Publishes `device`, launches the app, shows that it connected, and opens the pack. Returns
     /// the idle pads to compare later pictures with.
     @MainActor
-    private func openPlayScreen(device name: String, connectedAs driver: String, picture: String) throws -> PadPixels {
+    private func openPlayScreen(
+        device name: String, additionalDevices: [String] = [], connectedAs driver: String, picture: String
+    ) throws -> PadPixels {
         try device.run("open \(name)")
+        for name in additionalDevices { try device.run("add \(name)") }
         app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments() + ["-UniPadReleaseInputEdges", "YES"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
