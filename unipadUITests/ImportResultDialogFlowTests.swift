@@ -92,7 +92,9 @@ final class ImportResultDialogFlowTests: XCTestCase {
         shot(language, "\(name)-card")
     }
 
-    private func runFlow(_ language: Language) throws {
+    // Each action gets its own launch and file-picker session. Running both imports in
+    // one test spends the per-test time allowance navigating the system picker twice.
+    private func runOKFlow(_ language: Language) throws {
         launch(language)
         shot(language, "01-home")
         let before = try XCTUnwrap(playCount(), "the total play count must be shown")
@@ -105,7 +107,11 @@ final class ImportResultDialogFlowTests: XCTestCase {
         XCTAssertFalse(playGrid.exists, "[\(language.code)] OK opened the play screen")
         XCTAssertEqual(playCount(), before, "[\(language.code)] OK counted a play")
         shot(language, "03-after-ok")
+    }
 
+    private func runPlayNowFlow(_ language: Language) throws {
+        launch(language)
+        shot(language, "01-home")
         try importPack(language)
         assertDialog(language, "04")
         playNowButton.tap()
@@ -116,18 +122,33 @@ final class ImportResultDialogFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testKorean() throws {
-        try runFlow(Self.korean)
+    func testKoreanOK() throws {
+        try runOKFlow(Self.korean)
     }
 
     @MainActor
-    func testEnglish() throws {
-        try runFlow(Self.english)
+    func testKoreanPlayNow() throws {
+        try runPlayNowFlow(Self.korean)
     }
 
     @MainActor
-    func testGerman() throws {
-        try runFlow(Self.german)
+    func testEnglishOK() throws {
+        try runOKFlow(Self.english)
+    }
+
+    @MainActor
+    func testEnglishPlayNow() throws {
+        try runPlayNowFlow(Self.english)
+    }
+
+    @MainActor
+    func testGermanOK() throws {
+        try runOKFlow(Self.german)
+    }
+
+    @MainActor
+    func testGermanPlayNow() throws {
+        try runPlayNowFlow(Self.german)
     }
 
     @MainActor
