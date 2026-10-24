@@ -61,7 +61,7 @@ nonisolated enum NativePCMAudioInspection {
         try d.range(0, 12)
         let compressed = d.matches(8, "AIFC")
         try AudioRead.require(compressed || d.matches(8, "AIFF"))
-        var at = 12, rate = 0, channels = 0, align = 0, frames = 0
+        var at = 12, rate = 0, channels = 0, align = 0, dataBytes = 0
         var foundFormat = false, foundData = false
         while at < d.size {
             try d.range(at, 8)
@@ -84,16 +84,17 @@ nonisolated enum NativePCMAudioInspection {
                 }
                 align = try AudioRead.multiply(channels, (bits + 7) / 8); foundFormat = true
             } else if d.matches(at, "SSND") {
-                try AudioRead.require(foundFormat && !foundData && length >= 8)
+                try AudioRead.require(!foundData && length >= 8)
                 let offset = try d.uint(payload, 4)
                 try AudioRead.require(offset <= length - 8)
-                frames = (length - 8 - offset) / align; foundData = true
+                // AIFF chunks are unordered; COMM may follow the physical sound data.
+                dataBytes = length - 8 - offset; foundData = true
             }
             let padding = length % 2
             if padding > d.size - payload - length { try AudioRead.require(foundFormat && foundData); break }
             at = payload + length + padding
         }
         try AudioRead.require(foundFormat && foundData)
-        return .init(sampleRate: rate, channels: channels, frames: frames)
+        return .init(sampleRate: rate, channels: channels, frames: dataBytes / align)
     }
 }

@@ -50,13 +50,12 @@ nonisolated enum OggAudioInspection {
             for i in 0..<segments { payloadBytes += try d.byte(at + 27 + i) }
             let pageSize = 27 + segments + payloadBytes
             try d.range(at, pageSize)
-            var crc: UInt32 = 0
+            var crc = 0
             for i in 0..<pageSize {
                 let b = try (22...25).contains(i) ? 0 : d.byte(at + i)
-                crc ^= UInt32(b) << 24
-                for _ in 0..<8 { crc = (crc << 1) ^ (crc & 0x80000000 != 0 ? 0x04c11db7 : 0) }
+                crc = AudioRead.crcStep(crc, b, 32, 0x04c11db7)
             }
-            try AudioRead.require(Int(crc) == d.uint(at + 22, 4, true))
+            try AudioRead.require(crc == d.uint(at + 22, 4, true))
             var payload = at + 27 + segments, completed = 0
             for i in 0..<segments {
                 let size = try d.byte(at + 27 + i)
@@ -74,14 +73,8 @@ nonisolated enum OggAudioInspection {
                             try AudioRead.require(packet.size >= 19 && packet.byte(8) >= 1 && packet.byte(8) <= 15)
                             channels = try packet.byte(9); rate = 48000; preSkip = try packet.uint(10, 2)
                             let family = try packet.byte(18)
-                            try AudioRead.require(family != 0 || (channels >= 1 && channels <= 2))
-                            if family != 0 {
-                                try AudioRead.require(packet.size >= 21 + channels)
-                                streams = try packet.byte(19)
-                                let coupled = try packet.byte(20)
-                                try AudioRead.require(streams > 0 && coupled <= streams && streams + coupled <= 255)
-                                for c in 0..<channels { try AudioRead.require(packet.byte(21 + c) == 255 || packet.byte(21 + c) < streams + coupled) }
-                            }
+                            streams = try opusStreamCount(channels: channels, family: family,
+                                                          size: packet.size, mappingAt: 19, byte: packet.byte)
                         } else {
                             try AudioRead.require(packet.size == 30 && packet.byte(0) == 1 && packet.matches(1, "vorbis") && packet.uint(7, 4) == 0)
                             channels = try packet.byte(11); rate = try packet.uint(12, 4)
@@ -235,6 +228,23 @@ nonisolated enum OggAudioInspection {
         }
         try AudioRead.require(b.read(1) == 1)
         return modes
+    }
+    /// OpusHead and MP4 dOps share the same channel-mapping table after their own headers.
+    static func opusStreamCount(channels: Int, family: Int, size: Int, mappingAt: Int,
+                                byte: (Int) throws -> Int) throws -> Int {
+        try AudioRead.require(channels > 0)
+        if family == 0 {
+            try AudioRead.require(channels <= 2)
+            return 1
+        }
+        try AudioRead.require(mappingAt >= 0 && mappingAt <= size && size - mappingAt >= 2 && channels <= size - mappingAt - 2)
+        let streams = try byte(mappingAt), coupled = try byte(mappingAt + 1)
+        try AudioRead.require(streams > 0 && coupled <= streams && streams + coupled <= 255)
+        for c in 0..<channels {
+            let mapping = try byte(mappingAt + 2 + c)
+            try AudioRead.require(mapping == 255 || mapping < streams + coupled)
+        }
+        return streams
     }
     /// All streams except the last have a self-delimited final frame length.
     static func opusFrames(_ size: Int, streams: Int, byte: (Int) throws -> Int) throws -> Int {

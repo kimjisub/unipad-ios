@@ -115,6 +115,25 @@ final class AudioAdmissionTests: XCTestCase {
         bytes.append(aac)
         XCTAssertEqual(AudioFileInspection.inspect(bytes).exclusion, .invalidFormat)
     }
+    private func nativeFixture(_ name: String) -> URL {
+        directory.deletingLastPathComponent().appendingPathComponent("NativeAudio").appendingPathComponent(name)
+    }
+    func testAIFFSoundChunkMayPrecedeCommonChunk() throws {
+        let url = nativeFixture("ssnd-first.aiff")
+        let file = try AVAudioFile(forReading: url)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 13230))
+        try file.read(into: buffer)
+        XCTAssertEqual(buffer.frameLength, 13230)
+        XCTAssertEqual(AudioFileInspection.inspect(url: url).facts,
+                       .init(sampleRate: 44100, channels: 1, frames: 13230))
+    }
+    func testKnownNativeDecoderFormatsRemainExplicitlyExcluded() throws {
+        // These valid native-decoder inputs expose a coverage gap, not damaged audio.
+        // Pin the current structural result until shared support is resolved before integration.
+        for name in ["alaw.wav", "ulaw.wav", "aac.caf", "alac.caf", "ima4.caf", "ulaw.aifc"] {
+            XCTAssertEqual(AudioFileInspection.inspect(url: nativeFixture(name)).exclusion, .invalidFormat, name)
+        }
+    }
     func testCommonSelectionKeepsReservationsAfterDecodeFailure() throws {
         for c in try corpus()["selections"] as! [[String: Any]] {
             let refs = (c["references"] as! [[Any]]).map { AudioAdmission.Reference(chain: integer($0[0]), x: integer($0[1]), y: integer($0[2]), line: integer($0[3]), identity: $0[4] as! String) }

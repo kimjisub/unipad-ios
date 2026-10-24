@@ -16,6 +16,11 @@ nonisolated struct AudioRead {
         try require(a >= 0 && b >= 0 && (b == 0 || a <= Int.max / b))
         return a * b
     }
+    static func crcStep(_ value: Int, _ byte: Int, _ width: Int, _ polynomial: Int) -> Int {
+        var crc = value ^ (byte << (width - 8))
+        for _ in 0..<8 { crc = ((crc << 1) ^ (crc & (1 << (width - 1)) != 0 ? polynomial : 0)) & ((1 << width) - 1) }
+        return crc
+    }
     func range(_ at: Int, _ length: Int, _ end: Int? = nil) throws {
         let limit = end ?? size
         try Self.require(at >= 0 && length >= 0 && limit <= size && at <= limit && length <= limit - at)

@@ -26,3 +26,26 @@ decoding and remaining channel elements are not certified by this structural pas
 
 Separate generated native-container tests retain the existing CAF PCM and AIFF/AIFC
 PCM path. These extra tests do not modify the shared corpus.
+
+## Native decoder coverage gaps before playback integration
+
+The structural inspector currently reports `INVALID_FORMAT` for these valid inputs:
+
+| Container | Codec |
+| --- | --- |
+| WAV | G.711 mu-law and A-law |
+| CAF | AAC, ALAC and IMA4 |
+| AIFC | mu-law |
+
+The native decoder on macOS reads 13,230 frames from each corresponding fixture
+in `../NativeAudio`. `testKnownNativeDecoderFormatsRemainExplicitlyExcluded`
+records the current structural result. These files expose a known coverage gap;
+the result does not establish that their audio is damaged. Existing playback
+support must be preserved when resolving shared format coverage before connecting
+this inspector to pack loading. This change leaves that shared support decision
+pending and keeps the six codec results unchanged.
+
+The separate `ssnd-first.aiff` fixture verifies valid AIFF chunk ordering: sound
+data may precede `COMM`. Both the native decoder and the inspector must read
+13,230 mono frames at 44.1 kHz. The extra fixtures and their observations remain
+separate from the unchanged shared manifest and its expected values.

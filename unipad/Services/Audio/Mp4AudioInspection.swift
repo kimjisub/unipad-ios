@@ -64,27 +64,15 @@ nonisolated enum Mp4AudioInspection {
             let c = try child(d, children, "dfLa")
             try d.range(c.data, 42, c.end)
             try AudioRead.require(d.uint(c.data, 4) == 0 && d.byte(c.data + 4) & 127 == 0 && d.uint(c.data + 5, 3) == 34)
-            let info = c.data + 8
-            result.rate = try d.uint(info + 10, 3) >> 4
-            result.channels = try ((d.byte(info + 12) >> 1) & 7) + 1
-            result.precision = try (((d.byte(info + 12) & 1) << 4) | (d.byte(info + 13) >> 4)) + 1
+            let info = try FlacAudioInspection.streamInfo(d, at: c.data + 8)
+            result.rate = info.rate; result.channels = info.channels; result.precision = info.bits
         } else if entry.type == "Opus" {
             let c = try child(d, children, "dOps")
             try d.range(c.data, 11, c.end); try AudioRead.require(d.byte(c.data) == 0)
             channels = try d.byte(c.data + 1)
             let family = try d.byte(c.data + 10)
-            var streams = 1
-            if family == 0 { try AudioRead.require(channels >= 1 && channels <= 2) }
-            else {
-                try d.range(c.data, 13 + channels, c.end)
-                streams = try d.byte(c.data + 11)
-                let coupled = try d.byte(c.data + 12)
-                try AudioRead.require(streams > 0 && coupled <= streams && streams + coupled <= 255)
-                for i in 0..<channels {
-                    let mapping = try d.byte(c.data + 13 + i)
-                    try AudioRead.require(mapping == 255 || mapping < streams + coupled)
-                }
-            }
+            let streams = try OggAudioInspection.opusStreamCount(channels: channels, family: family,
+                                                                size: c.end - c.data, mappingAt: 11) { try d.byte(c.data + $0) }
             result.rate = 48000; result.channels = channels; result.opusStreams = streams
         } else {
             let bits = try d.uint(entry.data + 18, 2)

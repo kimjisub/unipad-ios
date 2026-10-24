@@ -1,10 +1,13 @@
 import Foundation
 
 nonisolated enum FlacAudioInspection {
-    private static func crcStep(_ value: Int, _ byte: Int, _ width: Int, _ polynomial: Int) -> Int {
-        var crc = value ^ (byte << (width - 8))
-        for _ in 0..<8 { crc = ((crc << 1) ^ (crc & (1 << (width - 1)) != 0 ? polynomial : 0)) & ((1 << width) - 1) }
-        return crc
+    static func streamInfo(_ d: AudioRead, at: Int) throws -> (rate: Int, channels: Int, bits: Int) {
+        try d.range(at, 34)
+        let rate = try d.uint(at + 10, 3) >> 4
+        let channels = try ((d.byte(at + 12) >> 1) & 7) + 1
+        let bits = try (((d.byte(at + 12) & 1) << 4) | (d.byte(at + 13) >> 4)) + 1
+        try AudioRead.require(rate > 0)
+        return (rate, channels, bits)
     }
     static func inspect(_ d: AudioRead) throws -> AudioAdmission.Facts {
         var at = 4, last = false, rate = 0, channels = 0, bits = 0
@@ -14,10 +17,8 @@ nonisolated enum FlacAudioInspection {
             try d.range(payload, length)
             if at == 4 {
                 try AudioRead.require(type & 127 == 0 && length == 34)
-                rate = try d.uint(payload + 10, 3) >> 4
-                channels = try ((d.byte(payload + 12) >> 1) & 7) + 1
-                bits = try (((d.byte(payload + 12) & 1) << 4) | (d.byte(payload + 13) >> 4)) + 1
-                try AudioRead.require(rate > 0)
+                let info = try streamInfo(d, at: payload)
+                rate = info.rate; channels = info.channels; bits = info.bits
             } else { try AudioRead.require(type & 127 != 0 && type & 127 < 127) }
             last = type & 128 != 0; at = payload + length
         }
@@ -73,7 +74,7 @@ nonisolated enum FlacAudioInspection {
             try AudioRead.require(frameRate == rate)
             try d.range(start, pos - start + 1, limit)
             var crc = 0
-            for i in start..<pos { crc = try crcStep(crc, d.byte(i), 8, 7) }
+            for i in start..<pos { crc = try AudioRead.crcStep(crc, d.byte(i), 8, 7) }
             try AudioRead.require(crc == d.byte(pos)); pos += 1
             return Frame(end: pos, samples: samples, number: number, variable: variable, assignment: assignment)
         }
@@ -134,7 +135,7 @@ nonisolated enum FlacAudioInspection {
             let end = try AudioRead.add(frame.end, body.position / 8)
             try d.range(end, 2, limit)
             var crc = 0
-            for p in at..<(end + 2) { crc = try crcStep(crc, d.byte(p), 16, 0x8005) }
+            for p in at..<(end + 2) { crc = try AudioRead.crcStep(crc, d.byte(p), 16, 0x8005) }
             try AudioRead.require(crc == 0)
             total = try AudioRead.add(total, frame.samples); ordinal += 1; at = end + 2
             if at == limit { break }
