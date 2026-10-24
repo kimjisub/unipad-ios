@@ -106,13 +106,13 @@ final class AutoPlayRunnerTests: XCTestCase {
 
 
     /// The guided chord is still owed until its pads are pressed. Scanning past it must not
-    /// discard it when either transport resumes playback, even at the end of the table.
-    func testStepToAutoplayKeepsUnplayedPadsAcrossBothControlsAndPauseDurations() async throws {
-        for useModeButton in [true, false] {
+    /// discard it when sound-producing autoplay starts, even at the end of the table.
+    func testStepToSoundingAutoplayKeepsUnplayedPadsAcrossPauseDurations() async throws {
+        for pauseBeforeFirstTick in [false, true] {
             for pausedMs: Int64 in [0, 1, 300, 3_000] {
                 for partialChord in [false, true] {
                     for lastGroup in [false, true] {
-                        let label = "modeButton=\(useModeButton), pause=\(pausedMs), partial=\(partialChord), final=\(lastGroup)"
+                        let label = "pauseBeforeFirstTick=\(pauseBeforeFirstTick), pause=\(pausedMs), partial=\(partialChord), final=\(lastGroup)"
                         let pack = UniPack()
                         var elements: [AutoPlay.Element] = [
                             .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
@@ -142,9 +142,13 @@ final class AutoPlayRunnerTests: XCTestCase {
                         // the mode button in the same tick.
                         if partialChord { runner.stepPadPressed(x: 0, y: 1) }
                         clock.advance(pausedMs)
+                        vm.switchPlayMode(.autoPlay)
+                        if pauseBeforeFirstTick {
+                            vm.autoPlayPause()
+                            clock.advance(pausedMs)
+                            vm.autoPlayResume()
+                        }
                         let resumedAt = clock.read()
-                        if useModeButton { vm.switchPlayMode(.autoPlay) }
-                        else { vm.autoPlayResume() }
                         let nextTick = ticks + 2
                         try await wait { ticks >= nextTick || !runner.active }
                         let pending = partialChord ? [2] : [1, 2]
@@ -164,6 +168,46 @@ final class AutoPlayRunnerTests: XCTestCase {
                         XCTAssertFalse(runner.active, label)
                     }
                 }
+            }
+        }
+    }
+
+    /// The play button in step practice resumes silent timed guidance. It is deliberately
+    /// outside the sounding-autoplay rule and keeps the existing scan position.
+    func testStepResumeKeepsExistingSilentGuideBehavior() async throws {
+        for pausedMs: Int64 in [0, 1, 300, 3_000] {
+            for lastGroup in [false, true] {
+                let pack = UniPack()
+                var elements: [AutoPlay.Element] = [
+                    .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
+                    .on(x: 0, y: 1, currChain: 0, num: 0),
+                ]
+                if !lastGroup { elements += [.delay(delay: 4_000), .on(x: 0, y: 2, currChain: 0, num: 0)] }
+                pack.autoPlayTable = AutoPlay(elements: elements)
+                let clock = TestManualClock()
+                let recorder = Recorder()
+                var ticks = 0
+                let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                            clock: { clock.read() }, sleep: { _ in
+                    ticks += 1
+                    await Task.yield()
+                })
+                let vm = PlayViewModel()
+                vm.autoPlayRunner = runner
+                defer { runner.stop() }
+                vm.switchPlayMode(.stepPractice)
+                try await wait { recorder.guidePads == [0] }
+                runner.stepPadPressed(x: 0, y: 0)
+                try await wait { recorder.guidePads == [0, 1] }
+                clock.advance(pausedMs)
+                vm.autoPlayResume()
+                let nextTick = ticks + 2
+                try await wait { ticks >= nextTick || !runner.active }
+                XCTAssertEqual(vm.playMode, .guidePlay)
+                XCTAssertTrue(runner.practiceGuide)
+                XCTAssertFalse(runner.stepMode)
+                XCTAssertEqual(recorder.pressedPads, [])
+                XCTAssertEqual(runner.progress, lastGroup ? 3 : 4, "The silent guide must retain its existing scan position")
             }
         }
     }

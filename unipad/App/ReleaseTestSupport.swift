@@ -63,6 +63,13 @@ nonisolated enum ReleaseTestSupport {
                     try contents.write(to: pack.appendingPathComponent(name), atomically: true, encoding: .utf8)
                 }
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed/1 1 1 1"))
+            case "step-resume":
+                let pack = library.appendingPathComponent("StepResume")
+                try makePack(at: pack, title: "Step Resume Fixture", chains: 1)
+                // With no LED animation, the held pad's feedback stays visible for the capture.
+                try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
+                try "on 1 1\ndelay 10000\noff 1 1\non 1 2\ndelay 1000\noff 1 2\n"
+                    .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
             case "chain-layout":
                 // INF-002 of the public conformance corpus: the smallest grid with the most chains.
                 let small = library.appendingPathComponent("Conformance")

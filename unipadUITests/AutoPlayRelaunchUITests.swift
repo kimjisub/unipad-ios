@@ -81,6 +81,36 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         UITestSupport.attachScreenshot("step-04-second-end", to: self)
     }
 
+    /// The same capture runs before and after the runner fix. Unit tests verify sound requests;
+    /// this silent fixture keeps the pending pad's press visible for ten seconds on screen.
+    @MainActor
+    func testStepToAutoplayShowsThePendingPad() {
+        continueAfterFailure = false
+        let orientation = XCUIDevice.shared.orientation
+        defer { XCUIDevice.shared.orientation = orientation }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: "step-resume")
+        app.launch()
+        defer { app.terminate() }
+        UITestSupport.dismissSystemAlerts()
+        let title = app.staticTexts["Step Resume Fixture"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 30))
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
+        choose("Step", app: app)
+        UITestSupport.attachScreenshot("pending-step-01-guide", to: self)
+        choose("Autoplay", app: app)
+        XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
+        UITestSupport.attachScreenshot("pending-step-02-autoplay", to: self)
+        app.buttons["pause.fill"].tap()
+        app.buttons["play.fill"].tap()
+        UITestSupport.attachScreenshot("pending-step-03-resumed", to: self)
+    }
+
     /// The fixture's three groups are one pad each, along the top row.
     @MainActor
     private func playAllGroups(_ grid: XCUIElement, app: XCUIApplication) {
