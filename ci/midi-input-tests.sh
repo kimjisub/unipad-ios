@@ -3,7 +3,7 @@
 # devices published in the simulator's own MIDI server, so their messages reach the app through CoreMIDI
 # as a USB device's do:
 #
-#   ci/midi-input-tests.sh <simulator-udid> <derived-data> <result-folder> [<only-testing>]
+#   ci/midi-input-tests.sh <simulator-udid> <derived-data> <result-folder> [<only-testing> ...]
 #
 # unipadUITests/VirtualMidiPlayScreenUITests shows the same devices' input on the play screen, with a
 # screenshot of every step in the result bundle.
@@ -18,8 +18,8 @@
 # in the Universal MIDI Packet group. Hardware port order is not exercised.
 set -euo pipefail
 
-if (( $# != 3 && $# != 4 )); then
-  print -u2 "usage: $0 <simulator-udid> <derived-data> <result-folder> [<only-testing>]"
+if (( $# < 3 )); then
+  print -u2 "usage: $0 <simulator-udid> <derived-data> <result-folder> [<only-testing> ...]"
   exit 2
 fi
 udid=$1
@@ -27,7 +27,14 @@ derived=${2:A}
 results=${3:A}
 selection=(-only-testing:unipadTests/PlayUsageRecordTests/MidiInputPathTests
            -only-testing:unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests)
-(( $# == 4 )) && selection=(-only-testing:$4)
+# Keep related suites on one client: restarting the last client between suites
+# can connect to the simulator MIDI server while it is shutting down.
+if (( $# > 3 )); then
+  selection=()
+  for suite in "${@:4}"; do
+    selection+=("-only-testing:$suite")
+  done
+fi
 mkdir -p $results
 device=$results/device
 rm -rf $device $results/MidiInput.xcresult

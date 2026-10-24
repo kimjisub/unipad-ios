@@ -34,7 +34,7 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         connection.name = "virtual-mk2-connected"
         connection.lifetime = .keepAlways
         add(connection)
-        app.buttons["chevron.left"].firstMatch.tap()
+        UITestSupport.tapBack(in: app)
         let title = app.staticTexts["Virtual MIDI Fixture"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 15), "waiting for isolated fixture")
         title.tap()
