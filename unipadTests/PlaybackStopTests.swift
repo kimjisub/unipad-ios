@@ -631,24 +631,25 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertTrue(engine.activePlayIDs.isEmpty)
     }
 
-    func testAutoplayModeChangesRespectLockedFeedbackLight() async throws {
+    func testAutoplayModeChangesKeepRectangularFeedbackDefaults() async throws {
         let root = try pack(loop: 0)
         defer { try? FileManager.default.removeItem(at: root) }
         try "title=Locked Light\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\nsquareButton=false\n".write(
             to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
         let vm = try await loaded(root)
         defer { vm.cleanup() }
-        XCTAssertTrue(vm.scbFeedbackLight.locked)
-        XCTAssertFalse(vm.scbFeedbackLight.checked)
+        XCTAssertFalse(vm.scbFeedbackLight.visible)
+        XCTAssertFalse(vm.scbFeedbackLight.locked)
+        XCTAssertTrue(vm.scbFeedbackLight.checked)
         vm.switchPlayMode(.autoPlay)
         vm.switchPlayMode(.none)
-        XCTAssertFalse(vm.scbFeedbackLight.checked, "turning autoplay off must respect the lock")
+        XCTAssertTrue(vm.scbFeedbackLight.checked, "without pack lights, stopping autoplay keeps press feedback")
         vm.switchPlayMode(.autoPlay)
         vm.autoPlayResume()
-        XCTAssertFalse(vm.scbFeedbackLight.checked, "resuming autoplay must respect the lock")
+        XCTAssertTrue(vm.scbFeedbackLight.checked, "without pack lights, resuming autoplay keeps press feedback")
         let runner = try XCTUnwrap(vm.autoPlayRunner)
         try await wait(for: "song end", until: { runner.progress > 0 && !runner.active })
-        XCTAssertFalse(vm.scbFeedbackLight.checked, "song end must respect the lock")
+        XCTAssertTrue(vm.scbFeedbackLight.checked, "without pack lights, song end keeps press feedback")
     }
 
     private func holdScreen() { Thread.sleep(forTimeInterval: 0.8) }
