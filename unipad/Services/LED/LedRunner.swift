@@ -268,8 +268,10 @@ nonisolated final class LedRunner: @unchecked Sendable {
         return (ledAnimationStates + ledAnimationStatesAdd).contains { $0.isPlaying && $0.buttonX == x && $0.buttonY == y }
     }
 
+    /// `owner` is the press the animation belongs to; its `eventOff` ends the animation even after the
+    /// chain changed. Without one, the pad itself is the owner.
     @MainActor
-    func eventOn(x: Int, y: Int, pressedAt: Int64? = nil) {
+    func eventOn(x: Int, y: Int, pressedAt: Int64? = nil, owner: UUID? = nil) {
         guard active else {
             logger.debug("eventOn(\(x),\(y)): not active")
             return
@@ -288,6 +290,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
             buttonY: y,
             unipack: unipack,
             chain: chain.value,
+            owner: owner,
             startedAt: at,
             order: requests
         )
@@ -299,15 +302,17 @@ nonisolated final class LedRunner: @unchecked Sendable {
         }
     }
 
+    /// Ends the endless animations `owner` started on the pad, on whatever chain they began.
     @MainActor
-    func eventOff(x: Int, y: Int, releasedAt: Int64? = nil) {
+    func eventOff(x: Int, y: Int, releasedAt: Int64? = nil, owner: UUID? = nil) {
         guard active else { return }
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
         let at = releasedAt ?? clock()
         requests += 1
-        for state in ledAnimationStates + ledAnimationStatesAdd where state.isEqual(bx: x, by: y, chain: chain.value) {
+        for state in ledAnimationStates + ledAnimationStatesAdd
+        where state.buttonX == x && state.buttonY == y && state.owner == owner {
             if state.ledAnimation?.loop == 0 { state.shutDownAt(at, order: requests) }
         }
     }
@@ -388,6 +393,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
         let buttonX: Int
         let buttonY: Int
         let chainAtCreation: Int
+        let owner: UUID?
         private var startedAt: Int64
         private let order: Int64
         var index = 0
@@ -408,10 +414,11 @@ nonisolated final class LedRunner: @unchecked Sendable {
             buttonX == bx && buttonY == by && chainAtCreation == chain
         }
 
-        init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: Int, startedAt: Int64, order: Int64) {
+        init(buttonX: Int, buttonY: Int, unipack: UniPack, chain: Int, owner: UUID?, startedAt: Int64, order: Int64) {
             self.buttonX = buttonX
             self.buttonY = buttonY
             self.chainAtCreation = chain
+            self.owner = owner
             self.startedAt = startedAt
             self.delay = startedAt
             self.order = order

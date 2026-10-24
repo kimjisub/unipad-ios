@@ -48,6 +48,46 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpeningOptionsReleasesAControllerPadWhoseNoteOffIsHidden() throws {
+        let idle = try openPlayScreen(device: "UniPad Test Keyboard", connectedAs: "Master Keyboard", picture: "options-release")
+        try device.send(0x90, 36, 100)
+        XCTAssertEqual(try waitForLitPads(["8,1"], comparedWith: idle, picture: "options-release-1-held"), ["8,1"])
+        app.buttons["line.3.horizontal"].tap()
+        let quit = app.buttons["Quit"]
+        XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        try device.send(0x80, 36, 64)
+        UITestSupport.attachScreenshot("options-release-2-hidden-note-off", to: self)
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: quit)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+        XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "options-release-3-closed"), [],
+                       "a note-off hidden by the options left the controller pad held")
+    }
+
+    @MainActor
+    func testFingerReleaseStopsItsChainLightWhileTheControllerRemainsPressed() throws {
+        _ = try openPlayScreen(device: "UniPad Test Keyboard", connectedAs: "Master Keyboard",
+                                      picture: "separate-owners", archive: "InputOwners", packTitle: "Input Owners")
+        app.buttons["line.3.horizontal"].tap()
+        let quit = app.buttons["Quit"]
+        XCTAssertTrue(quit.waitForExistence(timeout: 5))
+        UITestSupport.setPlayOption("Feedback light", on: true, in: app)
+        UITestSupport.setPlayOption("Trace Log", on: false, in: app)
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        XCTAssertTrue(quit.waitForNonExistence(timeout: 5))
+        let idle = try PadPixels.settled(grid)
+        try device.send(0x90, 36, 100)
+        XCTAssertEqual(try waitForLitPads(["8,1", "8,2"], comparedWith: idle, picture: "separate-owners-1-controller"), ["8,1", "8,2"])
+        app.descendants(matching: .any)["playChain.2"].tap()
+        XCTAssertTrue(waitForSelectedChain(2, picture: "separate-owners-2-chain"))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.9375)).press(forDuration: 0.4)
+        XCTAssertEqual(try waitForLitPads(["8,1", "8,2"], comparedWith: idle, picture: "separate-owners-3-finger-released"), ["8,1", "8,2"],
+                       "the finger's chain light outlived its release while the controller was held")
+        try device.send(0x80, 36, 64)
+        XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "separate-owners-4-controller-released"), [])
+    }
+
+    @MainActor
     func testKeyboardReleasesOnNoteOffWithVelocityAndIgnoresAftertouch() throws {
         let idle = try openPlayScreen(device: "UniPad Test Keyboard", connectedAs: "Master Keyboard", picture: "keyboard")
         try device.send(0x90, 36, 100)
@@ -90,11 +130,18 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     /// the idle pads to compare later pictures with.
     @MainActor
     private func openPlayScreen(
-        device name: String, additionalDevices: [String] = [], connectedAs driver: String, picture: String
+        device name: String, additionalDevices: [String] = [], connectedAs driver: String, picture: String,
+        archive: String? = nil, packTitle: String = "Virtual MIDI"
     ) throws -> PadPixels {
         try device.run("open \(name)")
         for name in additionalDevices { try device.run("add \(name)") }
-        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments() + ["-UniPadReleaseInputEdges", "YES"]
+        if let archive {
+            let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                .appendingPathComponent("ExternalImportFixtures/\(archive).uni")
+            app.launchArguments = UITestSupport.englishLaunchArguments(library: "chain-release", archive: try Data(contentsOf: url))
+        } else {
+            app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments() + ["-UniPadReleaseInputEdges", "YES"]
+        }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         let settings = app.buttons["gearshape"]
@@ -104,10 +151,10 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
             .matching(NSPredicate(format: "label CONTAINS %@", "Connected: \(driver)")).firstMatch
         XCTAssertTrue(connected.waitForExistence(timeout: 15), "the app did not connect \(name) as \(driver)")
         UITestSupport.attachScreenshot("\(picture)-0-connected", to: self)
-        app.buttons["chevron.left"].firstMatch.tap()
-        UITestSupport.searchForPack("Virtual MIDI", in: app)
-        let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Virtual MIDI")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "the Virtual MIDI pack was not prepared")
+        UITestSupport.tapBack(in: app)
+        UITestSupport.searchForPack(packTitle, in: app)
+        let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", packTitle)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "the \(packTitle) pack was not prepared")
         row.tap()
         let play = app.buttons["Play"].firstMatch
         if play.waitForExistence(timeout: 5) { play.tap() } else { row.tap() }
