@@ -75,6 +75,89 @@ struct UniPackArchiveLayoutTests {
         try expectInstalledPack(try await importArchive(Self.pack(in: "") + [Self.readme]))
     }
 
+    @Test(arguments: ["Pack/", "Wrap/Pack/", "Pack/Pack/"])
+    func soundsBesideEachWrapperNeverEnterTheInstalledPack(prefix: String) async throws {
+        defer { cleanUp() }
+        let audio = try wave(frames: 4_800)
+        var files = Self.pack(in: prefix).filter { !$0.name.hasSuffix("a.wav") }
+        files.append(("\(prefix)sounds/a.wav", audio))
+        var wrapper = ""
+        for component in prefix.split(separator: "/") {
+            files.append(("\(wrapper)sounds/outer.wav", audio))
+            files.append(("\(wrapper)readme.txt", Self.readme.data))
+            files.append(("\(wrapper)__MACOSX/._info", Data("metadata".utf8)))
+            wrapper += "\(component)/"
+        }
+
+        let installed = try (await importArchive(files)).get()
+        #expect(Set(FileManager.default.subpaths(atPath: installed.path) ?? []) ==
+                ["info", "keySound", "sounds", "sounds/a.wav"])
+        let pack = UniPackFolder(rootFolder: installed).load()
+        pack.loadDetail()
+        #expect(pack.errorDetail == nil)
+        let selected = try #require(pack.soundTable?[0][0][0]?.first?.file)
+        #expect(try Data(contentsOf: selected) == audio)
+        try await expectPlayback(pack)
+    }
+
+    @Test func anOutsideExactNameCannotOverrideThePacksCaseInsensitiveSound() async throws {
+        defer { cleanUp() }
+        let inner = try wave(frames: 4_800)
+        let outer = try wave(frames: 2_400)
+        let files: [(name: String, data: Data)] = [
+            ("Pack/info", Self.pack(in: "")[0].data),
+            ("Pack/keySound", Data("1 1 1 a.wav\n1 1 2 소리.wav\n".utf8)),
+            ("Pack/Sounds/A.WAV", inner),
+            ("Pack/sounds/소리.wav", inner),
+            ("sounds/a.wav", outer),
+            Self.readme,
+        ]
+
+        let installed = try (await importArchive(files)).get()
+        let pack = UniPackFolder(rootFolder: installed).load()
+        pack.loadDetail()
+        #expect(pack.errorDetail == nil)
+        for y in 0..<2 {
+            let selected = try #require(pack.soundTable?[0][0][y]?.first?.file)
+            #expect(try Data(contentsOf: selected) == inner)
+        }
+        #expect(!FileManager.default.fileExists(atPath: installed.appending(path: "readme.txt").path))
+        try await expectPlayback(pack)
+    }
+
+    @Test func anOutsideSoundCannotHideAMissingPackSound() async throws {
+        defer { cleanUp() }
+        let audio = try wave(frames: 4_800)
+        let files: [(name: String, data: Data)] = [
+            ("Pack/info", Self.pack(in: "")[0].data),
+            ("Pack/keySound", Data("1 1 1 inner.wav\n1 1 2 outer.wav\n".utf8)),
+            ("Pack/sounds/inner.wav", audio),
+            ("sounds/outer.wav", audio),
+        ]
+
+        let installed = try (await importArchive(files)).get()
+        let pack = UniPackFolder(rootFolder: installed).load()
+        pack.loadDetail()
+        #expect(pack.soundTable?[0][0][0]?.first != nil)
+        #expect(pack.soundTable?[0][0][1]?.first == nil)
+        #expect(pack.errorDetail == "keySound : [1 1 2 outer.wav] sound was not found")
+        #expect(!FileManager.default.fileExists(atPath: installed.appending(path: "sounds/outer.wav").path))
+    }
+
+    private func wave(frames: UInt32) throws -> Data {
+        let file = try SoundEngineTestSupport.writeWav(sampleRate: 48_000, frames: frames)
+        defer { try? FileManager.default.removeItem(at: file) }
+        return try Data(contentsOf: file)
+    }
+
+    private func expectPlayback(_ pack: UniPackFolder) async throws {
+        let (engine, listener) = try await SoundEngineTestSupport.loadedEngine(pack)
+        defer { engine.destroy() }
+        #expect(listener.failure == nil)
+        engine.soundOn(x: 0, y: 0)
+        #expect(engine.playsStarted == 1)
+    }
+
     /// Two packs in one archive: nothing says which one the author meant, so the import still fails.
     @Test func twoPacksInOneArchiveAreNotGuessed() async throws {
         defer { cleanUp() }
