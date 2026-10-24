@@ -124,6 +124,42 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertEqual(recorder.pressTimes, [1000, 5000])
     }
 
+    func testPauseBetweenTicksDoesNotConsumeTheRemainingDelay() async throws {
+        for suspended in [false, true] {
+            let pack = UniPack()
+            pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0),
+                .delay(delay: 1000), .on(x: 0, y: 1, currChain: 0, num: 0)])
+            let recorder = Recorder()
+            let clock = TestManualClock()
+            var tick = 0
+            var runner: AutoPlayRunner!
+            runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                clock: { clock.read() }, sleep: { _ in
+                    tick += 1
+                    if tick == 1 {
+                        clock.advance(500)
+                        if suspended { runner.appWentAway() }
+                        runner.playmode = false
+                        clock.advance(3000)
+                        if suspended { runner.appReturned() }
+                        runner.playmode = true
+                    } else if tick == 2 {
+                        XCTAssertEqual(recorder.pressTimes.count, 1)
+                        clock.advance(499)
+                    } else {
+                        XCTAssertEqual(recorder.pressTimes.count, 1)
+                        clock.advance(1)
+                    }
+                    await Task.yield()
+                })
+            runner.launch()
+            try await wait { recorder.ends == 1 }
+            runner.stop()
+            runner = nil
+            XCTAssertEqual(recorder.pressTimes, [1000, 5000], "suspended=\(suspended)")
+        }
+    }
+
     private func startStepPractice(_ runner: AutoPlayRunner) {
         runner.practiceGuide = true
         runner.stepMode = true
