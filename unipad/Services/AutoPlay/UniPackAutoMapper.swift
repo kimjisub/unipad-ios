@@ -133,14 +133,14 @@ final class UniPackAutoMapper {
         return Int(Double(frameCount) / sampleRate * 1000)
     }
 
-    /// Playback opens Ogg Vorbis, which `AVAudioFile` cannot, with its own decoder; its length
+    /// Playback opens Ogg Vorbis and Opus on systems without native support; their length
     /// comes from the stream without decoding the audio.
     private nonisolated static func soundLength(_ url: URL) throws -> (frames: AVAudioFramePosition, format: AVAudioFormat) {
         do {
             let audioFile = try AVAudioFile(forReading: url)
             return (audioFile.length, audioFile.processingFormat)
         } catch _ where OggVorbisDecoder.isOgg(url) {
-            return try OggVorbisDecoder.length(of: url)
+            return try OggAudioDecoder.length(of: url)
         }
     }
 }

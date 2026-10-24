@@ -89,6 +89,19 @@ final class ExternalFileImportTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Beside Readme")
         XCTAssertTrue(play.isHittable)
     }
+    func testOggOpusPackImportsAndOpens() throws {
+        try open("Opus")
+        XCTAssertEqual(title.label, "Pack imported!")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "External Import - Opus")
+        XCTAssertTrue(play.isHittable)
+        play.tap()
+        let grid = app.otherElements["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 30))
+        UITestSupport.attachScreenshot("opus-before-pad", to: self)
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).press(forDuration: 0.4)
+        UITestSupport.attachScreenshot("opus-after-pad", to: self)
+    }
+
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
     func testNormalAfterPickerResult() throws { try importWithPicker(); try open("Normal"); assertNormal() }
