@@ -73,9 +73,19 @@ enum ConformanceHarness {
     static let caseSensitiveFileSystem: Bool = {
         let dir = fileSystemRoot.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil,
-              FileManager.default.createFile(atPath: dir.appendingPathComponent("a").path, contents: Data()) else { return false }
-        return !FileManager.default.fileExists(atPath: dir.appendingPathComponent("A").path)
+        let lower = dir.appendingPathComponent("a")
+        let upper = dir.appendingPathComponent("A")
+        let lowerContents = Data([0x61])
+        let upperContents = Data([0x41])
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try lowerContents.write(to: lower)
+            try upperContents.write(to: upper)
+            // Simulator lookups can distinguish spelling even when storage merges the names.
+            return try Data(contentsOf: lower) == lowerContents && Data(contentsOf: upper) == upperContents
+        } catch {
+            return false
+        }
     }()
 
     private static var fileSystemRoot: URL {
