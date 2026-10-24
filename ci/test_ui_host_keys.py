@@ -19,6 +19,7 @@ FAKE_PROBE_BUILD = ('if [ "$1" = --sdk ]; then\n'
 ROOT = Path(__file__).resolve().parents[1]
 NOT_RUN = [
     "-skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests",
+    "-skip-testing:unipadUITests/VirtualMidiPlayScreenUITests",
     "-skip-testing:unipadUITests/NotificationRoundTripUITests",
     "-skip-testing:unipadUITests/LedAutoplayUITests",
     "-skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt",
@@ -97,14 +98,20 @@ class UIHostKeysTests(unittest.TestCase):
     def test_runner_killed_while_building_the_probe_leaves_nothing_behind(self):
         self.kill_runner(probe_build='[ "$1" = --sdk ] && exec sleep 30\n')
 
-    def kill_runner(self, probe_build):
+    def test_runner_killed_right_after_creating_its_folder_leaves_nothing_behind(self):
+        # The folder exists but mktemp has not returned, so the script has not
+        # reached anything that follows it.
+        self.kill_runner(probe_build=FAKE_PROBE_BUILD,
+                         programs={"mktemp": '#!/bin/sh\n/usr/bin/mktemp "$@"\nexec sleep 30\n'})
+
+    def kill_runner(self, probe_build, programs=None):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
             folder = Path(directory)
             fake = folder / "bin"
             fake.mkdir()
             for name, content in {"xcodebuild": "#!/bin/sh\nexec sleep 30\n",
-                                  "xcrun": "#!/bin/sh\n" + probe_build + "exit 99\n"}.items():
+                                  "xcrun": "#!/bin/sh\n" + probe_build + "exit 99\n", **(programs or {})}.items():
                 path = fake / name
                 path.write_text(content)
                 path.chmod(0o755)

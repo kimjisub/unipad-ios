@@ -10,6 +10,25 @@ enum JSONValue: Equatable {
     case array([JSONValue])
     case object([String: JSONValue])
 
+    // Swift String equality folds canonical Unicode spellings. JSON observations must preserve
+    // the original archive name, even when two entries have identical contents.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        switch (lhs, rhs) {
+        case (.null, .null): return true
+        case (.bool(let a), .bool(let b)): return a == b
+        case (.int(let a), .int(let b)): return a == b
+        case (.string(let a), .string(let b)): return a.utf8.elementsEqual(b.utf8)
+        case (.array(let a), .array(let b)): return a == b
+        case (.object(let a), .object(let b)):
+            let keysA = a.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+            let keysB = b.keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+            return keysA.count == keysB.count && zip(keysA, keysB).allSatisfy {
+                $0.utf8.elementsEqual($1.utf8) && a[$0] == b[$1]
+            }
+        default: return false
+        }
+    }
+
     /// Foundation's JSON reader drops a byte order mark at the start of a string value, which would
     /// change the bytes of the BOM cases, so the text is read by this small parser instead.
     init(data: Data) throws {

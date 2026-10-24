@@ -11,7 +11,7 @@ struct OpenSourceLicenseTests {
 
     @Test func theOggDecoderAndFirebaseAreListed() {
         let names = Set(licenses.map(\.name))
-        #expect(names.isSuperset(of: ["libogg", "libvorbis", "Firebase Apple SDK"]))
+        #expect(names.isSuperset(of: ["libogg", "libvorbis", "libopus", "libopusfile", "Firebase Apple SDK"]))
     }
 
     @Test func everyListedComponentCarriesItsLicenseText() {
@@ -23,12 +23,15 @@ struct OpenSourceLicenseTests {
 
     /// BSD 3-Clause asks binary redistributions to reproduce the copyright
     /// notice, the conditions and the disclaimer.
-    @Test(arguments: ["libogg", "libvorbis"])
-    func xiphNoticeIsReproducedInFull(name: String) throws {
+    @Test(arguments: [
+        ("libogg", "Copyright (c) 2002"), ("libvorbis", "Copyright (c) 2002"),
+        ("libopus", "Copyright 2001-2023"), ("libopusfile", "Copyright (c) 1994-2013"),
+    ])
+    func xiphNoticeIsReproducedInFull(name: String, copyright: String) throws {
         let license = try #require(licenses.first { $0.name == name })
         let text = license.text()
-        #expect(text.contains("Copyright (c) 2002"))
-        #expect(text.contains("Xiph.org Foundation"))
+        #expect(text.contains(copyright))
+        #expect(text.localizedCaseInsensitiveContains("Xiph.Org"))
         #expect(text.contains("Redistributions in binary form must reproduce the above copyright"))
         #expect(text.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS"))
     }

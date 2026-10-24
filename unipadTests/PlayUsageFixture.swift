@@ -16,20 +16,23 @@ final class PlayUsageScenario {
     nonisolated static let defaultAutoPlay = "on 1 1\ndelay 400\non 1 2\ndelay 400\non 1 3\n"
 
     /// `keyLed` maps a keyLED file name ("1 1 1") to its text.
-    init(keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:], chains: Int = 1) throws {
+    init(
+        keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:],
+        grid: PackGrid = PackGrid()
+    ) throws {
         vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink))
         packFolder = FileManager.default.temporaryDirectory.appendingPathComponent("PlayUsage-\(UUID().uuidString)")
-        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, chains: chains)
+        try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, grid: grid)
     }
 
     static func run(
         keySound: String = defaultKeySound,
         autoPlay: String = defaultAutoPlay,
         keyLed: [String: String] = [:],
-        chains: Int = 1,
+        grid: PackGrid = PackGrid(),
         _ body: (PlayUsageScenario) async throws -> Void
     ) async throws {
-        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, chains: chains)
+        let s = try PlayUsageScenario(keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, grid: grid)
         defer { s.finish() }
         try await body(s)
     }
@@ -91,12 +94,20 @@ final class PlayUsageScenario {
         try? FileManager.default.removeItem(at: packFolder)
     }
 
+    /// The pack's `buttonX`, `buttonY` and `chain` lines.
+    struct PackGrid {
+        var buttonX = 8
+        var buttonY = 8
+        var chain = 1
+    }
+
     static func writePack(
-        to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:],
-        chains: Int = 1
+        to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay,
+        keyLed: [String: String] = [:], grid: PackGrid = PackGrid()
     ) throws {
+        let info = "title=PlayUsage\nproducerName=Tester\nbuttonX=\(grid.buttonX)\nbuttonY=\(grid.buttonY)\nchain=\(grid.chain)\nsquareButton=true\n"
         let files: [(String, Data)] = [
-            ("info", Data("title=PlayUsage\nproducerName=Tester\nbuttonX=8\nbuttonY=8\nchain=\(chains)\nsquareButton=true\n".utf8)),
+            ("info", Data(info.utf8)),
             ("keySound", Data(keySound.utf8)),
             ("autoPlay", Data(autoPlay.utf8)),
             ("sounds/a.wav", silentWav(milliseconds: 60)),

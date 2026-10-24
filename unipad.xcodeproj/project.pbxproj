@@ -15,6 +15,7 @@
 		A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */; };
 		A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */; };
 		A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B6B /* CVorbis */; };
+		A1B2C3D4E5F60718293A4B6E /* COpusFile in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B6D /* COpusFile */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,11 @@
 			path = unipadUITests;
 			sourceTree = "<group>";
 		};
+		16CE2BC52F5E6CE300402705 /* unipadTestSupport */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = unipadTestSupport;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +90,7 @@
 				A1B2C3D4E5F60718293A4B63 /* FirebaseRemoteConfig in Frameworks */,
 				A1B2C3D4E5F60718293A4B68 /* FirebaseInstallations in Frameworks */,
 				A1B2C3D4E5F60718293A4B6C /* CVorbis in Frameworks */,
+				A1B2C3D4E5F60718293A4B6E /* COpusFile in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,6 +118,7 @@
 				16CE2B922F5E6CE100402705 /* unipad */,
 				16CE2BA22F5E6CE300402705 /* unipadTests */,
 				16CE2BAC2F5E6CE300402705 /* unipadUITests */,
+				16CE2BC52F5E6CE300402705 /* unipadTestSupport */,
 				16CE2B912F5E6CE100402705 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -152,6 +160,7 @@
 				A1B2C3D4E5F60718293A4B67 /* FirebaseRemoteConfig */,
 				A1B2C3D4E5F60718293A4B69 /* FirebaseInstallations */,
 				A1B2C3D4E5F60718293A4B6B /* CVorbis */,
+				A1B2C3D4E5F60718293A4B6D /* COpusFile */,
 			);
 			productName = unipad;
 			productReference = 16CE2B902F5E6CE100402705 /* unipad.app */;
@@ -172,6 +181,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				16CE2BA22F5E6CE300402705 /* unipadTests */,
+				16CE2BC52F5E6CE300402705 /* unipadTestSupport */,
 			);
 			name = unipadTests;
 			packageProductDependencies = (
@@ -195,6 +205,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				16CE2BAC2F5E6CE300402705 /* unipadUITests */,
+				16CE2BC52F5E6CE300402705 /* unipadTestSupport */,
 			);
 			name = unipadUITests;
 			packageProductDependencies = (
@@ -751,6 +762,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */;
 			productName = CVorbis;
+		};
+		A1B2C3D4E5F60718293A4B6D /* COpusFile */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A4B6A /* XCLocalSwiftPackageReference "Vendor/XiphVorbis" */;
+			productName = COpusFile;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

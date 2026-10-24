@@ -21,3 +21,8 @@ comparison uses the existing generated `ReleaseFixture` and closes its result
 before opening the external file. No real service or manual fixture copy is
 needed. Release checks can run this class instead of adding another external
 import test.
+
+Opus.zip maps its first pad to a half-second 440 Hz stereo Ogg Opus tone.
+The second pad uses silence so the pack can still open without Opus support.
+The UI test records import and pad interaction; SoundEngineDecodingTests
+separately requires nonzero PCM at the actual mixer output.

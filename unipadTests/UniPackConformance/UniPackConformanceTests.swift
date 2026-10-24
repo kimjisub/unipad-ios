@@ -218,7 +218,8 @@ extension ConformanceCase {
         ConformanceCase(
             id: base.id, layer: base.layer, title: base.title, files: files ?? base.files, fingerprint: base.fingerprint,
             determined: base.determined, expected: expected ?? base.expected, question: base.question,
-            scenario: base.scenario, known: known ?? base.known, unobserved: unobserved ?? base.unobserved
+            scenario: base.scenario, known: known ?? base.known, unobserved: unobserved ?? base.unobserved,
+            soundIdentity: base.soundIdentity
         )
     }
 }

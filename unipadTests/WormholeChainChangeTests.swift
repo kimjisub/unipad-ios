@@ -24,7 +24,7 @@ extension PlayUsageRecordTests {
         }
 
         private static func run(_ body: (PlayUsageScenario, HeldDelay) async throws -> Void) async throws {
-            try await PlayUsageScenario.run(keySound: keySound, chains: 3) { s in
+            try await PlayUsageScenario.run(keySound: keySound, grid: .init(chain: 3)) { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
                 let delay = HeldDelay()

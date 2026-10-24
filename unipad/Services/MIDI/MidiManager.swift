@@ -26,6 +26,7 @@ final class MidiManager: ObservableObject {
     private var inputPort: MIDIPortRef = 0
     private var outputPort: MIDIPortRef = 0
     private var connectedSource: MIDIEndpointRef = 0
+    private var connectedPriority = DevicePriority.generic
     private var connectedDestination: MIDIEndpointRef = 0
     private var connectedDawDestination: MIDIEndpointRef = 0
     private var connectedDeviceEntity: MIDIEntityRef = 0
@@ -68,16 +69,36 @@ final class MidiManager: ObservableObject {
 
     private var midiInputLogCount: Int = 0
 
+    /// One channel message for the driver: `cmd` carries the port in its high nibble and the message
+    /// kind in its low nibble, as the first byte of a USB MIDI packet does.
+    typealias InputEvent = (cmd: Int, sig: Int, note: Int, velocity: Int)
+
     // Stored as nonisolated(unsafe) so the MIDI callback can reference it without actor hop
-    nonisolated(unsafe) private var midiInputCallback: ((_ events: [(cmd: Int, sig: Int, note: Int, velocity: Int)]) -> Void)?
+    nonisolated(unsafe) private var midiInputCallback: ((_ events: [InputEvent]) -> Void)?
 
     // MARK: - Device Registry
+
+    enum DevicePriority: Int {
+        case generic, keyboard, dedicated
+    }
 
     struct DriverEntry {
         let name: String
         let factory: () -> MidiDriver
         let preferredPort: Int
+        let priority: DevicePriority
+
+        init(name: String, factory: @escaping () -> MidiDriver, preferredPort: Int, priority: DevicePriority = .dedicated) {
+            self.name = name
+            self.factory = factory
+            self.preferredPort = preferredPort
+            self.priority = priority
+        }
     }
+
+    private static let keyboardDriver = DriverEntry(
+        name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0, priority: .keyboard
+    )
 
     // MARK: - Initialization
 
@@ -115,21 +136,7 @@ final class MidiManager: ObservableObject {
         // Set up the input callback closure (captured by the MIDI port, no actor hop needed)
         midiInputCallback = { [weak self] events in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                if self.midiInputLogCount < 20 {
-                    for event in events {
-                        self.log("MIDI IN: cmd=\(event.cmd) sig=\(event.sig) note=\(event.note) vel=\(event.velocity)")
-                    }
-                    self.midiInputLogCount += events.count
-                }
-                for event in events {
-                    self.driver.getSignal(
-                        cmd: event.cmd,
-                        sig: event.sig,
-                        note: event.note,
-                        velocity: event.velocity
-                    )
-                }
+                self?.receive(events)
             }
         }
 
@@ -163,35 +170,7 @@ final class MidiManager: ObservableObject {
             &inPort
         ) { eventList, srcConnRefCon in
             // Parse MIDI data synchronously — no actor access
-            let currentPortIndex = portIndex.pointee
-            var events = [(cmd: Int, sig: Int, note: Int, velocity: Int)]()
-
-            for packet in eventList.unsafeSequence() {
-                let wordCount = Int(packet.pointee.wordCount)
-                guard wordCount >= 1 else { continue }
-                withUnsafePointer(to: packet.pointee.words) { tuplePtr in
-                    tuplePtr.withMemoryRebound(to: UInt32.self, capacity: wordCount) { words in
-                        for w in 0..<wordCount {
-                            let word = words[w]
-                            let midiStatus = Int((word >> 16) & 0xFF)
-                            let data1 = Int((word >> 8) & 0xFF)
-                            let data2 = Int(word & 0xFF)
-
-                            if midiStatus == 0xF8 { continue }
-
-                            let statusType = midiStatus & 0xF0
-                            guard (0x80...0xE0).contains(statusType) else { continue }
-
-                            let group = Int((word >> 24) & 0xF)
-                            let cable = group != 0 ? group : currentPortIndex
-                            let cmd = (cable << 4) | (statusType >> 4)
-                            let sig = Int(Int8(truncatingIfNeeded: midiStatus))
-                            events.append((cmd: cmd, sig: sig, note: data1, velocity: data2))
-                        }
-                    }
-                }
-            }
-
+            let events = Self.channelMessages(in: eventList, port: portIndex.pointee)
             guard !events.isEmpty else { return }
             callback?(events)
         }
@@ -214,6 +193,59 @@ final class MidiManager: ObservableObject {
 
     /// Shared pointer for MIDI callback to read portIndex without actor hop
     private var _portIndexPtr: UnsafeMutablePointer<Int>?
+
+    /// The MIDI 1.0 channel messages in an event list CoreMIDI delivered from a source connected as
+    /// `port`. A message's Universal MIDI Packet group, when set, names its port instead. Each packet is
+    /// stepped over by its own length, so the later words of a system exclusive or MIDI 2.0 message are
+    /// never read as channel messages.
+    nonisolated static func channelMessages(in eventList: UnsafePointer<MIDIEventList>, port: Int) -> [InputEvent] {
+        var events: [InputEvent] = []
+        for packet in eventList.unsafeSequence() {
+            // Read where CoreMIDI wrote the packet: `pointee.words` is a copy of its first 64 words only.
+            let words = packet.words()
+            var index = words.startIndex
+            while index < words.endIndex {
+                let word = words[index]
+                let messageType = Int(word >> 28)
+                index += universalPacketWordCount(messageType: messageType)
+
+                let status = Int((word >> 16) & 0xFF)
+                guard messageType == 0x2, (0x8...0xE).contains(status >> 4) else { continue }
+                let group = Int((word >> 24) & 0xF)
+                let cable = group != 0 ? group : port
+                events.append((
+                    cmd: (cable << 4) | (status >> 4),
+                    sig: Int(Int8(truncatingIfNeeded: status)),
+                    note: Int((word >> 8) & 0xFF),
+                    velocity: Int(word & 0xFF)
+                ))
+            }
+        }
+        return events
+    }
+
+    /// The words in a Universal MIDI Packet of the given message type (MIDI 2.0 UMP specification).
+    private nonisolated static func universalPacketWordCount(messageType: Int) -> Int {
+        switch messageType {
+        case 0x0, 0x1, 0x2, 0x6, 0x7: 1
+        case 0x3, 0x4, 0x8, 0x9, 0xA: 2
+        case 0xB, 0xC: 3
+        default: 4
+        }
+    }
+
+    /// Hands channel messages read from the connected source to the driver, in order.
+    func receive(_ events: [InputEvent]) {
+        if midiInputLogCount < 20 {
+            for event in events {
+                log("MIDI IN: cmd=\(event.cmd) sig=\(event.sig) note=\(event.note) vel=\(event.velocity)")
+            }
+            midiInputLogCount += events.count
+        }
+        for event in events {
+            driver.getSignal(cmd: event.cmd, sig: event.sig, note: event.note, velocity: event.velocity)
+        }
+    }
 
     private func handleMIDINotification(_ messageID: MIDINotificationMessageID) {
         log("MIDI notification: \(messageID.rawValue)")
@@ -249,43 +281,43 @@ final class MidiManager: ObservableObject {
 
         log("MIDI scan: \(sourceCount) sources, \(destCount) destinations")
 
-        // If already connected to a known (non-generic) driver, skip
-        if connectedSource != 0 && !isGenericConnection {
+        // Dedicated drivers already have the highest priority. Preserve manual model choices too.
+        if connectedSource != 0 && !(driver is MasterKeyboardDriver) {
             log("Already connected to \(connectedDeviceName ?? "?"), skip scan")
             return
         }
 
-        // First pass: look for a known driver match
+        // Rank the whole list before the first connection. GenericDriver aliases MasterKeyboardDriver,
+        // so the discovered entry, rather than the driver's type, distinguishes fallback from keyboard.
+        var best: (index: Int, source: MIDIEndpointRef, entry: DriverEntry)?
         for i in 0..<sourceCount {
             let source = MIDIGetSource(i)
             let name = getMIDIObjectName(source)
             log("Source[\(i)]: \(name)")
 
-            if let matchedDriver = findDriverForSource(source) {
-                if connectedSource != 0 { disconnect() }
-                connectToDevice(sourceIndex: i, driverEntry: matchedDriver)
-                return
-            }
-        }
-
-        // Second pass: generic fallback, skip virtual/network sources
-        if connectedSource == 0 {
-            for i in 0..<sourceCount {
-                let source = MIDIGetSource(i)
-                let name = getMIDIObjectName(source)
+            let entry: DriverEntry
+            if let matched = findDriverForSource(source) {
+                entry = matched
+            } else {
                 if isVirtualSource(name: name) {
                     log("Skipping virtual: \(name)")
                     continue
                 }
-                let entry = DriverEntry(name: name, factory: { GenericDriver() }, preferredPort: 0)
-                connectToDevice(sourceIndex: i, driverEntry: entry)
+                entry = DriverEntry(name: name, factory: { GenericDriver() }, preferredPort: 0, priority: .generic)
+            }
+            if let best, best.entry.priority.rawValue >= entry.priority.rawValue { continue }
+            best = (i, source, entry)
+        }
+
+        guard let best else { return }
+        if connectedSource != 0 {
+            guard best.source != connectedSource, best.entry.priority.rawValue > connectedPriority.rawValue else {
+                log("Keeping connection to \(connectedDeviceName ?? "?")")
                 return
             }
+            disconnect()
         }
-    }
-
-    private var isGenericConnection: Bool {
-        driver is MasterKeyboardDriver
+        connectToDevice(sourceIndex: best.index, driverEntry: best.entry)
     }
 
     private func isVirtualSource(name: String) -> Bool {
@@ -391,7 +423,7 @@ final class MidiManager: ObservableObject {
         for candidate in candidateNames where !candidate.isEmpty {
             let lowered = candidate.lowercased()
             if lowered.contains("keyboard") || lowered.contains("piano") {
-                return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+                return Self.keyboardDriver
             }
         }
 
@@ -408,7 +440,7 @@ final class MidiManager: ObservableObject {
         }
 
         if lowered.contains("keyboard") || lowered.contains("piano") {
-            return DriverEntry(name: "Master Keyboard", factory: { MasterKeyboardDriver() }, preferredPort: 0)
+            return Self.keyboardDriver
         }
 
         return nil
@@ -466,6 +498,7 @@ final class MidiManager: ObservableObject {
         }
 
         connectedSource = source
+        connectedPriority = driverEntry.priority
         connectedDeviceName = driverEntry.name
 
         // Resolve destination: use DAW entity (entity 0) for SysEx, MIDI entity for pad LEDs
@@ -529,6 +562,7 @@ final class MidiManager: ObservableObject {
         driver.cycleListener?.onDisconnected()
 
         connectedSource = 0
+        connectedPriority = .generic
         connectedDestination = 0
         connectedDawDestination = 0
         connectedDeviceEntity = 0

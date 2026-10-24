@@ -71,25 +71,25 @@ struct ConformanceCorpus {
 
     /// The copy in the test bundle (the synchronized group ships it as a resource); the copy beside
     /// the sources is the fallback, and `source` says which one was read.
-    static func load(sourceFile: String = #filePath) throws -> ConformanceCorpus {
+    static func load(name: String = "corpus", sourceFile: String = #filePath) throws -> ConformanceCorpus {
         let bundle = Bundle(for: BundleLocator.self)
         let url: URL
         let source: String
-        if let external = ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ROOT"], !external.isEmpty {
+        if name == "corpus", let external = ProcessInfo.processInfo.environment["UNIPACK_CONFORMANCE_ROOT"], !external.isEmpty {
             url = URL(fileURLWithPath: external).appendingPathComponent("corpus.json")
             source = "external"
-        } else if let bundled = bundle.url(forResource: "corpus", withExtension: "json")
-            ?? bundle.url(forResource: "corpus", withExtension: "json", subdirectory: "UniPackConformance") {
+        } else if let bundled = bundle.url(forResource: name, withExtension: "json")
+            ?? bundle.url(forResource: name, withExtension: "json", subdirectory: "UniPackConformance") {
             url = bundled
             source = "bundle"
         } else {
-            let beside = URL(fileURLWithPath: sourceFile).deletingLastPathComponent().appendingPathComponent("corpus.json")
+            let beside = URL(fileURLWithPath: sourceFile).deletingLastPathComponent().appendingPathComponent(name + ".json")
             guard FileManager.default.fileExists(atPath: beside.path) else { throw LoadError.missing }
             url = beside
             source = "source-tree"
         }
         let data = try Data(contentsOf: url)
-        let digestFile = try? String(contentsOf: url.deletingLastPathComponent().appendingPathComponent("corpus.sha256"), encoding: .utf8)
+        let digestFile = try? String(contentsOf: url.deletingLastPathComponent().appendingPathComponent(name + ".sha256"), encoding: .utf8)
         _ = try verifyDigest(of: data, digestFile: digestFile)
         return try parse(data, source: source)
     }

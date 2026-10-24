@@ -22,6 +22,12 @@ UniPad is a performance-based rhythm game that enables connection with a launchp
 - **Low-Latency Audio**: Multi-channel sound playback built for live performance.
 - Built with SwiftUI, SwiftData and CoreMIDI.
 
+## Sound formats
+
+Ogg sounds can contain either Vorbis or Opus audio. Both are decoded locally,
+including on iOS versions without native Ogg support. WAV, MP3 and AAC sounds
+continue to use the system decoder.
+
 ## Getting Started
 
 ### Prerequisites
@@ -167,7 +173,8 @@ python3 ci/open_source_licenses.py check --source-packages <cloned source packag
 
 `write` regenerates the bundled texts; `check`, which CI runs after its Release build,
 fails when a package the build compiled is not listed, a listed one is no longer
-built, a version differs from `Package.resolved` or `Vendor/XiphVorbis/vendor.sh`, or a
+built, a version differs from `Package.resolved`, `Vendor/XiphVorbis/vendor.sh` or
+`Vendor/XiphVorbis/vendor_opus.py`, or a
 bundled text differs from its source.
 
 ## Play input checks on a Mac
