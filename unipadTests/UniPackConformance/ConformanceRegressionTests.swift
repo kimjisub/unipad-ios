@@ -1,10 +1,37 @@
 import Foundation
+import Darwin
 import Testing
 @testable import unipad
 
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test func caseSensitivityMatchesDistinctFileStorage() throws {
+        let root = ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
+        let directory = root.appendingPathComponent("case-storage-check-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Exclusive creation measures the namespace itself, independently of Foundation's lookup.
+        let first = directory.appendingPathComponent("a").path.withCString {
+            Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o600))
+        }
+        try #require(first >= 0, "the first probe file can be created")
+        _ = Darwin.close(first)
+        let second = directory.appendingPathComponent("A").path.withCString {
+            Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o600))
+        }
+        let creationError = errno
+        if second >= 0 {
+            _ = Darwin.close(second)
+        } else if creationError != EEXIST {
+            throw POSIXError(POSIXErrorCode(rawValue: creationError) ?? .EIO)
+        }
+        #expect(ConformanceHarness.caseSensitiveFileSystem == (second >= 0),
+                "the report must describe distinct file storage, not exact-spelling lookup")
+    }
+
     @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005", "RUN-S-008", "RUN-S-009", "RUN-S-010", "RUN-S-012", "RUN-S-013"])
     func playbackCasesAreMeasured(id: String) async throws {
         let corpus = try ConformanceCorpus.load()
