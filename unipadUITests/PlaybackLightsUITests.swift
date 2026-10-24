@@ -38,9 +38,12 @@ final class PlaybackLightsUITests: XCTestCase {
         XCTAssertTrue(grid.waitForExistence(timeout: 20))
         if enableFeedback {
             app.buttons["line.3.horizontal"].tap()
-            let feedback = app.switches["Feedback light"]
-            XCTAssertTrue(feedback.waitForExistence(timeout: 5))
+            // The combined row and its toggle can both be switches with this label.
+            let matches = app.switches.matching(identifier: "Feedback light")
+            XCTAssertTrue(matches.firstMatch.waitForExistence(timeout: 5))
+            let feedback = matches.element(boundBy: matches.count - 1)
             feedback.tap()
+            XCTAssertEqual(feedback.value as? String, "1")
             app.buttons["line.3.horizontal"].tap()
         }
         let idle = try PadPixels.settled(grid)
