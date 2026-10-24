@@ -104,7 +104,7 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
             .matching(NSPredicate(format: "label CONTAINS %@", "Connected: \(driver)")).firstMatch
         XCTAssertTrue(connected.waitForExistence(timeout: 15), "the app did not connect \(name) as \(driver)")
         UITestSupport.attachScreenshot("\(picture)-0-connected", to: self)
-        app.buttons["chevron.left"].firstMatch.tap()
+        UITestSupport.tapBack(in: app)
         UITestSupport.searchForPack("Virtual MIDI", in: app)
         let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Virtual MIDI")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20), "the Virtual MIDI pack was not prepared")
