@@ -639,8 +639,8 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         defer { vm.cleanup() }
         XCTAssertFalse(vm.scbFeedbackLight.visible)
-        XCTAssertFalse(vm.scbFeedbackLight.locked)
-        XCTAssertTrue(vm.scbFeedbackLight.checked)
+        vm.scbFeedbackLight.toggleChecked()
+        XCTAssertTrue(vm.scbFeedbackLight.checked, "hidden feedback cannot be changed by user input")
         vm.switchPlayMode(.autoPlay)
         vm.switchPlayMode(.none)
         XCTAssertTrue(vm.scbFeedbackLight.checked, "without pack lights, stopping autoplay keeps press feedback")
