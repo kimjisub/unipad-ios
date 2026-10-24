@@ -109,7 +109,7 @@ struct UniPackArchiveLayoutTests {
             ("Pack/info", Self.pack(in: "")[0].data),
             ("Pack/keySound", Data("1 1 1 a.wav\n1 1 2 소리.wav\n".utf8)),
             ("Pack/Sounds/A.WAV", inner),
-            ("Pack/sounds/소리.wav", inner),
+            ("Pack/Sounds/소리.wav", inner),
             ("sounds/a.wav", outer),
             Self.readme,
         ]
