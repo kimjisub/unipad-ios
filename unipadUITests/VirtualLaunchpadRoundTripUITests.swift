@@ -1,7 +1,7 @@
 import XCTest
 
 /// Run through ci/virtual_launchpad_roundtrip.py on a harness-lent simulator.
-/// Virtual MK2 only: this does not test USB hardware, physical latency, or other models.
+/// Virtual MIDI only: this does not test USB hardware or physical latency.
 final class VirtualLaunchpadRoundTripUITests: XCTestCase {
     @MainActor
     func testRoundTrip() throws {
@@ -14,9 +14,10 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         let path = try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_DIR"])
         let token = try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_TOKEN"])
         let order = try XCTUnwrap(env["UNIPAD_MIDI_ROUNDTRIP_ORDER"])
+        let deviceName = env["UNIPAD_MIDI_ROUNDTRIP_DEVICE"] ?? "Launchpad MK2"
         XCTAssertTrue(path.hasPrefix("/"), "round-trip directory must be an absolute path")
         XCTAssertNotNil(UUID(uuidString: token), "round-trip token must identify an isolated fixture")
-        XCTAssertTrue(["midi", "screen"].contains(order), "round-trip order must be midi or screen")
+        XCTAssertTrue(["midi", "screen", "matrix"].contains(order), "unknown round-trip scenario")
         let directory = URL(fileURLWithPath: path)
         let app = XCUIApplication()
         app.launchArguments = ["-UniPadFirebaseLocalOnly", "YES", "-UniPadReleaseTest", token,
@@ -28,8 +29,8 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         XCTAssertTrue(home.waitForExistence(timeout: 30), "waiting for home")
         home.tap()
         let connected = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", "Connected: Launchpad MK2")).firstMatch
-        XCTAssertTrue(connected.waitForExistence(timeout: 15), "waiting for virtual Launchpad MK2 connection")
+            .matching(NSPredicate(format: "label CONTAINS %@", order == "matrix" ? "Connected: Mystrix" : "Connected: \(deviceName)")).firstMatch
+        XCTAssertTrue(connected.waitForExistence(timeout: 15), "waiting for virtual controller connection")
         let connection = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         connection.name = "virtual-mk2-connected"
         connection.lifetime = .keepAlways
@@ -44,6 +45,38 @@ final class VirtualLaunchpadRoundTripUITests: XCTestCase {
         XCTAssertTrue(grid.waitForExistence(timeout: 30), "waiting for play grid")
         // The grid appears before loading completes; this control appears on the ready screen.
         XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 15), "waiting for ready play screen")
+        if order == "matrix" {
+            func waitForMarker(_ name: String) {
+                let file = directory.appendingPathComponent(name)
+                let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    FileManager.default.fileExists(atPath: file.path)
+                }, object: nil)
+                XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 20), .completed, "waiting for \(name)")
+            }
+            func capture(_ name: String) {
+                let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+                shot.name = name
+                shot.lifetime = .keepAlways
+                add(shot)
+            }
+            try Data("ready".utf8).write(to: directory.appendingPathComponent("send"), options: .atomic)
+            waitForMarker("held")
+            capture("matrix-held")
+            try Data("release".utf8).write(to: directory.appendingPathComponent("send.release"), options: .atomic)
+            waitForMarker("midi-complete")
+            capture("matrix-released")
+            app.buttons["line.3.horizontal"].tap()
+            capture("matrix-options")
+            let exit = app.buttons["rectangle.portrait.and.arrow.right"]
+            XCTAssertTrue(exit.waitForExistence(timeout: 5))
+            try Data(String(ProcessInfo.processInfo.systemUptime).utf8)
+                .write(to: directory.appendingPathComponent("exit-time"), options: .atomic)
+            exit.tap()
+            XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 15))
+            capture("matrix-after-exit")
+            try Data("finished".utf8).write(to: directory.appendingPathComponent("ui-complete"), options: .atomic)
+            return
+        }
         func tapScreen() {
             grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5 / 8, dy: 0.5 / 8)).tap()
             print("VIRTUAL-MIDI screen tap completed")

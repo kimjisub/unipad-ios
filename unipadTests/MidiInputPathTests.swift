@@ -31,6 +31,23 @@ nonisolated struct MidiTestDeviceError: Error, CustomStringConvertible {
     init(_ description: String) { self.description = description }
 }
 
+/// An input-only fixture still uses the real play controller for presses, releases and detach.
+/// Connection redraws have their own tests; they must not be counted as an out-of-grid pad's output.
+private final class InputOnlyMidiController: MidiController {
+    let target: MidiController
+    init(target: MidiController) { self.target = target }
+    func onAttach() {}
+    func onDetach() { target.onDetach() }
+    func onPadTouch(x: Int, y: Int, upDown: Bool, velocity: Int) {
+        target.onPadTouch(x: x, y: y, upDown: upDown, velocity: velocity)
+    }
+    func onChainTouch(c: Int, upDown: Bool) { target.onChainTouch(c: c, upDown: upDown) }
+    func onFunctionKeyTouch(f: Int, upDown: Bool) { target.onFunctionKeyTouch(f: f, upDown: upDown) }
+    func onUnknownEvent(cmd: Int, sig: Int, note: Int, velocity: Int) {
+        target.onUnknownEvent(cmd: cmd, sig: sig, note: note, velocity: velocity)
+    }
+}
+
 /// Feeds CoreMIDI event lists to `MidiManager.channelMessages` as the input port's read block does,
 /// with the port MidiManager would have connected, and records the LED messages its driver sends.
 @MainActor
@@ -152,7 +169,7 @@ extension PlayUsageRecordTests {
             try await PlayUsageScenario.waitWhile(timeout: 3) { !condition() }
         }
 
-        /// Launchpad Pro MK3, X and Mini MK3 are connected on their second port.
+        /// A port-one payload has the same meaning regardless of the selected hardware interface.
         @Test(arguments: MidiTestDeviceKind.available)
         func proMK3PortOneNotesPressLightAndReleasePads(kind: MidiTestDeviceKind) async throws {
             try await PlayUsageScenario.run(grid: .init(chain: 2)) { s in
@@ -268,6 +285,13 @@ extension PlayUsageRecordTests {
         func padsOutsideTheLaunchpadGridSendNoLight(kind: MidiTestDeviceKind) async throws {
             try await PlayUsageScenario.run(grid: .init(buttonX: 10, buttonY: 10)) { s in
                 try await s.loadReady()
+                let manager = MidiManager.shared
+                let controller = try #require(manager.controller)
+                let inputOnly = InputOnlyMidiController(target: controller)
+                manager.controller = inputOnly
+                defer {
+                    if manager.controller === inputOnly { manager.controller = controller }
+                }
                 try await withDevice(kind, "LPProMK3 MIDI", port: 1, driver: { LaunchpadProMK3Driver() }) { device in
                     s.press(8, 0)
                     s.press(0, 8)

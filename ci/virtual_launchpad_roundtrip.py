@@ -62,10 +62,38 @@ def scoped_log(text, bundle):
     return '\n'.join(line for line in text.splitlines() if f'unipad[{pid}:' in line), pid
 
 
-def assess(log, sent, received, order):
+def assess_pro_initialization(received):
+    message, modes = [], []
+    for line in received.splitlines():
+        fields = line.split()
+        if len(fields) < 2:
+            continue
+        when = float(fields[0])
+        for field in fields[1:]:
+            byte = int(field, 16)
+            if byte == 0xF0:
+                message = [byte]
+            elif message:
+                message.append(byte)
+                if byte == 0xF7:
+                    if message[:6] == [0xF0, 0, 0x20, 0x29, 2, 0x10] and message[6:8] in ([0x21, 0], [0x22, 0]):
+                        modes.append((when, message[6]))
+                    message = []
+    if [command for _, command in modes].count(0x21) != 2 or [command for _, command in modes].count(0x22) != 2:
+        raise ValueError('waiting for every Pro mode message')
+    lights = packets(received)
+    if not lights:
+        raise ValueError('waiting for Pro lights after initialization')
+    if lights[0][0] < max(t for t, _ in modes) + 0.5:
+        raise ValueError('Pro lights preceded the final mode message and settling delay')
+
+
+def assess(log, sent, received, order, controller='mk2'):
     """Reject send-only evidence, old/unrelated lights, and duplicate analytics."""
     if 'user_property platform=ios' not in log:
         raise ValueError('waiting for local-only AnalyticsLocal platform marker')
+    if controller == 'pro':
+        assess_pro_initialization(received)
     events = re.findall(r'event play_first_input ([^\n]*)', log)
     if len(events) != 1 or not re.search(rf'\binput_source={order}\b', events[0]):
         raise ValueError(f'expected exactly one {order} first input, got {events}')
@@ -117,6 +145,9 @@ class Run:
         self.handles = []
         self.report = {'command': __import__('sys').argv, 'checks': [], 'children': [],
                        'scope': 'virtual MK2; no physical USB, hardware latency, or other models'}
+        self.controller = getattr(args, 'controller', 'mk2')
+        if self.controller == 'pro':
+            self.report['scope'] = 'virtual original Pro; initialization order and MIDI round trip, no physical USB or hardware latency'
         # Stable across invocations so changing a bundle ID does not rebuild every package.
         # A pre-existing installation is preserved and rejected before doing any device work.
         self.bundle = 'io.unipad.tests.virtual-midi'
@@ -241,7 +272,7 @@ class Run:
             if not self.args.without_device:
                 helper = self.start(['zsh', 'ci/virtual-launchpad.sh', self.args.simulator, '300',
                                      str(directory / 'arrivals.txt'), str(directory / 'send'), str(directory / 'sent.txt')],
-                                    f'{order}/device.log')
+                                    f'{order}/device.log', dict(os.environ, UNIPAD_VIRTUAL_CONTROLLER=self.controller))
                 self.wait(lambda: 'started: pid=' in self.read(directory / 'device.log'), 60, 'virtual device process', helper)
                 self.device_pid = int(re.search(r'started: pid=(\d+)', self.read(directory / 'device.log'))[1])
                 self.wait(lambda: 'ready: pid=' in self.read(directory / 'device.log'), 60, 'virtual device ready', helper)
@@ -249,6 +280,8 @@ class Run:
                 self.report['children'].append({'pid': pid, 'simulator': self.args.simulator, 'kind': 'virtual-device'})
                 self.device_pid = pid
             environment = dict(os.environ)
+            if self.controller == 'pro':
+                environment['TEST_RUNNER_UNIPAD_MIDI_ROUNDTRIP_DEVICE'] = 'Launchpad Pro'
             for key, value in {'DIR': str(directory), 'TOKEN': token, 'ORDER': order}.items():
                 environment['TEST_RUNNER_UNIPAD_MIDI_ROUNDTRIP_' + key] = value
             # XCTest installs the runner; cleanup also covers a failed test launch.
@@ -265,7 +298,7 @@ class Run:
                     self.report.setdefault('app_pids', {})[order] = app_pid
                     # The MIDI-first scenario checks screen input later; all MIDI requirements
                     # must already be true when it is allowed to tap the screen.
-                    assess(text, sent, received, order)
+                    assess(text, sent, received, order, self.controller)
                     self.report.pop('waiting_for', None)
                     (directory / 'midi-complete').touch()
                 except ValueError as error:
@@ -282,7 +315,7 @@ class Run:
             if not (directory / 'ui-complete').exists():
                 raise ValueError(f'{order}: UI completion marker missing')
             own_log, _ = scoped_log(self.read(log), self.bundle)
-            assess(own_log, self.read(directory / 'sent.txt'), self.read(directory / 'arrivals.txt'), order)
+            assess(own_log, self.read(directory / 'sent.txt'), self.read(directory / 'arrivals.txt'), order, self.controller)
             self.report['checks'].append({'order': order, 'local_only': True, 'result': 'passed'})
             self.save()
 
@@ -363,6 +396,7 @@ def main():
     parser.add_argument('--derived-data', type=Path, required=True)
     parser.add_argument('--timeout', type=int, default=1200)
     parser.add_argument('--without-device', action='store_true', help='negative control: connection must fail')
+    parser.add_argument('--controller', choices=['mk2', 'pro'], default='mk2')
     args = parser.parse_args()
     run = Run(args)
     def interrupted(sig, frame):

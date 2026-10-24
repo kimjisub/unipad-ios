@@ -6,7 +6,28 @@ from pathlib import Path
 import signal
 import sys
 import tempfile
-from virtual_launchpad_roundtrip import assess, main, Run, snapshot, scoped_log
+from virtual_launchpad_roundtrip import assess, assess_pro_initialization, main, Run, snapshot, scoped_log
+
+
+class ProInitializationTests(unittest.TestCase):
+    modes = ('0.0 F0 00 20 29 02 10 21 00 F7\n'
+             '0.05 F0 00 20 29 02 10 22 00 F7\n'
+             '0.1 F0 00 20 29 02 10 21 00 F7\n'
+             '0.15 F0 00 20 29 02 10 22 00 F7\n')
+
+    def test_accepts_lights_after_all_modes_and_settling(self):
+        assess_pro_initialization(self.modes + '0.8 90 51 00\n')
+
+    def test_a_later_redraw_cannot_hide_lights_sent_between_modes(self):
+        received = self.modes.replace('0.05 F0', '0.01 90 51 05\n0.05 F0') + '1.0 90 51 05\n'
+        with self.assertRaises(ValueError):
+            assess_pro_initialization(received)
+
+    def test_rejects_missing_mode_or_missing_settling_delay(self):
+        with self.assertRaises(ValueError):
+            assess_pro_initialization(self.modes + '0.64 90 51 00\n')
+        with self.assertRaises(ValueError):
+            assess_pro_initialization('0.0 F0 00 20 29 02 10 21 00 F7\n0.8 90 51 00\n')
 
 
 class RoundTripVerdictTests(unittest.TestCase):
