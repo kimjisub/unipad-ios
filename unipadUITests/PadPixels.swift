@@ -35,6 +35,19 @@ struct PadPixels {
         }
     }
 
+    /// The element's pads once two consecutive shots agree, so a fading press is not compared.
+    @MainActor
+    static func settled(_ element: XCUIElement) throws -> PadPixels {
+        var last = try PadPixels(element.screenshot())
+        for _ in 0..<10 {
+            Thread.sleep(forTimeInterval: 0.3)
+            let next = try PadPixels(element.screenshot())
+            if next.changedPads(comparedWith: last).isEmpty { return next }
+            last = next
+        }
+        return last
+    }
+
     /// Pads whose mean colour moved by more than a slight rendering difference, as "row,column" from 1.
     func changedPads(comparedWith other: PadPixels) -> [String] {
         means.indices.compactMap { index in

@@ -39,9 +39,21 @@ if [[ -z $axe ]]; then
   fi
 fi
 
-keys=$(mktemp -d "${UNIPAD_TEST_TMPDIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/unipad-host-keys.XXXXXX")
+# The key folder is named after this script's pid so the watcher can remove it
+# even when the script is killed without running its EXIT trap; $$ stays this
+# script's pid inside the subshell. The watcher starts before the folder exists
+# so a kill at any point, mktemp included, leaves no folder behind. It keeps
+# none of the caller's output open: a caller that reaps this script only after
+# its output closes would otherwise wait on it forever.
+temp=${UNIPAD_TEST_TMPDIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}
+{
+  while kill -0 $$ 2>/dev/null; do sleep 0.2; done
+  rm -rf $temp/unipad-host-keys.$$.*
+} </dev/null >/dev/null 2>&1 &
+watcher=$!
+keys=$(mktemp -d "$temp/unipad-host-keys.$$.XXXXXX")
 responder=
-trap '[[ -n $responder ]] && kill $responder 2>/dev/null; rm -rf $keys' EXIT
+trap 'kill $watcher $responder 2>/dev/null; rm -rf $keys' EXIT
 
 deliver() {
   local state
@@ -62,8 +74,7 @@ deliver() {
 }
 
 # The responder ends with this script even when the script is killed without
-# running its EXIT trap; $$ stays this script's pid inside the subshell. It
-# starts before anything slow so a kill at any point leaves no folder behind.
+# running its EXIT trap.
 {
   while kill -0 $$ 2>/dev/null; do
     for request in $keys/request-*; do
@@ -87,7 +98,6 @@ deliver() {
     done
     sleep 0.2
   done
-  rm -rf $keys
 } &
 responder=$!
 
