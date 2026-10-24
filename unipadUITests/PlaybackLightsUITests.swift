@@ -48,7 +48,7 @@ final class PlaybackLightsUITests: XCTestCase {
         let capture = HeldCapture()
         let began = ProcessInfo.processInfo.systemUptime
         let duration = 5.0
-        let timer = Timer(timeInterval: 1.0, repeats: false) { _ in
+        let fire = Fire {
             MainActor.assumeIsolated {
                 capture.started = ProcessInfo.processInfo.systemUptime - began
                 let shot = grid.screenshot()
@@ -60,6 +60,7 @@ final class PlaybackLightsUITests: XCTestCase {
                 capture.completed = ProcessInfo.processInfo.systemUptime - began
             }
         }
+        let timer = Timer(timeInterval: 1.0, repeats: false) { _ in fire.run() }
         RunLoop.main.add(timer, forMode: .common)
         defer { timer.invalidate() }
         grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).press(forDuration: duration)
@@ -83,5 +84,11 @@ final class PlaybackLightsUITests: XCTestCase {
         var started = -1.0
         var completed = -1.0
         var pixels: PadPixels?
+    }
+
+    /// The timer fires on the main run loop, where its callback enters the main actor.
+    private final class Fire: @unchecked Sendable {
+        let run: () -> Void
+        init(_ run: @escaping () -> Void) { self.run = run }
     }
 }
