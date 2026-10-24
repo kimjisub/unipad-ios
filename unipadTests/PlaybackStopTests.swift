@@ -244,17 +244,29 @@ final class PlaybackStopTests: XCTestCase {
             to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
         try "1 1 1 a.wav 0\n2 1 1 a.wav 0\n".write(
             to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let leds = root.appendingPathComponent("keyLed")
+        try FileManager.default.createDirectory(at: leds, withIntermediateDirectories: true)
+        for chain in 1...2 {
+            try "on 1 1 a 5\ndelay 60000\n".write(to: leds.appendingPathComponent("\(chain) 1 1 0"), atomically: true, encoding: .utf8)
+        }
         let vm = try await loaded(root)
         defer { vm.cleanup() }
         let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.ledRunner)
 
         vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.midi))
+        runner.loop()
         vm.selectChain(1)
         vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.midi))
+        runner.loop()
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0, chain: 0))
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0, chain: 1))
         XCTAssertEqual(engine.activePlayIDs.count, 2, "sounds of different chains overlap")
         vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.midi))
 
+        runner.loop()
         XCTAssertTrue(engine.activePlayIDs.isEmpty, "an endless sound outlived the note's release")
+        XCTAssertFalse(runner.isEventExist(x: 0, y: 0))
     }
 
     /// Changing the press light option while a finger holds a pad keeps that pad sounding, and the
@@ -346,7 +358,7 @@ final class PlaybackStopTests: XCTestCase {
         XCTAssertFalse(runner.isEventExist(x: 0, y: 0), "a lost controller release stranded an endless light")
     }
 
-    func testLastFingerLiftKeepsTheFirstFingerSoundingAndLit() async throws {
+    func testLastFingerLiftStopsItsReplacementSoundButKeepsThePressLight() async throws {
         let root = try pack(loop: 0)
         defer { try? FileManager.default.removeItem(at: root) }
         let vm = try await loaded(root)
@@ -357,14 +369,15 @@ final class PlaybackStopTests: XCTestCase {
         vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: last)
         let sounding = engine.activePlayIDs
         vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: last)
-        XCTAssertEqual(engine.activePlayIDs, sounding, "one finger still holds the pad")
+        XCTAssertEqual(sounding.count, 1)
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "the lifted finger owns the replacement sound")
         XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed)
         vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: first)
         XCTAssertTrue(engine.activePlayIDs.isEmpty)
         XCTAssertNil(vm.padItems[0][0])
     }
 
-    func testFingerLiftKeepsTheControllerHoldSoundingAndLit() async throws {
+    func testFingerLiftStopsItsReplacementSoundButKeepsTheControllerPressLight() async throws {
         let root = try pack(loop: 0)
         defer { try? FileManager.default.removeItem(at: root) }
         let vm = try await loaded(root)
@@ -375,10 +388,110 @@ final class PlaybackStopTests: XCTestCase {
         vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen), inputID: finger)
         let sounding = engine.activePlayIDs
         vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.screen), inputID: finger)
-        XCTAssertEqual(engine.activePlayIDs, sounding)
+        XCTAssertEqual(sounding.count, 1)
+        XCTAssertTrue(engine.activePlayIDs.isEmpty, "the finger owns the replacement sound")
         XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed)
         vm.padTouch(x: 0, y: 0, isDown: false, trigger: .pad(.midi))
         XCTAssertTrue(engine.activePlayIDs.isEmpty)
+        XCTAssertNil(vm.padItems[0][0])
+    }
+
+    func testFirstFingerReleaseStopsOnlyItsChainSoundAndLight() async throws {
+        try await checkSeparateChainOwners(first: .pad(.screen), last: .pad(.screen), releaseFirst: true)
+    }
+
+    func testLastFingerReleaseStopsOnlyItsChainSoundAndLight() async throws {
+        try await checkSeparateChainOwners(first: .pad(.screen), last: .pad(.screen), releaseFirst: false)
+    }
+
+    func testFingerReleasePreservesTheControllerOnAnotherChain() async throws {
+        try await checkSeparateChainOwners(first: .pad(.screen), last: .pad(.midi), releaseFirst: true)
+    }
+
+    func testControllerReleasePreservesTheFingerOnAnotherChain() async throws {
+        try await checkSeparateChainOwners(first: .pad(.screen), last: .pad(.midi), releaseFirst: false)
+    }
+
+    func testPlayerReleasePreservesAutoplayOnAnotherChain() async throws {
+        try await checkSeparateChainOwners(first: .pad(.screen), last: .autoplay, releaseFirst: true)
+    }
+
+    func testAutoplayReleasePreservesThePlayerOnAnotherChain() async throws {
+        try await checkSeparateChainOwners(first: .pad(.screen), last: .autoplay, releaseFirst: false)
+    }
+
+    func testDisconnectStopsOnlyTheControllerSoundAndLightAcrossChains() async throws {
+        try await checkSeparateChainOwners(first: .pad(.midi), last: .pad(.screen), releaseFirst: true, detach: true)
+    }
+
+    /// Two chains start distinguishable endless voices and animations on the same input pad. A
+    /// release must retire its own chain even while another input keeps the press feedback lit.
+    private func checkSeparateChainOwners(
+        first: PlayTrigger, last: PlayTrigger, releaseFirst: Bool, detach: Bool = false
+    ) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "title=Separate Owners\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=2\n".write(
+            to: root.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+        try "1 1 1 a.wav 0\n2 1 1 a.wav 0\n".write(
+            to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        let leds = root.appendingPathComponent("keyLed")
+        try FileManager.default.createDirectory(at: leds, withIntermediateDirectories: true)
+        for chain in 1...2 {
+            try "on 1 \(chain + 1) a 5\ndelay 60000\n".write(
+                to: leds.appendingPathComponent("\(chain) 1 1 0"), atomically: true, encoding: .utf8)
+        }
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.ledRunner)
+        vm.scbFeedbackLight.setChecked(true)
+        let firstID = UUID(), lastID = UUID()
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: first, inputID: firstID)
+        runner.loop()
+        let firstSound = engine.activePlayIDs
+        vm.selectChain(1)
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: last, inputID: lastID)
+        runner.loop()
+        let lastSound = engine.activePlayIDs.subtracting(firstSound)
+        XCTAssertEqual(firstSound.count, 1)
+        XCTAssertEqual(lastSound.count, 1)
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0, chain: 0))
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0, chain: 1))
+
+        // An unknown finger, controller identity or autoplay press never releases either owner.
+        for trigger in [PlayTrigger.pad(.screen), .pad(.midi), .autoplay] {
+            vm.padTouch(x: 0, y: 0, isDown: false, trigger: trigger, inputID: UUID())
+        }
+        runner.loop()
+        XCTAssertEqual(engine.activePlayIDs, firstSound.union(lastSound))
+        XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed)
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0, chain: 0))
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0, chain: 1))
+
+        if detach {
+            vm.setupMidiController()
+            MidiManager.shared.controller?.onDetach()
+            let deadline = Date().addingTimeInterval(3)
+            while runner.isEventExist(x: 0, y: 0, chain: 0) && Date() < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        } else {
+            vm.padTouch(x: 0, y: 0, isDown: false, trigger: releaseFirst ? first : last,
+                        inputID: releaseFirst ? firstID : lastID)
+        }
+        runner.loop()
+        XCTAssertEqual(engine.activePlayIDs, releaseFirst ? lastSound : firstSound,
+                       "a release must stop only its own chain's sound")
+        XCTAssertEqual(runner.isEventExist(x: 0, y: 0, chain: 0), !releaseFirst)
+        XCTAssertEqual(runner.isEventExist(x: 0, y: 0, chain: 1), releaseFirst)
+        XCTAssertEqual(vm.padItems[0][0]?.channel, .pressed, "another input still presses the pad")
+
+        vm.padTouch(x: 0, y: 0, isDown: false, trigger: releaseFirst ? last : first,
+                    inputID: releaseFirst ? lastID : firstID)
+        runner.loop()
+        XCTAssertTrue(engine.activePlayIDs.isEmpty)
+        XCTAssertFalse(runner.isEventExist(x: 0, y: 0))
         XCTAssertNil(vm.padItems[0][0])
     }
 
