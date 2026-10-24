@@ -45,7 +45,7 @@ final class PlaybackLightsUITests: XCTestCase {
             feedback.tap()
             XCTAssertEqual(feedback.value as? String, "1")
             // The menu button is hidden while the menu is open; its dimmed backdrop dismisses it.
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+            grid.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
             XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 5))
         }
         let idle = try PadPixels.settled(grid)
