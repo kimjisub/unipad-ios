@@ -16,8 +16,13 @@ extension PlayUsageRecordTests {
             let manager = MidiManager.shared
             let previousListener = manager.listener
             manager.stop()
+            // Keep a separate client alive while MidiManager is stopped. An acknowledgement from
+            // the tool precedes this process's endpoint-cache update; start() must see the full list.
+            var observer: MIDIClientRef = 0
+            let status = MIDIClientCreateWithBlock("UniPad discovery tests" as CFString, &observer) { _ in }
+            try #require(status == noErr)
+            defer { MIDIClientDispose(observer) }
             let events = SelectionEvents()
-            manager.listener = events
             let tool = try VirtualMidiDevice(folder: URL(fileURLWithPath: try #require(MidiTestDeviceKind.folder)))
             defer {
                 manager.stop()
@@ -25,9 +30,30 @@ extension PlayUsageRecordTests {
                 try? tool.run("close")
             }
             try tool.run("close")
+            try await waitForEndpoints([])
             for name in names { try tool.run("add \(name)") }
+            try await waitForEndpoints(names)
+            manager.listener = events
             manager.start()
             try await body(tool, events)
+        }
+
+        private func endpointNames(sources: Bool) -> [String] {
+            let count = sources ? MIDIGetNumberOfSources() : MIDIGetNumberOfDestinations()
+            return (0..<count).map { index in
+                let endpoint = sources ? MIDIGetSource(index) : MIDIGetDestination(index)
+                var name: Unmanaged<CFString>?
+                MIDIObjectGetStringProperty(endpoint, kMIDIPropertyName, &name)
+                return name?.takeRetainedValue() as String? ?? ""
+            }
+        }
+
+        private func waitForEndpoints(_ names: [String]) async throws {
+            try await PlayUsageScenario.waitWhile(timeout: 5) {
+                endpointNames(sources: true) != names || endpointNames(sources: false) != names
+            }
+            try #require(endpointNames(sources: true) == names, "initial sources are not ready in the requested order")
+            try #require(endpointNames(sources: false) == names, "initial destinations are not ready")
         }
 
         /// A tool acknowledgement only means the endpoints exist. Wait until a scan in the app
