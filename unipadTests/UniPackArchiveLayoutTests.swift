@@ -92,7 +92,8 @@ struct UniPackArchiveLayoutTests {
         let installed = try (await importArchive(files)).get()
         #expect(Set(FileManager.default.subpaths(atPath: installed.path) ?? []) ==
                 ["info", "keySound", "sounds", "sounds/a.wav"])
-        let pack = UniPackFolder(rootFolder: installed).load()
+        let pack = UniPackFolder(rootFolder: installed)
+        pack.load()
         pack.loadDetail()
         #expect(pack.errorDetail == nil)
         let selected = try #require(pack.soundTable?[0][0][0]?.first?.file)
@@ -114,7 +115,8 @@ struct UniPackArchiveLayoutTests {
         ]
 
         let installed = try (await importArchive(files)).get()
-        let pack = UniPackFolder(rootFolder: installed).load()
+        let pack = UniPackFolder(rootFolder: installed)
+        pack.load()
         pack.loadDetail()
         #expect(pack.errorDetail == nil)
         for y in 0..<2 {
@@ -136,7 +138,8 @@ struct UniPackArchiveLayoutTests {
         ]
 
         let installed = try (await importArchive(files)).get()
-        let pack = UniPackFolder(rootFolder: installed).load()
+        let pack = UniPackFolder(rootFolder: installed)
+        pack.load()
         pack.loadDetail()
         #expect(pack.soundTable?[0][0][0]?.first != nil)
         #expect(pack.soundTable?[0][0][1]?.first == nil)
