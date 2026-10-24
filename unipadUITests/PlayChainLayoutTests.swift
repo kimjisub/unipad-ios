@@ -53,8 +53,9 @@ final class PlayChainLayoutTests: XCTestCase {
         switch "\(Int(window.width))x\(Int(window.height))" {
         case "874x402": return window.insetBy(dx: 62, dy: 0).divided(atDistance: window.height - 20, from: .minYEdge).slice
         case "844x390": return window.insetBy(dx: 47, dy: 0).divided(atDistance: window.height - 21, from: .minYEdge).slice
-        // iPad Pro 11-inch (M4), measured in a separate fullscreen UIKit window.
-        case "1210x834": return window.divided(atDistance: window.height - 25, from: .minYEdge).slice
+        // iPad Pro 11-inch (M5) on iOS 27.0, measured in a separate full-screen landscape UIKit app
+        // with the status bar hidden and the home indicator set to auto-hide.
+        case "1210x834": return window.divided(atDistance: window.height - 20, from: .minYEdge).slice
         default: throw XCTSkip("no independent safe-area reference for \(window)")
         }
     }
@@ -71,29 +72,41 @@ final class PlayChainLayoutTests: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "playFunction.")).count, pro ? 8 : 0)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "playFunction.")).count, 0,
                        "function lights must not be announced as chain buttons")
-        XCTAssertTrue(bounds.contains(grid.frame), "pads leave the safe area")
-        XCTAssertEqual(grid.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 1)
-        XCTAssertEqual(grid.frame.width / CGFloat(columns), grid.frame.height / CGFloat(rows), accuracy: 0.01)
+        // Each frame is read from the app once and compared here: every read is a query to the app,
+        // and reading both frames for every pair of controls made this check take minutes.
+        let gridFrame = grid.frame
+        let menuFrame = menu.frame
         let logo = app.images["playLogo"]
+        let logoFrame = logo.exists ? logo.frame : nil
+        XCTAssertTrue(bounds.contains(gridFrame), "pads leave the safe area")
+        XCTAssertEqual(gridFrame.midX, app.windows.firstMatch.frame.midX, accuracy: 1)
+        // Pads are square up to the screen's pixel rounding.
+        XCTAssertEqual(gridFrame.width / CGFloat(columns), gridFrame.height / CGFloat(rows),
+                       accuracy: 1 / UIScreen.main.scale)
+        var frames: [CGRect] = []
         for (index, button) in (visibleChains + functions).enumerated() {
             XCTAssertTrue(button.exists)
-            XCTAssertTrue(bounds.contains(button.frame), "button \(index) leaves \(safe): \(button.frame)")
+            let frame = button.frame
+            XCTAssertTrue(bounds.contains(frame), "button \(index) leaves \(safe): \(frame)")
             XCTAssertTrue(button.isHittable)
-            XCTAssertFalse(button.frame.insetBy(dx: 0.5, dy: 0.5).intersects(grid.frame), "chain covers a pad")
-            XCTAssertFalse(button.frame.intersects(menu.frame), "chain covers the menu")
-            if logo.exists { XCTAssertFalse(button.frame.intersects(logo.frame), "chain covers the logo") }
-            for other in (visibleChains + functions).dropFirst(index + 1) {
-                XCTAssertFalse(button.frame.insetBy(dx: 0.5, dy: 0.5).intersects(other.frame), "chain touch areas overlap")
+            XCTAssertFalse(frame.insetBy(dx: 0.5, dy: 0.5).intersects(gridFrame), "chain covers a pad")
+            XCTAssertFalse(frame.intersects(menuFrame), "chain covers the menu")
+            if let logoFrame { XCTAssertFalse(frame.intersects(logoFrame), "chain covers the logo") }
+            for other in frames {
+                XCTAssertFalse(frame.insetBy(dx: 0.5, dy: 0.5).intersects(other), "chain touch areas overlap")
             }
+            frames.append(frame)
         }
         UITestSupport.attachScreenshot("\(name)-layout", to: self)
+        let selectedChains = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND selected == YES", "playChain."))
         for number in 1...count {
             let reference = number == 4 ? min(5, count) : 4
             chains[reference - 1].tap()
             XCTAssertTrue(chains[reference - 1].isSelected)
             chains[number - 1].tap()
             XCTAssertTrue(chains[number - 1].isSelected, "tap \(number) selected another chain")
-            XCTAssertEqual(chains.filter { $0.isSelected }.count, 1)
+            XCTAssertEqual(selectedChains.count, 1)
             print("CHAIN \(name) requested=\(number) selected=\(number) frame=\(chains[number - 1].frame)")
             UITestSupport.attachScreenshot("\(name)-chain-\(number)", to: self)
         }
