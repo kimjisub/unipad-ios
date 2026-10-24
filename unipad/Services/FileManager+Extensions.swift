@@ -22,7 +22,7 @@ nonisolated enum FileManagerExtensions {
     /// to the pack folder) are ignored as long as exactly one folder at that level leads to an
     /// `info`. Two packs in one archive are left as they are, so the import reports that none is found.
     static func unwrapUniPackFolder(at path: URL) throws {
-        try unwrap(at: path) { visible in
+        try unwrap(at: path, discardSiblings: true) { visible in
             guard !visible.contains(where: { isInfoFile($0) }) else { return nil }
             let folders = visible.filter(isDirectory)
             if visible.count == 1 { return folders.first }
@@ -34,10 +34,17 @@ nonisolated enum FileManagerExtensions {
     /// Moves the contents of the folder `next` picks up into `path`, level by level, until it
     /// picks none. `next` sees the folder's items without Finder's `__MACOSX` sibling and dot files:
     /// every pack zipped on a Mac used to fail to import because the root had two children.
-    private static func unwrap(at path: URL, next: ([URL]) -> URL?) throws {
+    private static func unwrap(at path: URL, discardSiblings: Bool = false, next: ([URL]) -> URL?) throws {
         while true {
             guard let contents = try? FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
             guard let wrapped = next(contents.filter { !isHiddenFromUnwrap($0) }) else { return }
+            // Only the selected pack belongs here. Leaving siblings in place would merge their
+            // sounds into the pack or let an outside file satisfy a missing keySound entry.
+            if discardSiblings {
+                for sibling in contents where sibling != wrapped {
+                    try FileManager.default.removeItem(at: sibling)
+                }
+            }
             try moveDirectory(from: wrapped, to: path)
         }
     }
