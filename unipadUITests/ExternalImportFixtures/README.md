@@ -19,3 +19,11 @@ Opus.zip maps its first pad to a half-second 440 Hz stereo Ogg Opus tone.
 The second pad uses silence so the pack can still open without Opus support.
 The UI test records import and pad interaction; SoundEngineDecodingTests
 separately requires nonzero PCM at the actual mixer output.
+
+RectangularLights.uni, RectangularFeedback.uni and PressedLight.uni are generated
+8x8, one-chain packs with a 100 ms silent WAV on the first pad. The two light
+packs repeat an explicit green `00FF00` light until release. The rectangular
+packs set `squareButton=false`; PressedLight keeps square pads.
+`PlaybackLightsUITests` checks default lights and feedback, then feedback's
+priority over pack lights. Its timed screenshots must finish while the pad is
+still held. The fixtures contain no recordings or third-party artwork.
