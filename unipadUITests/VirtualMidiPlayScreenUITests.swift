@@ -28,6 +28,40 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     }
 
     @MainActor
+    func testLaunchpadInputAndLightsReturnAfterHome() throws {
+        let idle = try openPlayScreen(device: "Launchpad MK2", connectedAs: "Launchpad MK2", picture: "home-return")
+        for (step, note) in [UInt32(81), 82, 83].enumerated() {
+            if step > 0 {
+                XCUIDevice.shared.press(.home)
+                let background = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    self.app.state == .runningBackground || self.app.state == .runningBackgroundSuspended
+                }, object: app)
+                XCTAssertEqual(XCTWaiter().wait(for: [background], timeout: 10), .completed)
+                UITestSupport.attachScreenshot("home-return-\(step)-home", to: self)
+                app.activate()
+                XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+                XCTAssertTrue(grid.waitForExistence(timeout: 10))
+            }
+            let arrivalsURL = device.folder.appendingPathComponent("arrivals")
+            let previous = try String(contentsOf: arrivalsURL, encoding: .utf8).split(separator: "\n").count
+            try device.send(0x90, note, 100)
+            XCTAssertEqual(try waitForLitPads(["1,\(step + 1)"], comparedWith: idle, picture: "home-return-\(step)-pressed"),
+                           ["1,\(step + 1)"], "the MIDI pad did not reach play after returning from Home")
+            let feedback = String(format: "90 %02X 03", note)
+            let deadline = Date().addingTimeInterval(3)
+            var replies: [String] = []
+            repeat {
+                replies = try String(contentsOf: arrivalsURL, encoding: .utf8).split(separator: "\n").dropFirst(previous).map(String.init)
+                if replies.contains(feedback) { break }
+                Thread.sleep(forTimeInterval: 0.05)
+            } while Date() < deadline
+            XCTAssertTrue(replies.contains(feedback), "the Launchpad did not receive its pad light after returning from Home")
+            try device.send(0x90, note, 0)
+            XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "home-return-\(step)-released"), [])
+        }
+    }
+
+    @MainActor
     func testFirstConnectionPrefersLaunchpadOverKeyboard() throws {
         _ = try openPlayScreen(device: "Test Keyboard", additionalDevices: ["Launchpad MK2"],
                                connectedAs: "Launchpad MK2", picture: "initial-device-priority")
