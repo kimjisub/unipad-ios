@@ -52,10 +52,18 @@ final class MidiManager: ObservableObject {
         didSet {
             oldValue.sendClearLed()
             oldValue.cycleListener?.onDisconnected()
+            driverVersion += 1
             setupDriverListeners()
-            driver.initialize()
             if isConnected {
-                driver.cycleListener?.onConnected()
+                let version = driverVersion
+                sendQueue.initialize(driver) { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.isConnected, self.driverVersion == version else { return }
+                        self.driver.cycleListener?.onConnected()
+                    }
+                }
+            } else {
+                driver.initialize()
             }
             listener?.onChangeDriver(driver: driver)
         }
@@ -65,13 +73,15 @@ final class MidiManager: ObservableObject {
     weak var listener: MidiManagerListener?
 
     // Send queue for batching MIDI output
-    private let sendQueue = DispatchQueue(label: "com.kimjisub.unipad.midi.send")
+    private let sendQueue: MidiOutputQueue
+    private var driverVersion = 0
+    private let inputDecoder = MidiInputDecoder()
 
     private var midiInputLogCount: Int = 0
 
     /// One channel message for the driver: `cmd` carries the port in its high nibble and the message
     /// kind in its low nibble, as the first byte of a USB MIDI packet does.
-    typealias InputEvent = (cmd: Int, sig: Int, note: Int, velocity: Int)
+    typealias InputEvent = MidiInputDecoder.Event
 
     // Stored as nonisolated(unsafe) so the MIDI callback can reference it without actor hop
     nonisolated(unsafe) private var midiInputCallback: ((_ events: [InputEvent]) -> Void)?
@@ -102,7 +112,15 @@ final class MidiManager: ObservableObject {
 
     // MARK: - Initialization
 
-    private init() {}
+    init(sendQueue: MidiOutputQueue = MidiOutputQueue()) {
+        self.sendQueue = sendQueue
+    }
+
+    /// Drop unsent lights before queuing a clear or a new playback's lights.
+    /// Initialization and the current transmission continue on the same connection.
+    func discardPendingLights() {
+        sendQueue.discardPendingLights()
+    }
 
     func start() {
         log("MidiManager.start()")
@@ -157,6 +175,7 @@ final class MidiManager: ObservableObject {
 
         // Capture values needed by the MIDI input callback to avoid actor-isolated access
         let callback = midiInputCallback
+        let decoder = inputDecoder
         let portIndex = UnsafeMutablePointer<Int>.allocate(capacity: 1)
         portIndex.initialize(to: 0)
         _portIndexPtr = portIndex
@@ -170,7 +189,7 @@ final class MidiManager: ObservableObject {
             &inPort
         ) { eventList, srcConnRefCon in
             // Parse MIDI data synchronously — no actor access
-            let events = Self.channelMessages(in: eventList, port: portIndex.pointee)
+            let events = Self.channelMessages(in: eventList, port: portIndex.pointee, decoder: decoder)
             guard !events.isEmpty else { return }
             callback?(events)
         }
@@ -194,44 +213,18 @@ final class MidiManager: ObservableObject {
     /// Shared pointer for MIDI callback to read portIndex without actor hop
     private var _portIndexPtr: UnsafeMutablePointer<Int>?
 
-    /// The MIDI 1.0 channel messages in an event list CoreMIDI delivered from a source connected as
-    /// `port`. A message's Universal MIDI Packet group, when set, names its port instead. Each packet is
-    /// stepped over by its own length, so the later words of a system exclusive or MIDI 2.0 message are
-    /// never read as channel messages.
-    nonisolated static func channelMessages(in eventList: UnsafePointer<MIDIEventList>, port: Int) -> [InputEvent] {
+    /// Reads the actual packet storage, including packets longer than the struct's 64-word tuple.
+    /// Keep the decoder across callbacks so a split Pro Live notification can complete, while each
+    /// Universal MIDI Packet is still consumed by its full length before reading the next message.
+    nonisolated static func channelMessages(
+        in eventList: UnsafePointer<MIDIEventList>, port: Int,
+        decoder: MidiInputDecoder = MidiInputDecoder()
+    ) -> [InputEvent] {
         var events: [InputEvent] = []
         for packet in eventList.unsafeSequence() {
-            // Read where CoreMIDI wrote the packet: `pointee.words` is a copy of its first 64 words only.
-            let words = packet.words()
-            var index = words.startIndex
-            while index < words.endIndex {
-                let word = words[index]
-                let messageType = Int(word >> 28)
-                index += universalPacketWordCount(messageType: messageType)
-
-                let status = Int((word >> 16) & 0xFF)
-                guard messageType == 0x2, (0x8...0xE).contains(status >> 4) else { continue }
-                let group = Int((word >> 24) & 0xF)
-                let cable = group != 0 ? group : port
-                events.append((
-                    cmd: (cable << 4) | (status >> 4),
-                    sig: Int(Int8(truncatingIfNeeded: status)),
-                    note: Int((word >> 8) & 0xFF),
-                    velocity: Int(word & 0xFF)
-                ))
-            }
+            events += decoder.decode(Array(packet.words()), portIndex: port)
         }
         return events
-    }
-
-    /// The words in a Universal MIDI Packet of the given message type (MIDI 2.0 UMP specification).
-    private nonisolated static func universalPacketWordCount(messageType: Int) -> Int {
-        switch messageType {
-        case 0x0, 0x1, 0x2, 0x6, 0x7: 1
-        case 0x3, 0x4, 0x8, 0x9, 0xA: 2
-        case 0xB, 0xC: 3
-        default: 4
-        }
     }
 
     /// Hands channel messages read from the connected source to the driver, in order.
@@ -332,8 +325,9 @@ final class MidiManager: ObservableObject {
         ("lpminimk3", DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
         // Launchpad X — sources: "LPX DAW Out", "LPX MIDI Out"
         ("lpx",       DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
-        // Launchpad Pro MK3 — sources: "LPProMK3 DAW Out", "LPProMK3 MIDI Out"
-        ("lppromk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
+        // Launchpad Pro MK3 — interfaces in order: "LPProMK3 MIDI", "LPProMK3 DIN", "LPProMK3 DAW".
+        // Programmer mode reports the pads on, and lights LEDs sent to, the first (MIDI) one.
+        ("lppromk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 0)),
         // Launchpad Pro — sources: "Launchpad Pro ..." (full name)
         ("lppro",     DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         // Launchpad MK2 — sources: "Launchpad MK2 ..."
@@ -342,13 +336,13 @@ final class MidiManager: ObservableObject {
         // Full-name fallbacks for stock firmware (checked before CFW)
         ("launchpad mini mk3", DriverEntry(name: "Launchpad Mini MK3", factory: { LaunchpadMiniMK3Driver() }, preferredPort: 1)),
         ("launchpad x",        DriverEntry(name: "Launchpad X", factory: { LaunchpadXDriver() }, preferredPort: 1)),
-        ("launchpad pro mk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 1)),
+        ("launchpad pro mk3",  DriverEntry(name: "Launchpad Pro MK3", factory: { LaunchpadProMK3Driver() }, preferredPort: 0)),
         ("launchpad open",     DriverEntry(name: "Launchpad Pro (mat1jaczyyy CFW)", factory: { LaunchpadProCFWDriver() }, preferredPort: 0)),
         ("launchpad pro",      DriverEntry(name: "Launchpad Pro", factory: { LaunchpadProDriver() }, preferredPort: 0)),
         ("launchpad mk2",      DriverEntry(name: "Launchpad MK2", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
         ("launchpad s",        DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
         ("launchpad mini",     DriverEntry(name: "Launchpad S", factory: { LaunchpadSDriver() }, preferredPort: 0)),
-        ("launchpad",          DriverEntry(name: "Launchpad (Generic)", factory: { LaunchpadMK2Driver() }, preferredPort: 0)),
+        ("launchpad",          DriverEntry(name: "Launchpad", factory: { LaunchpadSDriver() }, preferredPort: 0)),
 
         // CoreFW mappings (Pro, MK2, S, Mini, X, Mini MK3, Pro MK3)
         ("pro (midi)",         DriverEntry(name: "Launchpad (CoreFW)", factory: { LaunchpadCoreCFWDriver() }, preferredPort: 1)),
@@ -409,18 +403,13 @@ final class MidiManager: ObservableObject {
         }
 
         // 2. Check sourceName, displayName, deviceName, entityName, and modelName against sourceNameDriverMap
-        let candidateNames = [displayName, deviceName, entityName, modelName, sourceName]
-        for candidate in candidateNames where !candidate.isEmpty {
-            let lowered = candidate.lowercased()
-            for mapping in Self.sourceNameDriverMap {
-                if lowered.hasPrefix(mapping.prefix) {
-                    return mapping.entry
-                }
-            }
+        let candidateNames = [displayName, deviceName, entityName, modelName, sourceName].filter { !$0.isEmpty }
+        if let named = candidateNames.lazy.compactMap({ Self.driverEntry(forName: $0) }).first {
+            return named
         }
 
         // 3. Keyboard / Piano keywords
-        for candidate in candidateNames where !candidate.isEmpty {
+        for candidate in candidateNames {
             let lowered = candidate.lowercased()
             if lowered.contains("keyboard") || lowered.contains("piano") {
                 return Self.keyboardDriver
@@ -430,7 +419,8 @@ final class MidiManager: ObservableObject {
         return nil
     }
 
-    private func findDriverForDevice(name: String) -> DriverEntry? {
+    /// The driver whose prefix starts a CoreMIDI source, display, device, entity or model name.
+    static func driverEntry(forName name: String) -> DriverEntry? {
         let lowered = name.lowercased()
 
         for mapping in Self.sourceNameDriverMap {
@@ -541,6 +531,7 @@ final class MidiManager: ObservableObject {
         }
 
         log("MIDI:setting driver...")
+        sendQueue.reset()
         // isConnected first: the driver's didSet only fires cycleListener.onConnected (which draws
         // the current LEDs onto the new device) when it is already true, so a hot-plugged
         // Launchpad stayed dark until an unrelated redraw.
@@ -554,6 +545,8 @@ final class MidiManager: ObservableObject {
     }
 
     func disconnect() {
+        sendQueue.reset()
+        inputDecoder.reset()
         if connectedSource != 0 {
             MIDIPortDisconnectSource(inputPort, connectedSource)
         }
@@ -588,102 +581,16 @@ final class MidiManager: ObservableObject {
 
     // MIDI input handling is now inline in setupCoreMIDI's MIDIInputPortCreateWithProtocol callback
 
-    // MARK: - MIDI Output
-
-    func sendMIDIMessage(cmd: UInt8, sig: UInt8, note: UInt8, velocity: UInt8) {
-        let dest = connectedDestination
-        let port = outputPort
-        guard dest != 0, port != 0 else { return }
-
-        sendQueue.async {
-            var packetList = MIDIPacketList()
-            var packet = MIDIPacketListInit(&packetList)
-            let data: [UInt8] = [sig, note, velocity]
-            packet = MIDIPacketListAdd(&packetList, Int(MemoryLayout<MIDIPacketList>.size), packet, 0, data.count, data)
-
-            MIDISend(port, dest, &packetList)
-        }
-    }
-
-    func sendSysEx(messages: [[UInt8]], cableNumber: Int = 0) {
-        // SysEx always goes to DAW destination (entity 0), falling back to main destination
-        let destination = connectedDawDestination != 0 ? connectedDawDestination : connectedDestination
-        guard destination != 0 else { return }
-
-        let queue = sendQueue
-        let onFailure: @Sendable (OSStatus) -> Void = { [weak self] status in
-            Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
-        }
-        queue.async {
-            Self.sendSysExMessage(messages, at: 0, to: destination, on: queue, onFailure: onFailure)
-        }
-    }
-
-    // One message per hop, the next one 50 ms later via asyncAfter: a Thread.sleep on the
-    // shared serial sendQueue froze every pad-LED message for the whole burst (~150 ms at
-    // connect on a Pro), and a failed MIDISendSysex never ran the completion, leaking the
-    // request and its buffer.
-    private nonisolated static func sendSysExMessage(
-        _ messages: [[UInt8]],
-        at index: Int,
-        to destination: MIDIEndpointRef,
-        on queue: DispatchQueue,
-        onFailure: @escaping @Sendable (OSStatus) -> Void
-    ) {
-        guard index < messages.count else { return }
-        let message = messages[index]
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: message.count)
-        buffer.initialize(from: message, count: message.count)
-
-        // MIDISysexSendRequest must remain valid until completion callback fires.
-        // CoreMIDI advances `data` and decrements `bytesToSend` during send,
-        // so store the original buffer pointer in completionRefCon for deallocation.
-        let context = Unmanaged.passRetained(
-            SysExContext(buffer: buffer, count: message.count)
-        ).toOpaque()
-
-        let requestPtr = UnsafeMutablePointer<MIDISysexSendRequest>.allocate(capacity: 1)
-        requestPtr.initialize(to: MIDISysexSendRequest(
-            destination: destination,
-            data: UnsafePointer(buffer),
-            bytesToSend: UInt32(message.count),
-            complete: false,
-            reserved: (0, 0, 0),
-            completionProc: { completedPtr in
-                if let refCon = completedPtr.pointee.completionRefCon {
-                    let ctx = Unmanaged<SysExContext>.fromOpaque(refCon).takeRetainedValue()
-                    ctx.buffer.deinitialize(count: ctx.count)
-                    ctx.buffer.deallocate()
-                }
-                completedPtr.deinitialize(count: 1)
-                completedPtr.deallocate()
-            },
-            completionRefCon: context
-        ))
-        let status = MIDISendSysex(requestPtr)
-        if status != noErr {
-            // The completion will not run; release what it would have released.
-            let ctx = Unmanaged<SysExContext>.fromOpaque(context).takeRetainedValue()
-            ctx.buffer.deinitialize(count: ctx.count)
-            ctx.buffer.deallocate()
-            requestPtr.deinitialize(count: 1)
-            requestPtr.deallocate()
-            onFailure(status)
-            return
-        }
-        if index + 1 < messages.count {
-            queue.asyncAfter(deadline: .now() + 0.05) {
-                sendSysExMessage(messages, at: index + 1, to: destination, on: queue, onFailure: onFailure)
-            }
-        }
-    }
-
     // MARK: - Driver Listener Setup
 
     private func setupDriverListeners() {
         let cycleListener = MidiManagerCycleAdapter(manager: self)
         let receiveListener = MidiManagerReceiveAdapter(manager: self)
-        let sendListener = MidiManagerSendAdapter(manager: self)
+        let destination = connectedDawDestination != 0 ? connectedDawDestination : connectedDestination
+        let sendListener = MidiManagerSendAdapter(output: sendQueue, port: outputPort,
+                                                 destination: connectedDestination, sysexDestination: destination) { [weak self] status in
+            Task { @MainActor [weak self] in self?.log("MIDISendSysex failed: \(status)") }
+        }
 
         driver.cycleListener = cycleListener
         driver.receiveSignalListener = receiveListener
@@ -715,16 +622,6 @@ final class MidiManager: ObservableObject {
     }
 
 }
-
-nonisolated private final class SysExContext {
-    let buffer: UnsafeMutablePointer<UInt8>
-    let count: Int
-    init(buffer: UnsafeMutablePointer<UInt8>, count: Int) {
-        self.buffer = buffer
-        self.count = count
-    }
-}
-
 
 // MARK: - Listener Protocol
 
@@ -789,19 +686,29 @@ private final class MidiManagerReceiveAdapter: MidiDriverReceiveSignalListener {
     }
 }
 
-private final class MidiManagerSendAdapter: MidiDriverSendSignalListener {
-    weak var manager: MidiManager?
-    init(manager: MidiManager) { self.manager = manager }
+nonisolated final class MidiManagerSendAdapter: MidiDriverSendSignalListener {
+    let output: MidiOutputQueue
+    let port: MIDIPortRef
+    let destination: MIDIEndpointRef
+    let sysexDestination: MIDIEndpointRef
+    let onFailure: @Sendable (OSStatus) -> Void
+
+    init(output: MidiOutputQueue, port: MIDIPortRef, destination: MIDIEndpointRef,
+         sysexDestination: MIDIEndpointRef, onFailure: @escaping @Sendable (OSStatus) -> Void) {
+        self.output = output
+        self.port = port
+        self.destination = destination
+        self.sysexDestination = sysexDestination
+        self.onFailure = onFailure
+    }
 
     func onSend(cmd: UInt8, sig: UInt8, note: UInt8, velocity: UInt8) {
-        Task { @MainActor in
-            manager?.sendMIDIMessage(cmd: cmd, sig: sig, note: note, velocity: velocity)
-        }
+        output.send([sig, note, velocity], port: port, destination: destination)
     }
 
     func onSendRaw(messages: [[UInt8]], cableNumber: Int) {
-        Task { @MainActor in
-            manager?.sendSysEx(messages: messages, cableNumber: cableNumber)
-        }
+        // Endpoints were selected when the driver was installed. Snapshot them so
+        // queued messages cannot be redirected to a newly connected device.
+        output.sendSysEx(messages, destination: sysexDestination, onFailure: onFailure)
     }
 }

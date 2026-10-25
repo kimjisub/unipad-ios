@@ -22,7 +22,7 @@ nonisolated enum FileManagerExtensions {
     /// to the pack folder) are ignored as long as exactly one folder at that level leads to an
     /// `info`. Two packs in one archive are left as they are, so the import reports that none is found.
     static func unwrapUniPackFolder(at path: URL) throws {
-        try unwrap(at: path) { visible in
+        try unwrap(at: path, discardSiblings: true) { visible in
             guard !visible.contains(where: { isInfoFile($0) }) else { return nil }
             let folders = visible.filter(isDirectory)
             if visible.count == 1 { return folders.first }
@@ -34,10 +34,17 @@ nonisolated enum FileManagerExtensions {
     /// Moves the contents of the folder `next` picks up into `path`, level by level, until it
     /// picks none. `next` sees the folder's items without Finder's `__MACOSX` sibling and dot files:
     /// every pack zipped on a Mac used to fail to import because the root had two children.
-    private static func unwrap(at path: URL, next: ([URL]) -> URL?) throws {
+    private static func unwrap(at path: URL, discardSiblings: Bool = false, next: ([URL]) -> URL?) throws {
         while true {
             guard let contents = try? FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
             guard let wrapped = next(contents.filter { !isHiddenFromUnwrap($0) }) else { return }
+            // Only the selected pack belongs here. Leaving siblings in place would merge their
+            // sounds into the pack or let an outside file satisfy a missing keySound entry.
+            if discardSiblings {
+                for sibling in contents where sibling != wrapped {
+                    try FileManager.default.removeItem(at: sibling)
+                }
+            }
             try moveDirectory(from: wrapped, to: path)
         }
     }
@@ -133,20 +140,23 @@ nonisolated enum FileManagerExtensions {
 
     /// Moves the contents of `source` into `target` and removes `source`. Directories that exist
     /// on both sides are merged (as Android's FileManager.moveDirectory does); an item whose
-    /// destination is `source` itself (zip layout Pack/Pack/info) is parked beside the tree and
-    /// moved in after `source` is gone. The old version deleted the destination first, which for
+    /// destination is `source` itself (including another spelling on a case-insensitive disk) is
+    /// parked beside the tree and moved in after `source` is gone. The old version deleted the destination first, which for
     /// that layout deleted the source subtree and destroyed the pack being imported.
     static func moveDirectory(from source: URL, to target: URL) throws {
         let fm = FileManager.default
         let sourcePath = source.standardizedFileURL.path
-        guard sourcePath != target.standardizedFileURL.path else { return }
+        guard sourcePath != target.standardizedFileURL.path, !sameFile(source, target) else { return }
         do {
             let sourceContents = try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey])
 
             var deferred: [(parked: URL, dest: URL)] = []
             for item in sourceContents {
                 let dest = target.appendingPathComponent(item.lastPathComponent)
-                if dest.standardizedFileURL.path == sourcePath {
+                // The simulator can report a differently cased alias as missing but still
+                // refuse the move because that alias is the source. Parking a possible alias
+                // is safe on case-sensitive disks too, and avoids relying on that lookup.
+                if dest.standardizedFileURL.path.lowercased() == sourcePath.lowercased() || sameFile(source, dest) {
                     let parked = target.appendingPathComponent(".unipad-move-" + UUID().uuidString)
                     try fm.moveItem(at: item, to: parked)
                     deferred.append((parked: parked, dest: dest))
@@ -173,6 +183,16 @@ nonisolated enum FileManagerExtensions {
             logger.error("moveDirectory failed: \(error.localizedDescription)")
             throw error
         }
+    }
+
+    private static func sameFile(_ first: URL, _ second: URL) -> Bool {
+        guard let lhs = try? FileManager.default.attributesOfItem(atPath: first.path),
+              let rhs = try? FileManager.default.attributesOfItem(atPath: second.path),
+              let leftDevice = lhs[.systemNumber] as? NSNumber,
+              let rightDevice = rhs[.systemNumber] as? NSNumber,
+              let leftFile = lhs[.systemFileNumber] as? NSNumber,
+              let rightFile = rhs[.systemFileNumber] as? NSNumber else { return false }
+        return leftDevice == rightDevice && leftFile == rightFile
     }
 
     static func copyDirectory(from source: URL, to target: URL) throws {

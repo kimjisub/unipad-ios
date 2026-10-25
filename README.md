@@ -150,6 +150,22 @@ runs on its own after the plan:
 python3 ci/virtual_launchpad_roundtrip.py --simulator <simulator-udid> --output build/virtual-launchpad --derived-data build/virtual-launchpad/DerivedData
 ```
 
+Pass `--controller pro` to run the same input round trip with a virtual original
+Launchpad Pro. That also requires every mode message and its settling delay to
+precede the first pad or round-button light, including light-off messages.
+
+The virtual Matrix check holds an endless pad light, sends a velocity-zero release,
+captures the held and released play screen, then checks that leaving play clears all
+32 round lights. It records the release before leaving, so an exit clear cannot hide
+a failed release:
+
+```bash
+python3 ci/matrix_roundtrip.py --simulator <simulator-udid> --output build/virtual-matrix --derived-data build/virtual-launchpad/DerivedData
+```
+
+Both commands require a new output directory and a simulator acquired through the
+device harness. They do not establish physical USB operation or audible output.
+
 What a simulator cannot show is checked by hand on a device with the release
 candidate: connect a supported Launchpad, press two pads together and change
 chains while listening, unplug and replug it during play, lock and unlock the

@@ -48,16 +48,38 @@ enum ConformanceSoundIdentity {
         let path = relativePath(file, root: root)
         let digest = ConformanceCorpus.sha256Hex(try Data(contentsOf: file))
         let matching = entries.filter { $0.path.lowercased() == path.lowercased() && $0.sha256 == digest }
-        guard matching.count == 1 else { throw TraceError.ambiguousSource(path) }
-        return matching[0]
+        if matching.count == 1 { return matching[0] }
+        guard matching.isEmpty else { throw TraceError.ambiguousSource(path) }
+        // A generated storage name has no independent name match. Only a unique source payload
+        // can corroborate its catalog association; equal payloads remain ambiguous.
+        let payloads = entries.filter { $0.sha256 == digest }
+        let original = originalPath(file, root: root)
+        guard payloads.count == 1, payloads[0].path.utf8.elementsEqual(original.utf8) else {
+            throw TraceError.ambiguousSource(path)
+        }
+        return payloads[0]
     }
 
     private static func relativePath(_ file: URL, root: URL) -> String {
         String(file.resolvingSymlinksInPath().path.dropFirst(root.resolvingSymlinksInPath().path.count + 1))
     }
 
+    /// The catalog is importer output, not proof: source() still requires a unique ZIP name and
+    /// payload hash. A bad association therefore cannot give unrelated bytes provenance.
+    private static func originalPath(_ file: URL, root: URL) -> String {
+        let path = relativePath(file, root: root)
+        guard path.lowercased().hasPrefix("sounds/"),
+              let sounds = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                .first(where: { $0.lastPathComponent.lowercased() == "sounds" }),
+              let entry = ImportedSoundPaths.files(in: sounds).first(where: {
+                  sounds.appendingPathComponent($0.stored).resolvingSymlinksInPath() == file.resolvingSymlinksInPath()
+              }), let original = entry.archiveEntry else { return path }
+        return original
+    }
+
     static var observationRoot: URL {
-        if let path = ProcessInfo.processInfo.environment["UNIPACK_SOUND_IDENTITY_ROOT"] {
+        if let path = ProcessInfo.processInfo.environment["UNIPACK_SOUND_IDENTITY_ROOT"]
+            ?? ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"] {
             return URL(fileURLWithPath: path, isDirectory: true)
         }
         return FileManager.default.temporaryDirectory
@@ -85,12 +107,12 @@ enum ConformanceSoundIdentity {
         let stored = try storedFiles(root: root)
         let soundEntries = archived.filter { $0.path.lowercased().hasPrefix("sounds/") }
         let lost = soundEntries.filter { original in
-            !stored.contains { $0.path.lowercased() == original.path.lowercased() && $0.sha256 == original.sha256 }
+            !stored.contains { $0.originalPath.lowercased() == original.path.lowercased() && $0.sha256 == original.sha256 }
         }
         var diagnostic: [String: JSONValue] = [
             "importRoot": .string(root.path),
             "archive": .array(archived.map { ["archiveEntry": .string($0.path), "sha256": .string($0.sha256)] }),
-            "stored": .array(stored.map { ["storagePath": .string($0.path), "sha256": .string($0.sha256)] }),
+            "stored": .array(stored.map { ["storagePath": .string($0.path), "archiveEntry": .string($0.originalPath), "sha256": .string($0.sha256)] }),
             "lostContents": .array(lost.map { .string($0.path) }),
             "fileSystem": try fileSystem(at: scratch),
             "boundary": "UniPackImporter -> UniPackFolder -> soundGet -> selected file bytes; no speaker output observed",
@@ -137,13 +159,20 @@ enum ConformanceSoundIdentity {
         return .value(actual)
     }
 
-    private static func storedFiles(root: URL) throws -> [Entry] {
+    private struct StoredEntry {
+        let path: String
+        let originalPath: String
+        let sha256: String
+    }
+
+    private static func storedFiles(root: URL) throws -> [StoredEntry] {
         let fm = FileManager.default
         let paths = fm.subpaths(atPath: root.path) ?? []
         return try paths.sorted().compactMap { path in
             let file = root.appendingPathComponent(path)
             guard try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { return nil }
-            return Entry(path: path, sha256: ConformanceCorpus.sha256Hex(try Data(contentsOf: file)))
+            return StoredEntry(path: path, originalPath: originalPath(file, root: root),
+                               sha256: ConformanceCorpus.sha256Hex(try Data(contentsOf: file)))
         }
     }
 
@@ -159,9 +188,9 @@ enum ConformanceSoundIdentity {
         let canonicalAlias = try? Data(contentsOf: probe.appendingPathComponent("e\u{301}"))
         return ["format": .string(values.volumeLocalizedFormatDescription ?? "unknown"),
                 "root": .string(root.path),
-                "caseSensitive": .bool(!fm.fileExists(atPath: probe.appendingPathComponent("A").path)),
+                "caseSensitive": .bool(ConformanceHarness.storesDistinctFiles(named: ("a", "A"), at: probe.appendingPathComponent("case"))),
                 "caseAliasReadsOriginalBytes": .bool(caseAlias == Data([1])),
                 "canonicalAliasReadsOriginalBytes": .bool(canonicalAlias == Data([2])),
-                "canonicalSpellingsDistinct": .bool(!fm.fileExists(atPath: probe.appendingPathComponent("e\u{301}").path))]
+                "canonicalSpellingsDistinct": .bool(ConformanceHarness.storesDistinctFiles(named: ("é", "e\u{301}"), at: probe.appendingPathComponent("canonical")))]
     }
 }

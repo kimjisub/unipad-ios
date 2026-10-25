@@ -76,12 +76,13 @@ struct MainPackPanel: View {
                     }
                     .frame(width: 32, height: 32)
 
-                    if let onWebsite, unipack.website != nil {
+                    if let onWebsite {
                         Button(action: onWebsite) {
                             Image(systemName: "globe")
                                 .foregroundStyle(Color(hex: 0x555555))
                         }
                         .frame(width: 32, height: 32)
+                        .accessibilityIdentifier("main.pack.website")
                     }
                 }
 

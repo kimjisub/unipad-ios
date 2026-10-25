@@ -19,7 +19,8 @@ exit code and the individual failures are part of the baseline evidence.
 
 To observe another disk, set `TEST_RUNNER_UNIPACK_SOUND_IDENTITY_ROOT` to an
 existing writable folder on that volume. Archive, staging, and imported
-library all live there. A per-case probe reports the file-system format,
+library all live there. Otherwise `UNIPACK_CASE_ROOT`, then the test process's temporary
+directory, is used. A per-case probe reports the file-system format,
 whether letter case distinguishes files, and whether canonical Unicode
 spellings distinguish files. The format can be `unknown` under the iOS SDK;
 retain the host volume description separately. Diagnostics also record the
@@ -54,3 +55,12 @@ in that report's directory. They do not assert that every observation passes on 
 current app. No app extraction, parser, or playback logic is changed. The
 observed boundary ends at the file bytes selected for the sound engine; it does
 not establish decoded audio or speaker output.
+
+When collision preservation assigns a separate storage name, diagnostics retain both
+that physical path and the importer's original-name catalog entry. An existing physical
+name match takes precedence over the catalog. A generated name is traceable only when
+its actual payload identifies exactly one source ZIP entry and its catalog association
+matches that entry byte for byte. Equal source payloads remain unverified. Expected
+results do not participate. Content-loss checks also follow cataloged storage paths,
+and their fault-injection test overwrites the actual unused stored file. Disk distinction
+uses two writes and retained contents rather than exact-spelling lookup.

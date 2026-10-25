@@ -85,29 +85,14 @@ struct LaunchpadCoreCFWDriverTests {
         #expect(capture.sent.isEmpty)
     }
 
-    /// Stock-firmware messages that select a mode or layout, as (device id, command) pairs:
-    /// Pro mode/layout, MK2 layout, and X / Mini MK3 / Pro MK3 layout, programmer/live and DAW mode.
-    private static let modeSelectCommands: Set<[UInt8]> = [
-        [0x10, 0x21], [0x10, 0x22], [0x10, 0x2C],
-        [0x18, 0x22],
-        [0x0C, 0x00], [0x0C, 0x0E], [0x0C, 0x10],
-        [0x0D, 0x00], [0x0D, 0x0E], [0x0D, 0x10],
-        [0x0E, 0x00], [0x0E, 0x0E], [0x0E, 0x10],
-    ]
-
-    @Test func initClearsLedsWithoutSelectingAStockMode() {
+    /// CoreFW boots in its own performance mode and is sent nothing on connect, as on Android and the
+    /// web: a stock firmware's mode message would switch it away.
+    @Test func connectSendsNothing() {
         let (driver, capture) = make()
         driver.initialize()
-        #expect(capture.raw.map(\.cable) == [0])
-        #expect(capture.raw[0].messages == [
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x0E, 0x00, 0xF7],
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x0E, 0x00, 0xF7],
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x12, 0x01, 0x01, 0x01, 0xF7],
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x12, 0x01, 0x00, 0x01, 0xF7],
-        ])
-        for message in capture.raw[0].messages {
-            #expect(!Self.modeSelectCommands.contains(Array(message[5...6])), "\(message)")
-        }
+        #expect(capture.raw.isEmpty)
+        #expect(capture.sent.isEmpty)
+        #expect(driver.getInitSysEx() == nil)
     }
 
     @Test func paletteModelsSendThePackCodeUnchanged() {

@@ -5,6 +5,38 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct SoundIdentityTests {
+    @Test(arguments: ["KS-G620", "KS-G621", "KS-G622", "KS-G623", "KS-G624", "KS-G625"])
+    func separatelyStoredCollisionsKeepTheirArchiveProvenance(id: String) async throws {
+        let (corpus, sample) = try reference(id)
+        let observed = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        guard case .value(let actual) = observed else {
+            Issue.record("preserved archive entries could not be traced: \(observed)")
+            return
+        }
+        #expect(actual == sample.expected)
+    }
+
+    @Test func aCatalogCannotOverridePhysicalProvenanceOrDisambiguateEqualPayloads() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("identity-catalog-\(UUID().uuidString)")
+        let sounds = root.appendingPathComponent("sounds")
+        try FileManager.default.createDirectory(at: sounds, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bytes = Data("same source payload".utf8)
+        try bytes.write(to: sounds.appendingPathComponent("a.wav"))
+        try bytes.write(to: sounds.appendingPathComponent("separate.wav"))
+        try ImportedSoundPaths.write([
+            .init(name: "a.wav", stored: "a.wav", archiveEntry: "sounds/b.wav"),
+            .init(name: "a.wav", stored: "separate.wav", archiveEntry: "sounds/a.wav"),
+        ], in: sounds)
+        let digest = ConformanceCorpus.sha256Hex(bytes)
+        let entries = [ConformanceSoundIdentity.Entry(path: "sounds/a.wav", sha256: digest),
+                       ConformanceSoundIdentity.Entry(path: "sounds/b.wav", sha256: digest)]
+        #expect(try ConformanceSoundIdentity.source(for: sounds.appendingPathComponent("a.wav"), root: root, entries: entries).path == "sounds/a.wav")
+        #expect(throws: ConformanceSoundIdentity.TraceError.self) {
+            try ConformanceSoundIdentity.source(for: sounds.appendingPathComponent("separate.wav"), root: root, entries: entries)
+        }
+    }
+
     private func reference(_ id: String) throws -> (ConformanceCorpus, ConformanceCase) {
         let corpus = try ConformanceCorpus.load(name: "sound-identity-corpus")
         return (corpus, try #require(corpus.cases.first { $0.id == id }))
@@ -128,10 +160,15 @@ struct SoundIdentityTests {
         var deps = ConformanceDeps()
         let load = deps.load
         deps.load = { root in
-            let desired = root.appendingPathComponent("sounds/소리.wav")
-            let other = root.appendingPathComponent("sounds/소리.wav")
-            if let bytes = try? Data(contentsOf: desired) { try? bytes.write(to: other) }
-            return load(root)
+            let pack = load(root)
+            if let desired = pack.soundGet(c: 0, x: 0, y: 0)?.file,
+               let bytes = try? Data(contentsOf: desired),
+               let other = ImportedSoundPaths.files(in: root.appendingPathComponent("sounds"))
+                .map({ root.appendingPathComponent("sounds").appendingPathComponent($0.stored) })
+                .first(where: { $0 != desired }) {
+                try? bytes.write(to: other)
+            }
+            return pack
         }
         let result = try await ConformanceHarness.actual(for: altered, corpus: corpus, deps: deps).classified(for: altered)
         #expect(result.actual == sample.expected)

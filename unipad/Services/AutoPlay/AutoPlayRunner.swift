@@ -17,8 +17,26 @@ final class AutoPlayRunner {
     private let sleep: @MainActor (UInt64) async throws -> Void
 
     var playmode: Bool = true {
-        didSet { if !playmode { releaseHeldPads() } }
+        didSet {
+            guard playmode != oldValue else { return }
+            if playmode {
+                if let pausedAt { pendingPauseMs += clock() - pausedAt }
+                pausedAt = nil
+                resumeRequested = true
+            } else {
+                // Preserve an app suspension even if its return notification arrives after this pause.
+                let skipped = suspendedTime.tick(at: clock()) + pendingSkipMs
+                if waitingForChain < 0 { pendingPauseMs += skipped }
+                pausedAt = clock()
+                releaseHeldPads()
+            }
+            // The explicit pause already accounts for any app suspension inside it.
+            suspendedTime.reset()
+            pendingSkipMs = 0
+        }
     }
+    private var pausedAt: Int64?
+    private var pendingPauseMs: Int64 = 0
     var beforeStartPlaying: Bool = true
     var practiceGuide: Bool = false {
         didSet { if practiceGuide { releaseHeldPads() } }
@@ -81,7 +99,9 @@ final class AutoPlayRunner {
     private var guideTimeline: [GuideEvent] = []
     private var guideIndex: Int = 0
     private var waitingForChain: Int = -1
-    private var waitStartTime: Int64 = 0
+    private var timedWaitStart: Int64?
+    private var pendingWaitReset = false
+    private var resumeRequested = false
 
     // key = x*256+y, value = targetWallTimeMs
     /// Guide pads currently lit, keyed by guideKey. Ticks and stop() run on the main actor.
@@ -160,7 +180,6 @@ final class AutoPlayRunner {
         }
         listener?.onRemoveGuide()
         guideIndex = guideTimeline.firstIndex { $0.timeMs >= elapsed } ?? guideTimeline.count
-        waitingForChain = -1
     }
 
     private func buildGuideTimeline(autoPlay: AutoPlay) -> [GuideEvent] {
@@ -215,6 +234,24 @@ final class AutoPlayRunner {
             self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? .min : nil)
             var delayAccum: Int64 = 0
             var startTime = self.clock()
+            self.pausedAt = self.playmode ? nil : startTime
+            self.pendingPauseMs = 0
+            var rebaseSeekOnResume = false
+            self.waitingForChain = -1
+            self.timedWaitStart = nil
+            self.pendingWaitReset = false
+            self.resumeRequested = false
+
+            // Step chain hints have no timed wait. Every exit from a timed guide wait
+            // excludes only its playing time; explicit pauses are accounted for separately.
+            @MainActor func finishChainWait(at now: Int64) {
+                if let began = self.timedWaitStart {
+                    startTime += max(0, (self.pausedAt ?? now) - began)
+                }
+                self.timedWaitStart = nil
+                self.waitingForChain = -1
+            }
+
             var prevPracticeGuide = self.practiceGuide
             self.suspendedTime.reset()
             self.pendingSkipMs = 0
@@ -222,6 +259,13 @@ final class AutoPlayRunner {
 
             while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
                 let currTime = self.clock()
+
+                let paused = self.pendingPauseMs
+                self.pendingPauseMs = 0
+                if paused > 0 {
+                    startTime += paused
+                    if let began = self.timedWaitStart { self.timedWaitStart = began + paused }
+                }
 
                 // Paused or waiting for a chain, the loop below already owes nothing for time passing.
                 let skipped = self.suspendedTime.tick(at: currTime) + self.pendingSkipMs
@@ -231,17 +275,31 @@ final class AutoPlayRunner {
                     if self.practiceGuide { self.restartGuide(at: currTime - startTime) }
                 }
 
-                if self.guideMoved {
+                let resuming = self.playmode && self.resumeRequested
+                if resuming {
+                    self.resumeRequested = false
+                    finishChainWait(at: currTime)
+                    if self.practiceGuide { self.restartGuide(at: currTime - startTime) }
+                }
+
+                if self.guideMoved || (resuming && rebaseSeekOnResume) {
                     self.guideMoved = false
-                    if self.practiceGuide && self.playmode {
+                    finishChainWait(at: currTime)
+                    rebaseSeekOnResume = !self.playmode
+                    if self.playmode {
                         delayAccum = self.timeMs(at: self.progress, in: autoPlay)
                         startTime = currTime - delayAccum
-                        self.restartGuide(at: delayAccum)
+                        if self.practiceGuide { self.restartGuide(at: delayAccum) }
                     }
                 }
 
+                if self.pendingWaitReset {
+                    self.pendingWaitReset = false
+                    finishChainWait(at: currTime)
+                }
+
                 // The guide already waited for this group. Start its remaining notes now,
-                // even if playback was paused between selecting autoplay and this tick.
+                // after settling any chain wait, even if paused before this tick.
                 if self.playmode && !self.practiceGuide && self.pendingAutoplayStep?.needsOrigin == true {
                     startTime = currTime
                     delayAccum = 0
@@ -250,19 +308,18 @@ final class AutoPlayRunner {
 
                 // Detect mid-run practice mode toggle
                 if self.practiceGuide != prevPracticeGuide {
+                    finishChainWait(at: currTime)
                     if self.practiceGuide {
                         self.guideTimeline = self.buildGuideTimeline(autoPlay: autoPlay)
                         let elapsed = currTime - startTime
                         let idx = self.guideTimeline.firstIndex { $0.timeMs > elapsed - Self.guideLookaheadMs }
                         self.guideIndex = idx ?? self.guideTimeline.count
-                        self.waitingForChain = -1
                         self.withGuides { $0.removeAll() }
                     } else {
                         for key in self.drainGuides() {
                             self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
                         }
                         self.guideTimeline = []
-                        self.waitingForChain = -1
                         self.listener?.onRemoveGuide()
                     }
                     prevPracticeGuide = self.practiceGuide
@@ -272,13 +329,8 @@ final class AutoPlayRunner {
                     // Practice mode: waiting for chain change
                     if self.practiceGuide && self.waitingForChain >= 0 {
                         if self.chain.value == self.waitingForChain {
-                            startTime += currTime - self.waitStartTime
-                            self.waitingForChain = -1
+                            finishChainWait(at: currTime)
                             self.listener?.onRemoveGuide()
-                        } else {
-                            if delayAccum <= currTime - startTime {
-                                delayAccum = currTime - startTime
-                            }
                         }
                     } else {
                         self.handleBeforeStartPlaying()
@@ -292,7 +344,7 @@ final class AutoPlayRunner {
 
                                 if event.chain != self.chain.value {
                                     self.waitingForChain = event.chain
-                                    self.waitStartTime = currTime
+                                    self.timedWaitStart = currTime
                                     for key in self.drainGuides() {
                                         self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
                                     }
@@ -397,13 +449,13 @@ final class AutoPlayRunner {
                         }
                         self._stepChainValue = currentChain
                         if let rewindTo { self.progress = rewindTo }
-                        if chainChanged { self.waitingForChain = -1 }
+                        if chainChanged { finishChainWait(at: currTime) }
 
                         var needsScan = false
 
                         if self.waitingForChain >= 0 {
                             if currentChain == self.waitingForChain {
-                                self.waitingForChain = -1
+                                finishChainWait(at: currTime)
                                 needsScan = true
                             }
                         } else {
@@ -421,10 +473,6 @@ final class AutoPlayRunner {
                             self.stepScanNext(autoPlay: autoPlay)
                             self._stepScanned = !self._stepPendingPads.isEmpty || self.waitingForChain >= 0
                         }
-                    }
-
-                    if delayAccum <= currTime - startTime {
-                        delayAccum = currTime - startTime
                     }
                 }
 
@@ -444,6 +492,8 @@ final class AutoPlayRunner {
 
     /// The app left the front (`willResignActive`); it may be suspended before it comes back.
     func appWentAway() {
+        // Foreground time since the last tick still belongs to the song.
+        pendingSkipMs += suspendedTime.tick(at: clock())
         suspendedTime.appWentAway()
     }
 
@@ -524,11 +574,8 @@ final class AutoPlayRunner {
         _stepScanned = false
         _stepStartProgress = 0
         _stepChainValue = -1
-        // Leaving step mode while the guide waited for a chain left waitingForChain >= 0 with
-        // waitStartTime 0; on resume startTime jumped far into the future and autoplay froze
-        // (same fix as Android AutoPlayRunner.resetStepState, 2026-09-07).
-        waitingForChain = -1
-        waitStartTime = self.clock()
+        // The loop owns the song clock and settles any timed wait before clearing it.
+        pendingWaitReset = true
     }
 
     func stepPadPressed(x: Int, y: Int) {
