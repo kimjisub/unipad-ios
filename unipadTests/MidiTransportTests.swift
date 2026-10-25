@@ -50,6 +50,119 @@ struct MidiTransportTests {
         ])
     }
 
+    /// Hold transmission before queuing the same stale brightness that a lights-off
+    /// action must discard, then verify both off and fresh input reach the driver.
+    @MainActor
+    @Test func discardingPendingLightsKeepsOffAndFreshInputInOrder() async throws {
+        let sent = Capture()
+        let output = recordingOutput(sent)
+        let manager = MidiManager(sendQueue: output)
+        let adapter = MidiManagerSendAdapter(output: output, port: 1, destination: 1, sysexDestination: 1,
+                                             onFailure: { _ in sent.add("error") })
+        let driver = LaunchpadProDriver()
+        driver.sendSignalListener = adapter
+        output.enqueue { done in sent.completeFirst = done; sent.add("held") }
+        try await sent.waitForCount(1)
+        driver.sendPadLed(x: 0, y: 0, velocity: 5)
+        driver.sendFunctionKeyLed(f: 32, velocity: 5)
+        manager.discardPendingLights()
+        manager.discardPendingLights()
+        driver.sendPadLed(x: 0, y: 0, velocity: 0)
+        driver.sendPadLed(x: 0, y: 0, velocity: 9)
+        output.enqueue { done in sent.add("drained"); done() }
+        sent.finishFirst()
+        try await sent.waitForValue("drained")
+        #expect(sent.messages == [[0x90, 81, 0], [0x90, 81, 9]])
+        // Also reuse an emptied queue: pruning its old prefix must not skip a new light.
+        manager.discardPendingLights()
+        driver.sendPadLed(x: 0, y: 0, velocity: 12)
+        output.enqueue { done in sent.add("reused"); done() }
+        try await sent.waitForCount(6)
+        #expect(sent.messages == [[0x90, 81, 0], [0x90, 81, 9], [0x90, 81, 12]])
+        withExtendedLifetime(adapter) {}
+    }
+
+    @MainActor
+    @Test(arguments: [false, true])
+    func discardingLightsPreservesInitializationAndSettling(discardDuringSettling: Bool) async throws {
+        let sent = Capture()
+        let requests = HeldSysExRequests()
+        defer { requests.finishAll() }
+        let output = MidiOutputQueue(sysexSend: { request in
+            let held = requests.count == 0
+            if held { requests.add(request) }
+            sent.record(Array(UnsafeBufferPointer(start: request.pointee.data, count: Int(request.pointee.bytesToSend))))
+            if !held { request.pointee.completionProc(request) }
+            return noErr
+        }, noteSend: { bytes, _, _ in sent.record(bytes) })
+        let adapter = MidiManagerSendAdapter(output: output, port: 1, destination: 1, sysexDestination: 1,
+                                             onFailure: { _ in sent.add("error") })
+        let driver = LaunchpadProDriver()
+        driver.sendSignalListener = adapter
+        output.initialize(driver) { sent.add("ready") }
+        driver.sendPadLed(x: 0, y: 0, velocity: 5)
+        driver.sendFunctionKeyLed(f: 32, velocity: 5)
+        try await sent.waitForCount(1)
+        if discardDuringSettling {
+            requests.finish(at: 0)
+            try await sent.waitForCount(6)
+            try await Task.sleep(for: .milliseconds(100))
+            try #require(!sent.values.contains("ready"), "must discard during the mode settling delay")
+        }
+        output.discardPendingLights()
+        driver.sendPadLed(x: 0, y: 0, velocity: 9)
+        output.enqueue { done in sent.add("drained"); done() }
+        if !discardDuringSettling { requests.finish(at: 0) }
+        try await sent.waitForValue("drained")
+        let modes = try #require(driver.getInitSysEx()).messages
+        #expect(sent.messages == modes + modes + [[0x90, 81, 9]])
+        #expect(sent.values == Array(repeating: "message", count: 6) + ["ready", "message", "drained"])
+        let times = sent.messageTimes
+        try #require(times.count == 7)
+        for index in [1, 2, 4, 5] {
+            #expect(times[index] - times[index - 1] >= 0.05, "mode messages retain their pacing")
+        }
+        #expect(try #require(sent.time("ready")) - times[5] >= 0.5)
+        withExtendedLifetime(adapter) {}
+    }
+
+    @Test(arguments: [false, true])
+    func discardingLightsKeepsActiveSysExAndRejectsLateCompletion(afterTimeout: Bool) async throws {
+        let sent = Capture()
+        let requests = HeldSysExRequests()
+        defer { requests.finishAll() }
+        let output = MidiOutputQueue(sysexSend: { request in
+            requests.add(request)
+            sent.record(Array(UnsafeBufferPointer(start: request.pointee.data, count: Int(request.pointee.bytesToSend))))
+            return noErr
+        }, noteSend: { bytes, _, _ in sent.record(bytes) })
+        let active: [UInt8] = [0xF0, 0x7D, 1, 0xF7]
+        let fresh: [UInt8] = [0xF0, 0x7D, 9, 0xF7]
+        output.send([0x90, 81, 1], port: 1, destination: 1)
+        output.sendSysEx([active], destination: 1) { _ in sent.add("error") }
+        try await sent.waitForCount(2)
+        output.send([0x90, 81, 5], port: 1, destination: 1)
+        output.sendSysEx([[0xF0, 0x7D, 5, 0xF7]], destination: 1) { _ in sent.add("error") }
+        output.discardPendingLights()
+        output.send([0x90, 81, 0], port: 1, destination: 1)
+        output.sendSysEx([fresh], destination: 1) { _ in sent.add("error") }
+        output.send([0x90, 81, 9], port: 1, destination: 1)
+        output.enqueue { done in sent.add("drained"); done() }
+        if !afterTimeout { requests.finish(at: 0) }
+        try await sent.waitForCount(4)
+        #expect(requests.bytes(at: 1) == fresh)
+        if afterTimeout {
+            #expect(requests.bytes(at: 0) == active, "the expired send still owns its buffer")
+            requests.finish(at: 0)
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        #expect(sent.messages == [[0x90, 81, 1], active, [0x90, 81, 0], fresh],
+                "discarding or a late completion must not advance the active send")
+        requests.finish(at: 1)
+        try await sent.waitForValue("drained")
+        #expect(sent.messages == [[0x90, 81, 1], active, [0x90, 81, 0], fresh, [0x90, 81, 9]])
+    }
+
     private func recordingOutput(_ sent: Capture) -> MidiOutputQueue {
         MidiOutputQueue(sysexSend: { request in
             sent.record(Array(UnsafeBufferPointer(start: request.pointee.data, count: Int(request.pointee.bytesToSend))))
@@ -208,10 +321,12 @@ struct MidiTransportTests {
         private let lock = NSLock()
         private var stored: [String] = []
         private var packets: [[UInt8]] = []
+        private var packetTimes: [TimeInterval] = []
         private var times: [String: TimeInterval] = [:]
         private var completion: (@Sendable () -> Void)?
         var values: [String] { lock.withLock { stored } }
         var messages: [[UInt8]] { lock.withLock { packets } }
+        var messageTimes: [TimeInterval] { lock.withLock { packetTimes } }
         var completeFirst: (@Sendable () -> Void)? {
             get { lock.withLock { completion } }
             set { lock.withLock { completion = newValue } }
@@ -223,6 +338,7 @@ struct MidiTransportTests {
         func record(_ bytes: [UInt8]) {
             lock.withLock {
                 packets.append(bytes)
+                packetTimes.append(ProcessInfo.processInfo.systemUptime)
                 stored.append("message")
                 times["message"] = ProcessInfo.processInfo.systemUptime
             }
@@ -233,6 +349,13 @@ struct MidiTransportTests {
                 try await Task.sleep(for: .milliseconds(10))
             }
             try #require(values.count >= count, "MIDI queue did not advance: \(values)")
+        }
+        func waitForValue(_ value: String) async throws {
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            while !values.contains(value), ProcessInfo.processInfo.systemUptime < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try #require(values.contains(value), "MIDI queue did not reach \(value): \(values)")
         }
         func finishFirst() { completeFirst?() }
     }
