@@ -214,6 +214,74 @@ extension PlayUsageRecordTests {
             func recover() { lock.withLock { running = true } }
         }
 
+        @Test(arguments: ["pause", "away", "mode", "closed"])
+        func aCancelledPlayRequestCannotStartAfterRecovery(action: String) async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let activation = HeldActivation(then: engine.activateSessionForRecovery)
+                defer { activation.release() }
+                engine.activateSessionForRecovery = { try activation.activate() }
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended))
+                s.vm.autoPlayResume()
+                try await s.waitWhile(timeout: 2) { !activation.started }
+                try #require(activation.started)
+                switch action {
+                case "pause": s.vm.autoPlayPause()
+                case "away": s.vm.onPause()
+                case "mode": s.vm.switchPlayMode(.none)
+                default: s.vm.cleanup()
+                }
+                activation.release()
+                try await s.waitWhile { engine.isRecoveringPlayback }
+                #expect(!s.vm.isAutoPlayPlaying, "a cancelled Play request started after recovery")
+            }
+        }
+
+        @Test func aFailedPlayRequestDoesNotWaitForALaterPermissionNotice() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let original = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended))
+                s.vm.autoPlayResume()
+                try #require(engine.isRecoveringPlayback)
+                try await s.waitWhile { engine.isRecoveringPlayback }
+                #expect(engine.isPlaybackSuppressed)
+                #expect(!s.vm.isAutoPlayPlaying)
+                engine.activateSessionForRecovery = original
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
+                #expect(!s.vm.isAutoPlayPlaying, "a failed request survived until a later notice")
+                s.vm.autoPlayResume()
+                #expect(s.vm.isAutoPlayPlaying)
+            }
+        }
+
+        @Test func oneResumeRestoresStepInputWithoutChangingThePracticeMode() async throws {
+            try await PlayUsageScenario.run(autoPlay: "on 1 1\ndelay 1000\non 1 2\ndelay 1000\n") { s in
+                try await s.loadReady()
+                let runner = try #require(s.vm.autoPlayRunner)
+                s.vm.switchPlayMode(.stepPractice)
+                try await s.waitWhile { s.vm.channelManager?.get(x: 0, y: 0, channel: .guide) == nil }
+                let progress = runner.progress
+                s.vm.onPause()
+                s.vm.onResume()
+                try await waitForRecovery(s, try #require(s.vm.soundEngine))
+                s.vm.autoPlayResume()
+                #expect(s.vm.playMode == .stepPractice)
+                #expect(!runner.isSuspended)
+                s.press(); s.release()
+                try await s.waitWhile { runner.progress == progress }
+                #expect(runner.progress > progress, "one resume must accept the next step's fresh input")
+            }
+        }
+
         @Test func turningLightsOffDiscardsFiniteAnimations() async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\non 1 2 a 9\n"]) { s in
                 try await s.loadReady()

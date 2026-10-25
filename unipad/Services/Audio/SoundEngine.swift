@@ -78,6 +78,7 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+    var isRecoveringPlayback: Bool { gate.isRecovering }
     /// Whether interruptions, media services resets and route changes reach the gate. A test seam.
     var isObservingSession: Bool { !observerTokens.isEmpty }
 

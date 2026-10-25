@@ -150,6 +150,7 @@ final class PlayViewModel {
     @ObservationIgnored private var suspendedPlayMode: PlayMode?
     @ObservationIgnored private var isAppAway = false
     @ObservationIgnored private var playbackResumeRequest: UUID?
+    @ObservationIgnored private var userPausedTimedPlayback = false
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
 
@@ -877,6 +878,7 @@ final class PlayViewModel {
 
     func switchPlayMode(_ mode: PlayMode) {
         playbackResumeRequest = nil
+        userPausedTimedPlayback = false
         guard let runner = autoPlayRunner else { return }
         let currentMode = playMode
 
@@ -997,12 +999,19 @@ final class PlayViewModel {
             runner.resumeFromSuspension()
             // Play is an explicit request to start, even if the user paused before leaving.
             // Step practice instead resumes listening for a fresh pad in the same mode.
-            runner.playmode = mode != .stepPractice
+            if userPausedTimedPlayback && mode == .stepPractice {
+                runner.stepMode = false
+                runner.resetStepState()
+                removeAllGuide()
+            }
+            runner.playmode = mode != .stepPractice || userPausedTimedPlayback
+            userPausedTimedPlayback = false
             suspendedPlayMode = nil
             isAutoPlayPlaying = runner.playmode
             refreshWatermark()
             return
         }
+        userPausedTimedPlayback = false
         runner.stepMode = false
         runner.resetStepState()
         removeAllGuide()
@@ -1017,6 +1026,7 @@ final class PlayViewModel {
     private func pauseAutoPlay() {
         playbackResumeRequest = nil
         guard let runner = autoPlayRunner else { return }
+        userPausedTimedPlayback = userPausedTimedPlayback || runner.playmode
         runner.playmode = false
         ledInit()
         isAutoPlayPlaying = false
@@ -1252,6 +1262,7 @@ final class PlayViewModel {
     /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
         playbackResumeRequest = nil
+        userPausedTimedPlayback = false
         guard enable else { return }
         discardPendingDeviceLights()
         suspendedPlayMode = nil
@@ -1282,6 +1293,7 @@ final class PlayViewModel {
 
     func stopAutoPlay() {
         playbackResumeRequest = nil
+        userPausedTimedPlayback = false
         autoPlayRunner?.stop()
         autoPlayControlVisible = false
         isAutoPlayPlaying = false
