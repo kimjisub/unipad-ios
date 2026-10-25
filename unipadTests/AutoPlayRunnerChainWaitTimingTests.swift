@@ -169,4 +169,41 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
         XCTAssertEqual(playback.presses, [6200, 6700])
         XCTAssertEqual(playback.scheduled, playback.presses)
     }
+
+    func testResettingWaitWhilePausedDoesNotCountPauseTwice() async throws {
+        let playback = Playback(); defer { playback.stop() }
+        try await playback.startWaiting()
+        playback.runner.playmode = false
+        try await playback.tick(7200)
+        playback.runner.resetStepState()
+        try await playback.tick()
+        playback.chain.setValue(1)
+        playback.now = 9200
+        playback.runner.playmode = true
+        try await playback.tick()
+        XCTAssertEqual(playback.guides, [10000])
+        try await playback.tick(9999)
+        XCTAssertEqual(playback.runner.progress, 1)
+        try await playback.tick(10000)
+        XCTAssertEqual(playback.runner.progress, 5)
+    }
+
+    func testSeekingWhilePausedRebasesAtResume() async throws {
+        let playback = Playback(); defer { playback.stop() }
+        try await playback.startWaiting()
+        playback.runner.playmode = false
+        try await playback.tick(7200)
+        playback.runner.progressOffset(4)
+        try await playback.tick()
+        playback.chain.setValue(1)
+        playback.now = 9200
+        playback.auto(reset: true)
+        try await playback.tick()
+        XCTAssertEqual(playback.presses, [9200])
+        try await playback.tick(9699)
+        XCTAssertEqual(playback.presses, [9200])
+        try await playback.tick(9700)
+        XCTAssertEqual(playback.presses, [9200, 9700])
+        XCTAssertEqual(playback.scheduled, playback.presses)
+    }
 }
