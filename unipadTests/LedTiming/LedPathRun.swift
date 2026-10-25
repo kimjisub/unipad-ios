@@ -98,6 +98,7 @@ final class LedPathRun {
         let launchpad: VirtualLaunchpad? = if let midiArrivals { try await VirtualLaunchpad.connect(arrivalsFile: midiArrivals) } else { nil }
         defer { launchpad?.disconnect() }
         let previousDriver = manager.driver
+        let previousController = manager.controller
         let driver = RecordingDriver(clock: clock, channels: try XCTUnwrap(vm.channelManager))
         self.driver = driver
         // Bracket the app's chain observer, including changes made by keyLED's `c` command.
@@ -106,7 +107,12 @@ final class LedPathRun {
         vm.setupChainObserver()
         vm.chain.addObserver { [weak driver] _, _ in driver?.endRepaint() }
         manager.overrideDriver(driver)
-        defer { manager.overrideDriver(previousDriver) }
+        defer {
+            manager.overrideDriver(previousDriver)
+            manager.controller = previousController
+        }
+        // This isolated screen must own output just as a visible performance screen does.
+        vm.setupMidiController()
         if launchpad != nil {
             // Overriding the driver gave the recording driver MidiManager's send listener; the MK2
             // driver it replaced sends through that one now.
