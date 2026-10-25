@@ -159,8 +159,8 @@ extension PlayUsageRecordTests {
             }
         }
 
-        @Test(arguments: [false, true])
-        func disablingLightsDiscardsPendingDeviceOutput(interrupted: Bool) async throws {
+        @Test(arguments: ["lightsOff", "interruption", "packClosed"])
+        func stoppingLightsDiscardsPendingDeviceOutput(boundary: String) async throws {
             try await withBufferedLightOutput { s, output, pending in
                 s.press()
                 try await s.waitWhile { s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil }
@@ -168,22 +168,26 @@ extension PlayUsageRecordTests {
                 // Observe an unsent light on the manager's real queue. A replacement adapter
                 // with its own queue would not exercise the manager's cancellation boundary.
                 output.enqueue { done in pending.record([0x90, 81, 5]); done() }
-                if interrupted { s.vm.onPause() }
-                else { s.vm.scbLed.forceSetChecked(false) }
+                switch boundary {
+                case "interruption": s.vm.onPause()
+                case "packClosed": s.vm.cleanup()
+                default: s.vm.scbLed.forceSetChecked(false)
+                }
                 pending.finish()
                 output.enqueue { done in pending.markFlushed(); done() }
                 try await s.waitWhile { !pending.flushed }
                 try #require(pending.flushed)
                 #expect(!pending.messages.contains { $0.count == 3 && $0[1] == 81 && $0[2] == 5 },
-                        "an old pack light reached the device after lights were disabled")
+                        "an old pack light reached the device after lights stopped")
             }
         }
 
-        @Test func aCoveredPlayScreenKeepsTheCurrentScreensPendingLights() async throws {
+        @Test(arguments: [false, true])
+        func aCoveredPlayScreenKeepsTheCurrentScreensPendingLights(closed: Bool) async throws {
             try await withBufferedLightOutput { s, output, pending in
                 s.vm.screenCovered()
                 output.enqueue { done in pending.record([0x90, 81, 5]); done() }
-                s.vm.onPause()
+                if closed { s.vm.cleanup() } else { s.vm.onPause() }
                 pending.finish()
                 output.enqueue { done in pending.markFlushed(); done() }
                 try await s.waitWhile { !pending.flushed }
