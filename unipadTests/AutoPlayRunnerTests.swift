@@ -9,6 +9,7 @@ final class AutoPlayRunnerTests: XCTestCase {
         var onFinish: (() -> Void)?
         var guidePads: [Int] = []
         var guideChains: [Int] = []
+        var guideTargets: [Int64] = []
         var pressTimes: [Int64] = []
         var pressedPads: [Int] = []
         var releaseTimes: [Int64] = []
@@ -28,6 +29,7 @@ final class AutoPlayRunnerTests: XCTestCase {
         func onChainChange(c: Int) {}
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
             guidePads.append(x * 256 + y)
+            guideTargets.append(targetWallTimeMs)
             litGuides.insert(x * 256 + y)
         }
         func onGuidePadOff(x: Int, y: Int) { litGuides.remove(x * 256 + y) }
@@ -379,6 +381,52 @@ final class AutoPlayRunnerTests: XCTestCase {
                     }
                 }
             }
+        }
+    }
+
+    func testTimedGuideAfterStepAutoplayKeepsTheSongPosition() async throws {
+        for pauseBeforeGuideTick in [false, true] {
+            let pack = UniPack()
+            pack.autoPlayTable = AutoPlay(elements: [
+                .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 5_000),
+                .on(x: 0, y: 1, currChain: 0, num: 0), .delay(delay: 5_000),
+                .on(x: 0, y: 2, currChain: 0, num: 0), .delay(delay: 5_000),
+            ])
+            let clock = TestManualClock()
+            let recorder = Recorder()
+            var ticks = 0
+            let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                clock: { clock.read() }, sleep: { _ in ticks += 1; await Task.yield() })
+            let vm = PlayViewModel()
+            vm.autoPlayRunner = runner
+            defer { runner.stop() }
+            vm.switchPlayMode(.stepPractice)
+            try await wait { recorder.guidePads == [0] }
+            runner.stepPadPressed(x: 0, y: 0)
+            try await wait { recorder.guidePads == [0, 1] }
+            clock.advance(300)
+            vm.switchPlayMode(.autoPlay)
+            try await wait { recorder.pressedPads == [1] }
+            XCTAssertEqual(recorder.pressTimes, [1_300])
+            recorder.guidePads.removeAll()
+            recorder.guideTargets.removeAll()
+
+            clock.advance(1_000)
+            vm.switchPlayMode(.guidePlay)
+            if pauseBeforeGuideTick {
+                vm.autoPlayPause()
+                clock.advance(3_000)
+                vm.autoPlayResume()
+            }
+            var nextTick = ticks + 2
+            try await wait { ticks >= nextTick }
+            XCTAssertEqual(recorder.guidePads, [], "The next note is outside the guide lookahead")
+            clock.advance(3_200)
+            nextTick = ticks + 2
+            try await wait { ticks >= nextTick }
+            XCTAssertEqual(recorder.guidePads, [2], "Timed guidance must not repeat the note already played by autoplay")
+            XCTAssertEqual(recorder.guideTargets, [pauseBeforeGuideTick ? 9_300 : 6_300],
+                           "The next note stays five seconds after the resumed autoplay note, excluding pauses")
         }
     }
 
