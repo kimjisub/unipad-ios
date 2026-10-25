@@ -161,6 +161,41 @@ extension PlayUsageRecordTests {
 
         @Test(arguments: [false, true])
         func disablingLightsDiscardsPendingDeviceOutput(interrupted: Bool) async throws {
+            try await withBufferedLightOutput { s, output, pending in
+                s.press()
+                try await s.waitWhile { s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil }
+                try #require(s.vm.channelManager?.get(x: 0, y: 0, channel: .led) != nil)
+                // Observe an unsent light on the manager's real queue. A replacement adapter
+                // with its own queue would not exercise the manager's cancellation boundary.
+                output.enqueue { done in pending.record([0x90, 81, 5]); done() }
+                if interrupted { s.vm.onPause() }
+                else { s.vm.scbLed.forceSetChecked(false) }
+                pending.finish()
+                output.enqueue { done in pending.markFlushed(); done() }
+                try await s.waitWhile { !pending.flushed }
+                try #require(pending.flushed)
+                #expect(!pending.messages.contains { $0.count == 3 && $0[1] == 81 && $0[2] == 5 },
+                        "an old pack light reached the device after lights were disabled")
+            }
+        }
+
+        @Test func aCoveredPlayScreenKeepsTheCurrentScreensPendingLights() async throws {
+            try await withBufferedLightOutput { s, output, pending in
+                s.vm.screenCovered()
+                output.enqueue { done in pending.record([0x90, 81, 5]); done() }
+                s.vm.onPause()
+                pending.finish()
+                output.enqueue { done in pending.markFlushed(); done() }
+                try await s.waitWhile { !pending.flushed }
+                try #require(pending.flushed)
+                #expect(pending.messages.contains([0x90, 81, 5]),
+                        "the covered play screen discarded the screen on top's pending light")
+            }
+        }
+
+        private func withBufferedLightOutput(
+            _ body: (PlayUsageScenario, MidiOutputQueue, BufferedLightOutput) async throws -> Void
+        ) async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\n"]) { s in
                 try await s.loadReady()
                 let manager = MidiManager.shared
@@ -177,20 +212,7 @@ extension PlayUsageRecordTests {
                 output.enqueue { done in pending.hold(done) }
                 try await s.waitWhile { !pending.started }
                 try #require(pending.started)
-                s.press()
-                try await s.waitWhile { s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil }
-                try #require(s.vm.channelManager?.get(x: 0, y: 0, channel: .led) != nil)
-                // Observe an unsent light on the manager's real queue. A replacement adapter
-                // with its own queue would not exercise the manager's cancellation boundary.
-                output.enqueue { done in pending.record([0x90, 81, 5]); done() }
-                if interrupted { s.vm.onPause() }
-                else { s.vm.scbLed.forceSetChecked(false) }
-                pending.finish()
-                output.enqueue { done in pending.markFlushed(); done() }
-                try await s.waitWhile { !pending.flushed }
-                try #require(pending.flushed)
-                #expect(!pending.messages.contains { $0.count == 3 && $0[1] == 81 && $0[2] == 5 },
-                        "an old pack light reached the device after lights were disabled")
+                try await body(s, output, pending)
             }
         }
 
