@@ -34,3 +34,5 @@ packs set `squareButton=false`; PressedLight keeps square pads.
 `PlaybackLightsUITests` checks default lights and feedback, then feedback's
 priority over pack lights. Its timed screenshots must finish while the pad is
 still held. The fixtures contain no recordings or third-party artwork.
+
+`LightDiscard.uni` is a silent 8x8 pack with a finite repeating two-pad light scene. `LightDiscardUITests` disables lights during that scene, reenables them without a new press, and checks that only a fresh press starts another scene.
