@@ -5,7 +5,12 @@ import QuartzCore
 /// suspending a detached task while it owns an NSLock and waits to read actor-isolated state.
 @MainActor
 final class AutoPlayRunner {
-    static let guideLookaheadMs: Int64 = 800
+    static let guideLookaheadMs: Int64 = {
+        #if DEBUG || UNIPAD_RELEASE_TESTS
+        if let ms = ReleaseTestSupport.guideLookaheadMs { return ms }
+        #endif
+        return 800
+    }()
     private static let guideLedUpdateIntervalMs: Int64 = 50
     private static let guideVelocities: [Int] = [1, 2, 3, 21]
     private static let stepGroupThresholdMs: Int64 = 50
