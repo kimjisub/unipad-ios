@@ -1,10 +1,37 @@
 import Foundation
+import Darwin
 import Testing
 @testable import unipad
 
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test func caseSensitivityMatchesDistinctFileStorage() throws {
+        let root = ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
+        let directory = root.appendingPathComponent("case-storage-check-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Exclusive creation measures the namespace itself, independently of Foundation's lookup.
+        let first = directory.appendingPathComponent("a").path.withCString {
+            Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o600))
+        }
+        try #require(first >= 0, "the first probe file can be created")
+        _ = Darwin.close(first)
+        let second = directory.appendingPathComponent("A").path.withCString {
+            Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o600))
+        }
+        let creationError = errno
+        if second >= 0 {
+            _ = Darwin.close(second)
+        } else if creationError != EEXIST {
+            throw POSIXError(POSIXErrorCode(rawValue: creationError) ?? .EIO)
+        }
+        #expect(ConformanceHarness.caseSensitiveFileSystem == (second >= 0),
+                "the report must describe distinct file storage, not exact-spelling lookup")
+    }
+
     @Test func screenInputsUseTheRunnersVirtualLEDClock() async throws {
         let corpus = try ConformanceCorpus.load()
         var sample = try #require(corpus.cases.first { $0.id == "RUN-L-003" })
@@ -184,6 +211,30 @@ struct ConformanceRegressionTests {
         #expect(saved["assertions"]?.string == "failed")
         #expect(saved["cases"]?.array == [])
         #expect(saved["error"]?.string == String(describing: ConformanceCorpus.LoadError.missing))
+    }
+
+    @Test func distinctInputSourcesWithoutScreenRoutingAreNeverReportedAsVerified() async throws {
+        for flags in [#""scenario":[{"do":"press","input":"pointer:1"}]"#] {
+            let data = Data((#"{"assets":{},"cases":[{"id":"inputs","layer":"run","title":"inputs","files":[],"fingerprint":"test","expectation":"determined","expected":{},"#
+                + flags + "}]}").utf8)
+            let corpus = try ConformanceCorpus.parse(data, source: "test")
+            let sample = try #require(corpus.cases.first)
+            guard case .unverified = try await ConformanceHarness.actual(for: sample, corpus: corpus) else {
+                Issue.record("a scenario whose screen input sources are not driven must be unverified")
+                continue
+            }
+        }
+    }
+
+    @Test func archiveIdentityComparesCodePointsAndContents() throws {
+        let data = Data(#"{"assets":{},"cases":[{"id":"identity","layer":"parse","title":"identity","files":[],"fingerprint":"test","expectation":"determined","soundIdentity":true,"expected":{"archiveEntry":"sounds/한.wav","sha256":"first"}}]}"#.utf8)
+        let sample = try #require(ConformanceCorpus.parse(data, source: "test").cases.first)
+        let exact: JSONValue = ["archiveEntry": .string("sounds/한.wav"), "sha256": "first"]
+        let otherName: JSONValue = ["archiveEntry": .string("sounds/한.wav".decomposedStringWithCanonicalMapping), "sha256": "first"]
+        let otherContents: JSONValue = ["archiveEntry": .string("sounds/한.wav"), "sha256": "second"]
+        #expect(sample.classify(exact).status == "pass")
+        #expect(sample.classify(otherName).status == "fail")
+        #expect(sample.classify(otherContents).status == "fail")
     }
 
     @Test func loadingListenerDistinguishesEngineAndDecodeFailures() {

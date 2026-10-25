@@ -74,12 +74,31 @@ enum ConformanceHarness {
     /// Whether files whose names differ only in letter case are different files where the packs are
     /// written. Where they are not, a parser that opens only the exact name of `info` passes too.
     static let caseSensitiveFileSystem: Bool = {
-        let dir = ConformanceSoundIdentity.observationRoot.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
+        let dir = fileSystemRoot.appendingPathComponent("unipad-conformance-case-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        guard (try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)) != nil,
-              FileManager.default.createFile(atPath: dir.appendingPathComponent("a").path, contents: Data()) else { return false }
-        return !FileManager.default.fileExists(atPath: dir.appendingPathComponent("A").path)
+        return storesDistinctFiles(named: ("a", "A"), at: dir)
     }()
+
+    static func storesDistinctFiles(named names: (String, String), at dir: URL) -> Bool {
+        let lower = dir.appendingPathComponent(names.0)
+        let upper = dir.appendingPathComponent(names.1)
+        let lowerContents = Data([0x61])
+        let upperContents = Data([0x41])
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try lowerContents.write(to: lower)
+            try upperContents.write(to: upper)
+            // Simulator lookups can distinguish spelling even when storage merges the names.
+            return try Data(contentsOf: lower) == lowerContents && Data(contentsOf: upper) == upperContents
+        } catch {
+            return false
+        }
+    }
+
+    private static var fileSystemRoot: URL {
+        ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.temporaryDirectory
+    }
 
     private static func soundNames(root: URL) -> (URL) -> String {
         let base = root.resolvingSymlinksInPath().appendingPathComponent("sounds").path + "/"
@@ -157,7 +176,11 @@ enum ConformanceHarness {
 
     @MainActor
     static func actual(for conformanceCase: ConformanceCase, corpus: ConformanceCorpus, deps: ConformanceDeps = ConformanceDeps(), identityReport: ConformanceReport? = nil) async throws -> ConformanceActual {
-        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform] { return .unverified(reason) }
+        if !conformanceCase.screenInputs && conformanceCase.scenario.contains(where: { $0["input"] != nil }) {
+            return .unverified("this runner does not drive distinct screen and MIDI input sources; use the native input tests")
+        }
+        if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
+           !(conformanceCase.requiresCaseSensitiveFiles && caseSensitiveFileSystem) { return .unverified(reason) }
         if conformanceCase.soundIdentity {
             return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps, report: identityReport)
         }
@@ -165,10 +188,11 @@ enum ConformanceHarness {
             return .value(["argb": .array(LaunchpadColor.argb.map { .string(hex8(Int($0))) })])
         }
 
-        let root = FileManager.default.temporaryDirectory
+        let root = fileSystemRoot
             .appendingPathComponent("unipad-conformance-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent(conformanceCase.id, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let temporary = root.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: temporary) }
         try write(conformanceCase.files, to: root, corpus: corpus)
 
         let pack = deps.load(root)

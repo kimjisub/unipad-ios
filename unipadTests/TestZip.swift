@@ -24,19 +24,26 @@ enum TestZip {
     /// an entry of hundreds of megabytes never holds it whole. Its CRC is zero; nothing checks it.
     static func deflatedRepeating(_ byte: UInt8, count: Int, name: String) -> Data {
         let body = deflate(repeating: byte, count: count)
-        return build([Entry(name: Data(name.utf8), body: body, method: 8, crc: 0, size: UInt32(count),
+        return build([Entry(name: Data(name.utf8), extra: Data(), body: body, method: 8, crc: 0, size: UInt32(count),
                             declaredCompressedSize: UInt32(body.count), declaredSize: UInt32(count))], flags: 0x0800)
     }
 
     /// Raw entry names and flags, independent of the text encoding of each file's contents.
-    static func storedRawNames(_ files: [(name: Data, data: Data)], utf8Flag: Bool) -> Data {
+    static func storedRawNames(_ files: [(name: Data, data: Data)], utf8Flag: Bool, extras: [Data]? = nil) -> Data {
         archive(files.enumerated().map { (name: String($0.offset), data: $0.element.data) },
                 deflated: false, corruptingSizeOf: nil,
-                rawNames: files.map(\.name), flags: utf8Flag ? 0x0800 : 0)
+                rawNames: files.map(\.name), extras: extras, flags: utf8Flag ? 0x0800 : 0)
+    }
+
+    /// An Info-ZIP Unicode Path field for the original raw entry name.
+    static func unicodePathExtra(_ name: String, rawName: Data, crcOf crcName: Data? = nil) -> Data {
+        let body = Data([1]) + le32(crc32(crcName ?? rawName)) + Data(name.utf8)
+        return le16(0x7075) + le16(UInt16(body.count)) + body
     }
 
     private struct Entry {
         let name: Data
+        let extra: Data
         let body: Data
         let method: UInt16
         let crc: UInt32
@@ -46,13 +53,13 @@ enum TestZip {
     }
 
     private static func archive(_ files: [(name: String, data: Data)], deflated: Bool, corruptingSizeOf corrupted: String?,
-                                rawNames: [Data]? = nil, flags: UInt16 = 0x0800,
+                                rawNames: [Data]? = nil, extras: [Data]? = nil, flags: UInt16 = 0x0800,
                                 declaredUncompressedSize: UInt32? = nil) -> Data {
         let entries = files.enumerated().map { index, file in
             let body = deflated ? deflate(file.data) : file.data
             let corrupt = file.name == corrupted
             return Entry(
-                name: rawNames?[index] ?? Data(file.name.utf8), body: body, method: deflated ? 8 : 0,
+                name: rawNames?[index] ?? Data(file.name.utf8), extra: extras?[index] ?? Data(), body: body, method: deflated ? 8 : 0,
                 crc: crc32(file.data), size: UInt32(file.data.count),
                 declaredCompressedSize: corrupt ? UInt32.max / 2 : UInt32(body.count),
                 declaredSize: corrupt ? UInt32.max / 2 : declaredUncompressedSize ?? UInt32(file.data.count)
@@ -72,8 +79,9 @@ enum TestZip {
             archive.append(le16(20)); archive.append(le16(flags)); archive.append(le16(entry.method))
             archive.append(le16(0)); archive.append(le16(0))
             archive.append(le32(entry.crc)); archive.append(le32(UInt32(entry.body.count))); archive.append(le32(entry.size))
-            archive.append(le16(UInt16(entry.name.count))); archive.append(le16(0))
+            archive.append(le16(UInt16(entry.name.count))); archive.append(le16(UInt16(entry.extra.count)))
             archive.append(entry.name)
+            archive.append(entry.extra)
             archive.append(entry.body)
 
             centralDirectory.append(le32(0x0201_4B50))
@@ -83,11 +91,12 @@ enum TestZip {
             centralDirectory.append(le32(entry.crc)); centralDirectory.append(le32(entry.declaredCompressedSize))
             centralDirectory.append(le32(entry.declaredSize))
             centralDirectory.append(le16(UInt16(entry.name.count)))
-            centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
+            centralDirectory.append(le16(UInt16(entry.extra.count))); centralDirectory.append(le16(0))
             centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
             centralDirectory.append(le32(0))
             centralDirectory.append(le32(localHeaderOffset))
             centralDirectory.append(entry.name)
+            centralDirectory.append(entry.extra)
         }
 
         let centralDirectoryOffset = UInt32(archive.count)

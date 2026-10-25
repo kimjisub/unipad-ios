@@ -206,9 +206,7 @@ struct MainView: View {
                                 PlatformHelpers.openURL(url)
                             }
                         },
-                        onWebsite: selected.unipack.website.flatMap { urlString in
-                            { if let url = URL(string: urlString) { PlatformHelpers.openURL(url) } }
-                        }
+                        onWebsite: selected.unipack.websiteURL.map { url in { PlatformHelpers.openURL(url) } }
                     )
                     .transition(.opacity)
                 } else {

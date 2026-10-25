@@ -82,6 +82,58 @@ final class ExternalFileImportTests: XCTestCase {
 
     func testNormalFromEmptyLibrary() throws { try open("Normal"); assertNormal() }
 
+    func testWindowsPathsWithDotsImportAndOpenForPlay() throws {
+        try open("WindowsPaths")
+        XCTAssertEqual(title.label, "Pack imported!")
+        XCTAssertEqual(app.staticTexts["main.importResult.packTitle"].label, "Archive Paths")
+        XCTAssertTrue(play.isHittable)
+        play.tap()
+        let grid = app.descendants(matching: .any)["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 30))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.125, dy: 0.125)).tap()
+        UITestSupport.attachScreenshot("windows-paths-ready-to-play", to: self)
+    }
+
+    func testAnEmptyWebsiteDoesNotShowAButton() throws {
+        try open("EmptyWebsite")
+        XCTAssertEqual(title.label, "Pack imported!")
+        ok.tap()
+        let list = app.scrollViews["main.packList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 30))
+        let pack = list.staticTexts["Empty Website"].firstMatch
+        XCTAssertTrue(pack.waitForExistence(timeout: 15))
+        pack.tap()
+        XCTAssertTrue(app.buttons["Play"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["main.pack.website"].exists)
+        UITestSupport.attachScreenshot("empty-website-pack-panel", to: self)
+    }
+
+    func testAWebsiteWithoutASchemeOpensItsHTTPSAddress() throws {
+        try open("SchemeLessWebsite")
+        XCTAssertEqual(title.label, "Pack imported!")
+        ok.tap()
+        let list = app.scrollViews["main.packList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 30))
+        let pack = list.staticTexts["Website Address"].firstMatch
+        XCTAssertTrue(pack.waitForExistence(timeout: 15))
+        pack.tap()
+        let website = app.buttons["main.pack.website"]
+        XCTAssertTrue(website.waitForExistence(timeout: 15))
+        website.tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
+        defer { safari.terminate(); app.activate() }
+        // .invalid needs no live website. This checks the browser destination, not page loading.
+        let address = safari.descendants(matching: .any)
+            .matching(NSPredicate(format: "value CONTAINS[c] 'example.invalid' OR label CONTAINS[c] 'example.invalid'"))
+            .firstMatch
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        let capture = XCTAttachment(screenshot: safari.screenshot())
+        capture.name = "scheme-less-website-browser-destination"
+        capture.lifetime = .keepAlways
+        add(capture)
+    }
+
     /// The pack folder sits next to a readme.txt at the top of the archive.
     func testPackFolderBesideAReadmeImports() throws {
         try open("BesideReadme")

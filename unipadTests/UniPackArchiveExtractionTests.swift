@@ -104,22 +104,25 @@ struct UniPackArchiveExtractionTests {
 
     @Test func namesWithDotsAreKeptAndNoEntryLeavesTheDestination() throws {
         defer { cleanUp() }
+        let absoluteName = "escaped-absolute-\(UUID().uuidString).txt"
         let files: [(name: String, data: Data)] = [
             ("My Pack.../info", Data("title=Dots\n".utf8)),
             ("My Pack.../sounds/Hey...wav", Data("hey".utf8)),
             ("My Pack.../sounds/..hidden..wav", Data("hidden".utf8)),
             ("../escaped.txt", Data("out".utf8)),
             ("sounds/../../escaped-nested.txt", Data("out".utf8)),
-            ("/escaped-absolute-\(UUID().uuidString).txt", Data("out".utf8)),
+            ("/" + absoluteName, Data("out".utf8)),
         ]
 
         try unzip(TestZip.stored(files))
 
         #expect(relativePaths(under: destination) == [
             "My Pack...", "My Pack.../info", "My Pack.../sounds", "My Pack.../sounds/..hidden..wav", "My Pack.../sounds/Hey...wav",
-        ])
+        ] + [absoluteName])
         #expect(relativePaths(under: root) == ["archive.zip", "out"] + relativePaths(under: destination).map { "out/\($0)" })
         #expect(try Data(contentsOf: destination.appending(path: "My Pack.../sounds/Hey...wav")) == Data("hey".utf8))
+        // A leading slash is normalized inside the pack; it never writes at the filesystem root.
+        #expect(try Data(contentsOf: destination.appendingPathComponent(absoluteName)) == Data("out".utf8))
     }
 
     // MARK: - Damaged archives
