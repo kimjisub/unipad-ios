@@ -6,7 +6,12 @@ import CoreMIDI
 nonisolated final class MidiOutputQueue: @unchecked Sendable {
     typealias Operation = @Sendable (@escaping @Sendable () -> Void) -> Void
     private let queue = DispatchQueue(label: "com.kimjisub.unipad.midi.send")
-    private var pending: [Operation] = []
+    private struct PendingOperation {
+        let perform: Operation
+        let preservesInitialization: Bool
+    }
+    private var pending: [PendingOperation] = []
+    private var preservingInitialization = false
     private var next = 0
     private var sending = false
     private var generation: UInt64 = 0
@@ -27,12 +32,17 @@ nonisolated final class MidiOutputQueue: @unchecked Sendable {
 
     @MainActor
     func initialize(_ driver: MidiDriver, onReady: @escaping @Sendable () -> Void) {
+        // Driver initialization emits synchronously on the main actor. Queue these
+        // markers around its sends so every mode message and delay is protected,
+        // without guessing whether a SysEx payload is a mode change or a light.
+        queue.async { self.preservingInitialization = true }
         driver.initialize()
         if let initialization = driver.getInitSysEx(), !initialization.messages.isEmpty {
             // Finish every mode message, then allow the device to change layouts.
             wait(0.5)
         }
         enqueue { done in onReady(); done() }
+        queue.async { self.preservingInitialization = false }
     }
 
     /// A removed device may never finish a send. Its completion and queued lights
@@ -46,9 +56,20 @@ nonisolated final class MidiOutputQueue: @unchecked Sendable {
         }
     }
 
+    /// Remove only lights that have not started. Keep the consumed prefix (including
+    /// the active send) and its cursor unchanged, so a late completion still belongs
+    /// to the same operation. Connection generations and mode setup are unaffected.
+    func discardPendingLights() {
+        queue.async {
+            self.pending = Array(self.pending.prefix(self.next))
+                + self.pending.dropFirst(self.next).filter { $0.preservesInitialization }
+        }
+    }
+
     func enqueue(_ operation: @escaping Operation) {
         queue.async {
-            self.pending.append(operation)
+            self.pending.append(PendingOperation(perform: operation,
+                                                 preservesInitialization: self.preservingInitialization))
             self.sendNext()
         }
     }
@@ -61,7 +82,7 @@ nonisolated final class MidiOutputQueue: @unchecked Sendable {
         operationID &+= 1
         let operationID = self.operationID
         next += 1
-        operation {
+        operation.perform {
             self.queue.async {
                 guard self.generation == generation, self.operationID == operationID, self.sending else { return }
                 self.sending = false
