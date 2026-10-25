@@ -45,6 +45,8 @@ struct ConformanceDeps {
     var beforeObserve: @MainActor () async throws -> Void = {}
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
+    var audioCost: (AudioAdmission.Facts) -> AudioAdmission.Cost = AudioAdmission.cost
+    var inspectAudio: (Data) -> AudioAdmission.Inspection = AudioFileInspection.inspect
 }
 
 enum ConformanceHarness {
@@ -182,6 +184,9 @@ enum ConformanceHarness {
         }
         if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
            !(conformanceCase.requiresCaseSensitiveFiles && caseSensitiveFileSystem) { return .unverified(reason) }
+        if let observed = ConformanceProductObservation.actual(for: conformanceCase, corpus: corpus, deps: deps) {
+            return observed
+        }
         if conformanceCase.soundIdentity {
             return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps, report: identityReport)
         }
