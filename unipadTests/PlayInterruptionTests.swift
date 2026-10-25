@@ -83,6 +83,102 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test(arguments: [false, true], [PlayMode.autoPlay, .guidePlay])
+        func onePlayRequestStartsAnAlreadyPausedRun(covered: Bool, mode: PlayMode) async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try #require(s.vm.autoPlayRunner)
+                s.vm.switchPlayMode(mode)
+                try await s.waitWhile { runner.progress == 0 }
+                s.vm.autoPlayPause()
+                if covered { s.vm.screenCovered() } else { s.vm.onPause() }
+                if covered { s.vm.screenShown() } else { s.vm.onResume() }
+                let engine = try #require(s.vm.soundEngine)
+                try await waitForRecovery(s, engine)
+                let progress = runner.progress
+                s.vm.autoPlayResume()
+                #expect(s.vm.isAutoPlayPlaying, "one explicit Play must start an already paused run")
+                #expect(runner.playmode)
+                #expect(!runner.isSuspended)
+                try await s.waitWhile { runner.progress == progress }
+                #expect(runner.progress > progress)
+            }
+        }
+
+        @Test func playRequestsRecoveryWithoutAResumePermissionNotification() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended))
+                #expect(engine.isPlaybackSuppressed)
+                let progress = runner.progress
+                s.vm.autoPlayResume()
+                try await s.waitWhile(timeout: 3) { !s.vm.isAutoPlayPlaying }
+                #expect(!engine.isPlaybackSuppressed, "Play must request audio recovery itself")
+                #expect(s.vm.isAutoPlayPlaying)
+                #expect(!runner.isSuspended)
+                try await s.waitWhile(timeout: 1) { runner.progress == progress }
+                #expect(runner.progress > progress)
+            }
+        }
+
+        @Test func playWhileRecoveryIsPendingStartsAfterThatRequestRecovers() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let original = engine.activateSessionForRecovery
+                let activation = HeldActivation(then: original)
+                defer { activation.release() }
+                engine.activateSessionForRecovery = { try activation.activate() }
+                engine.handleInterruption(interruption(.began))
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await s.waitWhile(timeout: 2) { !activation.started }
+                try #require(activation.started)
+                s.vm.autoPlayResume()
+                #expect(!s.vm.isAutoPlayPlaying)
+                activation.release()
+                try await s.waitWhile(timeout: 3) { !s.vm.isAutoPlayPlaying }
+                #expect(s.vm.isAutoPlayPlaying, "the explicit request was dropped during recovery")
+            }
+        }
+
+        nonisolated final class HeldActivation: @unchecked Sendable {
+            private let lock = NSLock()
+            private let released = DispatchSemaphore(value: 0)
+            private var didStart = false
+            private let then: () throws -> Void
+            init(then: @escaping () throws -> Void) { self.then = then }
+            var started: Bool { lock.withLock { didStart } }
+            func release() { released.signal() }
+            func activate() throws {
+                let first = lock.withLock { let first = !didStart; didStart = true; return first }
+                if first, released.wait(timeout: .now() + 5) == .timedOut {
+                    throw CocoaError(.featureUnsupported)
+                }
+                try then()
+            }
+        }
+
+        @Test(arguments: [false, true])
+        func aNewScreensPendingLightsSurviveLatePlaybackTeardown(covered: Bool) async throws {
+            try await withBufferedLightOutput { s, output, pending in
+                let main = MainViewModel()
+                main.setupMidiController() // The new screen appears before Play disappears.
+                defer { main.removeMidiController() }
+                output.enqueue { done in pending.record([0x90, 81, 9]); done() }
+                if covered { s.vm.screenCovered() } else { s.vm.cleanup() }
+                pending.finish()
+                output.enqueue { done in pending.markFlushed(); done() }
+                try await s.waitWhile { !pending.flushed }
+                try #require(pending.flushed)
+                #expect(pending.messages.contains([0x90, 81, 9]),
+                        "late Play teardown discarded the new screen's queued light")
+            }
+        }
+
         @Test func turningLightsOffDiscardsFiniteAnimations() async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\non 1 2 a 9\n"]) { s in
                 try await s.loadReady()
