@@ -98,6 +98,7 @@ final class LedPathRun {
         let launchpad: VirtualLaunchpad? = if let midiArrivals { try await VirtualLaunchpad.connect(arrivalsFile: midiArrivals) } else { nil }
         defer { launchpad?.disconnect() }
         let previousDriver = manager.driver
+        let previousController = manager.controller
         let driver = RecordingDriver(clock: clock, channels: try XCTUnwrap(vm.channelManager))
         self.driver = driver
         // Bracket the app's chain observer, including changes made by keyLED's `c` command.
@@ -106,7 +107,12 @@ final class LedPathRun {
         vm.setupChainObserver()
         vm.chain.addObserver { [weak driver] _, _ in driver?.endRepaint() }
         manager.overrideDriver(driver)
-        defer { manager.overrideDriver(previousDriver) }
+        defer {
+            manager.overrideDriver(previousDriver)
+            manager.controller = previousController
+        }
+        // This isolated screen must own output just as a visible performance screen does.
+        vm.setupMidiController()
         if launchpad != nil {
             // Overriding the driver gave the recording driver MidiManager's send listener; the MK2
             // driver it replaced sends through that one now.
@@ -145,12 +151,13 @@ final class LedPathRun {
         }
         // An overdue finite animation may finish in a tick whose output the recorder rejects.
         // Neither an expired clock nor discarded output proves whole-pack completeness.
-        ledRunner.stop()
         let stoppedAtMs = clock.now() ?? 0
         let stillAnimating = animating(ledRunner)
-        // Drain batches accepted before the cutoff. HandoverRecorder rejects later ticks even if
-        // this task resumes late, but accepted batches still reach the real main-actor adapter.
+        // Drain accepted batches while the runner is active: the app correctly rejects a batch
+        // after stop, even when this recorder accepted it before the observation cutoff.
+        // HandoverRecorder still rejects ticks past the unchanged give-up time.
         try await Task.sleep(for: .milliseconds(50))
+        ledRunner.stop()
         // MIDI sends leave by way of the main actor and MidiManager's send queue.
         if launchpad != nil { try await Task.sleep(for: .milliseconds(500)) }
         let cutoffMs = LedPathRecording.cutoffTime(nowMs: stoppedAtMs, giveUpAtMs: giveUpAtMs,

@@ -72,6 +72,8 @@ final class ReleaseFeatureUITests: XCTestCase {
         let grid = app.otherElements["playPadGrid"]
         let firstPad = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625))
         firstPad.tap()
+        chooseMode("Autoplay", in: app)
+        XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
 
         let lockState = try LockState()
         // A failure while locked must not leave the shared simulator locked for the tests after it.
@@ -91,6 +93,10 @@ final class ReleaseFeatureUITests: XCTestCase {
         XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 10),
                       "the play screen is gone: the app was relaunched")
         XCTAssertTrue(grid.exists)
+        XCTAssertTrue(app.buttons["play.fill"].waitForExistence(timeout: 5), "unlocking must wait for an explicit resume")
+        XCTAssertFalse(app.buttons["pause.fill"].exists)
+        app.buttons["play.fill"].tap()
+        XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
         firstPad.tap()
         UITestSupport.attachScreenshot("after-unlock", to: self)
         app.buttons["line.3.horizontal"].tap()

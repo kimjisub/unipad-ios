@@ -51,6 +51,24 @@ final class AudioLifecycleUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         UITestSupport.attachScreenshot("audio-08-autoplay-return", to: self)
+        let resume = app.buttons["play.fill"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 5), "returning home must wait for a manual resume")
+        XCTAssertFalse(app.buttons["pause.fill"].exists)
+        resume.tap()
+        XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
+        UITestSupport.attachScreenshot("audio-08-manually-resumed", to: self)
+        app.buttons["pause.fill"].tap()
+        XCTAssertTrue(resume.waitForExistence(timeout: 5))
+        XCUIDevice.shared.press(.home)
+        waitForBackground(app)
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        XCTAssertTrue(resume.waitForExistence(timeout: 5))
+        resume.tap()
+        UITestSupport.attachScreenshot("audio-paused-return-one-play", to: self)
+        XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5),
+                      "one Play must start a run that was paused before leaving")
+
         menu.tap()
         let quit = app.buttons["rectangle.portrait.and.arrow.right"]
         XCTAssertTrue(quit.waitForExistence(timeout: 5))

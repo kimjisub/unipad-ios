@@ -44,6 +44,94 @@ final class AutoPlayRunnerTests: XCTestCase {
         }
     }
 
+    func testFinalWaitFinishesAtItsSongTime() async throws {
+        for delay in [0, 1, 2000] {
+            let pack = UniPack()
+            pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: delay)])
+            let clock = TestManualClock()
+            let recorder = Recorder()
+            var endedAt: Int64?
+            recorder.onFinish = { endedAt = clock.read() }
+            let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                clock: { clock.read() }, sleep: { _ in clock.advance(1); await Task.yield() })
+            runner.launch()
+            try await wait { recorder.ends == 1 }
+            XCTAssertEqual(endedAt, 1000 + Int64(delay), "final delay=\(delay)")
+            XCTAssertFalse(runner.active)
+            runner.stop()
+        }
+    }
+
+    func testPausingDuringFinalWaitPreservesItsRemainingTime() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [.delay(delay: 500), .delay(delay: 1500)])
+        let clock = TestManualClock()
+        let recorder = Recorder()
+        let reference = RunnerReference()
+        var tick = 0
+        var endedAt: Int64?
+        recorder.onFinish = { endedAt = clock.read() }
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+            clock: { clock.read() }, sleep: { _ in
+                tick += 1
+                switch tick {
+                case 1: clock.advance(500)
+                case 2:
+                    clock.advance(500)
+                    reference.value.playmode = false
+                    clock.advance(10000)
+                case 3:
+                    XCTAssertEqual(recorder.ends, 0)
+                    reference.value.playmode = true
+                default: clock.advance(1)
+                }
+                await Task.yield()
+            })
+        reference.value = runner
+        defer { runner.stop(); reference.value = nil }
+        runner.launch()
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(endedAt, 13000)
+    }
+
+    func testSuspendingWaitsForAnExplicitResumeWithoutRecreatingOldPresses() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0),
+            .delay(delay: 1000), .on(x: 0, y: 1, currChain: 0, num: 0)])
+        let recorder = Recorder()
+        let clock = TestManualClock()
+        let reference = RunnerReference()
+        var tick = 0
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+            clock: { clock.read() }, sleep: { _ in
+                tick += 1
+                switch tick {
+                case 1:
+                    clock.advance(500)
+                    reference.value.suspend()
+                    clock.advance(10000)
+                case 2:
+                    XCTAssertEqual(recorder.pressTimes, [1000])
+                    XCTAssertTrue(reference.value.isSuspended)
+                    reference.value.appReturned()
+                case 3:
+                    XCTAssertEqual(recorder.pressTimes, [1000])
+                    reference.value.resumeFromSuspension()
+                case 4: clock.advance(499)
+                case 5:
+                    XCTAssertEqual(recorder.pressTimes, [1000])
+                    clock.advance(1)
+                default: clock.advance(1)
+                }
+                await Task.yield()
+            })
+        reference.value = runner
+        defer { runner.stop(); reference.value = nil }
+        runner.launch()
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.pressTimes, [1000, 12000])
+    }
+
     func testLateTickKeepsScheduledPressAndReleaseTimes() async throws {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [
@@ -214,6 +302,32 @@ final class AutoPlayRunnerTests: XCTestCase {
         runner.launch()
     }
 
+    func testSuspendedStepPracticeDiscardsUnprocessedPresses() async throws {
+        for queuedBeforeSuspension in [false, true] {
+            let recorder = Recorder()
+            var ticks = 0
+            let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder,
+                chain: ChainObserver(), sleep: { _ in ticks += 1; await Task.yield() })
+            defer { runner.stop() }
+            startStepPractice(runner)
+            try await wait { recorder.litGuides == [0] }
+            if queuedBeforeSuspension { runner.stepPadPressed(x: 0, y: 0) }
+            runner.suspend()
+            if !queuedBeforeSuspension { runner.stepPadPressed(x: 0, y: 0) }
+            let suspendedProgress = runner.progress
+            let suspendedTick = ticks
+            try await wait { ticks >= suspendedTick + 3 }
+            XCTAssertEqual(runner.progress, suspendedProgress)
+
+            runner.resumeFromSuspension()
+            let resumedTick = ticks
+            try await wait { ticks >= resumedTick + 3 }
+            XCTAssertEqual(recorder.litGuides, [0], "queued before suspension: \(queuedBeforeSuspension)")
+            runner.stepPadPressed(x: 0, y: 0)
+            try await wait { recorder.litGuides == [1] }
+        }
+    }
+
     func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
         let recorder = Recorder()
         let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder, chain: ChainObserver())
@@ -339,12 +453,14 @@ final class AutoPlayRunnerTests: XCTestCase {
 
     func testRestartWaitsForCancelledRunEvenAfterTwoStops() async throws {
         let pack = UniPack()
-        pack.autoPlayTable = AutoPlay(elements: [.delay(delay: 0)])
+        pack.autoPlayTable = AutoPlay(elements: [.delay(delay: 1)])
         let recorder = Recorder()
         var suspended: CheckedContinuation<Void, Never>?
         var replacementSuspended: CheckedContinuation<Void, Never>?
         var sleepCalls = 0
-        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(), sleep: { _ in
+        let clock = TestManualClock()
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(), clock: { clock.read() }, sleep: { _ in
+            clock.advance(1)
             sleepCalls += 1
             if sleepCalls == 1 {
                 await withCheckedContinuation { suspended = $0 }

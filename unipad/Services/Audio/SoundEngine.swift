@@ -78,6 +78,7 @@ final class SoundEngine {
 
     /// True while an interruption or a failed restart is swallowing pads.
     var isPlaybackSuppressed: Bool { gate.isPlaybackSuppressed }
+    var isRecoveringPlayback: Bool { gate.isRecovering }
     /// Whether interruptions, media services resets and route changes reach the gate. A test seam.
     var isObservingSession: Bool { !observerTokens.isEmpty }
 
@@ -91,7 +92,7 @@ final class SoundEngine {
         case appReturned(recovered: Bool)
     }
     /// Told after the engine has handled an interruption or the app's return to the front, so the
-    /// screen can pause or resume what it drives.
+    /// screen can release output and wait for an explicit playback request.
     var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
@@ -113,6 +114,11 @@ final class SoundEngine {
     var activateSessionForRecovery: () throws -> Void {
         get { gate.hooks.activateSession }
         set { gate.hooks.activateSession = newValue }
+    }
+    /// The gate's rendering observation. Tests can model hardware reconfiguration stopping I/O.
+    var isEngineRunningForRecovery: () -> Bool {
+        get { gate.hooks.isEngineRunning }
+        set { gate.hooks.isEngineRunning = newValue }
     }
     #if canImport(UIKit)
     /// Whether the app is active. A test seam: the test host stays active, and an interruption can end
@@ -234,6 +240,13 @@ final class SoundEngine {
         ) { [weak self] _ in
             self?.handleMediaServicesReset()
         })
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        })
         #endif
         // A route change (headphones at 44.1 kHz, unplug) stops the engine; scheduling on a node of
         // a stopped engine raised an uncatchable Objective-C exception on the next pad.
@@ -242,7 +255,7 @@ final class SoundEngine {
             object: engine,
             queue: .main
         ) { [weak self] _ in
-            self?.gate.configurationChanged()
+            self?.handleConfigurationChange()
         })
     }
 
@@ -589,10 +602,41 @@ final class SoundEngine {
     }
 
     func handleMediaServicesReset() {
-        releaseAllVoices()
+        stopAllPlayback()
+        onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
         gate.mediaServicesWereReset()
     }
+
+    func handleRouteChange(_ notification: Notification) {
+        guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
+              reason == .oldDeviceUnavailable || reason == .noSuitableRouteForCategory else { return }
+        stopAllPlayback()
+        onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
+        gate.configurationChanged()
+    }
     #endif
+
+    /// A format change can stop I/O even when a newly connected output remains available.
+    /// Route-loss and interruption notifications decide whether the song must pause.
+    func handleConfigurationChange() {
+        gate.configurationChanged()
+    }
+
+    /// Resolve this explicit Play request without queuing it across a future permission notice.
+    func requestPlayback(_ completion: @escaping (Bool) -> Void) {
+        guard !destroyed, isUsable else { completion(false); return }
+        let report: (AudioSessionGate.Recovery) -> Void = { [weak self] recovery in
+            completion(self?.destroyed == false && recovery == .recovered)
+        }
+        if gate.state == .interrupted {
+            // An explicit request may recover even if the system never delivered an end notice.
+            // Activation fails if another app still holds the session; that resolves this request.
+            gate.appBecameActive(completion: report)
+        } else {
+            gate.configurationChanged(completion: report)
+        }
+    }
 
     /// The app is in front again. A call that was answered may never send the end of its
     /// interruption, so this is where the session is taken back in that case.
@@ -607,6 +651,12 @@ final class SoundEngine {
             guard recovery != .abandoned else { return }
             self?.onInterruption?(.appReturned(recovered: recovery == .recovered))
         }
+    }
+
+    /// A lifecycle boundary ends finite tails as well as held loops and queued chain changes.
+    func stopAllPlayback() {
+        cancelPendingWormholes()
+        releaseAllVoices()
     }
 
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
