@@ -44,6 +44,56 @@ final class AutoPlayRunnerTests: XCTestCase {
         }
     }
 
+    func testFinalWaitFinishesAtItsSongTime() async throws {
+        for delay in [0, 1, 2000] {
+            let pack = UniPack()
+            pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: delay)])
+            let clock = TestManualClock()
+            let recorder = Recorder()
+            var endedAt: Int64?
+            recorder.onFinish = { endedAt = clock.read() }
+            let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                clock: { clock.read() }, sleep: { _ in clock.advance(1); await Task.yield() })
+            runner.launch()
+            try await wait { recorder.ends == 1 }
+            XCTAssertEqual(endedAt, 1000 + Int64(delay), "final delay=\(delay)")
+            XCTAssertFalse(runner.active)
+            runner.stop()
+        }
+    }
+
+    func testPausingDuringFinalWaitPreservesItsRemainingTime() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [.delay(delay: 500), .delay(delay: 1500)])
+        let clock = TestManualClock()
+        let recorder = Recorder()
+        let reference = RunnerReference()
+        var tick = 0
+        var endedAt: Int64?
+        recorder.onFinish = { endedAt = clock.read() }
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+            clock: { clock.read() }, sleep: { _ in
+                tick += 1
+                switch tick {
+                case 1: clock.advance(500)
+                case 2:
+                    clock.advance(500)
+                    reference.value.playmode = false
+                    clock.advance(10000)
+                case 3:
+                    XCTAssertEqual(recorder.ends, 0)
+                    reference.value.playmode = true
+                default: clock.advance(1)
+                }
+                await Task.yield()
+            })
+        reference.value = runner
+        defer { runner.stop(); reference.value = nil }
+        runner.launch()
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(endedAt, 13000)
+    }
+
     func testLateTickKeepsScheduledPressAndReleaseTimes() async throws {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [

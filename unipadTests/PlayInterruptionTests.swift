@@ -12,6 +12,61 @@ import Testing
 extension PlayUsageRecordTests {
     @MainActor
     struct PlayInterruptionTests {
+        @Test(arguments: [false, true], [PlayMode.autoPlay, .guidePlay, .stepPractice])
+        func leavingPlayRequiresManualResume(covered: Bool, mode: PlayMode) async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try #require(s.vm.autoPlayRunner)
+                s.vm.switchPlayMode(mode)
+                try await s.waitWhile { runner.progress < 1 }
+                if covered { s.vm.screenCovered() } else { s.vm.onPause() }
+                let progress = runner.progress
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(s.vm.playMode == mode)
+                #expect(s.vm.soundEngine?.activePlayIDs.isEmpty == true)
+                if covered { s.vm.screenShown() } else { s.vm.onResume() }
+                try await Task.sleep(for: .milliseconds(300))
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(runner.progress == progress)
+                #expect(s.vm.playMode == mode)
+            }
+        }
+
+        @Test func audioPermissionAndRepeatedReturnNeverResumeAutoplay() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                engine.handleInterruption(interruption(.began))
+                let progress = runner.progress
+                engine.handleInterruption(interruption(.ended, shouldResume: true))
+                try await waitForRecovery(s, engine)
+                s.vm.onResume()
+                s.vm.onResume()
+                try await Task.sleep(for: .milliseconds(300))
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(runner.progress == progress)
+                s.vm.autoPlayResume()
+                #expect(s.vm.isAutoPlayPlaying)
+            }
+        }
+
+        @Test func turningLightsOffDiscardsFiniteAnimations() async throws {
+            try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\non 1 2 a 9\n"]) { s in
+                try await s.loadReady()
+                s.vm.scbLed.forceSetChecked(true)
+                s.press()
+                let runner = try #require(s.vm.ledRunner)
+                #expect(runner.isEventExist(x: 0, y: 0))
+                let audio = s.vm.soundEngine?.activePlayIDs
+                s.vm.scbLed.forceSetChecked(false)
+                #expect(!runner.isEventExist(x: 0, y: 0), "finite animations must be discarded too")
+                #expect(s.vm.soundEngine?.activePlayIDs == audio)
+                s.vm.scbLed.forceSetChecked(true)
+                #expect(!runner.isEventExist(x: 0, y: 0), "old animations returned when enabled")
+            }
+        }
+
         /// Pad (1,1) loops forever (a keySound loop count of 0), (1,2) and (1,3) are one-shots.
         /// Autoplay holds (1,3) down for the whole run and keeps pressing (1,2), so it is still
         /// running and a pad is lit at any point.
