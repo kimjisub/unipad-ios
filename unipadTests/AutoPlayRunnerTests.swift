@@ -109,11 +109,12 @@ final class AutoPlayRunnerTests: XCTestCase {
     /// The guided chord is still owed until its pads are pressed. Scanning past it must not
     /// discard it when sound-producing autoplay starts, even at the end of the table.
     func testStepToSoundingAutoplayKeepsUnplayedPadsAcrossPauseDurations() async throws {
+        let pressedPads: [Int?] = [nil, 1, 2]
         for pauseBeforeFirstTick in [false, true] {
             for pausedMs: Int64 in [0, 1, 300, 3_000] {
-                for partialChord in [false, true] {
+                for pressedPad in pressedPads {
                     for lastGroup in [false, true] {
-                        let label = "pauseBeforeFirstTick=\(pauseBeforeFirstTick), pause=\(pausedMs), partial=\(partialChord), final=\(lastGroup)"
+                        let label = "pauseBeforeFirstTick=\(pauseBeforeFirstTick), pause=\(pausedMs), pressed=\(String(describing: pressedPad)), final=\(lastGroup)"
                         let pack = UniPack()
                         var elements: [AutoPlay.Element] = [
                             .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
@@ -141,7 +142,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                         try await wait { recorder.guidePads == [0, 1, 2] }
                         // Leave this press queued, as a user's press can arrive just before
                         // the mode button in the same tick.
-                        if partialChord { runner.stepPadPressed(x: 0, y: 1) }
+                        if let pressedPad { runner.stepPadPressed(x: 0, y: pressedPad) }
                         clock.advance(pausedMs)
                         if pauseBeforeFirstTick {
                             let pausedTick = ticks + 2
@@ -158,7 +159,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                         let resumedAt = clock.read()
                         let nextTick = ticks + 2
                         try await wait { ticks >= nextTick || !runner.active }
-                        let pending = partialChord ? [2] : [1, 2]
+                        let pending = [1, 2].filter { $0 != pressedPad }
                         XCTAssertEqual(recorder.pressedPads, pending, label)
                         XCTAssertEqual(recorder.pressTimes, Array(repeating: resumedAt, count: pending.count), label)
                         if !lastGroup {
