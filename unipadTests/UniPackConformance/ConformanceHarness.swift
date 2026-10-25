@@ -530,10 +530,10 @@ enum ConformanceHarness {
                     log.add(["autoActive", .bool(autoPlay.active)])
                 case "suspendAuto":
                     guard let autoPlay else { throw ConformanceError.harness("suspendAuto requires an autoplay runner") }
-                    autoPlay.appWentAway()
+                    autoPlay.suspend()
                 case "resumeAuto":
                     guard let autoPlay else { throw ConformanceError.harness("resumeAuto requires an autoplay runner") }
-                    autoPlay.appReturned()
+                    autoPlay.resumeFromSuspension()
                 case "watchStops":
                     watchesStops = true
                     // These cases have no elapsed-time steps. Keep finite completion delivery

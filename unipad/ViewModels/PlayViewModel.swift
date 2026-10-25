@@ -316,6 +316,7 @@ final class PlayViewModel {
             } else {
                 self.ledRunner?.stop()
                 self.ledRunner?.discardAll()
+                self.discardPendingDeviceLights()
                 self.ledInit()
             }
             self.refreshWatermark()
@@ -1021,8 +1022,14 @@ final class PlayViewModel {
         releaseAllPads()
         soundEngine?.stopAllPlayback()
         ledRunner?.discardAll()
+        discardPendingDeviceLights()
         ledInit()
         removeAllGuide()
+    }
+
+    private func discardPendingDeviceLights() {
+        guard !isCovered else { return }
+        MidiManager.shared.discardPendingLights()
     }
 
     func autoPlayPrev() {
