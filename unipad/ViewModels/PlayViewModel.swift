@@ -94,6 +94,7 @@ final class PlayViewModel {
 
     var playMode: PlayMode {
         if !scbAutoPlay.checked { return .none }
+        if let suspendedPlayMode { return suspendedPlayMode }
         if !isPracticeMode { return .autoPlay }
         if isAutoPlayPlaying { return .guidePlay }
         return .stepPractice
@@ -146,7 +147,10 @@ final class PlayViewModel {
     private var ledListenerAdapter: LedListenerAdapter?
     private var autoPlayListenerAdapter: AutoPlayListenerAdapter?
     var autoPlayRunner: AutoPlayRunner?
-    @ObservationIgnored private var autoPlayInterruption = AutoPlayInterruptionPolicy()
+    @ObservationIgnored private var suspendedPlayMode: PlayMode?
+    @ObservationIgnored private var isAppAway = false
+    @ObservationIgnored private var playbackResumeRequest: UUID?
+    @ObservationIgnored private var userPausedTimedPlayback = false
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
 
@@ -313,6 +317,8 @@ final class PlayViewModel {
                 logger.info("LedRunner launched via checkbox")
             } else {
                 self.ledRunner?.stop()
+                self.ledRunner?.discardAll()
+                self.discardPendingDeviceLights()
                 self.ledInit()
             }
             self.refreshWatermark()
@@ -613,6 +619,7 @@ final class PlayViewModel {
 
         let input = PadInput(id: inputID, isController: trigger == .pad(.midi))
         if isDown {
+            guard enable, !isAppAway, !isCovered else { return }
             let hold = PadHold(x: x, y: y, byAutoPlay: trigger == .autoplay)
             let owner = padHolds[hold]?[input] ?? UUID()
             padHolds[hold, default: [:]][input] = owner
@@ -870,14 +877,18 @@ final class PlayViewModel {
     // MARK: - AutoPlay Controls
 
     func switchPlayMode(_ mode: PlayMode) {
+        playbackResumeRequest = nil
+        userPausedTimedPlayback = false
         guard let runner = autoPlayRunner else { return }
-        autoPlayInterruption.userTookControl()
         let currentMode = playMode
 
         if mode == currentMode {
             switchPlayMode(.none)
             return
         }
+
+        runner.cancelSuspension()
+        suspendedPlayMode = nil
 
         if mode == .none {
             soundEngine?.cancelPendingWormholes()
@@ -908,6 +919,7 @@ final class PlayViewModel {
         } else {
             applyModeFlags(runner, mode)
         }
+        if isAppAway || isCovered || soundEngine?.isPlaybackSuppressed == true { suspendPlayback() }
         refreshWatermark()
     }
 
@@ -954,12 +966,10 @@ final class PlayViewModel {
     }
 
     func autoPlayResume() {
-        autoPlayInterruption.userTookControl()
         resumeAutoPlay()
     }
 
     func autoPlayPause() {
-        autoPlayInterruption.userTookControl()
         pauseAutoPlay()
     }
 
@@ -971,7 +981,38 @@ final class PlayViewModel {
     }
 
     private func resumeAutoPlay() {
-        guard let runner = autoPlayRunner else { return }
+        guard enable, !isAppAway, !isCovered, let engine = soundEngine,
+              let runner = autoPlayRunner else { return }
+        let request = UUID()
+        playbackResumeRequest = request
+        engine.requestPlayback { [weak self, weak engine, weak runner] ready in
+            guard let self, self.playbackResumeRequest == request else { return }
+            self.playbackResumeRequest = nil
+            guard ready, self.enable, !self.isAppAway, !self.isCovered,
+                  let engine, self.soundEngine === engine,
+                  let runner, self.autoPlayRunner === runner else { return }
+            self.resumeAutoPlayWithSound(runner)
+        }
+    }
+
+    private func resumeAutoPlayWithSound(_ runner: AutoPlayRunner) {
+        if let mode = suspendedPlayMode {
+            runner.resumeFromSuspension()
+            // Play is an explicit request to start, even if the user paused before leaving.
+            // Step practice instead resumes listening for a fresh pad in the same mode.
+            if userPausedTimedPlayback && mode == .stepPractice {
+                runner.stepMode = false
+                runner.resetStepState()
+                removeAllGuide()
+            }
+            runner.playmode = mode != .stepPractice || userPausedTimedPlayback
+            userPausedTimedPlayback = false
+            suspendedPlayMode = nil
+            isAutoPlayPlaying = runner.playmode
+            refreshWatermark()
+            return
+        }
+        userPausedTimedPlayback = false
         runner.stepMode = false
         runner.resetStepState(preservingPendingAutoplay: !runner.practiceGuide)
         removeAllGuide()
@@ -984,7 +1025,9 @@ final class PlayViewModel {
     }
 
     private func pauseAutoPlay() {
+        playbackResumeRequest = nil
         guard let runner = autoPlayRunner else { return }
+        userPausedTimedPlayback = userPausedTimedPlayback || runner.playmode
         runner.playmode = false
         ledInit()
         isAutoPlayPlaying = false
@@ -993,26 +1036,36 @@ final class PlayViewModel {
         }
     }
 
+    /// Every interruption requires a new user request, even when audio becomes available again.
     private func handleAudioInterruption(_ interruption: SoundEngine.Interruption) {
         guard enable else { return }
-        // An autoplay paused only because another screen covers this one counts as playing: an
-        // interruption meanwhile decides whether it goes on, as it would without that screen.
-        let playing = playMode != .none && (autoPlayRunner?.playmode == true || resumesAutoPlayWhenShown)
-        switch autoPlayInterruption.action(for: interruption, autoPlayPlaying: playing) {
-        case .pause:
-            resumesAutoPlayWhenShown = false
-            pauseAutoPlay()
-        case .resume:
-            // Autoplay may have been turned off while the session was away.
-            guard playMode != .none else { break }
-            if isCovered {
-                resumesAutoPlayWhenShown = true
-            } else {
-                resumeAutoPlay()
-            }
-        case nil:
-            break
+        if case .began = interruption { suspendPlayback() }
+    }
+
+    private func suspendPlayback() {
+        playbackResumeRequest = nil
+        guard enable else { return }
+        if suspendedPlayMode == nil, playMode != .none {
+            suspendedPlayMode = playMode
+            autoPlayRunner?.suspend()
         }
+        isAutoPlayPlaying = false
+        releaseAllPads()
+        soundEngine?.stopAllPlayback()
+        ledRunner?.discardAll()
+        discardPendingDeviceLights(repaintCurrentScreen: true)
+        ledInit()
+        removeAllGuide()
+    }
+
+    private func discardPendingDeviceLights(repaintCurrentScreen: Bool = false) {
+        guard !isCovered, ownsMidiController || repaintCurrentScreen else { return }
+        let manager = MidiManager.shared
+        let nextScreen = ownsMidiController ? nil : manager.controller
+        manager.discardPendingLights()
+        // A new screen may have attached before Play disappears. Drop the old pack's backlog,
+        // then recreate that screen's clear and watermark after the cancellation in the same FIFO.
+        nextScreen?.onAttach()
     }
 
     func autoPlayPrev() {
@@ -1152,17 +1205,20 @@ final class PlayViewModel {
     // MARK: - Lifecycle
 
     func onPause() {
-        releaseControllerPads()
+        isAppAway = true
+        suspendPlayback()
         autoPlayRunner?.appWentAway()
         ledRunner?.appWentAway()
+        launchpad?.sendClearLed()
         if let adapter = midiControllerAdapter {
             MidiManager.shared.removeController(adapter)
         }
-        launchpad?.sendClearLed()
         stopVolumeObserver()
     }
 
     func onResume() {
+        guard enable else { return }
+        isAppAway = false
         autoPlayRunner?.appReturned()
         ledRunner?.appReturned()
         soundEngine?.appBecameActive()
@@ -1182,42 +1238,41 @@ final class PlayViewModel {
 
     /// Another screen was pushed over this one (the device screen opened from the connection banner).
     @ObservationIgnored private var isCovered = false
-    @ObservationIgnored private var resumesAutoPlayWhenShown = false
 
     /// The performance stays, paused, for when this screen is shown again: held pads are released,
     /// a playing autoplay pauses, and the launchpad and the volume buttons go to the screen on top.
     func screenCovered() {
         guard enable, !isCovered else { return }
-        releaseAllPads()
-        resumesAutoPlayWhenShown = playMode != .none && autoPlayRunner?.playmode == true
-        if resumesAutoPlayWhenShown { pauseAutoPlay() }
         onPause()
-        // Lights still running (a pad's animation, the practice guide) stay on this screen from here.
         isCovered = true
     }
 
-    /// This screen is shown again after `screenCovered()`. An autoplay that was playing goes on from
-    /// where it paused, as after a call that lets playback resume, and only with sound.
+    /// Restore the controller connection; playback still waits for an explicit user request.
     func screenShown() {
         guard enable, isCovered else { return }
         isCovered = false
         onResume()
-        if resumesAutoPlayWhenShown, playMode != .none, soundEngine?.isPlaybackSuppressed != true {
-            resumeAutoPlay()
-        }
-        resumesAutoPlayWhenShown = false
     }
 
     /// The launchpad this screen lights; none while another screen covers it and has the launchpad.
+    private var ownsMidiController: Bool {
+        guard let adapter = midiControllerAdapter else { return false }
+        return MidiManager.shared.controller === adapter
+    }
+
     fileprivate var launchpad: MidiDriver? {
-        isCovered ? nil : MidiManager.shared.driver
+        isCovered || !ownsMidiController ? nil : MidiManager.shared.driver
     }
 
     // MARK: - Cleanup
 
     /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
+        playbackResumeRequest = nil
+        userPausedTimedPlayback = false
         guard enable else { return }
+        discardPendingDeviceLights(repaintCurrentScreen: true)
+        suspendedPlayMode = nil
         padHolds.removeAll()
         usageSession.ended()
         enable = false
@@ -1244,6 +1299,8 @@ final class PlayViewModel {
     }
 
     func stopAutoPlay() {
+        playbackResumeRequest = nil
+        userPausedTimedPlayback = false
         autoPlayRunner?.stop()
         autoPlayControlVisible = false
         isAutoPlayPlaying = false
@@ -1331,10 +1388,19 @@ final class LedListenerAdapter: LedRunner.Listener {
     }
 
     nonisolated func onLedBatch(_ events: [LedRunner.LedEvent]) {
+        deliver(events, generation: nil)
+    }
+
+    nonisolated func onLedBatch(_ events: [LedRunner.LedEvent], generation: UInt64) {
+        deliver(events, generation: generation)
+    }
+
+    nonisolated private func deliver(_ events: [LedRunner.LedEvent], generation: UInt64?) {
         Task { @MainActor [weak self] in
             // A batch the runner worked out just before it was stopped (lights turned off, the screen
             // left) arrives after the lights were cleared, and must not light them again.
             guard let vm = self?.viewModel, let cm = vm.channelManager, vm.ledRunner?.active == true else { return }
+            if let generation, vm.ledRunner?.isCurrentGeneration(generation) != true { return }
             for event in events {
                 switch event {
                 case .padOn(let x, let y, let color, let velocity):

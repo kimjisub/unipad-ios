@@ -5,7 +5,7 @@ import XCTest
 /// about what is drawn, not about sound.
 final class PlayScreenReturnUITests: XCTestCase {
     @MainActor
-    func testAutoplayAndLightsGoOnAfterReturningFromTheDeviceScreen() throws {
+    func testAutoplayWaitsForManualResumeAfterReturningFromTheDeviceScreen() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
@@ -44,12 +44,22 @@ final class PlayScreenReturnUITests: XCTestCase {
         UITestSupport.attachScreenshot("return-02-device-screen", to: self)
         ok.tap()
 
-        XCTAssertTrue(pause.waitForExistence(timeout: 15), "autoplay is not playing after coming back")
+        let resume = app.buttons["play.fill"].firstMatch
+        let waitsForPlay = resume.waitForExistence(timeout: 15)
         UITestSupport.attachScreenshot("return-03-after-return", to: self)
-        XCTAssertFalse(try padsChanging(grid).isEmpty, "no lights moved after coming back from the device screen")
+        XCTAssertTrue(waitsForPlay, "returning from the device screen must wait for Play")
+        XCTAssertFalse(pause.exists, "returning from the device screen must not resume autoplay")
+        XCTAssertTrue(try padsChanging(grid).isEmpty, "old lights moved before a manual resume")
+        Thread.sleep(forTimeInterval: 10)
+        XCTAssertTrue(resume.exists)
+        XCTAssertFalse(pause.exists)
+        XCTAssertTrue(try padsChanging(grid).isEmpty, "old lights resumed while waiting for Play")
+        resume.tap()
+        XCTAssertTrue(pause.waitForExistence(timeout: 5))
+        XCTAssertFalse(try padsChanging(grid).isEmpty, "new autoplay lights did not start after Play")
+        UITestSupport.attachScreenshot("return-03-manually-resumed", to: self)
 
         pause.tap()
-        let resume = app.buttons["play.fill"].firstMatch
         XCTAssertTrue(resume.waitForExistence(timeout: 5))
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(try padsChanging(grid).isEmpty, "lights kept moving with autoplay paused")

@@ -121,6 +121,27 @@ struct LedRunnerTests {
         return Harness(runner: runner, recorder: recorder, clock: clock, chain: chain)
     }
 
+    @Test(arguments: [0, 1, 2], [Int64(1000), 10000])
+    func discardedScenesNeverReturn(loop: Int, disabledFor: Int64) async throws {
+        let h = try await start([0: LedAnimation(ledEvents: [
+            .on(x: 0, y: 0, velocity: 5), .delay(delay: 20000), .on(x: 0, y: 1, velocity: 9)
+        ], loop: loop, num: 0)])
+        defer { h.runner.stop() }
+        h.press()
+        h.runner.stop()
+        h.runner.discardAll()
+        #expect(!h.runner.isEventExist(x: 0, y: 0))
+        let count = h.recorder.codes.count
+        h.runner.eventOn(x: 0, y: 0) // Disabled input must not be queued.
+        h.clock.advance(disabledFor)
+        h.runner.launch()
+        h.tick(20001)
+        #expect(h.recorder.codes.count == count)
+        h.runner.eventOn(x: 0, y: 0)
+        h.tick(0)
+        #expect(h.recorder.codes.last == 5, "new input must work after enabling lights")
+    }
+
     @Test func autoplayInputMustArriveBeforeRenderingLaterSteps() async throws {
         let h = try await start([
             0: LedAnimation(ledEvents: [.on(x: 1, y: 1, velocity: 5), .delay(delay: 2),

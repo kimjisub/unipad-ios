@@ -293,6 +293,8 @@ extension PlayUsageRecordTests {
                     if manager.controller === inputOnly { manager.controller = controller }
                 }
                 try await withDevice(kind, "LPProMK3 MIDI", port: 1, driver: { LaunchpadProMK3Driver() }) { device in
+                    // Suppress only the fixture's attach redraw; pad output belongs to the real screen.
+                    manager.controller = controller
                     s.press(8, 0)
                     s.press(0, 8)
                     s.press(9, 9)

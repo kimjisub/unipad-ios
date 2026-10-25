@@ -42,6 +42,40 @@ final class AutoPlayRunner {
         didSet { if practiceGuide { releaseHeldPads() } }
     }
     var stepMode: Bool = false
+    private(set) var isSuspended = false
+    private var playmodeBeforeSuspension = false
+
+    /// Stop output without consuming a pending step or changing the selected practice mode.
+    func suspend() {
+        guard !isSuspended else { return }
+        _pressedKeysQueue.removeAll()
+        playmodeBeforeSuspension = playmode
+        playmode = false
+        isSuspended = true
+        listener?.onInputTimeThrough(nil)
+        for key in drainGuides() { turnOffGuide(key) }
+        for key in _stepPendingPads { turnOffGuide(key) }
+        listener?.onRemoveGuide()
+    }
+
+    func resumeFromSuspension() {
+        guard isSuspended else { return }
+        isSuspended = false
+        playmode = playmodeBeforeSuspension
+        beforeStartPlaying = true
+        if stepMode && practiceGuide {
+            for key in _stepPendingPads {
+                listener?.onGuidePadOn(x: key / 256, y: key % 256, targetWallTimeMs: 0)
+                listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: Self.guideVelocities.last!)
+            }
+            if waitingForChain >= 0 { listener?.onGuideChainOn(c: waitingForChain) }
+        }
+    }
+
+    /// An explicit mode change supplies its own play/pause flags next.
+    func cancelSuspension() {
+        isSuspended = false
+    }
 
     private(set) var progress: Int = 0 {
         didSet { listener?.onProgressUpdate(progress: progress) }
@@ -257,7 +291,11 @@ final class AutoPlayRunner {
             self.pendingSkipMs = 0
             self.guideMoved = false
 
-            while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
+            while !Task.isCancelled {
+                if self.isSuspended {
+                    try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
+                    continue
+                }
                 let currTime = self.clock()
 
                 let paused = self.pendingPauseMs
@@ -477,6 +515,13 @@ final class AutoPlayRunner {
                 }
 
                 self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? currTime : nil)
+                // Reading the final delay advances progress before that delay has elapsed.
+                // A paused run still owns its remaining wait, even at the end of the table.
+                if self.progress >= autoPlay.elements.count && !self.awaitsLastStep {
+                    let songTime = (self.pausedAt ?? currTime) - startTime
+                    if delayAccum <= songTime { break }
+                    if !self.playmode && self.stepMode && self.practiceGuide { break }
+                }
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
             }
 
@@ -508,6 +553,7 @@ final class AutoPlayRunner {
         if let task { previousRun = task }
         task?.cancel()
         task = nil
+        isSuspended = false
         releaseHeldPads()
         listener?.onInputTimeThrough(nil)
         withGuides { $0.removeAll() }
@@ -579,6 +625,7 @@ final class AutoPlayRunner {
     }
 
     func stepPadPressed(x: Int, y: Int) {
+        guard !isSuspended else { return }
         let key = guideKey(x: x, y: y)
         _pressedKeysQueue.append(key)
     }
