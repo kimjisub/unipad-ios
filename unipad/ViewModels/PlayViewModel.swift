@@ -1216,6 +1216,7 @@ final class PlayViewModel {
     }
 
     func onResume() {
+        guard enable else { return }
         isAppAway = false
         autoPlayRunner?.appReturned()
         ledRunner?.appReturned()
