@@ -11,9 +11,10 @@ extension PlayUsageRecordTests {
     struct MidiDeviceSelectionTests {
         private func withDevices(
             _ names: [String],
+            manager: MidiManager? = nil,
             _ body: (VirtualMidiDevice, SelectionEvents) async throws -> Void
         ) async throws {
-            let manager = MidiManager.shared
+            let manager = manager ?? .shared
             let previousListener = manager.listener
             manager.stop()
             // Keep a separate client alive while MidiManager is stopped. An acknowledgement from
@@ -66,6 +67,49 @@ extension PlayUsageRecordTests {
             let scan = "MIDI scan: \(sources) sources, \(destinations) destinations"
             try await PlayUsageScenario.waitWhile(timeout: 5) { !events.logs.dropFirst(start).contains(scan) }
             try #require(events.logs.dropFirst(start).contains(scan), "the app never scanned the new endpoints")
+        }
+
+        @Test func rescanningKeepsPendingOutputOnTheCurrentConnection() async throws {
+            let pending = PendingSelectionOutput()
+            let output = MidiOutputQueue()
+            let manager = MidiManager(sendQueue: output)
+            try await withDevices(["Test Keyboard"], manager: manager) { _, _ in
+                output.enqueue { done in pending.hold(done) }
+                try await PlayUsageScenario.waitWhile { !pending.started }
+                try #require(pending.started)
+                output.enqueue { done in pending.markSent(); done() }
+                let driver = manager.driver
+                manager.scanForDevices()
+                #expect(manager.driver === driver)
+                try await Task.sleep(for: .milliseconds(30))
+                #expect(!pending.sent)
+                pending.finish()
+                try await PlayUsageScenario.waitWhile { !pending.sent }
+                #expect(pending.sent, "rescan must preserve the current connection's queued light")
+            }
+        }
+
+        @Test func higherPriorityDeviceDiscardsTheOldConnectionsPendingOutput() async throws {
+            let pending = PendingSelectionOutput()
+            let output = MidiOutputQueue(sysexSend: { request in
+                request.pointee.completionProc(request)
+                return noErr
+            }, noteSend: { _, _, _ in })
+            let manager = MidiManager(sendQueue: output)
+            try await withDevices(["Test Keyboard"], manager: manager) { tool, events in
+                output.enqueue { done in pending.hold(done) }
+                try await PlayUsageScenario.waitWhile { !pending.started }
+                try #require(pending.started)
+                output.enqueue { done in pending.markStaleSent(); done() }
+                try await add("Launchpad MK2", using: tool, events: events)
+                try #require(manager.driver is LaunchpadMK2Driver)
+                output.enqueue { done in pending.markSent(); done() }
+                try await PlayUsageScenario.waitWhile { !pending.sent }
+                #expect(pending.sent, "the old device's missing completion must not hold up the new device")
+                pending.finish()
+                try await Task.sleep(for: .milliseconds(30))
+                #expect(!pending.staleSent, "old queued lights must not survive the device change")
+            }
         }
 
         @Test func unknownDeviceUpgradesToKeyboard() async throws {
@@ -161,4 +205,18 @@ private final class SelectionEvents: MidiManagerListener {
     func onDisconnected() { disconnections += 1 }
     func onChangeDriver(driver: MidiDriver) {}
     func onLog(_ message: String) { logs.append(message) }
+}
+
+nonisolated private final class PendingSelectionOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var completion: (@Sendable () -> Void)?
+    private var didSend = false
+    private var didSendStale = false
+    var started: Bool { lock.withLock { completion != nil } }
+    var sent: Bool { lock.withLock { didSend } }
+    var staleSent: Bool { lock.withLock { didSendStale } }
+    func hold(_ completion: @escaping @Sendable () -> Void) { lock.withLock { self.completion = completion } }
+    func finish() { lock.withLock { completion }?() }
+    func markSent() { lock.withLock { didSend = true } }
+    func markStaleSent() { lock.withLock { didSendStale = true } }
 }

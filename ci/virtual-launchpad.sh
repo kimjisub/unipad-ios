@@ -41,7 +41,13 @@ codesign -s - -f $build/virtual-launchpad >/dev/null
 if [[ $seconds == --log ]]; then
   xcrun simctl spawn $udid $build/virtual-launchpad --log
 elif (( $# == 5 )); then
-  xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals ${4:A} ${5:A}
+  if [[ ${UNIPAD_VIRTUAL_CONTROLLER:-mk2} == matrix ]]; then
+    xcrun simctl spawn $udid $build/virtual-launchpad "Matrix" $seconds $arrivals ${4:A} ${5:A} matrix
+  elif [[ ${UNIPAD_VIRTUAL_CONTROLLER:-mk2} == pro ]]; then
+    xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad Pro" $seconds $arrivals ${4:A} ${5:A}
+  else
+    xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals ${4:A} ${5:A}
+  fi
 else
   xcrun simctl spawn $udid $build/virtual-launchpad "Launchpad MK2" $seconds $arrivals
 fi

@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
         perror("starting log collector");
         return 1;
     }
-    if (argc != 4 && argc != 6) {
+    if (argc != 4 && argc != 6 && argc != 7) {
         fprintf(stderr, "usage: virtual-launchpad <name> <seconds> <out-file> [<signal-file> <sent-file>]\n");
         return 2;
     }
@@ -85,8 +85,11 @@ int main(int argc, char **argv) {
         perror(argv[3]);
         return 1;
     }
-    FILE *sent = argc == 6 ? fopen(argv[5], "w") : NULL;
-    if (argc == 6 && !sent) { perror(argv[5]); fclose(out); return 1; }
+    FILE *sent = argc >= 6 ? fopen(argv[5], "w") : NULL;
+    if (argc >= 6 && !sent) { perror(argv[5]); fclose(out); return 1; }
+    int matrix = argc == 7 && strcmp(argv[6], "matrix") == 0;
+    char releaseFile[PATH_MAX];
+    if (matrix && snprintf(releaseFile, sizeof(releaseFile), "%s.release", argv[4]) >= (int)sizeof(releaseFile)) return 2;
 
     MIDIClientRef client = 0;
     MIDIEndpointRef source = 0, destination = 0;
@@ -106,9 +109,10 @@ int main(int argc, char **argv) {
     int result = 0;
     while (!stopped && (double)mach_absolute_time() * secondsPerTick < deadline) {
         double now = (double)mach_absolute_time() * secondsPerTick;
-        if (sent && next < 4 && access(argv[4], F_OK) == 0 && now >= nextAt) {
+        const char *signalFile = matrix && next == 1 ? releaseFile : (argc >= 6 ? argv[4] : "");
+        if (sent && next < (matrix ? 2 : 4) && access(signalFile, F_OK) == 0 && now >= nextAt) {
             // Note-on velocity zero is the MK2 driver's release message.
-            if (sendNote(source, sent, next < 2 ? 81 : 82, next % 2 == 0 ? 127 : 0) != noErr) {
+            if (sendNote(source, sent, matrix ? 64 : (next < 2 ? 81 : 82), next % 2 == 0 ? 127 : 0) != noErr) {
                 fprintf(stderr, "MIDIReceived failed at step %d\n", next);
                 result = 1;
                 break;

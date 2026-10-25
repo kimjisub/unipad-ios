@@ -24,6 +24,8 @@ final class PlayViewModel {
     static let topBarCount = 8
     static let maxChainButtons = 24
     static let functionKeyCount = 36
+    /// Round-button index of the Launchpad logo (`l` in keyLED).
+    static let logoIndex = 32
     static let volumeLevels = 7
     static let lockedAlpha: Double = 0.3
 
@@ -474,9 +476,7 @@ final class PlayViewModel {
         guard let cm = channelManager else { return }
         proLightModeEnabled = enabled
         cm.setCirIgnore(channel: .led, ignore: !enabled)
-        if !enabled {
-            launchpad?.sendFunctionKeyLed(f: 32, velocity: 0)
-        }
+        refreshLogoFromChannel()
         chainBtnsRefresh()
     }
 
@@ -596,6 +596,13 @@ final class PlayViewModel {
         { x, y, isDown, inputID in
             self.padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.screen), inputID: inputID)
         }
+    }
+
+    /// Settings consume new controller presses. A release still reaches its own hold,
+    /// even if the options opened after that press; other inputs keep their owners.
+    func controllerPadTouch(x: Int, y: Int, isDown: Bool) {
+        guard !isDown || !isOptionWindowVisible else { return }
+        padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.midi))
     }
 
     /// `trigger` and `inputID` identify the input whose sounds and lights its release will end.
@@ -743,6 +750,12 @@ final class PlayViewModel {
             chainColors[index] = .clear
             launchpad?.sendFunctionKeyLed(f: index, velocity: 0)
         }
+    }
+
+    /// The Launchpad logo shows a pack's light only in pro light mode (`cirIgnore` hides it otherwise).
+    func refreshLogoFromChannel() {
+        guard enable, let cm = channelManager else { return }
+        launchpad?.sendFunctionKeyLed(f: Self.logoIndex, velocity: cm.get(x: -1, y: Self.logoIndex)?.code ?? 0)
     }
 
     /// Remove all guide LEDs from pads and chain indicators
@@ -1043,6 +1056,10 @@ final class PlayViewModel {
                 driver.sendFunctionKeyLed(f: i, velocity: 0)
             }
         }
+        // sendClearLed turned the logo off already.
+        if let logo = cm.get(x: -1, y: Self.logoIndex) {
+            driver.sendFunctionKeyLed(f: Self.logoIndex, velocity: logo.code)
+        }
     }
 
     func handleFunctionKeyTouch(f: Int, upDown: Bool) {
@@ -1324,18 +1341,18 @@ final class LedListenerAdapter: LedRunner.Listener {
                     cm.remove(x: x, y: y, channel: .led)
                     vm.refreshPadFromChannel(x: x, y: y)
                 case .chainOn(let c, let color, let velocity):
-                    if c == 32 {
-                        if vm.proLightModeEnabled {
-                            vm.launchpad?.sendFunctionKeyLed(f: 32, velocity: velocity)
-                        }
+                    if c == PlayViewModel.logoIndex {
+                        cm.add(x: -1, y: c, channel: .led, color: color, code: velocity)
+                        if vm.proLightModeEnabled { vm.refreshLogoFromChannel() }
                         continue
                     }
                     guard c >= 0, c < vm.chainColors.count else { continue }
                     cm.add(x: -1, y: c, channel: .led, color: color, code: velocity)
                     vm.refreshChainFromChannel(index: c)
                 case .chainOff(let c):
-                    if c == 32 {
-                        vm.launchpad?.sendFunctionKeyLed(f: 32, velocity: 0)
+                    if c == PlayViewModel.logoIndex {
+                        cm.remove(x: -1, y: c, channel: .led)
+                        if vm.proLightModeEnabled { vm.refreshLogoFromChannel() }
                         continue
                     }
                     guard c >= 0, c < vm.chainColors.count else { continue }
@@ -1467,8 +1484,8 @@ private final class PlayMidiControllerAdapter: MidiController {
     func onAttach() {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel else { return }
+            // A connection is not a chain change: each pad keeps its place in its sounds and lights.
             vm.redrawAllLaunchpadLeds()
-            vm.chain.refresh()
             vm.refreshWatermark()
         }
     }
@@ -1481,10 +1498,7 @@ private final class PlayMidiControllerAdapter: MidiController {
 
     func onPadTouch(x: Int, y: Int, upDown: Bool, velocity: Int) {
         Task { @MainActor [weak self] in
-            guard let vm = self?.viewModel else { return }
-            if !vm.isOptionWindowVisible {
-                vm.padTouch(x: x, y: y, isDown: upDown, trigger: .pad(.midi))
-            }
+            self?.viewModel?.controllerPadTouch(x: x, y: y, isDown: upDown)
         }
     }
 
@@ -1508,8 +1522,9 @@ private final class PlayMidiControllerAdapter: MidiController {
     func onUnknownEvent(cmd: Int, sig: Int, note: Int, velocity: Int) {
         Task { @MainActor [weak self] in
             guard let vm = self?.viewModel else { return }
+            // Launchpad Pro went back to Live mode: draw the current lights on it again.
             if cmd == 7 && sig == 46 && note == 0 && velocity == -9 {
-                vm.chain.refresh()
+                vm.redrawAllLaunchpadLeds()
                 vm.refreshWatermark()
             }
         }
