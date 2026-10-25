@@ -145,12 +145,13 @@ final class LedPathRun {
         }
         // An overdue finite animation may finish in a tick whose output the recorder rejects.
         // Neither an expired clock nor discarded output proves whole-pack completeness.
-        ledRunner.stop()
         let stoppedAtMs = clock.now() ?? 0
         let stillAnimating = animating(ledRunner)
-        // Drain batches accepted before the cutoff. HandoverRecorder rejects later ticks even if
-        // this task resumes late, but accepted batches still reach the real main-actor adapter.
+        // Drain accepted batches while the runner is active: the app correctly rejects a batch
+        // after stop, even when this recorder accepted it before the observation cutoff.
+        // HandoverRecorder still rejects ticks past the unchanged give-up time.
         try await Task.sleep(for: .milliseconds(50))
+        ledRunner.stop()
         // MIDI sends leave by way of the main actor and MidiManager's send queue.
         if launchpad != nil { try await Task.sleep(for: .milliseconds(500)) }
         let cutoffMs = LedPathRecording.cutoffTime(nowMs: stoppedAtMs, giveUpAtMs: giveUpAtMs,
