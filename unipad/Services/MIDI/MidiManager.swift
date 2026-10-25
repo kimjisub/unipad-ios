@@ -116,6 +116,12 @@ final class MidiManager: ObservableObject {
         self.sendQueue = sendQueue
     }
 
+    /// Drop unsent lights before queuing a clear or a new playback's lights.
+    /// Initialization and the current transmission continue on the same connection.
+    func discardPendingLights() {
+        sendQueue.discardPendingLights()
+    }
+
     func start() {
         log("MidiManager.start()")
         setupDriverListeners()

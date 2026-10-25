@@ -20,6 +20,19 @@ nonisolated class UniPack: Equatable, Hashable {
     var squareButton = true
     var website: String?
 
+    /// The page the website button opens. `website` is kept as written; empty means none, a page
+    /// written without a scheme (`unipad.io`) is opened over HTTPS, and only HTTP(S) pages are opened.
+    var websiteURL: URL? { Self.websiteURL(website) }
+
+    static func websiteURL(_ website: String?) -> URL? {
+        guard let written = website?.trimmingCharacters(in: .whitespacesAndNewlines), !written.isEmpty,
+              let url = URL(string: written) else { return nil }
+        guard let scheme = url.scheme?.lowercased() else {
+            return URL(string: "https://" + written).flatMap { $0.host == nil ? nil : $0 }
+        }
+        return (scheme == "http" || scheme == "https") && url.host != nil ? url : nil
+    }
+
     var soundCount = 0
     var ledTableCount = 0
 

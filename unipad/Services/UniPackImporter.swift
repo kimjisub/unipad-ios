@@ -221,7 +221,6 @@ nonisolated extension FileManager {
             }
 
             guard
-                let generalPurposeFlags = readUInt16LE(at: cursor + 8),
                 let compressionMethod = readUInt16LE(at: cursor + 10),
                 let compressedSizeU32 = readUInt32LE(at: cursor + 20),
                 let uncompressedSizeU32 = readUInt32LE(at: cursor + 24),
@@ -244,7 +243,8 @@ nonisolated extension FileManager {
             }
 
             let rawName = data[fileNameStart..<fileNameEnd]
-            let fileName = Self.decodeEntryName(rawName, utf8Flag: generalPurposeFlags & 0x0800 != 0)
+            let extra = data[fileNameEnd..<min(fileNameEnd + extraLength, data.count)]
+            let fileName = Self.decodeEntryName(Data(rawName), extra: Data(extra))
             if !fileName.isEmpty {
                 entries.append(Entry(
                     fileName: fileName,
@@ -258,12 +258,17 @@ nonisolated extension FileManager {
             cursor = fileNameEnd + extraLength + commentLength
         }
 
+        var folders = ArchiveFolderNames()
+        var soundFiles = ArchiveSoundFiles()
         for entry in entries {
             try Task.checkCancellation()
-            guard Self.isContainedEntryName(entry.fileName) else { continue }
+            guard let path = Self.entryPath(entry.fileName) else { continue }
 
-            let entryPath = destinationURL.appendingPathComponent(entry.fileName)
-            if entry.fileName.hasSuffix("/") {
+            let placed = folders.place(path.components, isDirectory: path.isDirectory)
+            let entryPath = path.isDirectory ? destinationURL.appendingPathComponent(placed)
+                : soundFiles.destination(original: path.components, archiveEntry: entry.fileName, placed: placed,
+                                         root: destinationURL, fileManager: self)
+            if path.isDirectory {
                 try createDirectory(at: entryPath, withIntermediateDirectories: true)
                 continue
             }
@@ -301,26 +306,45 @@ nonisolated extension FileManager {
                 )
             }
         }
+        try soundFiles.save(in: destinationURL)
     }
 
-    /// Entry names without the UTF-8 flag are in the archiver's code page. Korean packs were
-    /// zipped on CP949 Windows; decoding them as Latin-1 while `keySound` is decoded as EUC-KR
-    /// produced two different strings for the same file, so every sound was "not found" and a
-    /// legacy pack that plays on Android and web was silent here.
-    private static func decodeEntryName(_ raw: Data, utf8Flag: Bool) -> String {
+    /// Where an entry goes below the destination, or nil for one that must not be written. `\`
+    /// separates folders as `/` does (PowerShell 5.1's Compress-Archive and older .NET write it);
+    /// leading slashes and `.` are dropped. An entry with a `..` folder is skipped so nothing lands
+    /// outside the destination; names that only contain dots (`Faded.../`, `wait...wav`) are kept.
+    static func entryPath(_ name: String) -> (components: [String], isDirectory: Bool)? {
+        guard let components = PackFileFinder.pathComponents(name) else { return nil }
+        return (components, name.hasSuffix("/") || name.hasSuffix("\\"))
+    }
+
+    /// The Info-ZIP Unicode Path field (0x7075) when it belongs to this name (its CRC-32 matches the
+    /// raw name); otherwise the raw name as UTF-8 when it is valid UTF-8, and as CP949 when it is not,
+    /// whatever the UTF-8 flag says: some Korean archivers set the flag on CP949 names. Android and
+    /// the web read names the same way.
+    private static func decodeEntryName(_ raw: Data, extra: Data) -> String {
+        if let unicode = unicodePath(in: extra, of: raw) { return unicode }
         if let utf8 = String(data: raw, encoding: .utf8) { return utf8 }
-        if !utf8Flag {
-            let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(0x0422))
-            if let korean = String(data: raw, encoding: cp949) { return korean }
-        }
-        return String(data: raw, encoding: .isoLatin1) ?? ""
+        return LegacyText.cp949(raw)
     }
 
-    /// An entry name is a path inside the archive. One that starts at the root or steps up with a
-    /// `..` component would be written outside the destination; dots elsewhere (`Hey...wav`) are
-    /// part of an ordinary name.
-    static func isContainedEntryName(_ name: String) -> Bool {
-        !name.hasPrefix("/") && !name.split(separator: "/").contains("..")
+    private static func unicodePath(in extra: Data, of raw: Data) -> String? {
+        let bytes = [UInt8](extra)
+        func uint16(_ at: Int) -> Int { Int(bytes[at]) | Int(bytes[at + 1]) << 8 }
+        var offset = 0
+        while offset + 4 <= bytes.count {
+            let body = offset + 4
+            let end = body + uint16(offset + 2)
+            guard end <= bytes.count else { return nil }
+            if uint16(offset) == 0x7075, end - body >= 5, bytes[body] == 1 {
+                let crc = UInt32(uint16(body + 1)) | UInt32(uint16(body + 3)) << 16
+                guard crc == ZipHelper.crc32Checksum(raw), let name = String(bytes: bytes[(body + 5)..<end], encoding: .utf8),
+                      !name.isEmpty else { return nil }
+                return name
+            }
+            offset = end
+        }
+        return nil
     }
 
     /// Decodes a deflated entry into `file` one block at a time, so memory use does not grow with
@@ -372,6 +396,87 @@ nonisolated extension FileManager {
                     throw UniPackImporter.ImportError.extractionFailed("Decompression failed")
                 }
             }
+        }
+    }
+}
+
+/// Folders an archive spells in different letter case (`Pack/Sounds/a.wav`, `Pack/sounds/b.wav`) are
+/// one folder on the Windows or macOS disk the pack was made on, and two on an iPhone's disk, where the
+/// pack then reads only one of them. Each folder keeps the spelling of its first entry.
+nonisolated struct ArchiveFolderNames {
+    /// Lower-cased composed folder path -> the path as first spelled.
+    private var spelled: [String: String] = [:]
+
+    /// The path below the destination for an entry's components.
+    mutating func place(_ components: [String], isDirectory: Bool) -> String {
+        let folderCount = isDirectory ? components.count : components.count - 1
+        var placed = ""
+        var insideSounds = false
+        for (index, component) in components.enumerated() {
+            let path = placed.isEmpty ? component : placed + "/" + component
+            guard index < folderCount else { return path }
+            let key = path.precomposedStringWithCanonicalMapping.lowercased()
+            let reserved = insideSounds && component.lowercased() == ImportedSoundPaths.fileName
+            let firstSpelling = reserved ? placed + "/.unipad-sound-folder-" + UUID().uuidString : path
+            placed = spelled[key] ?? firstSpelling
+            spelled[key] = placed
+            if component.lowercased() == "sounds" { insideSounds = true }
+        }
+        return placed
+    }
+}
+
+/// Keeps every sound entry even when the destination disk merges its spelling with another entry.
+/// Each index stays beside its files, so wrapper removal moves them together. Byte keys distinguish
+/// canonically equivalent names that Swift String keys merge.
+nonisolated struct ArchiveSoundFiles {
+    private var directories: [String: [[UInt8]: ImportedSoundPaths.Entry]] = [:]
+    private var placedFiles: [[UInt8]: String] = [:]
+
+    mutating func destination(original: [String], archiveEntry: String, placed: String, root: URL, fileManager: FileManager) -> URL {
+        let target = root.appendingPathComponent(placed)
+        guard original.dropLast().contains(where: { $0.lowercased() == "sounds" }) else { return target }
+        let components = placed.split(separator: "/").map(String.init)
+        let directory = components.dropLast().joined(separator: "/")
+        let name = original.joined(separator: "/")
+        let key = Array(name.utf8)
+        let parent = root.appendingPathComponent(directory)
+        // Repeated entries with the identical original path retain ZIP's last-entry-wins behavior.
+        if let existing = placedFiles[key] {
+            let stored = existing.split(separator: "/").last.map(String.init) ?? ""
+            directories[directory, default: [:]][key] = ImportedSoundPaths.Entry(name: name, stored: stored,
+                                                                              archiveEntry: archiveEntry)
+            return root.appendingPathComponent(existing)
+        }
+
+        var stored = components.last ?? ""
+        let reserved = stored.lowercased() == ImportedSoundPaths.fileName
+        if reserved || fileManager.fileExists(atPath: target.path) {
+            let ext = target.pathExtension
+            stored = ".unipad-sound-" + UUID().uuidString
+            // The original filename can fit while the UUID prefix plus its extension does not.
+            // Preserve a whole extension only when the decomposed filename still fits on disk.
+            if !ext.isEmpty, stored.utf8.count + 1 + ext.decomposedStringWithCanonicalMapping.utf8.count <= 255 {
+                stored += "." + ext
+            }
+        }
+        directories[directory, default: [:]][key] = ImportedSoundPaths.Entry(name: name, stored: stored,
+                                                                          archiveEntry: archiveEntry)
+        placedFiles[key] = directory + "/" + stored
+        return parent.appendingPathComponent(stored)
+    }
+
+    func save(in root: URL) throws {
+        for (directory, entries) in directories {
+            // Plain ASCII names already survive unchanged on disk. Keep ordinary imports free of
+            // extra files; only a spelling the filesystem cannot preserve needs a catalog.
+            let needsCatalog = entries.values.contains { entry in
+                !entry.name.utf8.allSatisfy({ $0 < 0x80 })
+                    || entry.name != directory + "/" + entry.stored
+                    || entry.archiveEntry != entry.name
+            }
+            guard needsCatalog else { continue }
+            try ImportedSoundPaths.write(Array(entries.values), in: root.appendingPathComponent(directory))
         }
     }
 }

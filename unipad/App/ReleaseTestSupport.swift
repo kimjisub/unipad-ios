@@ -63,6 +63,17 @@ nonisolated enum ReleaseTestSupport {
                     try contents.write(to: pack.appendingPathComponent(name), atomically: true, encoding: .utf8)
                 }
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed/1 1 1 1"))
+            case "chain-wait":
+                let pack = library.appendingPathComponent("ChainWait")
+                try makePack(at: pack, title: "Chain Wait Fixture")
+                try writeInfo(to: pack, title: "Chain Wait Fixture", chains: 2, square: true)
+                try "d 1000\nc 2\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 10000\n"
+                    .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+                // Each silent sound request also leaves a visible light, including after its off.
+                for (number, velocity) in [(1, 5), (2, 21), (3, 45)] {
+                    try "on 1 1 a \(velocity)\ndelay 10000\noff 1 1\n"
+                        .write(to: pack.appendingPathComponent("keyLed/2 1 1 \(number)"), atomically: true, encoding: .utf8)
+                }
             case "chain-layout":
                 // INF-002 of the public conformance corpus: the smallest grid with the most chains.
                 let small = library.appendingPathComponent("Conformance")

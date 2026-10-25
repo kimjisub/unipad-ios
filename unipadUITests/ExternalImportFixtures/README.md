@@ -7,6 +7,13 @@ it; Broken is an invalid ZIP. BesideReadme holds Normal's files in a `Pack/`
 folder, titled `External Import - Beside Readme`, with a `readme.txt` next to
 that folder at the top of the archive.
 
+WindowsPaths uses backslashes for ZIP folders beneath `Faded...`, a backslash
+in the keySound path, a short quiet 440 Hz WAV, and a red LED command. It opens
+as `Archive Paths`. EmptyWebsite is a valid pack with an empty `website=` line;
+its detail panel must not show a website button.
+SchemeLessWebsite uses `website=example.invalid`; it must open that HTTPS
+destination in Safari without requiring a live website to load.
+
 `ExternalFileImportTests` opens the bundled files with `XCUIApplication.open`
 so iOS delivers a document URL through the normal external import route. Each
 test uses a new empty isolated library and local Firebase mode. The picker
