@@ -82,9 +82,9 @@ final class AutoPlayRelaunchUITests: XCTestCase {
     }
 
     /// The same capture runs before and after the runner fix. Unit tests verify sound requests;
-    /// this silent fixture keeps the pending pad's press visible for ten seconds on screen.
+    /// this silent fixture gives that request a sustained light for the screen comparison.
     @MainActor
-    func testStepToAutoplayShowsThePendingPad() {
+    func testStepToAutoplayShowsThePendingPad() throws {
         continueAfterFailure = false
         let orientation = XCUIDevice.shared.orientation
         defer { XCUIDevice.shared.orientation = orientation }
@@ -100,12 +100,16 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 10))
         play.tap()
-        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 15))
+        let grid = app.otherElements["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 15))
+        let idle = try PadPixels.settled(grid)
         choose("Step", app: app)
         UITestSupport.attachScreenshot("pending-step-01-guide", to: self)
         choose("Autoplay", app: app)
         XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
         UITestSupport.attachScreenshot("pending-step-02-autoplay", to: self)
+        XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,1"],
+                       "Sounding autoplay must trigger the unplayed guided pad's light")
         app.buttons["pause.fill"].tap()
         app.buttons["play.fill"].tap()
         UITestSupport.attachScreenshot("pending-step-03-resumed", to: self)

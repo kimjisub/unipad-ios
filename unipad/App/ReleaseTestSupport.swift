@@ -68,8 +68,11 @@ nonisolated enum ReleaseTestSupport {
                 try makePack(at: pack, title: "Step Resume Fixture", chains: 1)
                 try "1 1 1 silence.wav 0\n1 1 2 silence.wav 0\n"
                     .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
-                // With no LED animation, the held pad's feedback stays visible for the capture.
+                // A sustained light makes the sounding autoplay event visible in screenshots.
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
+                try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
+                try "on 1 1 a 5\ndelay 10000\noff 1 1\n"
+                    .write(to: pack.appendingPathComponent("keyLed/1 1 1 0"), atomically: true, encoding: .utf8)
                 try "on 1 1\ndelay 10000\noff 1 1\non 1 2\ndelay 1000\noff 1 2\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
             case "chain-layout":
