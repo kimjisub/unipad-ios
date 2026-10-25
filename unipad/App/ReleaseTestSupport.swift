@@ -66,6 +66,8 @@ nonisolated enum ReleaseTestSupport {
             case "step-resume":
                 let pack = library.appendingPathComponent("StepResume")
                 try makePack(at: pack, title: "Step Resume Fixture", chains: 1)
+                try "1 1 1 silence.wav 0\n1 1 2 silence.wav 0\n"
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
                 // With no LED animation, the held pad's feedback stays visible for the capture.
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
                 try "on 1 1\ndelay 10000\noff 1 1\non 1 2\ndelay 1000\noff 1 2\n"
