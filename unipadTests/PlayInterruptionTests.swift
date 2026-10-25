@@ -170,17 +170,42 @@ extension PlayUsageRecordTests {
         @Test(arguments: [false, true])
         func aNewScreensPendingLightsSurviveLatePlaybackTeardown(covered: Bool) async throws {
             try await withBufferedLightOutput { s, output, pending in
+                let driver = MidiManager.shared.driver
+                let original = driver.sendSignalListener
+                let recorder = QueuedDriverRecorder(output: output, pending: pending)
+                driver.sendSignalListener = recorder
+                defer { driver.sendSignalListener = original; withExtendedLifetime(recorder) {} }
+                driver.sendPadLed(x: 0, y: 0, velocity: 5) // An old pack light is still queued.
                 let main = MainViewModel()
                 main.setupMidiController() // The new screen appears before Play disappears.
                 defer { main.removeMidiController() }
-                output.enqueue { done in pending.record([0x90, 81, 9]); done() }
+                MidiManager.shared.controller?.onAttach() // The main screen's real clear and watermark.
                 if covered { s.vm.screenCovered() } else { s.vm.cleanup() }
                 pending.finish()
                 output.enqueue { done in pending.markFlushed(); done() }
                 try await s.waitWhile { !pending.flushed }
                 try #require(pending.flushed)
-                #expect(pending.messages.contains([0x90, 81, 9]),
-                        "late Play teardown discarded the new screen's queued light")
+                #expect(!pending.messages.contains([0x90, 81, 5]),
+                        "an old pack light remained ahead of the new screen's output")
+                #expect(pending.messages.contains([0x90, 54, 61]),
+                        "late Play teardown discarded the main screen's watermark")
+            }
+        }
+
+        final class QueuedDriverRecorder: MidiDriverSendSignalListener {
+            private let output: MidiOutputQueue
+            private let pending: BufferedLightOutput
+            init(output: MidiOutputQueue, pending: BufferedLightOutput) {
+                self.output = output; self.pending = pending
+            }
+            func onSend(cmd: UInt8, sig: UInt8, note: UInt8, velocity: UInt8) {
+                let bytes = [sig, note, velocity]
+                let pending = pending
+                output.enqueue { done in pending.record(bytes); done() }
+            }
+            func onSendRaw(messages: [[UInt8]], cableNumber: Int) {
+                let pending = pending
+                for bytes in messages { output.enqueue { done in pending.record(bytes); done() } }
             }
         }
 
