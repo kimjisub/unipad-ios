@@ -282,6 +282,20 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test func playCanRecoverWhenNoInterruptionEndArrives() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                engine.handleInterruption(interruption(.began))
+                // The simulator allows activation now; no ended notice arrives to request it.
+                s.vm.autoPlayResume()
+                try await s.waitWhile(timeout: 3) { !s.vm.isAutoPlayPlaying }
+                #expect(s.vm.isAutoPlayPlaying, "an explicit Play must try to recover a missing end")
+                #expect(!engine.isPlaybackSuppressed)
+            }
+        }
+
         @Test func turningLightsOffDiscardsFiniteAnimations() async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\non 1 2 a 9\n"]) { s in
                 try await s.loadReady()
