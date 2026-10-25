@@ -159,6 +159,55 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test func disablingLightsDiscardsPendingDeviceOutput() async throws {
+            try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\n"]) { s in
+                try await s.loadReady()
+                let manager = MidiManager.shared
+                let previousDriver = manager.driver
+                let driver = LaunchpadMK2Driver()
+                manager.overrideDriver(driver)
+                defer { manager.overrideDriver(previousDriver) }
+                let pending = BufferedLightOutput()
+                let output = MidiOutputQueue(noteSend: { bytes, _, _ in pending.record(bytes) })
+                let adapter = MidiManagerSendAdapter(output: output, port: 1, destination: 1,
+                    sysexDestination: 1, onFailure: { _ in })
+                driver.sendSignalListener = adapter
+                defer { pending.finish() }
+                s.vm.scbFeedbackLight.forceSetChecked(false)
+                s.vm.scbLed.forceSetChecked(true)
+                output.enqueue { done in pending.hold(done) }
+                try await s.waitWhile { !pending.started }
+                try #require(pending.started)
+                s.press()
+                try await s.waitWhile { s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil }
+                try #require(s.vm.channelManager?.get(x: 0, y: 0, channel: .led) != nil)
+                s.vm.scbLed.forceSetChecked(false)
+                pending.finish()
+                output.enqueue { done in pending.markFlushed(); done() }
+                try await s.waitWhile { !pending.flushed }
+                try #require(pending.flushed)
+                #expect(!pending.messages.contains { $0.count == 3 && $0[1] == 81 && $0[2] == 5 },
+                        "an old pack light reached the device after lights were disabled")
+            }
+        }
+
+        nonisolated final class BufferedLightOutput: @unchecked Sendable {
+            private let lock = NSLock()
+            private var completion: (@Sendable () -> Void)?
+            private var bytes: [[UInt8]] = []
+            private var didFlush = false
+            var started: Bool { lock.withLock { completion != nil } }
+            var flushed: Bool { lock.withLock { didFlush } }
+            var messages: [[UInt8]] { lock.withLock { bytes } }
+            func hold(_ done: @escaping @Sendable () -> Void) { lock.withLock { completion = done } }
+            func record(_ message: [UInt8]) { lock.withLock { bytes.append(message) } }
+            func markFlushed() { lock.withLock { didFlush = true } }
+            func finish() {
+                let done = lock.withLock { let done = completion; completion = nil; return done }
+                done?()
+            }
+        }
+
         /// Pad (1,1) loops forever (a keySound loop count of 0), (1,2) and (1,3) are one-shots.
         /// Autoplay holds (1,3) down for the whole run and keeps pressing (1,2), so it is still
         /// running and a pad is lit at any point.
