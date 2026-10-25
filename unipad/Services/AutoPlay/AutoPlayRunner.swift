@@ -47,6 +47,7 @@ final class AutoPlayRunner {
     /// Stop output without consuming a pending step or changing the selected practice mode.
     func suspend() {
         guard !isSuspended else { return }
+        _pressedKeysQueue.removeAll()
         playmodeBeforeSuspension = playmode
         playmode = false
         isSuspended = true
@@ -565,6 +566,7 @@ final class AutoPlayRunner {
     }
 
     func stepPadPressed(x: Int, y: Int) {
+        guard !isSuspended else { return }
         let key = guideKey(x: x, y: y)
         _pressedKeysQueue.append(key)
     }
