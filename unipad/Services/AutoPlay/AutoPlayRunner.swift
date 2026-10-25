@@ -472,7 +472,8 @@ final class AutoPlayRunner {
                 // Reading the final delay advances progress before that delay has elapsed.
                 // A paused run still owns its remaining wait, even at the end of the table.
                 if self.progress >= autoPlay.elements.count && !self.awaitsLastStep {
-                    if self.playmode && delayAccum <= currTime - startTime { break }
+                    let songTime = (self.pausedAt ?? currTime) - startTime
+                    if delayAccum <= songTime { break }
                     if !self.playmode && self.stepMode && self.practiceGuide { break }
                 }
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))

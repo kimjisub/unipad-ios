@@ -427,12 +427,14 @@ final class AutoPlayRunnerTests: XCTestCase {
 
     func testRestartWaitsForCancelledRunEvenAfterTwoStops() async throws {
         let pack = UniPack()
-        pack.autoPlayTable = AutoPlay(elements: [.delay(delay: 0)])
+        pack.autoPlayTable = AutoPlay(elements: [.delay(delay: 1)])
         let recorder = Recorder()
         var suspended: CheckedContinuation<Void, Never>?
         var replacementSuspended: CheckedContinuation<Void, Never>?
         var sleepCalls = 0
-        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(), sleep: { _ in
+        let clock = TestManualClock()
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(), clock: { clock.read() }, sleep: { _ in
+            clock.advance(1)
             sleepCalls += 1
             if sleepCalls == 1 {
                 await withCheckedContinuation { suspended = $0 }

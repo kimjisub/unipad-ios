@@ -234,6 +234,13 @@ final class SoundEngine {
         ) { [weak self] _ in
             self?.handleMediaServicesReset()
         })
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        })
         #endif
         // A route change (headphones at 44.1 kHz, unplug) stops the engine; scheduling on a node of
         // a stopped engine raised an uncatchable Objective-C exception on the next pad.
@@ -242,7 +249,7 @@ final class SoundEngine {
             object: engine,
             queue: .main
         ) { [weak self] _ in
-            self?.gate.configurationChanged()
+            self?.handleConfigurationChange()
         })
     }
 
@@ -589,10 +596,29 @@ final class SoundEngine {
     }
 
     func handleMediaServicesReset() {
-        releaseAllVoices()
+        stopAllPlayback()
+        onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
         gate.mediaServicesWereReset()
     }
+
+    func handleRouteChange(_ notification: Notification) {
+        guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
+              reason == .oldDeviceUnavailable || reason == .noSuitableRouteForCategory else { return }
+        stopAllPlayback()
+        onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
+        gate.configurationChanged()
+    }
     #endif
+
+    /// A configuration change that stopped rendering is also an output interruption.
+    private func handleConfigurationChange() {
+        if !engine.isRunning {
+            stopAllPlayback()
+            onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
+        }
+        gate.configurationChanged()
+    }
 
     /// The app is in front again. A call that was answered may never send the end of its
     /// interruption, so this is where the session is taken back in that case.
