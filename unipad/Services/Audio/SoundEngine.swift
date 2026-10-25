@@ -630,9 +630,8 @@ final class SoundEngine {
             completion(self?.destroyed == false && recovery == .recovered)
         }
         if gate.state == .interrupted {
-            // A known ongoing interruption is a failed request, not a request to start later.
-            // An app-return recovery already underway can resolve this request now.
-            guard gate.isRecovering else { completion(false); return }
+            // An explicit request may recover even if the system never delivered an end notice.
+            // Activation fails if another app still holds the session; that resolves this request.
             gate.appBecameActive(completion: report)
         } else {
             gate.configurationChanged(completion: report)

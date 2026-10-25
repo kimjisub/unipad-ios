@@ -67,10 +67,15 @@ extension PlayUsageRecordTests {
                 try await s.loadReady()
                 let runner = try await startAutoplay(s)
                 let engine = try #require(s.vm.soundEngine)
+                let original = engine.activateSessionForRecovery
+                engine.activateSessionForRecovery = { throw CocoaError(.featureUnsupported) }
                 engine.handleInterruption(interruption(.began))
                 let progress = runner.progress
                 s.vm.autoPlayResume()
+                try #require(engine.isRecoveringPlayback)
+                try await s.waitWhile { engine.isRecoveringPlayback }
                 #expect(!s.vm.isAutoPlayPlaying, "a request without audio permission must fail")
+                engine.activateSessionForRecovery = original
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
                 try await waitForRecovery(s, engine)
                 s.vm.onResume()
