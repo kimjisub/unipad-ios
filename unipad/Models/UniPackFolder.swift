@@ -634,22 +634,18 @@ nonisolated class UniPackFolder: UniPack {
 
     private static func readTextFile(_ url: URL) -> String? {
         guard let text = decodeTextFile(url) else { return nil }
-        // A UTF-8 BOM (Windows Notepad) is not whitespace for trimmingCharacters, so the first
-        // key used to come out as "\u{FEFF}title" and the first line of every table was lost.
+        // Remove a leading byte order mark before parsing keys and table values.
         if text.hasPrefix("\u{FEFF}") { return String(text.dropFirst()) }
         return text
     }
 
-    /// UTF-8, then UTF-16 with a byte order mark, then CP949 (T-01 to T-04). Only a file that cannot be
-    /// read gives nil: refusing a pack, or dropping an LED file, over a few bytes from another code page
-    /// lost what Android and the web open.
+    /// Tries UTF-8, BOM-marked UTF-16, then CP949 with replacement for invalid bytes (T-01 to T-04).
+    /// Returns nil only when the file cannot be read.
     private static func decodeTextFile(_ url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
 
         if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
-        // BOM-less UTF-16 decodes almost any even-length byte sequence, so it must not run before
-        // the Korean encodings: a legacy EUC-KR keySound used to come out as UTF-16 garbage with
-        // zero sounds, where Android at least keeps the ASCII skeleton.
+        // Require a byte order mark for UTF-16 so legacy byte pairs are decoded as CP949.
         if data.count >= 2 {
             let b0 = data[data.startIndex], b1 = data[data.startIndex + 1]
             if (b0 == 0xFE && b1 == 0xFF) || (b0 == 0xFF && b1 == 0xFE) {
@@ -669,8 +665,7 @@ nonisolated class UniPackFolder: UniPack {
     /// byte order mark at the start of a line, and Android and the web read that line.
     private static let lineTrim = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FEFF}"))
 
-    /// One to six ASCII hex digits (E-02). `Int(_:radix:)` also takes a sign, so `-1` lit white here
-    /// and another colour on Android; the web skips such a line with a format warning.
+    /// Accepts one to six unsigned ASCII hexadecimal digits (E-02); rejects signs and other characters.
     private static func hexColor(_ token: String) -> Int? {
         let digits = token.utf8
         guard (1...6).contains(digits.count),

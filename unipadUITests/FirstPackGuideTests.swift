@@ -239,7 +239,9 @@ final class FirstPackGuideTests: XCTestCase {
         _ = try XCTUnwrap(foundRecents ? recents : nil, "the picker must offer Recents at Locations")
         XCTAssertTrue(UITestSupport.waitUntilHittable(recents, timeout: 5))
         recents.tap()
-        XCTAssertTrue(recents.isSelected, "the picker must show Recents before selecting the prepared archive")
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: recents)
+        XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed,
+                       "the picker must show Recents before selecting the prepared archive")
         shot(Self.korean, "picker-recents")
         let tree = XCTAttachment(string: app.debugDescription)
         tree.name = "picker-recents-tree"

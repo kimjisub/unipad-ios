@@ -314,13 +314,8 @@ nonisolated extension FileManager {
     /// leading slashes and `.` are dropped. An entry with a `..` folder is skipped so nothing lands
     /// outside the destination; names that only contain dots (`Faded.../`, `wait...wav`) are kept.
     static func entryPath(_ name: String) -> (components: [String], isDirectory: Bool)? {
-        let slashed = name.replacingOccurrences(of: "\\", with: "/")
-        var components: [String] = []
-        for component in slashed.split(separator: "/") where component != "." {
-            if component == ".." { return nil }
-            components.append(String(component))
-        }
-        return components.isEmpty ? nil : (components, slashed.hasSuffix("/"))
+        guard let components = PackFileFinder.pathComponents(name) else { return nil }
+        return (components, name.hasSuffix("/") || name.hasSuffix("\\"))
     }
 
     /// The Info-ZIP Unicode Path field (0x7075) when it belongs to this name (its CRC-32 matches the
@@ -343,22 +338,13 @@ nonisolated extension FileManager {
             guard end <= bytes.count else { return nil }
             if uint16(offset) == 0x7075, end - body >= 5, bytes[body] == 1 {
                 let crc = UInt32(uint16(body + 1)) | UInt32(uint16(body + 3)) << 16
-                guard crc == crc32(raw), let name = String(bytes: bytes[(body + 5)..<end], encoding: .utf8),
+                guard crc == ZipHelper.crc32Checksum(raw), let name = String(bytes: bytes[(body + 5)..<end], encoding: .utf8),
                       !name.isEmpty else { return nil }
                 return name
             }
             offset = end
         }
         return nil
-    }
-
-    private static func crc32(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFF_FFFF
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 { crc = (crc >> 1) ^ (crc & 1 == 1 ? 0xEDB8_8320 : 0) }
-        }
-        return ~crc
     }
 
     /// Decodes a deflated entry into `file` one block at a time, so memory use does not grow with

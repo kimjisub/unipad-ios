@@ -28,12 +28,17 @@ nonisolated final class PackFileFinder {
 
     /// `name` as a path below the folder, or nil when it names nothing there.
     static func normalizedPath(_ name: String) -> String? {
-        var components: [Substring] = []
+        pathComponents(name)?.joined(separator: "/")
+    }
+
+    /// Shared by archive extraction and sound lookup so both interpret paths identically.
+    static func pathComponents(_ name: String) -> [String]? {
+        var components: [String] = []
         for component in name.replacingOccurrences(of: "\\", with: "/").split(separator: "/") where component != "." {
             if component == ".." { return nil }
-            components.append(component)
+            components.append(String(component))
         }
-        return components.isEmpty ? nil : components.joined(separator: "/")
+        return components.isEmpty ? nil : components
     }
 
     /// Stored paths keyed by their exact and composed lower-cased spelling. Swift compares

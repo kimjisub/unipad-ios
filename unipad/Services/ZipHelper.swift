@@ -153,7 +153,7 @@ enum ZipHelper {
         return Data(bytes: destBuffer, count: compressedSize)
     }
 
-    private static func crc32Checksum(_ data: Data) -> UInt32 {
+    nonisolated static func crc32Checksum(_ data: Data) -> UInt32 {
         var crc: UInt32 = 0xFFFFFFFF
         let polynomial: UInt32 = 0xEDB88320
 
