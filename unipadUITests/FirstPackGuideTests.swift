@@ -225,8 +225,21 @@ final class FirstPackGuideTests: XCTestCase {
         let recents = app.tabBars.buttons
             .matching(NSPredicate(format: "label IN %@", ["Recents", "최근 항목"]))
             .firstMatch
-        XCTAssertTrue(recents.waitForExistence(timeout: 20))
+        // iOS can restore a folder with no tab bar. Return to Locations before
+        // selecting Recents, rather than assuming tabs are present in that folder.
+        for _ in 0..<4 {
+            if recents.waitForExistence(timeout: 2) { break }
+            let back = app.buttons["DOC.navBarButton.backInHistory"]
+            guard back.exists && back.isEnabled else { break }
+            XCTAssertTrue(UITestSupport.waitUntilHittable(back, timeout: 5))
+            back.tap()
+        }
+        let foundRecents = recents.waitForExistence(timeout: 20)
+        if !foundRecents { shot(Self.korean, "picker-recents-missing") }
+        _ = try XCTUnwrap(foundRecents ? recents : nil, "the picker must offer Recents at Locations")
+        XCTAssertTrue(UITestSupport.waitUntilHittable(recents, timeout: 5))
         recents.tap()
+        XCTAssertTrue(recents.isSelected, "the picker must show Recents before selecting the prepared archive")
         shot(Self.korean, "picker-recents")
         let tree = XCTAttachment(string: app.debugDescription)
         tree.name = "picker-recents-tree"
