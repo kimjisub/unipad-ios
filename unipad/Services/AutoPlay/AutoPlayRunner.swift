@@ -232,7 +232,7 @@ final class AutoPlayRunner {
             self.pendingSkipMs = 0
             self.guideMoved = false
 
-            while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
+            while !Task.isCancelled {
                 let currTime = self.clock()
 
                 let paused = self.pendingPauseMs
@@ -432,6 +432,12 @@ final class AutoPlayRunner {
                 }
 
                 self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? currTime : nil)
+                // Reading the final delay advances progress before that delay has elapsed.
+                // A paused run still owns its remaining wait, even at the end of the table.
+                if self.progress >= autoPlay.elements.count && !self.awaitsLastStep {
+                    if self.playmode && delayAccum <= currTime - startTime { break }
+                    if !self.playmode && self.stepMode && self.practiceGuide { break }
+                }
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
             }
 
