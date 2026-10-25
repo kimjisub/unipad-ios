@@ -98,6 +98,16 @@ final class MainViewModel {
         midiControllerAdapter = nil
     }
 
+    func onPause(currentRoute: Route) {
+        removeMidiController()
+    }
+
+    func onResume(currentRoute: Route) {
+        setupMidiController()
+        refreshList()
+        versionCheck()
+    }
+
     func updateLP() {
         showWatermark()
         showSelectLPUI()
