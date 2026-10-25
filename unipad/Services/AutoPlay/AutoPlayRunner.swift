@@ -168,7 +168,6 @@ final class AutoPlayRunner {
     private struct PendingAutoplayStep {
         let endProgress: Int
         let pads: Set<Int>
-        var needsOrigin = true
     }
     private var pendingAutoplayStep: PendingAutoplayStep?
 
@@ -334,14 +333,6 @@ final class AutoPlayRunner {
                 if self.pendingWaitReset {
                     self.pendingWaitReset = false
                     finishChainWait(at: currTime)
-                }
-
-                // The guide already waited for this group. Start its remaining notes now,
-                // after settling any chain wait, even if paused before this tick.
-                if self.playmode && !self.practiceGuide && self.pendingAutoplayStep?.needsOrigin == true {
-                    startTime = currTime
-                    delayAccum = 0
-                    self.pendingAutoplayStep?.needsOrigin = false
                 }
 
                 // Detect mid-run practice mode toggle
@@ -610,6 +601,9 @@ final class AutoPlayRunner {
         guard let firstPending else { return }
         pendingAutoplayStep = PendingAutoplayStep(endProgress: progress, pads: _stepPendingPads)
         progress = firstPending
+        // Reuse seeking's song-relative clock, including a pause before the next tick.
+        // The pending notes play now while later timed guidance keeps its song position.
+        guideMoved = true
     }
 
     func resetStepState(preservingPendingAutoplay: Bool = false) {
