@@ -83,7 +83,9 @@ extension PlayUsageRecordTests {
 
                 let burst = engine.playsStarted - playsBefore
                 #expect(burst <= 2, "\(burst) autoplay presses came at once after the return")
-                #expect(s.vm.isAutoPlayPlaying)
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(burst == 0)
+                s.vm.autoPlayResume()
                 try await s.waitWhile { engine.playsStarted < playsBefore + 3 }
                 #expect(engine.playsStarted >= playsBefore + 3, "autoplay did not go on after the return")
             }
@@ -155,7 +157,7 @@ extension PlayUsageRecordTests {
         }
 
         /// Step practice shows where to press next on the Launchpad. The device screen opened meanwhile
-        /// gets the Launchpad without that guide, and it comes back when the play screen is shown.
+        /// gets the Launchpad without that guide; it returns only after an explicit resume.
         @Test func theStepPracticeGuideLeavesTheLaunchpadToTheDeviceScreenAndComesBack() async throws {
             try await PlayUsageScenario.run { s in
                 try await recordTheLaunchpad { launchpad in
@@ -171,7 +173,9 @@ extension PlayUsageRecordTests {
                     #expect(launchpad.sent.isEmpty, "the covered play screen sent \(launchpad.sent.count) commands to the Launchpad")
 
                     s.vm.screenShown()
-                    #expect(launchpad.sent.contains(.pad(x: 0, y: 0, velocity: guideVelocity)), "the guide did not come back to the Launchpad")
+                    #expect(!launchpad.sent.contains(.pad(x: 0, y: 0, velocity: guideVelocity)), "the guide returned without a user request")
+                    s.vm.autoPlayResume()
+                    #expect(launchpad.sent.contains(.pad(x: 0, y: 0, velocity: guideVelocity)))
                     #expect(s.vm.playMode == .stepPractice)
                 }
             }

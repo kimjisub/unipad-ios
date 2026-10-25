@@ -313,8 +313,8 @@ final class PlaybackStopTests: XCTestCase {
         try await checkControllerReleaseBoundary(keepingFinger: true) { $0.toggleOptionWindow(true) }
     }
 
-    func testPausingPreservesAFingerSharingTheControllerPad() async throws {
-        try await checkControllerReleaseBoundary(keepingFinger: true) { $0.onPause() }
+    func testPausingReleasesAFingerSharingTheControllerPad() async throws {
+        try await checkControllerReleaseBoundary { $0.onPause() }
     }
 
     private func checkControllerReleaseBoundary(

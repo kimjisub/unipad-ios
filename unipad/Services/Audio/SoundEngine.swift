@@ -609,6 +609,12 @@ final class SoundEngine {
         }
     }
 
+    /// A lifecycle boundary ends finite tails as well as held loops and queued chain changes.
+    func stopAllPlayback() {
+        cancelPendingWormholes()
+        releaseAllVoices()
+    }
+
     /// Drops every voice. After an interruption or a media services reset the nodes still carry play
     /// IDs for audio that stopped rendering, and the stealing order would keep honouring them.
     private func releaseAllVoices() {

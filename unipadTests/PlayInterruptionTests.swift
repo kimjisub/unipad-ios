@@ -39,6 +39,8 @@ extension PlayUsageRecordTests {
                 let engine = try #require(s.vm.soundEngine)
                 engine.handleInterruption(interruption(.began))
                 let progress = runner.progress
+                s.vm.autoPlayResume()
+                #expect(!s.vm.isAutoPlayPlaying, "a request without audio permission must fail")
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
                 try await waitForRecovery(s, engine)
                 s.vm.onResume()
@@ -64,6 +66,36 @@ extension PlayUsageRecordTests {
                 #expect(s.vm.soundEngine?.activePlayIDs == audio)
                 s.vm.scbLed.forceSetChecked(true)
                 #expect(!runner.isEventExist(x: 0, y: 0), "old animations returned when enabled")
+            }
+        }
+
+        @Test(arguments: [false, true])
+        func losingSoundOutputRequiresManualResume(mediaReset: Bool) async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                if mediaReset {
+                    engine.handleMediaServicesReset()
+                } else {
+                    NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
+                        userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+                }
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(runner.isSuspended)
+                #expect(engine.activePlayIDs.isEmpty)
+            }
+        }
+
+        @Test func aBatchFromBeforeDisablingLightsCannotReturnAfterReenabling() async throws {
+            try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\n"]) { s in
+                try await s.loadReady()
+                let adapter = LedListenerAdapter(viewModel: s.vm)
+                adapter.onLedBatch([.padOn(x: 0, y: 0, color: 5, velocity: 5)], generation: 0)
+                s.vm.scbLed.forceSetChecked(false)
+                s.vm.scbLed.forceSetChecked(true)
+                try await Task.sleep(for: .milliseconds(100))
+                #expect(s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil)
             }
         }
 
@@ -182,9 +214,17 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// Android pauses autoplay on a short loss of audio focus and resumes it when focus returns;
-        /// the iPhone follows the same rule with the interruption's `.shouldResume`.
-        @Test func autoplayPausesDuringAnInterruptionAndResumesWhenTheEndSaysSo() async throws {
+        private func expectManualResume(_ s: PlayUsageScenario, _ runner: AutoPlayRunner, pausedAt: Int) async throws {
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(!s.vm.isAutoPlayPlaying)
+            #expect(runner.progress == pausedAt)
+            s.vm.autoPlayResume()
+            #expect(s.vm.isAutoPlayPlaying)
+            try await s.waitWhile { runner.progress <= pausedAt }
+            #expect(runner.progress > pausedAt)
+        }
+
+        @Test func autoplayPausesDuringAnInterruptionAndWaitsForTheUser() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 let runner = try await startAutoplay(s)
@@ -200,15 +240,11 @@ extension PlayUsageRecordTests {
 
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
                 try await waitForRecovery(s, engine)
-                #expect(s.vm.isAutoPlayPlaying)
-                try await s.waitWhile { runner.progress <= pausedAt }
-                #expect(runner.progress > pausedAt, "autoplay did not continue after the interruption")
+                try await expectManualResume(s, runner, pausedAt: pausedAt)
             }
         }
 
-        /// The call screen closes: the end of the interruption and the app coming back arrive together,
-        /// before the session has been taken back. Autoplay still resumes.
-        @Test func autoplayResumesWhenTheAppComesBackRightAfterAResumableEnd() async throws {
+        @Test func autoplayWaitsForManualResumeWhenTheAppComesBackRightAfterAResumableEnd() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 let runner = try await startAutoplay(s)
@@ -219,17 +255,12 @@ extension PlayUsageRecordTests {
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
                 s.vm.onResume()
                 try await waitForRecovery(s, engine)
-                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
 
-                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after a resumable end")
-                try await s.waitWhile { runner.progress <= pausedAt }
-                #expect(runner.progress > pausedAt)
+                try await expectManualResume(s, runner, pausedAt: pausedAt)
             }
         }
 
-        /// A second interruption begins before the session was taken back after the first. The first
-        /// one paused autoplay, and the end of the second resumes it.
-        @Test func autoplayResumesAfterASecondInterruptionThatOvertookTheFirstOnesRecovery() async throws {
+        @Test func autoplayWaitsForManualResumeAfterASecondInterruptionThatOvertookTheFirstOnesRecovery() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 _ = try await startAutoplay(s)
@@ -240,15 +271,11 @@ extension PlayUsageRecordTests {
                 engine.handleInterruption(interruption(.began))
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
                 try await waitForRecovery(s, engine)
-                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
 
-                #expect(s.vm.isAutoPlayPlaying, "the second end forgot that the first paused autoplay")
+                #expect(!s.vm.isAutoPlayPlaying, "an allowed end must still wait for the user")
             }
         }
 
-        /// The end says playback may resume, but the app cannot take the session back (another app
-        /// still holds it). Resuming would run autoplay with its lights and no sound, so it stays
-        /// paused for the user, as on Android when audio focus is lost for good.
         @Test func autoplayStaysPausedWhenTheSessionCannotBeTakenBackAfterAResumableEnd() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -268,10 +295,7 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The end said playback may resume but came while the app was in the background, where a
-        /// session that does not mix with others cannot be taken back. The app coming back to the front
-        /// takes it back, and autoplay continues as it would after going home and back without a call.
-        @Test func autoplayResumesWhenTheAppComesBackWithTheSessionAfterAResumableEndFailed() async throws {
+        @Test func autoplayWaitsForManualResumeWhenTheAppComesBackWithTheSessionAfterAResumableEndFailed() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 let runner = try await startAutoplay(s)
@@ -291,18 +315,12 @@ extension PlayUsageRecordTests {
                 engine.isAppInFront = { true }
                 s.vm.onResume()
                 try await waitForRecovery(s, engine)
-                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
 
-                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after the app took the session back")
-                try await s.waitWhile { runner.progress <= pausedAt }
-                #expect(runner.progress > pausedAt)
+                try await expectManualResume(s, runner, pausedAt: pausedAt)
             }
         }
 
-        /// The app comes back while the try made in the background for a resumable end is still on the
-        /// worker, as when the call screen closes. That try fails; the one made on coming back takes the
-        /// session, and autoplay continues.
-        @Test func autoplayResumesWhenTheAppComesBackWhileTheBackgroundTryIsStillFailing() async throws {
+        @Test func autoplayWaitsForManualResumeWhenTheAppComesBackWhileTheBackgroundTryIsStillFailing() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 let runner = try await startAutoplay(s)
@@ -318,17 +336,12 @@ extension PlayUsageRecordTests {
                 engine.isAppInFront = { true }
                 s.vm.onResume()
                 try await waitForRecovery(s, engine)
-                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
 
                 #expect(firstTry.calls == 2, "coming back did not try to take the session again")
-                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused although the app took the session back")
-                try await s.waitWhile { runner.progress <= pausedAt }
-                #expect(runner.progress > pausedAt)
+                try await expectManualResume(s, runner, pausedAt: pausedAt)
             }
         }
 
-        /// The app came back but another app still holds the session: autoplay stays paused, and a later
-        /// return that gets the session no longer resumes it; by then it is the user's to resume.
         @Test func autoplayStaysPausedWhenTheAppComesBackStillWithoutTheSession() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -352,9 +365,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The app was already in front when the resumable end came, and another app still held the
-        /// session. A later return to the front (Control Center pulled down and back) has nothing to do
-        /// with the call and does not start autoplay.
         @Test func autoplayStaysPausedOnALaterReturnAfterAResumableEndFailedInFront() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -393,7 +403,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The user turned autoplay off while the call was on; the end of the call must not restart it.
         @Test func autoplayTurnedOffDuringTheInterruptionStaysOff() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -410,9 +419,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// A call that was answered pauses autoplay and never sends its end; the app takes the session
-        /// back when it returns and the user leaves autoplay paused. A later short interruption (Siri,
-        /// an alarm) that ends with `.shouldResume` is a new one and must not start autoplay again.
         @Test func aLaterShortInterruptionDoesNotRestartAutoplayPausedByACallThatNeverEnded() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -436,7 +442,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The user played and paused autoplay again while the call was on; their last choice stands.
         @Test func autoplayTheUserPausedDuringTheInterruptionStaysPaused() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -453,8 +458,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The user switched to step practice while the call was on; the end must not turn it back
-        /// into a playing autoplay.
         @Test func aModeChosenDuringTheInterruptionIsKept() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -486,12 +489,7 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// Records, without changing it, what leaving the screen for the home screen and coming back
-        /// does: the screen pauses MIDI and the volume observer only, so a held loop keeps its voice
-        /// and autoplay keeps its place and keeps running. (Without a background audio mode iOS
-        /// suspends the app, so on a device nothing renders while it is away; that part is not
-        /// checked here.)
-        @Test func goingHomeAndBackLeavesTheLoopAndAutoplayRunning() async throws {
+        @Test func goingHomeAndBackStopsTheLoopAndLeavesAutoplayPaused() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
@@ -501,22 +499,18 @@ extension PlayUsageRecordTests {
                 s.vm.onPause()
                 let progressWhileAway = runner.progress
                 try await Task.sleep(for: .milliseconds(500))
-                #expect(runner.progress > progressWhileAway, "autoplay is expected to keep running while away")
+                #expect(runner.progress == progressWhileAway)
                 s.vm.onResume()
 
-                #expect(engine.activeVoiceCount >= 1, "the held loop is expected to keep its voice")
-                #expect(s.vm.isAutoPlayPlaying)
+                #expect(engine.activeVoiceCount == 0)
+                #expect(!s.vm.isAutoPlayPlaying)
                 #expect(runner.active)
             }
         }
 
         // MARK: Covered by the device screen
 
-        /// Autoplay paused because the device screen (opened from the connection banner) covers the play
-        /// screen counts as playing for an interruption meanwhile: the call's end decides, as it would
-        /// without the device screen. Here the call is still on when the play screen is shown again, and
-        /// its resumable end comes after the return.
-        @Test func autoplayPausedForTheDeviceScreenResumesWhenACallMeanwhileEndsAfterTheReturn() async throws {
+        @Test func autoplayPausedForTheDeviceScreenWaitsAfterACallEnds() async throws {
             try await Self.run { s in
                 try await s.loadReady()
                 let runner = try await startAutoplay(s)
@@ -530,16 +524,11 @@ extension PlayUsageRecordTests {
 
                 engine.handleInterruption(interruption(.ended, shouldResume: true))
                 try await waitForRecovery(s, engine)
-                try await s.waitWhile(timeout: 2) { !s.vm.isAutoPlayPlaying }
 
-                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused after the call ended with the session back")
-                try await s.waitWhile { runner.progress <= pausedAt }
-                #expect(runner.progress > pausedAt)
+                try await expectManualResume(s, runner, pausedAt: pausedAt)
             }
         }
 
-        /// The call ends while the device screen still covers the play screen: autoplay does not start
-        /// behind it, and continues when the play screen is shown.
         @Test func autoplayPausedForTheDeviceScreenWaitsForTheScreenWhenACallEndsBehindIt() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -556,14 +545,10 @@ extension PlayUsageRecordTests {
                 #expect(runner.progress == pausedAt)
 
                 s.vm.screenShown()
-                #expect(s.vm.isAutoPlayPlaying, "autoplay stayed paused when the play screen was shown again")
-                try await s.waitWhile { runner.progress <= pausedAt }
-                #expect(runner.progress > pausedAt)
+                try await expectManualResume(s, runner, pausedAt: pausedAt)
             }
         }
 
-        /// The call ends after the return, but the session cannot be taken back: autoplay stays paused,
-        /// and a later return that gets the session leaves it to the user, as without the device screen.
         @Test func autoplayPausedForTheDeviceScreenStaysPausedWhenTheSessionCannotBeTakenBack() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -585,8 +570,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// A call that was answered never sends its end; on coming back the session is taken back and
-        /// autoplay is the user's to resume, as without the device screen.
         @Test func autoplayPausedForTheDeviceScreenStaysPausedAfterACallThatNeverEnded() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -607,8 +590,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// After the return the user played and paused autoplay while the call was still on; the end of
-        /// the call does not override their pause.
         @Test func autoplayTheUserPausedAfterTheDeviceScreenStaysPausedWhenTheCallEnds() async throws {
             try await Self.run { s in
                 try await s.loadReady()
@@ -628,8 +609,6 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The play screen was closed from under the device screen while the call was on; its end does
-        /// not start the closed screen's autoplay.
         @Test func autoplayOfAPlayScreenClosedDuringACallStaysStoppedWhenTheCallEnds() async throws {
             try await Self.run { s in
                 try await s.loadReady()

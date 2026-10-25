@@ -94,6 +94,44 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertEqual(endedAt, 13000)
     }
 
+    func testSuspendingWaitsForAnExplicitResumeWithoutRecreatingOldPresses() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0),
+            .delay(delay: 1000), .on(x: 0, y: 1, currChain: 0, num: 0)])
+        let recorder = Recorder()
+        let clock = TestManualClock()
+        let reference = RunnerReference()
+        var tick = 0
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+            clock: { clock.read() }, sleep: { _ in
+                tick += 1
+                switch tick {
+                case 1:
+                    clock.advance(500)
+                    reference.value.suspend()
+                    clock.advance(10000)
+                case 2:
+                    XCTAssertEqual(recorder.pressTimes, [1000])
+                    XCTAssertTrue(reference.value.isSuspended)
+                    reference.value.appReturned()
+                case 3:
+                    XCTAssertEqual(recorder.pressTimes, [1000])
+                    reference.value.resumeFromSuspension()
+                case 4: clock.advance(499)
+                case 5:
+                    XCTAssertEqual(recorder.pressTimes, [1000])
+                    clock.advance(1)
+                default: clock.advance(1)
+                }
+                await Task.yield()
+            })
+        reference.value = runner
+        defer { runner.stop(); reference.value = nil }
+        runner.launch()
+        try await wait { recorder.ends == 1 }
+        XCTAssertEqual(recorder.pressTimes, [1000, 12000])
+    }
+
     func testLateTickKeepsScheduledPressAndReleaseTimes() async throws {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [

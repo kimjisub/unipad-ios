@@ -20,6 +20,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
     private var ledAnimationStatesAdd: [LedAnimationState] = []
 
     private var requests: Int64 = 0
+    private var generation: UInt64 = 0
     private var pausedAt: Int64?
     private var suspendedTime = SuspendedTime()
     private var inputTimeThrough: Int64?
@@ -40,6 +41,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
     /// Called on the loop task.
     protocol Listener: AnyObject {
         func onLedBatch(_ events: [LedEvent])
+        func onLedBatch(_ events: [LedEvent], generation: UInt64)
     }
 
     private weak var listener: Listener?
@@ -133,6 +135,25 @@ nonisolated final class LedRunner: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Forget every old scene, including batches already waiting on the main actor.
+    func discardAll() {
+        lock.lockWithDeadlockDetection()
+        defer { lock.unlock() }
+        generation &+= 1
+        ledAnimationStates.removeAll()
+        ledAnimationStatesAdd.removeAll()
+        btnLed = Array(repeating: Array(repeating: nil, count: unipack.buttonY), count: unipack.buttonX)
+        cirLed = Array(repeating: nil, count: Self.circularLedCount)
+        pausedAt = nil
+        suspendedTime.reset()
+    }
+
+    func isCurrentGeneration(_ value: UInt64) -> Bool {
+        lock.lockWithDeadlockDetection()
+        defer { lock.unlock() }
+        return generation == value
+    }
+
     // MARK: - Main Loop
 
     /// One tick. Internal so tests can drive it with a manual `clock`.
@@ -140,6 +161,7 @@ nonisolated final class LedRunner: @unchecked Sendable {
         var pendingLedEvents: [LedEvent] = []
         var pendingChainSets: [Int] = []
         lock.lockWithDeadlockDetection()
+        let batchGeneration = generation
         skip(suspendedTime.tick(at: clock()))
         // Autoplay can be a millisecond behind this task. Do not render a later
         // step until its earlier scheduled inputs have reached the runner.
@@ -170,10 +192,11 @@ nonisolated final class LedRunner: @unchecked Sendable {
             let chain = self.chain
             let chainSets = pendingChainSets
             Task { @MainActor in
+                guard self.active, self.isCurrentGeneration(batchGeneration) else { return }
                 for c in chainSets { chain.setValue(c) }
             }
         }
-        if !pendingLedEvents.isEmpty { listener?.onLedBatch(pendingLedEvents) }
+        if !pendingLedEvents.isEmpty { listener?.onLedBatch(pendingLedEvents, generation: batchGeneration) }
     }
 
     private func playEvent(_ state: LedAnimationState, at: Int64,
@@ -491,5 +514,11 @@ nonisolated final class LedRunner: @unchecked Sendable {
 
     private func isValidCircularIndex(_ y: Int) -> Bool {
         y >= 0 && y < cirLed.count
+    }
+}
+
+nonisolated extension LedRunner.Listener {
+    func onLedBatch(_ events: [LedRunner.LedEvent], generation: UInt64) {
+        onLedBatch(events)
     }
 }
