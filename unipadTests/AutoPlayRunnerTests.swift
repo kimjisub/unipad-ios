@@ -142,10 +142,16 @@ final class AutoPlayRunnerTests: XCTestCase {
                         // the mode button in the same tick.
                         if partialChord { runner.stepPadPressed(x: 0, y: 1) }
                         clock.advance(pausedMs)
+                        if pauseBeforeFirstTick {
+                            let pausedTick = ticks + 2
+                            try await wait { ticks >= pausedTick }
+                        }
                         vm.switchPlayMode(.autoPlay)
                         if pauseBeforeFirstTick {
                             vm.autoPlayPause()
                             clock.advance(pausedMs)
+                            let pausedTick = ticks + 2
+                            try await wait { ticks >= pausedTick || !runner.active }
                             vm.autoPlayResume()
                         }
                         let resumedAt = clock.read()
