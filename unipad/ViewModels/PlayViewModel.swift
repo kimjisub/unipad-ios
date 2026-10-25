@@ -900,9 +900,10 @@ final class PlayViewModel {
     private func applyModeFlags(_ runner: AutoPlayRunner, _ mode: PlayMode) {
         switch mode {
         case .autoPlay:
+            runner.prepareStepForAutoplay()
             runner.practiceGuide = false
             runner.stepMode = false
-            runner.resetStepState()
+            runner.resetStepState(preservingPendingAutoplay: true)
             removeAllGuide()
             runner.playmode = true
             isPracticeMode = false
@@ -957,7 +958,7 @@ final class PlayViewModel {
     private func resumeAutoPlay() {
         guard let runner = autoPlayRunner else { return }
         runner.stepMode = false
-        runner.resetStepState()
+        runner.resetStepState(preservingPendingAutoplay: !runner.practiceGuide)
         removeAllGuide()
         ledInit()
         runner.playmode = true

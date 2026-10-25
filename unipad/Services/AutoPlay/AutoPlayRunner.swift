@@ -111,6 +111,13 @@ final class AutoPlayRunner {
     private var _stepStartProgress: Int = 0
     private var _stepChainValue: Int = -1
 
+    private struct PendingAutoplayStep {
+        let endProgress: Int
+        let pads: Set<Int>
+        var needsOrigin = true
+    }
+    private var pendingAutoplayStep: PendingAutoplayStep?
+
     // Pad presses are drained by the next tick on the main actor.
     private var _pressedKeysQueue: [Int] = []
 
@@ -233,6 +240,14 @@ final class AutoPlayRunner {
                     }
                 }
 
+                // The guide already waited for this group. Start its remaining notes now,
+                // even if playback was paused between selecting autoplay and this tick.
+                if self.playmode && !self.practiceGuide && self.pendingAutoplayStep?.needsOrigin == true {
+                    startTime = currTime
+                    delayAccum = 0
+                    self.pendingAutoplayStep?.needsOrigin = false
+                }
+
                 // Detect mid-run practice mode toggle
                 if self.practiceGuide != prevPracticeGuide {
                     if self.practiceGuide {
@@ -324,7 +339,8 @@ final class AutoPlayRunner {
                             let element = autoPlay.elements[self.progress]
                             switch element {
                             case .on(let x, let y, let currChain, let num):
-                                if !self.practiceGuide {
+                                let unplayed = self.pendingAutoplayStep?.pads.contains(self.guideKey(x: x, y: y)) ?? true
+                                if !self.practiceGuide && unplayed {
                                     if self.chain.value != currChain {
                                         self.listener?.onChainChange(c: currChain)
                                     }
@@ -358,6 +374,9 @@ final class AutoPlayRunner {
                                 }
                             }
                             self.progress += 1
+                            if let pending = self.pendingAutoplayStep, self.progress >= pending.endProgress {
+                                self.pendingAutoplayStep = nil
+                            }
                         }
                     }
                 } else {
@@ -471,6 +490,7 @@ final class AutoPlayRunner {
 
     func progressOffset(_ offset: Int) {
         releaseHeldPads()
+        pendingAutoplayStep = nil
         let target = progress + offset
         let count = unipack.autoPlayTable?.elements.count ?? 0
         progress = max(0, min(target, count))
@@ -481,7 +501,23 @@ final class AutoPlayRunner {
         }
     }
 
-    func resetStepState() {
+    /// Preserve only the step prepared for sounding autoplay; silent guidance keeps its old cursor.
+    func prepareStepForAutoplay() {
+        guard practiceGuide && stepMode else { return }
+        drainPressedKeys()
+        guard waitingForChain < 0, _stepScanned, !_stepPendingPads.isEmpty,
+              let autoPlay = unipack.autoPlayTable else { return }
+        let firstPending = (_stepStartProgress..<progress).first { index in
+            guard case .on(let x, let y, _, _) = autoPlay.elements[index] else { return false }
+            return _stepPendingPads.contains(guideKey(x: x, y: y))
+        }
+        guard let firstPending else { return }
+        pendingAutoplayStep = PendingAutoplayStep(endProgress: progress, pads: _stepPendingPads)
+        progress = firstPending
+    }
+
+    func resetStepState(preservingPendingAutoplay: Bool = false) {
+        if !preservingPendingAutoplay { pendingAutoplayStep = nil }
         _pressedKeysQueue.removeAll()
 
         _stepPendingPads.removeAll()
