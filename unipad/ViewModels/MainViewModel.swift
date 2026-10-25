@@ -99,11 +99,14 @@ final class MainViewModel {
     }
 
     func onPause(currentRoute: Route) {
+        guard currentRoute == .main else { return }
         removeMidiController()
     }
 
     func onResume(currentRoute: Route) {
-        setupMidiController()
+        if currentRoute == .main {
+            setupMidiController()
+        }
         refreshList()
         versionCheck()
     }
