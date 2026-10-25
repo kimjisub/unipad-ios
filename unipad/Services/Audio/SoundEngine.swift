@@ -91,7 +91,7 @@ final class SoundEngine {
         case appReturned(recovered: Bool)
     }
     /// Told after the engine has handled an interruption or the app's return to the front, so the
-    /// screen can pause or resume what it drives.
+    /// screen can release output and wait for an explicit playback request.
     var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
@@ -616,13 +616,26 @@ final class SoundEngine {
     }
     #endif
 
-    /// A configuration change that stopped rendering is also an output interruption.
+    /// A format change can stop I/O even when a newly connected output remains available.
+    /// Route-loss and interruption notifications decide whether the song must pause.
     func handleConfigurationChange() {
-        if !gate.hooks.isEngineRunning() {
-            stopAllPlayback()
-            onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
-        }
         gate.configurationChanged()
+    }
+
+    /// Resolve this explicit Play request without queuing it across a future permission notice.
+    func requestPlayback(_ completion: @escaping (Bool) -> Void) {
+        guard !destroyed, isUsable else { completion(false); return }
+        let report: (AudioSessionGate.Recovery) -> Void = { [weak self] recovery in
+            completion(self?.destroyed == false && recovery == .recovered)
+        }
+        if gate.state == .interrupted {
+            // A known ongoing interruption is a failed request, not a request to start later.
+            // An app-return recovery already underway can resolve this request now.
+            guard gate.isRecovering else { completion(false); return }
+            gate.appBecameActive(completion: report)
+        } else {
+            gate.configurationChanged(completion: report)
+        }
     }
 
     /// The app is in front again. A call that was answered may never send the end of its

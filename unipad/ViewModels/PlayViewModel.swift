@@ -149,6 +149,7 @@ final class PlayViewModel {
     var autoPlayRunner: AutoPlayRunner?
     @ObservationIgnored private var suspendedPlayMode: PlayMode?
     @ObservationIgnored private var isAppAway = false
+    @ObservationIgnored private var playbackResumeRequest: UUID?
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
 
@@ -875,6 +876,7 @@ final class PlayViewModel {
     // MARK: - AutoPlay Controls
 
     func switchPlayMode(_ mode: PlayMode) {
+        playbackResumeRequest = nil
         guard let runner = autoPlayRunner else { return }
         let currentMode = playMode
 
@@ -976,10 +978,26 @@ final class PlayViewModel {
     }
 
     private func resumeAutoPlay() {
-        guard enable, !isAppAway, !isCovered, soundEngine?.isPlaybackSuppressed == false,
+        guard enable, !isAppAway, !isCovered, let engine = soundEngine,
               let runner = autoPlayRunner else { return }
-        if suspendedPlayMode != nil {
+        let request = UUID()
+        playbackResumeRequest = request
+        engine.requestPlayback { [weak self, weak engine, weak runner] ready in
+            guard let self, self.playbackResumeRequest == request else { return }
+            self.playbackResumeRequest = nil
+            guard ready, self.enable, !self.isAppAway, !self.isCovered,
+                  let engine, self.soundEngine === engine,
+                  let runner, self.autoPlayRunner === runner else { return }
+            self.resumeAutoPlayWithSound(runner)
+        }
+    }
+
+    private func resumeAutoPlayWithSound(_ runner: AutoPlayRunner) {
+        if let mode = suspendedPlayMode {
             runner.resumeFromSuspension()
+            // Play is an explicit request to start, even if the user paused before leaving.
+            // Step practice instead resumes listening for a fresh pad in the same mode.
+            runner.playmode = mode != .stepPractice
             suspendedPlayMode = nil
             isAutoPlayPlaying = runner.playmode
             refreshWatermark()
@@ -997,6 +1015,7 @@ final class PlayViewModel {
     }
 
     private func pauseAutoPlay() {
+        playbackResumeRequest = nil
         guard let runner = autoPlayRunner else { return }
         runner.playmode = false
         ledInit()
@@ -1013,6 +1032,7 @@ final class PlayViewModel {
     }
 
     private func suspendPlayback() {
+        playbackResumeRequest = nil
         guard enable else { return }
         if suspendedPlayMode == nil, playMode != .none {
             suspendedPlayMode = playMode
@@ -1028,7 +1048,7 @@ final class PlayViewModel {
     }
 
     private func discardPendingDeviceLights() {
-        guard !isCovered else { return }
+        guard !isCovered, ownsMidiController else { return }
         MidiManager.shared.discardPendingLights()
     }
 
@@ -1173,10 +1193,10 @@ final class PlayViewModel {
         suspendPlayback()
         autoPlayRunner?.appWentAway()
         ledRunner?.appWentAway()
+        launchpad?.sendClearLed()
         if let adapter = midiControllerAdapter {
             MidiManager.shared.removeController(adapter)
         }
-        launchpad?.sendClearLed()
         stopVolumeObserver()
     }
 
@@ -1218,14 +1238,20 @@ final class PlayViewModel {
     }
 
     /// The launchpad this screen lights; none while another screen covers it and has the launchpad.
+    private var ownsMidiController: Bool {
+        guard let adapter = midiControllerAdapter else { return false }
+        return MidiManager.shared.controller === adapter
+    }
+
     fileprivate var launchpad: MidiDriver? {
-        isCovered ? nil : MidiManager.shared.driver
+        isCovered || !ownsMidiController ? nil : MidiManager.shared.driver
     }
 
     // MARK: - Cleanup
 
     /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
+        playbackResumeRequest = nil
         guard enable else { return }
         discardPendingDeviceLights()
         suspendedPlayMode = nil
@@ -1255,6 +1281,7 @@ final class PlayViewModel {
     }
 
     func stopAutoPlay() {
+        playbackResumeRequest = nil
         autoPlayRunner?.stop()
         autoPlayControlVisible = false
         isAutoPlayPlaying = false
