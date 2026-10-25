@@ -1052,14 +1052,19 @@ final class PlayViewModel {
         releaseAllPads()
         soundEngine?.stopAllPlayback()
         ledRunner?.discardAll()
-        discardPendingDeviceLights()
+        discardPendingDeviceLights(repaintCurrentScreen: true)
         ledInit()
         removeAllGuide()
     }
 
-    private func discardPendingDeviceLights() {
-        guard !isCovered, ownsMidiController else { return }
-        MidiManager.shared.discardPendingLights()
+    private func discardPendingDeviceLights(repaintCurrentScreen: Bool = false) {
+        guard !isCovered, ownsMidiController || repaintCurrentScreen else { return }
+        let manager = MidiManager.shared
+        let nextScreen = ownsMidiController ? nil : manager.controller
+        manager.discardPendingLights()
+        // A new screen may have attached before Play disappears. Drop the old pack's backlog,
+        // then recreate that screen's clear and watermark after the cancellation in the same FIFO.
+        nextScreen?.onAttach()
     }
 
     func autoPlayPrev() {
@@ -1264,7 +1269,7 @@ final class PlayViewModel {
         playbackResumeRequest = nil
         userPausedTimedPlayback = false
         guard enable else { return }
-        discardPendingDeviceLights()
+        discardPendingDeviceLights(repaintCurrentScreen: true)
         suspendedPlayMode = nil
         padHolds.removeAll()
         usageSession.ended()
