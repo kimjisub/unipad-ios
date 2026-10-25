@@ -352,6 +352,7 @@ enum ConformanceHarness {
         let clock: AutoPlayClock
         let chain: ChainObserver
         let forward: (Int, Int, Bool, [UUID]) -> Void
+        var recordsEnd = false
         init(log: EventLog, clock: AutoPlayClock, chain: ChainObserver, forward: @escaping (Int, Int, Bool, [UUID]) -> Void) {
             self.log = log
             self.clock = clock
@@ -384,7 +385,10 @@ enum ConformanceHarness {
         func onRemoveGuide() {}
         func chainButsRefresh() {}
         func onProgressUpdate(progress: Int) {}
-        func onEnd() { clock.ended = true }
+        func onEnd() {
+            if recordsEnd { log.add(["autoEnd"]) }
+            clock.ended = true
+        }
     }
 
     /// The sound engine is the real AVAudioEngine-backed one: it has no seam to observe which sound it
@@ -433,6 +437,7 @@ enum ConformanceHarness {
         var engineDestroyed = false
         let autoClock = AutoPlayClock()
         var autoPlay: AutoPlayRunner?
+        var watchesAutoEnd = false
         var autoRecorder: AutoRecorder?
         /// Cancels the LED loop and destroys the engine, including sounds still repeating.
         func shutDown() async {
@@ -517,6 +522,18 @@ enum ConformanceHarness {
                 let x = step["x"]?.int ?? 0
                 let y = step["y"]?.int ?? 0
                 switch step["do"]?.string {
+                case "watchAutoEnd":
+                    watchesAutoEnd = true
+                    autoRecorder?.recordsEnd = true
+                case "autoplayState":
+                    guard let autoPlay else { throw ConformanceError.harness("autoplayState requires an autoplay runner") }
+                    log.add(["autoActive", .bool(autoPlay.active)])
+                case "suspendAuto":
+                    guard let autoPlay else { throw ConformanceError.harness("suspendAuto requires an autoplay runner") }
+                    autoPlay.appWentAway()
+                case "resumeAuto":
+                    guard let autoPlay else { throw ConformanceError.harness("resumeAuto requires an autoplay runner") }
+                    autoPlay.appReturned()
                 case "watchStops":
                     watchesStops = true
                     // These cases have no elapsed-time steps. Keep finite completion delivery
@@ -538,6 +555,7 @@ enum ConformanceHarness {
                         } else { touch(x, y, down, byAutoPlay: true) }
                     }
                     autoRecorder = listener
+                    listener.recordsEnd = watchesAutoEnd
                     let runner = AutoPlayRunner(unipack: pack, listener: listener, chain: chain,
                                                 clock: { autoClock.now }, sleep: { _ in await autoClock.sleep() })
                     autoPlay = runner

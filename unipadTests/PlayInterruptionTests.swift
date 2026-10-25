@@ -159,7 +159,8 @@ extension PlayUsageRecordTests {
             }
         }
 
-        @Test func disablingLightsDiscardsPendingDeviceOutput() async throws {
+        @Test(arguments: [false, true])
+        func disablingLightsDiscardsPendingDeviceOutput(interrupted: Bool) async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\n"]) { s in
                 try await s.loadReady()
                 let manager = MidiManager.shared
@@ -168,10 +169,8 @@ extension PlayUsageRecordTests {
                 manager.overrideDriver(driver)
                 defer { manager.overrideDriver(previousDriver) }
                 let pending = BufferedLightOutput()
-                let output = MidiOutputQueue(noteSend: { bytes, _, _ in pending.record(bytes) })
-                let adapter = MidiManagerSendAdapter(output: output, port: 1, destination: 1,
-                    sysexDestination: 1, onFailure: { _ in })
-                driver.sendSignalListener = adapter
+                let adapter = try #require(driver.sendSignalListener as? MidiManagerSendAdapter)
+                let output = adapter.output
                 defer { pending.finish() }
                 s.vm.scbFeedbackLight.forceSetChecked(false)
                 s.vm.scbLed.forceSetChecked(true)
@@ -181,7 +180,11 @@ extension PlayUsageRecordTests {
                 s.press()
                 try await s.waitWhile { s.vm.channelManager?.get(x: 0, y: 0, channel: .led) == nil }
                 try #require(s.vm.channelManager?.get(x: 0, y: 0, channel: .led) != nil)
-                s.vm.scbLed.forceSetChecked(false)
+                // Observe an unsent light on the manager's real queue. A replacement adapter
+                // with its own queue would not exercise the manager's cancellation boundary.
+                output.enqueue { done in pending.record([0x90, 81, 5]); done() }
+                if interrupted { s.vm.onPause() }
+                else { s.vm.scbLed.forceSetChecked(false) }
                 pending.finish()
                 output.enqueue { done in pending.markFlushed(); done() }
                 try await s.waitWhile { !pending.flushed }
