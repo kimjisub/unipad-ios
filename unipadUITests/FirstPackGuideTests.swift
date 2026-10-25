@@ -237,7 +237,8 @@ final class FirstPackGuideTests: XCTestCase {
         let foundRecents = recents.waitForExistence(timeout: 20)
         if !foundRecents { shot(Self.korean, "picker-recents-missing") }
         _ = try XCTUnwrap(foundRecents ? recents : nil, "the picker must offer Recents at Locations")
-        XCTAssertTrue(UITestSupport.waitUntilHittable(recents, timeout: 5))
+        // The native tab can report isHittable == false while accepting taps.
+        // Verify the selection after tapping instead of asserting that hint.
         recents.tap()
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: recents)
         XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed,
