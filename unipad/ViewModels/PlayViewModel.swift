@@ -1227,6 +1227,7 @@ final class PlayViewModel {
     /// The screen is gone for good. Safe to call more than once.
     func cleanup() {
         guard enable else { return }
+        discardPendingDeviceLights()
         suspendedPlayMode = nil
         padHolds.removeAll()
         usageSession.ended()
