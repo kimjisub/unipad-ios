@@ -179,6 +179,17 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertFalse(runner.active)
     }
 
+    private func readySoundEngine() async throws -> SoundEngine {
+        let loading = TestSoundLoadListener()
+        let engine = SoundEngine(unipack: UniPack(), chain: ChainObserver(), loadingListener: loading)
+        try await wait { loading.finished }
+        if let failure = loading.failure {
+            engine.destroy()
+            throw failure
+        }
+        return engine
+    }
+
     private func twoStepPack() -> UniPack {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [
@@ -313,6 +324,8 @@ final class AutoPlayRunnerTests: XCTestCase {
     /// The guided chord is still owed until its pads are pressed. Scanning past it must not
     /// discard it when sound-producing autoplay starts, even at the end of the table.
     func testStepToSoundingAutoplayKeepsUnplayedPadsAcrossPauseDurations() async throws {
+        let engine = try await readySoundEngine()
+        defer { engine.destroy() }
         let pressedPads: [Int?] = [nil, 1, 2]
         for pauseBeforeFirstTick in [false, true] {
             for pausedMs: Int64 in [0, 1, 300, 3_000] {
@@ -339,6 +352,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                         })
                         let vm = PlayViewModel()
                         vm.autoPlayRunner = runner
+                        vm.soundEngine = engine
                         defer { runner.stop() }
                         vm.switchPlayMode(.stepPractice)
                         try await wait { recorder.guidePads == [0] }
@@ -359,6 +373,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                             let pausedTick = ticks + 2
                             try await wait { ticks >= pausedTick || !runner.active }
                             vm.autoPlayResume()
+                            try await wait { runner.playmode }
                         }
                         let resumedAt = clock.read()
                         let nextTick = ticks + 2
@@ -385,6 +400,8 @@ final class AutoPlayRunnerTests: XCTestCase {
     }
 
     func testTimedGuideAfterStepAutoplayKeepsTheSongPosition() async throws {
+        let engine = try await readySoundEngine()
+        defer { engine.destroy() }
         for pauseBeforeGuideTick in [false, true] {
             let pack = UniPack()
             pack.autoPlayTable = AutoPlay(elements: [
@@ -399,6 +416,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                 clock: { clock.read() }, sleep: { _ in ticks += 1; await Task.yield() })
             let vm = PlayViewModel()
             vm.autoPlayRunner = runner
+            vm.soundEngine = engine
             defer { runner.stop() }
             vm.switchPlayMode(.stepPractice)
             try await wait { recorder.guidePads == [0] }
@@ -417,6 +435,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                 vm.autoPlayPause()
                 clock.advance(3_000)
                 vm.autoPlayResume()
+                try await wait { runner.playmode }
             }
             var nextTick = ticks + 2
             try await wait { ticks >= nextTick }
@@ -433,6 +452,8 @@ final class AutoPlayRunnerTests: XCTestCase {
     /// The play button in step practice resumes silent timed guidance. It is deliberately
     /// outside the sounding-autoplay rule and keeps the existing scan position.
     func testStepResumeKeepsExistingSilentGuideBehavior() async throws {
+        let engine = try await readySoundEngine()
+        defer { engine.destroy() }
         for pausedMs: Int64 in [0, 1, 300, 3_000] {
             for lastGroup in [false, true] {
                 let pack = UniPack()
@@ -452,6 +473,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                 })
                 let vm = PlayViewModel()
                 vm.autoPlayRunner = runner
+                vm.soundEngine = engine
                 defer { runner.stop() }
                 vm.switchPlayMode(.stepPractice)
                 try await wait { recorder.guidePads == [0] }
@@ -459,6 +481,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                 try await wait { recorder.guidePads == [0, 1] }
                 clock.advance(pausedMs)
                 vm.autoPlayResume()
+                try await wait { runner.playmode }
                 let nextTick = ticks + 2
                 try await wait { ticks >= nextTick || !runner.active }
                 XCTAssertEqual(vm.playMode, .guidePlay)
