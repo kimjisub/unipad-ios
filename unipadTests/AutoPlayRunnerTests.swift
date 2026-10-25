@@ -302,6 +302,32 @@ final class AutoPlayRunnerTests: XCTestCase {
         runner.launch()
     }
 
+    func testSuspendedStepPracticeDiscardsUnprocessedPresses() async throws {
+        for queuedBeforeSuspension in [false, true] {
+            let recorder = Recorder()
+            var ticks = 0
+            let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder,
+                chain: ChainObserver(), sleep: { _ in ticks += 1; await Task.yield() })
+            defer { runner.stop() }
+            startStepPractice(runner)
+            try await wait { recorder.litGuides == [0] }
+            if queuedBeforeSuspension { runner.stepPadPressed(x: 0, y: 0) }
+            runner.suspend()
+            if !queuedBeforeSuspension { runner.stepPadPressed(x: 0, y: 0) }
+            let suspendedProgress = runner.progress
+            let suspendedTick = ticks
+            try await wait { ticks >= suspendedTick + 3 }
+            XCTAssertEqual(runner.progress, suspendedProgress)
+
+            runner.resumeFromSuspension()
+            let resumedTick = ticks
+            try await wait { ticks >= resumedTick + 3 }
+            XCTAssertEqual(recorder.litGuides, [0], "queued before suspension: \(queuedBeforeSuspension)")
+            runner.stepPadPressed(x: 0, y: 0)
+            try await wait { recorder.litGuides == [1] }
+        }
+    }
+
     func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
         let recorder = Recorder()
         let runner = AutoPlayRunner(unipack: twoStepPack(), listener: recorder, chain: ChainObserver())
