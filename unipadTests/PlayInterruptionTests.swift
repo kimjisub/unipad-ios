@@ -326,6 +326,20 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test func aLateReturnAfterPackCloseCannotTakeTheCurrentScreenController() async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                s.vm.cleanup()
+                let main = MainViewModel()
+                main.setupMidiController()
+                defer { main.removeMidiController() }
+                let current = try #require(MidiManager.shared.controller)
+                s.vm.onResume() // A foreground notice can already be queued when the pack closes.
+                #expect(MidiManager.shared.controller === current,
+                        "a closed performance screen took the current screen's controller")
+            }
+        }
+
         @Test func turningLightsOffDiscardsFiniteAnimations() async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\non 1 2 a 9\n"]) { s in
                 try await s.loadReady()
