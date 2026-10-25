@@ -12,6 +12,13 @@ nonisolated enum ReleaseTestSupport {
         return WorkspaceManager.documentsDirectory.appendingPathComponent("ReleaseTests/\(token)")
     }
     static var storeURL: URL? { root?.appendingPathComponent("history.sqlite") }
+    /// A guide lookahead longer than UI-test input and capture delays, so a check can act inside a
+    /// chain hint's remaining delay and still tell it apart from no delay.
+    static var guideLookaheadMs: Int64? {
+        guard root != nil else { return nil }
+        let ms = UserDefaults.standard.integer(forKey: "UniPadReleaseGuideLookaheadMs")
+        return ms > 0 ? Int64(ms) : nil
+    }
 
     static func configure(_ configuration: URLSessionConfiguration) {
         guard root != nil else { return }
@@ -67,9 +74,9 @@ nonisolated enum ReleaseTestSupport {
                 let pack = library.appendingPathComponent("ChainWait")
                 try makePack(at: pack, title: "Chain Wait Fixture")
                 try writeInfo(to: pack, title: "Chain Wait Fixture", chains: 2, square: true)
-                // The guide stops song time at its chain hint, 800 ms before the chain change. The
-                // 3 s after the change keep the first note well past UI-test input and capture delays.
-                try "d 1000\nc 2\nd 3000\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 10000\n"
+                // The 5 s before the first note outlast the 4 s guide lookahead the UI check sets, so
+                // the chain hint starts 1 s into the song, after the runner has passed the opening delay.
+                try "d 5000\nc 2\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 10000\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
                 // Each silent sound request also leaves a visible light, including after its off.
                 for (number, velocity) in [(1, 5), (2, 21), (3, 45)] {
