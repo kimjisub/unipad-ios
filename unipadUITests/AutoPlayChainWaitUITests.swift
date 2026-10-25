@@ -1,7 +1,11 @@
 import XCTest
 
-/// Uses the public mode buttons and the same three-note chain-wait sequence as the runner tests.
+/// Uses the public mode buttons and the runner tests' three-note chain-wait sequence, with 3 s
+/// between the chain change and the first note so input and capture delays fit before it.
 final class AutoPlayChainWaitUITests: XCTestCase {
+    /// From leaving the chain hint to the first note: the 800 ms guide lookahead plus 3 s.
+    private static let remainingDelay: TimeInterval = 3.8
+
     @MainActor
     func testSwitchingFromChainHintPreservesRemainingDelay() throws {
         continueAfterFailure = false
@@ -41,10 +45,12 @@ final class AutoPlayChainWaitUITests: XCTestCase {
         let timing = XCTAttachment(string: "switch invocation to screenshot completion: \(elapsed) seconds")
         timing.lifetime = .keepAlways
         add(timing)
-        XCTAssertLessThan(elapsed, 0.8, "The capture missed the remaining-delay window")
+        XCTAssertLessThan(elapsed, Self.remainingDelay, "The capture missed the remaining-delay window")
         XCTAssertEqual(try PadPixels(early).changedPads(comparedWith: idle), [],
                        "Switching modes played a note before the remaining delay")
-        Thread.sleep(forTimeInterval: 2)
+        // The three notes come 0, 0.5 and 1 s after the remaining delay.
+        let played = started + Self.remainingDelay + 1.5
+        Thread.sleep(forTimeInterval: max(0, played - ProcessInfo.processInfo.systemUptime))
         UITestSupport.attachScreenshot("chain-wait-three-notes-played", to: self)
         XCTAssertEqual(try PadPixels(grid.screenshot()).changedPads(comparedWith: idle), ["1,1"])
     }

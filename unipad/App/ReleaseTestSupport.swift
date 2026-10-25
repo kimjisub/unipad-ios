@@ -67,7 +67,9 @@ nonisolated enum ReleaseTestSupport {
                 let pack = library.appendingPathComponent("ChainWait")
                 try makePack(at: pack, title: "Chain Wait Fixture")
                 try writeInfo(to: pack, title: "Chain Wait Fixture", chains: 2, square: true)
-                try "d 1000\nc 2\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 10000\n"
+                // The guide stops song time at its chain hint, 800 ms before the chain change. The
+                // 3 s after the change keep the first note well past UI-test input and capture delays.
+                try "d 1000\nc 2\nd 3000\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 500\no 1 1\nf 1 1\nd 10000\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
                 // Each silent sound request also leaves a visible light, including after its off.
                 for (number, velocity) in [(1, 5), (2, 21), (3, 45)] {
