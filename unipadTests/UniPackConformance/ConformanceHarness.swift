@@ -430,7 +430,7 @@ enum ConformanceHarness {
 
         /// `input` is the scenario's player input name: `pointer:n` is one finger on the screen and
         /// `midi:n` a Launchpad note, which reaches the screen without an identity of its own.
-        func touch(_ x: Int, _ y: Int, _ down: Bool, inputID: UUID? = nil, input: String? = nil) {
+        func touch(_ x: Int, _ y: Int, _ down: Bool, inputID: UUID? = nil, input: String? = nil, byAutoPlay: Bool = false) {
             let key = input ?? "\(x),\(y)"
             let identity: UUID?
             var trigger: PlayTrigger = inputID == nil ? .pad(.screen) : .autoplay
@@ -449,7 +449,7 @@ enum ConformanceHarness {
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
                     screen.padTouch(x: x, y: y, isDown: true, trigger: trigger, inputID: identity, ledTimeMs: clock.read())
-                } else { engine.soundOn(x: x, y: y) }
+                } else { engine.soundOn(x: x, y: y, followWormhole: !byAutoPlay) }
                 // A replacement's stop precedes the next start. The removed IDs belong to the
                 // engine, not the current chain or the pad's already-advanced queue head.
                 recordStops(since: previousIDs)
@@ -511,7 +511,7 @@ enum ConformanceHarness {
                         guard toPads else { return }
                         if inputScreen != nil {
                             for id in ids { touch(x, y, down, inputID: id) }
-                        } else { touch(x, y, down) }
+                        } else { touch(x, y, down, byAutoPlay: true) }
                     }
                     autoRecorder = listener
                     let runner = AutoPlayRunner(unipack: pack, listener: listener, chain: chain,

@@ -17,8 +17,25 @@ final class AutoPlayRunner {
     private let sleep: @MainActor (UInt64) async throws -> Void
 
     var playmode: Bool = true {
-        didSet { if !playmode { releaseHeldPads() } }
+        didSet {
+            guard playmode != oldValue else { return }
+            if playmode {
+                if let pausedAt { pendingPauseMs += clock() - pausedAt }
+                pausedAt = nil
+            } else {
+                // Preserve an app suspension even if its return notification arrives after this pause.
+                let skipped = suspendedTime.tick(at: clock()) + pendingSkipMs
+                if waitingForChain < 0 { pendingPauseMs += skipped }
+                pausedAt = clock()
+                releaseHeldPads()
+            }
+            // The explicit pause already accounts for any app suspension inside it.
+            suspendedTime.reset()
+            pendingSkipMs = 0
+        }
     }
+    private var pausedAt: Int64?
+    private var pendingPauseMs: Int64 = 0
     var beforeStartPlaying: Bool = true
     var practiceGuide: Bool = false {
         didSet { if practiceGuide { releaseHeldPads() } }
@@ -208,6 +225,8 @@ final class AutoPlayRunner {
             self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? .min : nil)
             var delayAccum: Int64 = 0
             var startTime = self.clock()
+            self.pausedAt = self.playmode ? nil : startTime
+            self.pendingPauseMs = 0
             var prevPracticeGuide = self.practiceGuide
             self.suspendedTime.reset()
             self.pendingSkipMs = 0
@@ -215,6 +234,13 @@ final class AutoPlayRunner {
 
             while (self.progress < autoPlay.elements.count || self.awaitsLastStep) && !Task.isCancelled {
                 let currTime = self.clock()
+
+                let paused = self.pendingPauseMs
+                self.pendingPauseMs = 0
+                if paused > 0 {
+                    startTime += paused
+                    if self.practiceGuide { self.restartGuide(at: currTime - startTime) }
+                }
 
                 // Paused or waiting for a chain, the loop below already owes nothing for time passing.
                 let skipped = self.suspendedTime.tick(at: currTime) + self.pendingSkipMs
@@ -403,10 +429,6 @@ final class AutoPlayRunner {
                             self._stepScanned = !self._stepPendingPads.isEmpty || self.waitingForChain >= 0
                         }
                     }
-
-                    if delayAccum <= currTime - startTime {
-                        delayAccum = currTime - startTime
-                    }
                 }
 
                 self.listener?.onInputTimeThrough(self.playmode && !self.practiceGuide && !self.stepMode ? currTime : nil)
@@ -425,6 +447,8 @@ final class AutoPlayRunner {
 
     /// The app left the front (`willResignActive`); it may be suspended before it comes back.
     func appWentAway() {
+        // Foreground time since the last tick still belongs to the song.
+        pendingSkipMs += suspendedTime.tick(at: clock())
         suspendedTime.appWentAway()
     }
 

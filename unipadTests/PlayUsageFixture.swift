@@ -99,13 +99,14 @@ final class PlayUsageScenario {
         var buttonX = 8
         var buttonY = 8
         var chain = 1
+        var squareButton = true
     }
 
     static func writePack(
         to folder: URL, keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay,
         keyLed: [String: String] = [:], grid: PackGrid = PackGrid()
     ) throws {
-        let info = "title=PlayUsage\nproducerName=Tester\nbuttonX=\(grid.buttonX)\nbuttonY=\(grid.buttonY)\nchain=\(grid.chain)\nsquareButton=true\n"
+        let info = "title=PlayUsage\nproducerName=Tester\nbuttonX=\(grid.buttonX)\nbuttonY=\(grid.buttonY)\nchain=\(grid.chain)\nsquareButton=\(grid.squareButton)\n"
         let files: [(String, Data)] = [
             ("info", Data(info.utf8)),
             ("keySound", Data(keySound.utf8)),

@@ -623,27 +623,29 @@ final class SoundEngine {
         }
     }
 
-    func soundOn(x: Int, y: Int, inputID: UUID? = nil) {
+    func soundOn(x: Int, y: Int, inputID: UUID? = nil, followWormhole: Bool = true) {
         let input = input(x: x, y: y, id: inputID)
-        guard isUsable else { return }
+        guard !isDestroyed() else { return }
         let c = chain.value
         guard stopID.indices.contains(c), stopID[c].indices.contains(x), stopID[c][x].indices.contains(y) else { return }
-        // An engine that is not rendering makes play() raise "player did not see an IO cycle", which
-        // Swift cannot catch. When the gate cannot get it running, the pad is silent instead.
-        guard gate.ensureEngineRunning() else { return }
-
-        // Stop previous sound on this pad (using unique play ID, like Android's stream ID)
-        stopByPlayID(stopID[c][x][y])
-
         guard let sound = unipack.soundGet(c: c, x: x, y: y) else {
             logger.debug("soundOn(\(x),\(y)): no sound for chain=\(c)")
             return
         }
+        // Input consumes the author's sequence even while loading, interrupted, or unable to
+        // schedule this voice. Autoplay supplies chain changes through its own parsed timeline.
+        defer { advance(past: sound, c: c, x: x, y: y, followWormhole: followWormhole) }
+        // An engine that is not rendering makes play() raise "player did not see an IO cycle", which
+        // Swift cannot catch. When the gate cannot get it running, the pad is silent instead.
+        guard isUsable, gate.ensureEngineRunning() else { return }
+
+        // Stop previous sound on this pad (using unique play ID, like Android's stream ID)
+        stopByPlayID(stopID[c][x][y])
+
         guard let buffer = buffer(for: sound.id) else {
             // A sound that could not be decoded is silent where it stands; the pad still moves on
             // to its next line and the sound's wormhole still applies.
             logger.warning("soundOn(\(x),\(y)): buffer not loaded for sound id=\(sound.id)")
-            advance(past: sound, c: c, x: x, y: y)
             return
         }
 
@@ -710,15 +712,13 @@ final class SoundEngine {
             voices.append(playID)
             inputPlayback[input] = voices
         }
-
-        advance(past: sound, c: c, x: x, y: y)
     }
 
-    /// Moves the pad to its next keySound line and follows `sound`'s wormhole.
-    private func advance(past sound: Sound, c: Int, x: Int, y: Int) {
+    /// Moves the pad to its next keySound line and optionally follows `sound`'s wormhole.
+    private func advance(past sound: Sound, c: Int, x: Int, y: Int, followWormhole: Bool) {
         unipack.soundPush(c: c, x: x, y: y)
 
-        if sound.wormhole != Sound.noWormhole {
+        if followWormhole, sound.wormhole != Sound.noWormhole {
             let wormhole = sound.wormhole
             let delay = wormholeDelay
             let id = nextWormholeID

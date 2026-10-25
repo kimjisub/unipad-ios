@@ -282,16 +282,16 @@ final class PlayViewModel {
             $0.locked = false
         }
 
-        if unipack.squareButton {
-            if !unipack.keyLedExist {
-                scbLed.visible = false
-                scbLed.locked = true
-            }
-            if !unipack.autoPlayExist {
-                scbAutoPlay.visible = false
-                scbAutoPlay.locked = true
-            }
-        } else {
+        if !unipack.keyLedExist {
+            scbLed.visible = false
+            scbLed.locked = true
+        }
+        if !unipack.autoPlayExist {
+            scbAutoPlay.visible = false
+            scbAutoPlay.locked = true
+        }
+        if !unipack.squareButton {
+            // Hide and lock user controls; internal initialization still applies light defaults.
             [scbFeedbackLight, scbLed, scbAutoPlay, scbTraceLog, scbRecord].forEach {
                 $0.visible = false
                 $0.locked = true
@@ -459,10 +459,10 @@ final class PlayViewModel {
         isOptionWindowVisible = false
 
         if unipack.keyLedExist {
-            scbFeedbackLight.setChecked(false)
-            scbLed.setChecked(true)
+            scbFeedbackLight.forceSetChecked(false)
+            scbLed.forceSetChecked(true)
         } else {
-            scbFeedbackLight.setChecked(true)
+            scbFeedbackLight.forceSetChecked(true)
         }
         logger.info("initSetting: visible feedback=\(self.scbFeedbackLight.visible), led=\(self.scbLed.visible), autoplay=\(self.scbAutoPlay.visible), trace=\(self.scbTraceLog.visible), record=\(self.scbRecord.visible)")
         proLightMode(scbProLightMode.checked)
@@ -520,6 +520,7 @@ final class PlayViewModel {
     }
 
     func selectChain(_ c: Int) {
+        guard chain.range.contains(c) else { return }
         soundEngine?.cancelPendingWormholes()
         chain.setValue(c)
     }
@@ -622,7 +623,8 @@ final class PlayViewModel {
                 autoPlayRunner?.stepPadPressed(x: x, y: y)
             }
 
-            soundEngine?.soundOn(x: x, y: y, inputID: owner)
+            // Autoplay's parsed timeline already follows the sound's chain change at this tick.
+            soundEngine?.soundOn(x: x, y: y, inputID: owner, followWormhole: trigger != .autoplay)
 
             if scbRecord.checked {
                 let currTime = Self.currentTimeMs()
@@ -726,13 +728,10 @@ final class PlayViewModel {
             launchpad?.sendPadLed(x: x, y: y, velocity: 0)
         }
 
-        // LED overlay color: guide takes priority over LED
-        if let guideItem = cm.get(x: x, y: y, channel: .guide) {
-            let guideColor = Self.colorFromARGB(guideItem.color)
-            padLedColors[x][y] = guideColor
-        } else if let ledItem = cm.get(x: x, y: y, channel: .led) {
-            let ledColor = Self.colorFromARGB(ledItem.color)
-            padLedColors[x][y] = ledColor
+        // The screen and controller show the same winning channel. A pressed image must not
+        // have a lower-priority pack light painted over it.
+        if let winner = padItems[x][y], winner.channel == .guide || winner.channel == .led {
+            padLedColors[x][y] = Self.colorFromARGB(winner.color)
         } else {
             padLedColors[x][y] = .clear
         }
@@ -881,6 +880,7 @@ final class PlayViewModel {
         }
 
         if mode == .none {
+            soundEngine?.cancelPendingWormholes()
             runner.practiceGuide = false
             runner.stepMode = false
             runner.resetStepState()
@@ -898,6 +898,7 @@ final class PlayViewModel {
         }
 
         if currentMode == .none {
+            restorePlaybackLights()
             applyModeFlags(runner, mode)
             scbAutoPlay.setCheckedSilently(true)
             if let unipack {
@@ -942,6 +943,7 @@ final class PlayViewModel {
     }
 
     func cyclePlayMode() {
+        guard !scbAutoPlay.locked else { return }
         switch playMode {
         case .none: switchPlayMode(.autoPlay)
         case .autoPlay: switchPlayMode(.guidePlay)
@@ -962,9 +964,9 @@ final class PlayViewModel {
 
     fileprivate func restorePlaybackLights() {
         let hasLED = unipack?.keyLedExist == true
-        if hasLED { scbLed.setChecked(true) }
-        // Avoid the feedback callback's padInit while keeping hidden options locked.
-        scbFeedbackLight.setChecked(!hasLED, notify: false)
+        if hasLED { scbLed.forceSetChecked(true) }
+        // Preserve held inputs without invoking the feedback callback's padInit.
+        scbFeedbackLight.setCheckedSilently(!hasLED)
     }
 
     private func resumeAutoPlay() {
