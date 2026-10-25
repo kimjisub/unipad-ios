@@ -551,6 +551,8 @@ final class AutoPlayRunner {
     }
 
     private func stepScanNext(autoPlay: AutoPlay) {
+        // A fresh practice scan replaces any unconsumed autoplay preparation.
+        pendingAutoplayStep = nil
         var newPending: Set<Int> = []
         var totalDelayMs: Int64 = 0
 

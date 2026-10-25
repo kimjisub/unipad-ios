@@ -8,6 +8,7 @@ final class AutoPlayRunnerTests: XCTestCase {
         var ends = 0
         var onFinish: (() -> Void)?
         var guidePads: [Int] = []
+        var guideChains: [Int] = []
         var pressTimes: [Int64] = []
         var pressedPads: [Int] = []
         var releaseTimes: [Int64] = []
@@ -31,7 +32,7 @@ final class AutoPlayRunnerTests: XCTestCase {
         }
         func onGuidePadOff(x: Int, y: Int) { litGuides.remove(x * 256 + y) }
         func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
-        func onGuideChainOn(c: Int) {}
+        func onGuideChainOn(c: Int) { guideChains.append(c) }
         func onRemoveGuide() { litGuides.removeAll() }
         func chainButsRefresh() {}
         func onProgressUpdate(progress: Int) {}
@@ -216,6 +217,32 @@ final class AutoPlayRunnerTests: XCTestCase {
                 XCTAssertEqual(runner.progress, lastGroup ? 3 : 4, "The silent guide must retain its existing scan position")
             }
         }
+    }
+
+    func testReturningToStepPracticeDoesNotReusePreparationAcrossAChainWait() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [
+            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 100),
+            .on(x: 0, y: 1, currChain: 1, num: 0),
+        ])
+        let clock = TestManualClock()
+        let recorder = Recorder()
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                    clock: { clock.read() }, sleep: { _ in await Task.yield() })
+        let vm = PlayViewModel()
+        vm.autoPlayRunner = runner
+        defer { runner.stop() }
+        vm.switchPlayMode(.stepPractice)
+        try await wait { recorder.guidePads == [0] }
+        vm.switchPlayMode(.autoPlay)
+        // Return before autoplay emits the prepared group. A new practice scan owns it now.
+        vm.switchPlayMode(.stepPractice)
+        try await wait { recorder.guidePads == [0, 0] }
+        runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.guideChains == [1] }
+        vm.switchPlayMode(.autoPlay)
+        try await wait { !runner.active }
+        XCTAssertEqual(recorder.pressedPads, [1], "The old group's filter discarded the new chain's first note")
     }
 
     func testCompletedStepPracticeRelaunchesAtTheFirstPad() async throws {
