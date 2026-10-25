@@ -179,6 +179,41 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test(arguments: [false, true])
+        func configurationChangesKeepTheRouteLossDecision(outputLost: Bool) async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                _ = try await startAutoplay(s)
+                let engine = try #require(s.vm.soundEngine)
+                let reports = observeInterruptions(engine)
+                let original = engine.activateSessionForRecovery
+                let rendering = RenderingState()
+                let activation = HeldActivation(then: { try original(); rendering.recover() })
+                defer { activation.release() }
+                engine.isEngineRunningForRecovery = { rendering.isRunning }
+                engine.activateSessionForRecovery = { try activation.activate() }
+                engine.handleRouteChange(Notification(name: AVAudioSession.routeChangeNotification,
+                    userInfo: [AVAudioSessionRouteChangeReasonKey: (outputLost
+                        ? AVAudioSession.RouteChangeReason.oldDeviceUnavailable
+                        : AVAudioSession.RouteChangeReason.newDeviceAvailable).rawValue]))
+                engine.handleConfigurationChange()
+                let beginnings = reports.all.filter { if case .began = $0 { return true }; return false }
+                #expect(beginnings.count == (outputLost ? 1 : 0),
+                        "an I/O format change is not another output-loss decision")
+                #expect(s.vm.isAutoPlayPlaying == !outputLost)
+                activation.release()
+                try await waitForRecovery(s, engine)
+                #expect(s.vm.isAutoPlayPlaying == !outputLost)
+            }
+        }
+
+        nonisolated final class RenderingState: @unchecked Sendable {
+            private let lock = NSLock()
+            private var running = false
+            var isRunning: Bool { lock.withLock { running } }
+            func recover() { lock.withLock { running = true } }
+        }
+
         @Test func turningLightsOffDiscardsFiniteAnimations() async throws {
             try await PlayUsageScenario.run(keyLed: ["1 1 1 1": "on 1 1 a 5\ndelay 20000\non 1 2 a 9\n"]) { s in
                 try await s.loadReady()

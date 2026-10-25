@@ -114,6 +114,11 @@ final class SoundEngine {
         get { gate.hooks.activateSession }
         set { gate.hooks.activateSession = newValue }
     }
+    /// The gate's rendering observation. Tests can model hardware reconfiguration stopping I/O.
+    var isEngineRunningForRecovery: () -> Bool {
+        get { gate.hooks.isEngineRunning }
+        set { gate.hooks.isEngineRunning = newValue }
+    }
     #if canImport(UIKit)
     /// Whether the app is active. A test seam: the test host stays active, and an interruption can end
     /// while the app is still in the background.
@@ -612,8 +617,8 @@ final class SoundEngine {
     #endif
 
     /// A configuration change that stopped rendering is also an output interruption.
-    private func handleConfigurationChange() {
-        if !engine.isRunning {
+    func handleConfigurationChange() {
+        if !gate.hooks.isEngineRunning() {
             stopAllPlayback()
             onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
         }
