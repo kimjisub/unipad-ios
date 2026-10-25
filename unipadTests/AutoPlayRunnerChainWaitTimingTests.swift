@@ -22,6 +22,8 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
                 elements += [.on(x: 0, y: 0, currChain: 1, num: index),
                              .off(x: 0, y: 0, currChain: 1), .delay(delay: index == 2 ? 10000 : 500)]
             }
+            // Keep the runner alive through the trailing delay while each deadline is sampled.
+            elements.append(.off(x: 0, y: 0, currChain: 1))
             pack.autoPlayTable = AutoPlay(elements: elements)
             runner = AutoPlayRunner(unipack: pack, listener: self, chain: chain,
                 clock: { [unowned self] in now }, sleep: { [unowned self] _ in
