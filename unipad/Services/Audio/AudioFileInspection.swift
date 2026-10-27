@@ -11,8 +11,7 @@ nonisolated enum AudioFileInspection {
         do {
             let facts: AudioAdmission.Facts
             if d.matches(0, "RIFF") { facts = try wave(d) }
-            else if d.matches(0, "caff") { facts = try NativePCMAudioInspection.caf(d) }
-            else if d.matches(0, "FORM") { facts = try NativePCMAudioInspection.aiff(d) }
+            else if d.matches(0, "FORM") || d.matches(0, "caff") { return .rejected(.invalidFormat) }
             else if d.matches(0, "OggS") { facts = try OggAudioInspection.inspect(d) }
             else if d.matches(0, "fLaC") { facts = try FlacAudioInspection.inspect(d) }
             else if ["ftyp", "moov", "mdat"].contains(where: { d.matches(4, $0) }) { facts = try Mp4AudioInspection.inspect(d) }

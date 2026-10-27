@@ -1,11 +1,11 @@
 # Shared admission inputs
 
-This directory copies the complete third revision of the generated audio admission
-inputs from [unipad-android at cab0f17c373e6830c750c6f289d059c40907f4eb](https://github.com/kimjisub/unipad-android/tree/cab0f17c373e6830c750c6f289d059c40907f4eb/app/src/sharedTest/assets/audio-safety).
-The binary files, `cases.json`, and `AudioSafetyREADME.md` (upstream `README.md`)
+This directory copies the complete fourth revision of the generated audio admission
+inputs from [unipad.io at a9f8e648065f91dc386a1fbd12e78cc6b8cb7b6a](https://github.com/kimjisub/unipad.io/tree/a9f8e648065f91dc386a1fbd12e78cc6b8cb7b6a/src/lib/unipack/__fixtures__/audio-safety).
+The 85 binary files, `cases.json`, and `AudioSafetyREADME.md` (upstream `README.md`)
 are byte-for-byte copies. The guide has a unique resource name to avoid collisions
 with other fixture guides in the test bundle.
-The manifest SHA-256 is `b16e4f635d671b3ab2d20222cea55bec72cce91e496d6b2ea87ccf6525c193c4`.
+The manifest SHA-256 is `08e51f9cf9ae53de55080e9bd560d1a3395f76fb544d7e24bd83ab6b6d3e1d76`.
 `AudioAdmissionTests` checks that hash and every binary hash without changing expectations.
 These inputs are separate from the historical parser conformance corpus.
 
@@ -24,28 +24,20 @@ failure messages need separate playback verification. In particular, ALAC reads
 the first channel element's output count, as in the shared implementation; entropy
 decoding and remaining channel elements are not certified by this structural pass.
 
-Separate generated native-container tests retain the existing CAF PCM and AIFF/AIFC
-PCM path. These extra tests do not modify the shared corpus.
+## Native containers outside the shared contract
 
-## Native decoder coverage gaps before playback integration
+AIFF, AIFC and CAF are excluded as `INVALID_FORMAT`, regardless of their extension
+or whether a native decoder can open them. The fourth revision includes PCM AIFF,
+sound-before-format AIFF, mu-law AIFC, PCM/IMA4/AAC/ALAC CAF, AIFF named as MP3,
+and chained misleading MPEG headers before a normal MP3 stream. The guide records
+why these inputs are excluded and how a single leading false MPEG header differs.
 
-The structural inspector currently reports `INVALID_FORMAT` for these valid inputs:
+The generated native-container tests still prove that CAF PCM and AIFF/AIFC PCM
+can decode, while requiring inspection to exclude them. `ssnd-first.aiff` also
+retains its native decoding check of 13,230 mono frames at 44.1 kHz.
+These are deliberate format boundaries, not evidence of damaged audio.
 
-| Container | Codec |
-| --- | --- |
-| WAV | G.711 mu-law and A-law |
-| CAF | AAC, ALAC and IMA4 |
-| AIFC | mu-law |
-
-The native decoder on macOS reads 13,230 frames from each corresponding fixture
-in `../NativeAudio`. `testKnownNativeDecoderFormatsRemainExplicitlyExcluded`
-records the current structural result. These files expose a known coverage gap;
-the result does not establish that their audio is damaged. Existing playback
-support must be preserved when resolving shared format coverage before connecting
-this inspector to pack loading. This change leaves that shared support decision
-pending and keeps the six codec results unchanged.
-
-The separate `ssnd-first.aiff` fixture verifies valid AIFF chunk ordering: sound
-data may precede `COMM`. Both the native decoder and the inspector must read
-13,230 mono frames at 44.1 kHz. The extra fixtures and their observations remain
-separate from the unchanged shared manifest and its expected values.
+G.711 mu-law and A-law WAV in `../NativeAudio` remain a separate shared
+structural-reader coverage gap and keep their existing `INVALID_FORMAT`
+expectations. None of these checks certifies playback integration or changes the
+currently connected decoder.
