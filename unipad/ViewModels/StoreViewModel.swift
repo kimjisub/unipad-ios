@@ -62,7 +62,7 @@ final class StoreViewModel {
 
                 let downloadedPackIds = await Self.installedPackIds(in: workspaceManager.downloadWorkspace)
 
-                storeItems = firestoreItems.map { item in
+                let fetched = firestoreItems.map { item in
                     let isDownloaded = downloadedPackIds.contains(item.id)
                     return StoreItem(
                         id: item.id,
@@ -78,11 +78,35 @@ final class StoreViewModel {
                         flagColorOverride: isDownloaded ? AppColors.green : nil
                     )
                 }
+                storeItems = Self.merging(fetched, into: storeItems)
             } catch {
-                storeItems = []
+                // A list already on screen stays, with any download still running in it.
             }
             isLoading = false
         }
+    }
+
+    /// The screen reads the list again each time it shows, also when a screen over it closes.
+    /// A fresh row keeps what this screen knows about it: the selection, and a download that is
+    /// running, failed or finished since the list was read. A running download the server no
+    /// longer lists stays at the end so the back button still waits for it.
+    private static func merging(_ fetched: [StoreItem], into current: [StoreItem]) -> [StoreItem] {
+        let currentById = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let merged = fetched.map { fresh -> StoreItem in
+            guard let known = currentById[fresh.id] else { return fresh }
+            var item = fresh
+            item.isToggle = known.isToggle
+            if known.downloading || (!fresh.downloaded && (known.downloadFailed || known.downloaded)) {
+                item.downloaded = known.downloaded
+                item.downloading = known.downloading
+                item.downloadFailed = known.downloadFailed
+                item.playText = known.playText
+                item.flagColorOverride = known.flagColorOverride
+            }
+            return item
+        }
+        let fetchedIds = Set(fetched.map(\.id))
+        return merged + current.filter { $0.downloading && !fetchedIds.contains($0.id) }
     }
 
     /// Reads every installed pack off the main actor; with a large library this held up the screen.
