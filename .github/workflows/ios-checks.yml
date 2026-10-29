@@ -37,11 +37,12 @@ jobs:
           python3 -m unittest discover -s ci -v
           python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
 
+      # iPhone 17 Pro is the model local verification uses; iPhone 17 covers images without it.
       - name: Select an available iPhone simulator
         id: simulator
         run: |
           xcodebuild -version
-          udid="$(python3 ci/pick_simulator.py)"
+          udid="$(python3 ci/pick_simulator.py --preferred "iPhone 17 Pro" --preferred "iPhone 17")"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - name: Resolve pinned dependencies

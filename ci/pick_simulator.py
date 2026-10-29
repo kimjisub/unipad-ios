@@ -1,8 +1,10 @@
 """Print the UDID of an iPhone simulator the selected Xcode can run.
 
 CI images carry simulator runtimes newer than the selected Xcode supports, so only runtimes
-up to the iOS Simulator SDK version count. The newest of those wins, then the preferred
-model, then the first iPhone by name so the choice does not depend on list order.
+up to the iOS Simulator SDK version count. The first preferred model found wins, on the newest
+runtime that has it; a newer runtime holding only other models does not displace it. Without
+any preferred model, the first iPhone by name on the newest runtime is used so the choice does
+not depend on list order.
 """
 import argparse
 import json
@@ -14,7 +16,8 @@ RUNTIME_VERSION = re.compile(r'\.iOS-(\d+(?:-\d+)*)$')
 
 
 def version(text, separator):
-    return tuple(int(part) for part in text.split(separator))
+    """Major and minor only: a runtime such as iOS-27-1-1 still runs with the 27.1 SDK."""
+    return tuple(int(part) for part in text.split(separator))[:2]
 
 
 def pick(devices, sdk, preferred):
@@ -27,19 +30,23 @@ def pick(devices, sdk, preferred):
         runtime_version = version(match.group(1), '-')
         if runtime_version > limit:
             continue
-        candidates.extend((runtime_version, device) for device in items
+        candidates.extend((runtime_version, device['name'], device) for device in items
                           if device.get('isAvailable') and device['name'].startswith('iPhone'))
     if not candidates:
         return None
-    newest = max(runtime_version for runtime_version, _ in candidates)
-    iphones = sorted((device for runtime_version, device in candidates if runtime_version == newest),
-                     key=lambda device: device['name'])
-    return next((device for device in iphones if device['name'] == preferred), iphones[0])
+    for name in preferred:
+        matches = [candidate for candidate in candidates if candidate[1] == name]
+        if matches:
+            return max(matches, key=lambda candidate: candidate[0])[2]
+    newest = max(candidate[0] for candidate in candidates)
+    return min((candidate for candidate in candidates if candidate[0] == newest),
+               key=lambda candidate: candidate[1])[2]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--preferred', default='iPhone 17')
+    parser.add_argument('--preferred', action='append', default=[],
+                        help='model name to prefer; repeat in order of preference')
     args = parser.parse_args()
     sdk = subprocess.check_output(
         ['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], text=True
