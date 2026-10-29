@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import unipad
 
@@ -8,14 +9,14 @@ import Testing
 @MainActor
 struct StoreReloadTests {
     private final class ScriptedStore: FirestoreServiceProtocol {
-        private var results: [Result<[FirestoreStoreItem], URLError>]
+        private let results: OSAllocatedUnfairLock<[Result<[FirestoreStoreItem], URLError>]>
 
         init(_ results: [Result<[FirestoreStoreItem], URLError>]) {
-            self.results = results
+            self.results = OSAllocatedUnfairLock(initialState: results)
         }
 
         func fetchStoreItems() async throws -> [FirestoreStoreItem] {
-            let result = results.count > 1 ? results.removeFirst() : results[0]
+            let result = results.withLock { $0.count > 1 ? $0.removeFirst() : $0[0] }
             return try result.get()
         }
 
