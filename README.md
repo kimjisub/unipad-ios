@@ -53,9 +53,13 @@ open unipad.xcodeproj
 ## Pull request checks
 
 Every pull request runs one **iOS checks / Build and unit tests** job on a
-GitHub-hosted macOS 15 runner with Xcode 26.3. It builds Release for iOS
-Simulator without signing and runs the `unipadTests` target in Debug on an
-available iPhone simulator. UI tests are excluded. Dependencies use the
+GitHub-hosted `xcode-27` runner with Xcode 27.1, the same Xcode used for local
+checks and release builds; an older Xcode accepts and rejects different
+concurrency code, so a check that passes locally could fail here. It builds
+Release for iOS Simulator without signing and runs the `unipadTests` target in
+Debug on an iPhone simulator whose iOS version the selected Xcode supports
+(`ci/pick_simulator.py`), preferring iPhone 17 Pro like local checks, on the
+newest supported iOS that has it. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
 After the Release build it checks that the app's open source notices list
 exactly the Swift packages that build compiled (see below).
