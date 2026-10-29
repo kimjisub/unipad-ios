@@ -42,11 +42,15 @@ final class StoreViewModel {
 
     // MARK: - Actions
 
-    private let firebaseManager = FirebaseManager.shared
+    private let store: any FirestoreServiceProtocol
     private let workspaceManager = WorkspaceManager.shared
     private let makeDownloader: () -> UniPackDownloader
 
-    init(makeDownloader: @escaping () -> UniPackDownloader = { UniPackDownloader() }) {
+    init(
+        store: (any FirestoreServiceProtocol)? = nil,
+        makeDownloader: @escaping () -> UniPackDownloader = { UniPackDownloader() }
+    ) {
+        self.store = store ?? FirebaseManager.shared.firestore
         self.makeDownloader = makeDownloader
     }
 
@@ -54,7 +58,7 @@ final class StoreViewModel {
         isLoading = true
         Task { @MainActor in
             do {
-                let firestoreItems = try await firebaseManager.firestore.fetchStoreItems()
+                let firestoreItems = try await store.fetchStoreItems()
 
                 let downloadedPackIds = await Self.installedPackIds(in: workspaceManager.downloadWorkspace)
 
