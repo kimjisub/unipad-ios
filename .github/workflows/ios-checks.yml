@@ -15,13 +15,16 @@ concurrency:
 jobs:
   build-and-unit-tests:
     name: Build and unit tests
-    runs-on: macos-15
+    # Use the same Xcode as release builds. Xcode 26 infers isolation differently: a protocol
+    # declared in the app (default isolation MainActor) is nonisolated there and main-actor
+    # isolated in Xcode 27, so the two accept and reject different code.
+    runs-on: xcode-27
     timeout-minutes: 30
     defaults:
       run:
         shell: bash
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,15 +45,20 @@ jobs:
           import os
           import subprocess
 
+          # The image carries newer simulator runtimes than the selected Xcode can run.
+          sdk = subprocess.check_output(
+              ['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], text=True
+          ).strip()
+          runtime_key = f".iOS-{sdk.replace('.', '-')}"
           devices = json.loads(subprocess.check_output(
               ['xcrun', 'simctl', 'list', 'devices', 'available', '--json']
           ))['devices']
-          iphones = [device for runtime, items in sorted(devices.items(), reverse=True)
-                     if '.iOS-' in runtime for device in items
+          iphones = [device for runtime, items in devices.items()
+                     if runtime.endswith(runtime_key) for device in items
                      if device['name'].startswith('iPhone') and device['isAvailable']]
           if not iphones:
-              raise SystemExit('No available iPhone simulator')
-          device = iphones[0]
+              raise SystemExit(f'No available iPhone simulator on iOS {sdk}')
+          device = next((d for d in iphones if d['name'] == 'iPhone 17'), iphones[0])
           print(f"Using {device['name']} ({device['udid']})")
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f"udid={device['udid']}\n")
