@@ -154,6 +154,7 @@ final class AutoPlayRunnerTests: XCTestCase {
                         clock.advance(500)
                         progress = reference.value.progress
                         reference.value.suspend()
+                        reference.value.appWentAway()
                     case 2...11: clock.advance(1000)
                     case 12:
                         XCTAssertEqual(reference.value.progress, progress, "\(mode)")
