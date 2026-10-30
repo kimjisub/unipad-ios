@@ -67,7 +67,12 @@ struct SettingsView: View {
                 Text(String(localized: "setting"))
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(AppColors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Spacer(minLength: 0)
             }
+            .avoidingWindowControls()
             .padding(.bottom, 24)
 
             navItem(

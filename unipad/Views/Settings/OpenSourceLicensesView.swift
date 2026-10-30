@@ -47,7 +47,10 @@ struct OpenSourceLicensesView: View {
                     .foregroundStyle(AppColors.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
+
+                Spacer(minLength: 0)
             }
+            .avoidingWindowControls()
             .padding(.bottom, 24)
 
             ScrollView {

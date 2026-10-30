@@ -28,6 +28,18 @@ extension View {
         #endif
     }
 
+    /// Keeps a header drawn at the top of a screen out from under the window controls
+    /// iPadOS 26 puts in a resized window's top leading corner, where a touch would
+    /// reach them instead of the header. Nothing moves where the corner is free.
+    @ViewBuilder
+    func avoidingWindowControls() -> some View {
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {
+            self.containerCornerOffset(.leading, sizeToFit: true)
+        } else {
+            self
+        }
+    }
+
     @ViewBuilder
     func platformNavigationBarTitleDisplayMode() -> some View {
         #if canImport(UIKit)

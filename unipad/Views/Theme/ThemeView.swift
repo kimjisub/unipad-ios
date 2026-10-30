@@ -79,6 +79,8 @@ struct ThemeView: View {
                 Text(String(localized: "theme"))
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(AppColors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
 
                 Spacer()
 
@@ -91,6 +93,7 @@ struct ThemeView: View {
                         .foregroundStyle(AppColors.textPrimary)
                 }
             }
+            .avoidingWindowControls()
             .padding(.bottom, 24)
 
             ScrollView {
