@@ -29,7 +29,7 @@ final class AudioAdmissionTests: XCTestCase {
     }
     func testCommonPhysicalFilesAndHashes() throws {
         let manifest = try Data(contentsOf: directory.appendingPathComponent("cases.json"))
-        XCTAssertEqual(SHA256.hash(data: manifest).map { String(format: "%02x", $0) }.joined(), "b16e4f635d671b3ab2d20222cea55bec72cce91e496d6b2ea87ccf6525c193c4")
+        XCTAssertEqual(SHA256.hash(data: manifest).map { String(format: "%02x", $0) }.joined(), "08e51f9cf9ae53de55080e9bd560d1a3395f76fb544d7e24bd83ab6b6d3e1d76")
         for c in try corpus()["files"] as! [[String: Any]] {
             let name = c["file"] as! String
             let bytes = try Data(contentsOf: directory.appendingPathComponent(name), options: .mappedIfSafe)
@@ -67,7 +67,7 @@ final class AudioAdmissionTests: XCTestCase {
             XCTAssertEqual(cost.cost, integer(c["expectedCost"]), id)
         }
     }
-    func testExistingNativePCMContainersRemainReadable() throws {
+    func testNativePCMContainersAreExcludedEvenWhenDecodable() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("AudioAdmission-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -83,27 +83,7 @@ final class AudioAdmissionTests: XCTestCase {
             let decoded = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 4800))
             try file.read(into: decoded)
             XCTAssertEqual(decoded.frameLength, 4800, ext)
-            let expected = AudioAdmission.Facts(sampleRate: 48000, channels: 2, frames: 4800)
-            XCTAssertEqual(AudioFileInspection.inspect(url: url).facts, expected, ext)
-            var bytes = try Data(contentsOf: url)
-            if ext == "caf" {
-                let marker = try XCTUnwrap(bytes.range(of: Data("data".utf8)))
-                bytes.replaceSubrange(marker.upperBound..<(marker.upperBound + 8), with: [UInt8](repeating: 255, count: 8))
-                XCTAssertEqual(AudioFileInspection.inspect(bytes).facts, expected, "CAF data through EOF")
-            } else {
-                let comm = try XCTUnwrap(bytes.range(of: Data("COMM".utf8))).lowerBound
-                bytes.replaceSubrange((comm + 10)..<(comm + 14), with: [0, 0, 0, 1])
-                XCTAssertEqual(AudioFileInspection.inspect(bytes).facts, expected, "AIFF ignores stale frame claims")
-                let sound = try XCTUnwrap(bytes.range(of: Data("SSND".utf8))).lowerBound
-                for (codec, precision) in [("in24", 64), ("in32", 64), ("sowt", 32)] {
-                    var mismatch = try Data(contentsOf: url)
-                    mismatch.replaceSubrange((comm + 14)..<(comm + 16), with: [0, UInt8(precision)])
-                    mismatch.replaceSubrange((comm + 26)..<(comm + 30), with: Data(codec.utf8))
-                    XCTAssertEqual(AudioFileInspection.inspect(mismatch).exclusion, .invalidFormat, "AIFC fixed precision: \(codec)")
-                }
-                bytes.replaceSubrange((sound + 8)..<(sound + 12), with: [255, 255, 255, 255])
-                XCTAssertEqual(AudioFileInspection.inspect(bytes).exclusion, .invalidFormat, "AIFF offset beyond data")
-            }
+            XCTAssertEqual(AudioFileInspection.inspect(url: url), .rejected(.invalidFormat), ext)
         }
     }
     func testWaveMpegEncodingRejectsADTSPayload() throws {
@@ -115,23 +95,19 @@ final class AudioAdmissionTests: XCTestCase {
         bytes.append(aac)
         XCTAssertEqual(AudioFileInspection.inspect(bytes).exclusion, .invalidFormat)
     }
-    private func nativeFixture(_ name: String) -> URL {
-        directory.deletingLastPathComponent().appendingPathComponent("NativeAudio").appendingPathComponent(name)
-    }
-    func testAIFFSoundChunkMayPrecedeCommonChunk() throws {
-        let url = nativeFixture("ssnd-first.aiff")
+    func testAIFFWithSoundChunkBeforeCommonChunkIsExcluded() throws {
+        let url = directory.appendingPathComponent("ssnd-first.aiff")
         let file = try AVAudioFile(forReading: url)
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 13230))
         try file.read(into: buffer)
         XCTAssertEqual(buffer.frameLength, 13230)
-        XCTAssertEqual(AudioFileInspection.inspect(url: url).facts,
-                       .init(sampleRate: 44100, channels: 1, frames: 13230))
+        XCTAssertEqual(AudioFileInspection.inspect(url: url), .rejected(.invalidFormat))
     }
-    func testKnownNativeDecoderFormatsRemainExplicitlyExcluded() throws {
-        // These valid native-decoder inputs expose a coverage gap, not damaged audio.
-        // Pin the current structural result until shared support is resolved before integration.
-        for name in ["alaw.wav", "ulaw.wav", "aac.caf", "alac.caf", "ima4.caf", "ulaw.aifc"] {
-            XCTAssertEqual(AudioFileInspection.inspect(url: nativeFixture(name)).exclusion, .invalidFormat, name)
+    func testG711WavesRemainExplicitlyExcluded() throws {
+        // Core Audio decodes these, but the shared structural reader does not cover G.711 WAV.
+        let fixtures = directory.deletingLastPathComponent().appendingPathComponent("NativeAudio")
+        for name in ["alaw.wav", "ulaw.wav"] {
+            XCTAssertEqual(AudioFileInspection.inspect(url: fixtures.appendingPathComponent(name)).exclusion, .invalidFormat, name)
         }
     }
     func testCommonSelectionKeepsReservationsAfterDecodeFailure() throws {
