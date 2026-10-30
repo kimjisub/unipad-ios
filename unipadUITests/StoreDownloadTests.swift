@@ -119,16 +119,74 @@ final class StoreDownloadTests: XCTestCase {
         try downloadSlowFixture(interrupt: false, visitHome: true)
     }
 
+    /// Screens opened over the store while it downloads (a play link, then the device screen from
+    /// the connection banner) close onto the same download: its progress stays and leaving the
+    /// store is still refused until it ends.
+    @MainActor
+    func testDownloadStaysShownAfterScreensOverTheStoreClose() throws {
+        // About 80 seconds of download, so it is still running when the screens are closed.
+        let (app, row, progress) = startSlowDownload(extraArguments: [
+            "-UniPadReleaseSlowDownloadMB", "24",
+            "-UniPadReleaseMidiBanner", "YES",
+        ])
+        defer { app.terminate() }
+
+        // The system hands the link to the running app; `app.open` would launch it again.
+        XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "unipad://play?path=/missing-store-return-pack")))
+        let open = app.buttons["Open"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 15), "the connection banner is not shown")
+        open.tap()
+        let ok = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "OK")).firstMatch
+        XCTAssertTrue(ok.waitForExistence(timeout: 10), "the device screen did not open")
+        UITestSupport.attachScreenshot("store-return-device-screen", to: self)
+        ok.tap()
+        let quit = app.buttons["Quit"].firstMatch
+        XCTAssertTrue(quit.waitForExistence(timeout: 15), "the play link did not open the play screen")
+        quit.tap()
+
+        XCTAssertTrue(UITestSupport.backButton(in: app).waitForExistence(timeout: 10), "the store did not come back")
+        let shown = progress.waitForExistence(timeout: 10)
+        UITestSupport.attachScreenshot("store-return-after-return", to: self)
+        XCTAssertTrue(shown, "the running download is no longer shown")
+        XCTAssertFalse(app.buttons["Download"].firstMatch.exists, "the running pack can be downloaded again")
+        UITestSupport.backButton(in: app).tap()
+        let guardAlert = app.alerts.firstMatch
+        XCTAssertTrue(guardAlert.waitForExistence(timeout: 5), "leaving the store during the download was not refused")
+        guardAlert.buttons.firstMatch.tap()
+
+        let done = row.staticTexts["Downloaded"].waitForExistence(timeout: 180)
+        UITestSupport.attachScreenshot(done ? "store-return-installed" : "store-return-not-installed", to: self)
+        XCTAssertTrue(done, "the download did not finish after the return")
+    }
+
     @MainActor
     private func downloadSlowFixture(interrupt: Bool, visitHome: Bool) throws {
+        let (app, row, _) = startSlowDownload(extraArguments: [
+            "-UniPadReleaseInterruptDownload", interrupt ? "YES" : "NO",
+        ])
+        defer { app.terminate() }
+        if visitHome {
+            XCUIDevice.shared.press(.home)
+            // Stay away for five seconds while the fixture sends the remaining bytes.
+            let unreachable = NSPredicate(value: false)
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: unreachable, object: app)], timeout: 5)
+            app.activate()
+        }
+        let done = row.staticTexts["Downloaded"].waitForExistence(timeout: 30)
+        UITestSupport.attachScreenshot(done ? "slow-download-installed" : "slow-download-failed", to: self)
+        XCTAssertTrue(done, "download did not recover and install")
+    }
+
+    /// Launches on an isolated library whose store sends the fixture pack slowly, and starts
+    /// downloading it. Returns the app, the pack's store row and its progress text.
+    @MainActor
+    private func startSlowDownload(extraArguments: [String]) -> (XCUIApplication, XCUIElement, XCUIElement) {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
         app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments() + [
             "-UniPadReleaseSlowDownload", "YES",
-            "-UniPadReleaseInterruptDownload", interrupt ? "YES" : "NO",
-        ]
+        ] + extraArguments
         app.launch()
-        defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
         let list = UITestSupport.openStore(in: app, testCase: self)
@@ -143,15 +201,6 @@ final class StoreDownloadTests: XCTestCase {
         let progress = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '%' AND label CONTAINS 'MB'")).firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 15))
         UITestSupport.attachScreenshot("slow-download-in-progress", to: self)
-        if visitHome {
-            XCUIDevice.shared.press(.home)
-            // Stay away for five seconds while the fixture sends the remaining bytes.
-            let unreachable = NSPredicate(value: false)
-            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: unreachable, object: app)], timeout: 5)
-            app.activate()
-        }
-        let done = row.staticTexts["Downloaded"].waitForExistence(timeout: 30)
-        UITestSupport.attachScreenshot(done ? "slow-download-installed" : "slow-download-failed", to: self)
-        XCTAssertTrue(done, "download did not recover and install")
+        return (app, row, progress)
     }
 }

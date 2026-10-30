@@ -185,7 +185,8 @@ nonisolated enum ReleaseTestSupport {
         let download = root.appendingPathComponent("download")
         try makePack(at: download, title: "Downloaded Fixture")
         if UserDefaults.standard.bool(forKey: "UniPadReleaseSlowDownload") {
-            var padding = Data(count: 4 * 1024 * 1024)
+            let megabytes = UserDefaults.standard.integer(forKey: "UniPadReleaseSlowDownloadMB")
+            var padding = Data(count: (megabytes > 0 ? megabytes : 4) * 1024 * 1024)
             _ = padding.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!) }
             try padding.write(to: download.appendingPathComponent("padding"))
         }

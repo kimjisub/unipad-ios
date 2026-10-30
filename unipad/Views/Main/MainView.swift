@@ -51,12 +51,10 @@ struct MainView: View {
         }
         #if canImport(UIKit)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            vm.removeMidiController()
+            vm.onPause(currentRoute: router.currentRoute)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            vm.setupMidiController()
-            vm.refreshList()
-            vm.versionCheck()
+            vm.onResume(currentRoute: router.currentRoute)
         }
         #endif
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UniPadExternalFileImported"))) { notification in
