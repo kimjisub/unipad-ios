@@ -98,6 +98,142 @@ final class PlayInputEdgeUITests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testChainChangesBeforeTheFingerIsLifted() throws {
+        openPack("Input Edges")
+        let second = chain(2)
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        var selectedDuringHold = false
+        try whileHolding(for: 5, { duration in second.press(forDuration: duration) }, steps: [
+            Step(1.5, "chain selection before release") {
+                selectedDuringHold = second.isSelected
+                UITestSupport.attachScreenshot("chain-two-before-release", to: self)
+            },
+        ])
+        XCTAssertTrue(selectedDuringHold, "chain 2 must already be selected while its finger is down")
+        XCTAssertTrue(second.isSelected, "release must not undo the selection")
+    }
+
+    @MainActor
+    func testTurningTraceRecordingOffKeepsTheDrawnTrace() throws {
+        openPack("Input Edges")
+        let menu = app.buttons["line.3.horizontal"]
+        menu.tap()
+        UITestSupport.setPlayOption("Trace Log", on: true, in: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        let empty = try settledPads()
+        pad(2, 2).tap(); pad(2, 4).tap(); pad(2, 2).tap()
+        let recorded = try settledPads()
+        XCTAssertTrue(zip(recorded.means, empty.means).contains { current, idle in
+            zip(current, idle).contains { abs($0 - $1) > 0.5 }
+        }, "the test must first draw a visible trace")
+        UITestSupport.attachScreenshot("trace-before-recording-off", to: self)
+        menu.tap()
+        UITestSupport.setPlayOption("Trace Log", on: false, in: app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        pad(5, 5).tap()
+        let stopped = try settledPads()
+        UITestSupport.attachScreenshot("trace-after-recording-off", to: self)
+        for pad in recorded.means.indices {
+            for channel in 0..<3 {
+                XCTAssertEqual(stopped.means[pad][channel], recorded.means[pad][channel], accuracy: 0.5,
+                               "recording off must preserve the trace and add no new pad: pad \(pad + 1)")
+            }
+        }
+    }
+
+    @MainActor
+    func testSlideSettingChangesWhichPadsAreTraced() throws {
+        openPack("Input Edges")
+        let menu = app.buttons["line.3.horizontal"]
+        menu.tap()
+        let slide = app.switches["SlideEnabled"]
+        guard slide.waitForExistence(timeout: 5) else {
+            XCTFail("the play menu must offer the slide-between-pads setting")
+            return
+        }
+        let original = (slide.value as? String) == "1"
+        func setSlide(_ enabled: Bool) {
+            UITestSupport.setPlayOption("SlideEnabled", on: enabled, in: app)
+        }
+        func closeMenu() {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        }
+        defer {
+            if !app.buttons["rectangle.portrait.and.arrow.right"].exists { menu.tap() }
+            setSlide(original)
+            UITestSupport.setPlayOption("Trace Log", on: false, in: app)
+            closeMenu()
+        }
+        UITestSupport.setPlayOption("Trace Log", on: true, in: app)
+        setSlide(false)
+        let clear = app.buttons["clearTraceLog"]
+        XCTAssertTrue(clear.exists, "clear all traces must be a separate menu action")
+        closeMenu()
+        let idle = try settledPads()
+        pad(2, 2).press(forDuration: 0.2, thenDragTo: pad(2, 5))
+        let fixed = try settledPads()
+        UITestSupport.attachScreenshot("slide-off-first-pad-only", to: self)
+        menu.tap()
+        let panel = app.scrollViews.firstMatch
+        for _ in 0..<6 where !panel.frame.contains(clear.frame) { panel.swipeUp(velocity: .slow) }
+        XCTAssertTrue(clear.isHittable, "clear all traces must be reachable in the menu")
+        clear.tap()
+        setSlide(true)
+        closeMenu()
+        let cleared = try settledPads()
+        for cell in idle.means.indices {
+            for channel in 0..<3 {
+                XCTAssertEqual(cleared.means[cell][channel], idle.means[cell][channel], accuracy: 0.5,
+                               "clear all traces must remove the already drawn trace")
+            }
+        }
+        pad(2, 2).press(forDuration: 0.2, thenDragTo: pad(2, 5))
+        let sliding = try settledPads()
+        UITestSupport.attachScreenshot("slide-on-pads-along-the-drag", to: self)
+        let destination = 2 * 8 + 5
+        for channel in 0..<3 {
+            XCTAssertEqual(fixed.means[destination][channel], idle.means[destination][channel], accuracy: 0.5,
+                           "sliding off must not record the destination pad")
+        }
+        XCTAssertTrue(zip(sliding.means[destination], idle.means[destination]).contains { abs($0 - $1) > 0.5 },
+                      "sliding on must record the destination pad")
+    }
+
+    @MainActor
+    func testExplicitPerformanceChoicesSurviveRelaunch() throws {
+        openPack("Input Edges")
+        let menu = app.buttons["line.3.horizontal"]
+        menu.tap()
+        let watermark = app.switches["Watermark"].firstMatch
+        let slide = app.switches["SlideEnabled"].firstMatch
+        XCTAssertTrue(watermark.waitForExistence(timeout: 5))
+        guard slide.waitForExistence(timeout: 5) else {
+            XCTFail("the slide setting must be available before checking persistence")
+            return
+        }
+        let originalWatermark = (watermark.value as? String) == "1"
+        let originalSlide = (slide.value as? String) == "1"
+        defer {
+            UITestSupport.setPlayOption("Watermark", on: originalWatermark, in: app)
+            UITestSupport.setPlayOption("SlideEnabled", on: originalSlide, in: app)
+            UITestSupport.closePlayMenu(in: app)
+        }
+        for showWatermark in [false, true] {
+            UITestSupport.setPlayOption("Watermark", on: showWatermark, in: app)
+            UITestSupport.setPlayOption("SlideEnabled", on: !showWatermark, in: app)
+            UITestSupport.closePlayMenu(in: app)
+            app.terminate()
+            openPack("Input Edges")
+            menu.tap()
+            XCTAssertEqual((watermark.value as? String) == "1", showWatermark,
+                           "opening a pack after relaunch must keep the explicit watermark choice")
+            XCTAssertEqual((slide.value as? String) == "1", !showWatermark,
+                           "opening a pack after relaunch must keep the explicit slide choice")
+            UITestSupport.attachScreenshot("saved-performance-choices-\(showWatermark)", to: self)
+        }
+    }
+
     // MARK: - Steps
 
     /// Something done at `at` seconds after a held input started.

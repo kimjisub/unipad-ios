@@ -82,8 +82,8 @@
 "guidePlay" = "Panduan";
 "stepPractice" = "Langkah";
 "feedbackLight" = "Lampu umpan balik";
-"traceLog" = "Log Jejak";
-"traceLogClear" = "Log Jejak telah direset.";
+"traceLog" = "Rekam jejak";
+"traceLogClear" = "Jejak semua rantai telah dihapus.";
 "record" = "Rekam";
 "hideUI" = "Sembunyikan UI";
 "watermark" = "Tanda air";
@@ -211,7 +211,7 @@
 "settings_device" = "Perangkat";
 "settings_play" = "Play";
 "trace_log_classic" = "Tampilkan nomor urutan di pad";
-"trace_log_classic_desc" = "Saat Log Jejak aktif ketika bermain, tampilkan urutan ketukan sebagai angka di setiap pad, bukan garis dan titik";
+"trace_log_classic_desc" = "Tampilkan ketukan yang disimpan dengan “Rekam jejak” sebagai angka di setiap pad, bukan garis dan titik";
 "settings_info" = "Informasi";
 "settings_storage" = "Penyimpanan";
 "settings_theme" = "Tema";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Tidak bisa mendapatkan izin untuk membaca berkas itu.";
 "temporary_store_notice" = "Bookmark dan jumlah main tidak dapat dimuat atau disimpan saat ini. Perubahan yang Anda buat akan hilang saat UniPad ditutup.";
 "temporary_store_notice_dismiss" = "Tutup";
+
+/* Performance input and trace controls */
+"slide_title" = "Geser antar pad";
+"slide_desc" = "Nonaktif: tahan pad pertama hingga jari diangkat. Aktif: mainkan setiap pad yang dilewati jari.";
+"trace_display" = "Gaya jejak";
+"trace_numbers" = "Angka";
+"trace_lines" = "Garis dan titik";
+"trace_clear_all" = "Hapus semua jejak";

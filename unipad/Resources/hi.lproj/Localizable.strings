@@ -82,8 +82,8 @@
 "guidePlay" = "गाइड";
 "stepPractice" = "चरण";
 "feedbackLight" = "फीडबैक लाइट";
-"traceLog" = "ट्रेस लॉग";
-"traceLogClear" = "ट्रेस लॉग रीसेट हो गया है।";
+"traceLog" = "निशान रिकॉर्ड करें";
+"traceLogClear" = "सभी चेन के निशान मिटा दिए गए।";
 "record" = "रिकॉर्ड";
 "hideUI" = "UI छुपाएं";
 "watermark" = "वॉटरमार्क";
@@ -211,7 +211,7 @@
 "settings_device" = "डिवाइस";
 "settings_play" = "Play";
 "trace_log_classic" = "पैड पर टैप क्रम की संख्या दिखाएँ";
-"trace_log_classic_desc" = "बजाते समय ट्रेस लॉग चालू होने पर, टैप का क्रम रेखाओं और बिंदुओं के बजाय हर पैड पर संख्याओं में दिखाएँ";
+"trace_log_classic_desc" = "“निशान रिकॉर्ड करें” से सहेजे गए टैप का क्रम रेखाओं और बिंदुओं के बजाय हर पैड पर संख्याओं में दिखाएँ";
 "settings_info" = "जानकारी";
 "settings_storage" = "स्टोरेज";
 "settings_theme" = "थीम";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "उस फ़ाइल को पढ़ने की अनुमति नहीं मिल सकी।";
 "temporary_store_notice" = "अभी बुकमार्क और प्ले गिनती लोड या सेव नहीं की जा सकती। UniPad बंद करने पर आपके बदलाव खो जाएंगे।";
 "temporary_store_notice_dismiss" = "बंद करें";
+
+/* Performance input and trace controls */
+"slide_title" = "पैड के बीच स्लाइड करें";
+"slide_desc" = "बंद होने पर उंगली उठाने तक पहला पैड दबा रहता है। चालू होने पर उंगली के नीचे आने वाला हर पैड बजता है।";
+"trace_display" = "निशान दिखाने का तरीका";
+"trace_numbers" = "संख्याएँ";
+"trace_lines" = "रेखाएँ और बिंदु";
+"trace_clear_all" = "सभी निशान मिटाएँ";

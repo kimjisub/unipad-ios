@@ -82,8 +82,8 @@
 "guidePlay" = "แนะนำ";
 "stepPractice" = "ทีละขั้น";
 "feedbackLight" = "ไฟตอบสนอง";
-"traceLog" = "บันทึกการติดตาม";
-"traceLogClear" = "บันทึกการติดตามถูกรีเซ็ตแล้ว";
+"traceLog" = "บันทึกร่องรอย";
+"traceLogClear" = "ล้างร่องรอยของทุกเชนแล้ว";
 "record" = "บันทึก";
 "hideUI" = "ซ่อน UI";
 "watermark" = "ลายน้ำ";
@@ -211,7 +211,7 @@
 "settings_device" = "อุปกรณ์";
 "settings_play" = "Play";
 "trace_log_classic" = "แสดงตัวเลขลำดับบนแพด";
-"trace_log_classic_desc" = "เมื่อเปิดบันทึกการติดตามขณะเล่น จะแสดงลำดับการแตะเป็นตัวเลขบนแต่ละแพด แทนเส้นและจุด";
+"trace_log_classic_desc" = "แสดงลำดับการแตะที่เก็บด้วย “บันทึกร่องรอย” เป็นตัวเลขบนแต่ละแพด แทนเส้นและจุด";
 "settings_info" = "ข้อมูล";
 "settings_storage" = "พื้นที่จัดเก็บ";
 "settings_theme" = "ธีม";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "ไม่สามารถขอสิทธิ์อ่านไฟล์นั้นได้";
 "temporary_store_notice" = "ขณะนี้ไม่สามารถโหลดหรือบันทึกบุ๊กมาร์กและจำนวนครั้งที่เล่นได้ การเปลี่ยนแปลงที่คุณทำจะหายไปเมื่อปิด UniPad";
 "temporary_store_notice_dismiss" = "ปิด";
+
+/* Performance input and trace controls */
+"slide_title" = "เลื่อนระหว่างแพด";
+"slide_desc" = "เมื่อปิด ให้กดแพดแรกค้างไว้จนยกนิ้ว เมื่อเปิด ให้เล่นทุกแพดที่นิ้วเลื่อนผ่าน";
+"trace_display" = "รูปแบบร่องรอย";
+"trace_numbers" = "ตัวเลข";
+"trace_lines" = "เส้นและจุด";
+"trace_clear_all" = "ล้างร่องรอยทั้งหมด";

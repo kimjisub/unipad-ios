@@ -82,8 +82,8 @@
 "guidePlay" = "Guide";
 "stepPractice" = "Étape";
 "feedbackLight" = "Lumière de retour";
-"traceLog" = "Journal de suivi";
-"traceLogClear" = "Le journal de suivi a été réinitialisé.";
+"traceLog" = "Enregistrement du tracé";
+"traceLogClear" = "Les tracés de toutes les chaînes ont été effacés.";
 "record" = "Enregistrer";
 "hideUI" = "Masquer l'interface";
 "watermark" = "Filigrane";
@@ -211,7 +211,7 @@
 "settings_device" = "Appareil";
 "settings_play" = "Play";
 "trace_log_classic" = "Numéros d'ordre sur les pads";
-"trace_log_classic_desc" = "Quand le Journal de suivi est activé pendant le jeu, affiche l'ordre des appuis sous forme de chiffres sur chaque pad au lieu de lignes et de points";
+"trace_log_classic_desc" = "Affiche l'ordre des appuis enregistrés avec « Enregistrement du tracé » sous forme de chiffres sur chaque pad au lieu de lignes et de points";
 "settings_info" = "Informations";
 "settings_storage" = "Stockage";
 "settings_theme" = "Thème";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Impossible d'obtenir l'autorisation de lire ce fichier.";
 "temporary_store_notice" = "Impossible de charger ou d'enregistrer les signets et le nombre de lectures pour le moment. Vos modifications seront perdues à la fermeture d'UniPad.";
 "temporary_store_notice_dismiss" = "Fermer";
+
+/* Performance input and trace controls */
+"slide_title" = "Glisser entre les pads";
+"slide_desc" = "Désactivé : maintient le premier pad jusqu’au lever du doigt. Activé : joue chaque pad sur lequel le doigt passe.";
+"trace_display" = "Style du tracé";
+"trace_numbers" = "Numéros";
+"trace_lines" = "Lignes et points";
+"trace_clear_all" = "Effacer tous les tracés";

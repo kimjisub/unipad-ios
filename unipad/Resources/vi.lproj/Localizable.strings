@@ -82,8 +82,8 @@
 "guidePlay" = "Hướng dẫn";
 "stepPractice" = "Từng bước";
 "feedbackLight" = "Đèn phản hồi";
-"traceLog" = "Nhật ký Truy vết";
-"traceLogClear" = "Nhật ký truy vết đã được đặt lại.";
+"traceLog" = "Ghi dấu vết";
+"traceLogClear" = "Đã xóa dấu vết của tất cả chuỗi.";
 "record" = "Ghi âm";
 "hideUI" = "Ẩn UI";
 "watermark" = "Hình mờ";
@@ -211,7 +211,7 @@
 "settings_device" = "Thiết bị";
 "settings_play" = "Play";
 "trace_log_classic" = "Hiện số thứ tự trên pad";
-"trace_log_classic_desc" = "Khi bật Nhật ký Truy vết lúc chơi, hiển thị thứ tự chạm bằng số trên từng pad thay vì đường kẻ và chấm";
+"trace_log_classic_desc" = "Hiển thị các lần chạm được lưu bằng “Ghi dấu vết” dưới dạng số trên từng pad thay vì đường kẻ và chấm";
 "settings_info" = "Thông tin";
 "settings_storage" = "Bộ nhớ";
 "settings_theme" = "Giao diện";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Không thể lấy quyền đọc tệp đó.";
 "temporary_store_notice" = "Hiện không thể tải hoặc lưu đánh dấu và số lần chơi. Những thay đổi bạn thực hiện sẽ mất khi đóng UniPad.";
 "temporary_store_notice_dismiss" = "Đóng";
+
+/* Performance input and trace controls */
+"slide_title" = "Trượt giữa các pad";
+"slide_desc" = "Khi tắt, giữ pad đầu tiên đến khi nhấc ngón tay. Khi bật, phát từng pad mà ngón tay trượt qua.";
+"trace_display" = "Kiểu dấu vết";
+"trace_numbers" = "Số";
+"trace_lines" = "Đường và chấm";
+"trace_clear_all" = "Xóa tất cả dấu vết";

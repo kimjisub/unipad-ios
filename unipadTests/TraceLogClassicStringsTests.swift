@@ -3,8 +3,8 @@ import Testing
 
 /// The Settings row for `PreferenceManager.Keys.traceLogClassic` has to say what it
 /// does: people looked for a way to see tap order as numbers and did not find it
-/// under its old name. The numbers only appear while the play screen's Trace Log
-/// switch is on, so the description names that switch in each language's own words.
+/// under its old name. The description names the play screen's recording switch
+/// in each language's own words; recorded traces remain visible when recording stops.
 struct TraceLogClassicStringsTests {
 
     private static let maxTitleLength = 40

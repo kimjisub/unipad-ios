@@ -26,18 +26,18 @@ final class TraceLogClassicSettingTests: XCTestCase {
     private static let korean = Language(
         code: "ko", locale: "ko_KR",
         title: "패드에 누른 순서 숫자 표시",
-        description: "연주 중 순서 기록을 켜면 선과 점 대신 각 패드에 누른 순서를 숫자로 표시합니다"
+        description: "흔적 기록으로 남긴 누름 순서를 선과 점 대신 각 패드에 숫자로 표시합니다"
     )
     private static let english = Language(
         code: "en", locale: "en_US",
         title: "Show tap order numbers on pads",
-        description: "While Trace Log is on in play, show the tap order as numbers on each pad instead of lines and dots"
+        description: "Show taps saved with Trace recording as numbers on each pad instead of lines and dots"
     )
     /// French has the longest description of all languages.
     private static let french = Language(
         code: "fr", locale: "fr_FR",
         title: "Numéros d'ordre sur les pads",
-        description: "Quand le Journal de suivi est activé pendant le jeu, affiche l'ordre des appuis sous forme de chiffres sur chaque pad au lieu de lignes et de points"
+        description: "Affiche l'ordre des appuis enregistrés avec « Enregistrement du tracé » sous forme de chiffres sur chaque pad au lieu de lignes et de points"
     )
 
     private var app: XCUIApplication!

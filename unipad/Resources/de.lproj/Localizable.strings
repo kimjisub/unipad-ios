@@ -82,8 +82,8 @@
 "guidePlay" = "Anleitung";
 "stepPractice" = "Schritt";
 "feedbackLight" = "Feedback-Licht";
-"traceLog" = "Ablaufprotokoll";
-"traceLogClear" = "Ablaufprotokoll wurde zurückgesetzt.";
+"traceLog" = "Spur aufzeichnen";
+"traceLogClear" = "Spuren aller Ketten gelöscht.";
 "record" = "Aufnahme";
 "hideUI" = "UI ausblenden";
 "watermark" = "Wasserzeichen";
@@ -211,7 +211,7 @@
 "settings_device" = "Gerät";
 "settings_play" = "Play";
 "trace_log_classic" = "Tipp-Reihenfolge als Zahlen auf Pads";
-"trace_log_classic_desc" = "Bei eingeschaltetem Ablaufprotokoll im Spiel wird die Reihenfolge der Berührungen als Zahlen auf den Pads statt als Linien und Punkte angezeigt";
+"trace_log_classic_desc" = "Zeigt die mit „Spur aufzeichnen“ erfasste Reihenfolge als Zahlen auf jedem Pad statt als Linien und Punkte";
 "settings_info" = "Informationen";
 "settings_storage" = "Speicher";
 "settings_theme" = "Design";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Für diese Datei konnte keine Leseberechtigung erlangt werden.";
 "temporary_store_notice" = "Lesezeichen und Wiedergaben können gerade nicht geladen oder gespeichert werden. Deine Änderungen gehen verloren, wenn UniPad geschlossen wird.";
 "temporary_store_notice_dismiss" = "Schließen";
+
+/* Performance input and trace controls */
+"slide_title" = "Zwischen Pads gleiten";
+"slide_desc" = "Aus: Das erste Pad bleibt bis zum Loslassen gedrückt. Ein: Jedes berührte Pad wird gespielt.";
+"trace_display" = "Spurdarstellung";
+"trace_numbers" = "Zahlen";
+"trace_lines" = "Linien und Punkte";
+"trace_clear_all" = "Alle Spuren löschen";

@@ -82,8 +82,8 @@
 "guidePlay" = "가이드";
 "stepPractice" = "스텝";
 "feedbackLight" = "피드백 표시";
-"traceLog" = "순서 기록";
-"traceLogClear" = "순서 기록이 초기화되었습니다.";
+"traceLog" = "흔적 기록";
+"traceLogClear" = "모든 체인의 흔적을 지웠습니다.";
 "record" = "녹음";
 "hideUI" = "UI 숨기기";
 "watermark" = "워터마크";
@@ -211,7 +211,7 @@
 "settings_device" = "기기";
 "settings_play" = "연주";
 "trace_log_classic" = "패드에 누른 순서 숫자 표시";
-"trace_log_classic_desc" = "연주 중 순서 기록을 켜면 선과 점 대신 각 패드에 누른 순서를 숫자로 표시합니다";
+"trace_log_classic_desc" = "흔적 기록으로 남긴 누름 순서를 선과 점 대신 각 패드에 숫자로 표시합니다";
 "settings_info" = "정보";
 "settings_storage" = "저장소";
 "settings_theme" = "테마";
@@ -305,3 +305,11 @@
 "midi_help_manufacturer" = "제조사 설명 보기";
 "midi_help_link_failed" = "제조사 설명을 열 수 없어요. 이 도움말은 계속 읽을 수 있어요.";
 "midi_help_close" = "도움말 닫기";
+
+/* Performance input and trace controls */
+"slide_title" = "미끄러뜨리기";
+"slide_desc" = "끄면 처음 누른 패드를 손을 뗄 때까지 유지합니다. 켜면 손가락이 지나가는 패드를 연주합니다.";
+"trace_display" = "흔적 표시 방식";
+"trace_numbers" = "숫자";
+"trace_lines" = "선과 점";
+"trace_clear_all" = "흔적 모두 지우기";

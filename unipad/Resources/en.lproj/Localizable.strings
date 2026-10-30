@@ -82,8 +82,8 @@
 "guidePlay" = "Guide";
 "stepPractice" = "Step";
 "feedbackLight" = "Feedback light";
-"traceLog" = "Trace Log";
-"traceLogClear" = "Trace Log has been reset.";
+"traceLog" = "Trace recording";
+"traceLogClear" = "Cleared traces from all chains.";
 "record" = "Record";
 "hideUI" = "Hide UI";
 "watermark" = "Watermark";
@@ -211,7 +211,7 @@
 "settings_device" = "Device";
 "settings_play" = "Play";
 "trace_log_classic" = "Show tap order numbers on pads";
-"trace_log_classic_desc" = "While Trace Log is on in play, show the tap order as numbers on each pad instead of lines and dots";
+"trace_log_classic_desc" = "Show taps saved with Trace recording as numbers on each pad instead of lines and dots";
 "settings_info" = "Information";
 "settings_storage" = "Storage";
 "settings_theme" = "Theme";
@@ -305,3 +305,11 @@
 "midi_help_manufacturer" = "Read the manufacturer's guide";
 "midi_help_link_failed" = "Could not open the manufacturer's guide. You can continue reading this help.";
 "midi_help_close" = "Close help";
+
+/* Performance input and trace controls */
+"slide_title" = "Slide between pads";
+"slide_desc" = "When off, hold the first pad until you lift your finger. When on, play each pad your finger moves onto.";
+"trace_display" = "Trace display style";
+"trace_numbers" = "Numbers";
+"trace_lines" = "Lines and dots";
+"trace_clear_all" = "Clear all traces";

@@ -6,6 +6,8 @@ struct PlayOptionPanel: View {
     let onQuit: () -> Void
 
     @State private var infoExpanded: Bool = false
+    @AppStorage(PreferenceManager.Keys.slideEnabled) private var slideEnabled = false
+    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = true
 
     var body: some View {
         ScrollView {
@@ -204,6 +206,14 @@ struct PlayOptionPanel: View {
             sectionTitle(String(localized: "play_section_performance"))
             OptionSwitch(state: vm.scbFeedbackLight, label: String(localized: "feedbackLight"), tintColor: AppColors.playAccent)
             OptionSwitch(state: vm.scbLed, label: String(localized: "led"), tintColor: AppColors.playAccent)
+            Toggle(String(localized: "slide_title"), isOn: $slideEnabled)
+                .accessibilityIdentifier("SlideEnabled")
+                .font(.system(size: 14))
+                .foregroundStyle(.white)
+                .tint(AppColors.playAccent)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .accessibilityHint(Text(String(localized: "slide_desc")))
             // NOTE: AutoPlay transport controls intentionally removed — the chrome column
             // on the right side is now the single source of truth for Prev/Play/Next + progress.
         }
@@ -221,8 +231,27 @@ struct PlayOptionPanel: View {
     private var toolsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionTitle(String(localized: "play_section_tools"))
-            OptionSwitch(state: vm.scbTraceLog, label: String(localized: "traceLog"), tintColor: AppColors.playAccent) {
-                vm.traceLogInit()
+            OptionSwitch(state: vm.scbTraceLog, label: String(localized: "traceLog"), tintColor: AppColors.playAccent, identifier: "Trace Log") {
+                vm.clearTraceLog()
+            }
+            if vm.scbTraceLog.visible {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(localized: "trace_display"))
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white)
+                    Picker(String(localized: "trace_display"), selection: $traceLogClassic) {
+                        Text(String(localized: "trace_numbers")).tag(true)
+                        Text(String(localized: "trace_lines")).tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    Button(String(localized: "trace_clear_all")) { vm.clearTraceLog() }
+                        .accessibilityIdentifier("clearTraceLog")
+                        .foregroundStyle(AppColors.playAccent)
+                        .font(.system(size: 14))
+                        .padding(.vertical, 8)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
             }
             OptionSwitch(state: vm.scbRecord, label: String(localized: "record"), tintColor: AppColors.playAccent)
         }
@@ -245,6 +274,7 @@ private struct OptionSwitch: View {
     let state: PlayViewModel.CheckBoxState
     let label: String
     var tintColor: Color = AppColors.playAccent
+    var identifier: String? = nil
     var onLongPress: (() -> Void)? = nil
 
     var body: some View {
@@ -259,6 +289,7 @@ private struct OptionSwitch: View {
                     get: { state.checked },
                     set: { state.setChecked($0) }
                 ))
+                .accessibilityIdentifier(identifier ?? label)
                 .tint(tintColor)
                 .labelsHidden()
             }

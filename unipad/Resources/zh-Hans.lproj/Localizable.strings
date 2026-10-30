@@ -82,8 +82,8 @@
 "guidePlay" = "引导";
 "stepPractice" = "分步";
 "feedbackLight" = "反馈灯光";
-"traceLog" = "记录按键";
-"traceLogClear" = "按键记录已重置。";
+"traceLog" = "记录轨迹";
+"traceLogClear" = "已清除所有链的轨迹。";
 "record" = "录制";
 "hideUI" = "隐藏UI";
 "watermark" = "UI灯光";
@@ -211,7 +211,7 @@
 "settings_device" = "设备";
 "settings_play" = "Play";
 "trace_log_classic" = "在打击垫上显示顺序数字";
-"trace_log_classic_desc" = "演奏时开启“记录按键”后，在每个打击垫上用数字显示点击顺序，而不是线条和圆点";
+"trace_log_classic_desc" = "将“记录轨迹”保存的点击顺序以数字显示在各打击垫上，而不是线条和圆点";
 "settings_info" = "信息";
 "settings_storage" = "存储";
 "settings_theme" = "主题";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "无法获得读取该文件的权限。";
 "temporary_store_notice" = "目前无法加载或保存书签和演奏次数。关闭 UniPad 后，你所做的更改将会丢失。";
 "temporary_store_notice_dismiss" = "关闭";
+
+/* Performance input and trace controls */
+"slide_title" = "在打击垫间滑动";
+"slide_desc" = "关闭时，保持第一个打击垫按下，直到手指抬起。开启时，演奏手指滑过的每个打击垫。";
+"trace_display" = "轨迹显示方式";
+"trace_numbers" = "数字";
+"trace_lines" = "线和点";
+"trace_clear_all" = "清除所有轨迹";

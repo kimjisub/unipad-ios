@@ -82,8 +82,8 @@
 "guidePlay" = "ガイド";
 "stepPractice" = "ステップ";
 "feedbackLight" = "フィードバックライト";
-"traceLog" = "トレースログ";
-"traceLogClear" = "トレースログがリセットされました。";
+"traceLog" = "軌跡を記録";
+"traceLogClear" = "すべてのチェーンの軌跡を消去しました。";
 "record" = "録音";
 "hideUI" = "UIを非表示";
 "watermark" = "ウォーターマーク";
@@ -211,7 +211,7 @@
 "settings_device" = "デバイス";
 "settings_play" = "Play";
 "trace_log_classic" = "パッドに順番の数字を表示";
-"trace_log_classic_desc" = "演奏中にトレースログをオンにすると、線と点の代わりに各パッドにタップした順番を数字で表示します";
+"trace_log_classic_desc" = "「軌跡を記録」で残したタップ順を、線と点の代わりに各パッドに数字で表示します";
 "settings_info" = "情報";
 "settings_storage" = "ストレージ";
 "settings_theme" = "テーマ";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "そのファイルを読み取る権限を取得できませんでした。";
 "temporary_store_notice" = "現在、ブックマークと再生回数を読み込むことも保存することもできません。UniPad を閉じると、変更した内容は失われます。";
 "temporary_store_notice_dismiss" = "閉じる";
+
+/* Performance input and trace controls */
+"slide_title" = "パッド間をスライド";
+"slide_desc" = "オフでは指を離すまで最初のパッドを押し続けます。オンでは指が移動した先のパッドを演奏します。";
+"trace_display" = "軌跡の表示方法";
+"trace_numbers" = "数字";
+"trace_lines" = "線と点";
+"trace_clear_all" = "すべての軌跡を消去";

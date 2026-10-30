@@ -82,8 +82,8 @@
 "guidePlay" = "Guía";
 "stepPractice" = "Paso";
 "feedbackLight" = "Luz de retroalimentación";
-"traceLog" = "Registro de Secuencia";
-"traceLogClear" = "El registro de secuencia se ha restablecido.";
+"traceLog" = "Grabar trazos";
+"traceLogClear" = "Se borraron los trazos de todas las cadenas.";
 "record" = "Grabar";
 "hideUI" = "Ocultar UI";
 "watermark" = "Marca de agua";
@@ -211,7 +211,7 @@
 "settings_device" = "Dispositivo";
 "settings_play" = "Play";
 "trace_log_classic" = "Mostrar números de orden en los pads";
-"trace_log_classic_desc" = "Con el Registro de Secuencia activado al tocar, muestra el orden de los toques como números en cada pad en lugar de líneas y puntos";
+"trace_log_classic_desc" = "Muestra los toques guardados con «Grabar trazos» como números en cada pad en lugar de líneas y puntos";
 "settings_info" = "Información";
 "settings_storage" = "Almacenamiento";
 "settings_theme" = "Tema";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "No se pudo obtener permiso para leer ese archivo.";
 "temporary_store_notice" = "Ahora mismo no se pueden cargar ni guardar los marcadores ni las veces jugadas. Los cambios que hagas se perderán al cerrar UniPad.";
 "temporary_store_notice_dismiss" = "Cerrar";
+
+/* Performance input and trace controls */
+"slide_title" = "Deslizar entre pads";
+"slide_desc" = "Desactivado: mantiene el primer pad hasta levantar el dedo. Activado: toca cada pad por el que pasa el dedo.";
+"trace_display" = "Estilo de los trazos";
+"trace_numbers" = "Números";
+"trace_lines" = "Líneas y puntos";
+"trace_clear_all" = "Borrar todos los trazos";
