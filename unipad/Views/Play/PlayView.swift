@@ -33,6 +33,12 @@ struct PlayView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         #endif
+        #if os(iOS)
+        // Near an edge the system holds a touch for about 0.75 s to see if it is a system swipe, so
+        // a pad pressed there would sound late. Deferring hands the touch over at once; a second
+        // swipe still opens the system screen.
+        .defersSystemGestures(on: .all)
+        #endif
         .alert(String(localized: "warning"), isPresented: Binding(
             get: { vm.unipackWarning != nil },
             set: { if !$0 { vm.unipackWarning = nil } }
