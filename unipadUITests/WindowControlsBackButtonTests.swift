@@ -21,6 +21,8 @@ final class WindowControlsBackButtonTests: XCTestCase {
     private static let narrowWidth: CGFloat = 250
     private static let mediumWidth: CGFloat = 800
     private static let dragHandleInset: CGFloat = 6
+    /// A finger lands anywhere on the chevron, whose glyph is 12.5pt wide.
+    private static let chevronTouches: [(edge: String, offset: CGFloat)] = [("left edge", -6), ("middle", 0), ("right edge", 6)]
 
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
     private var app: XCUIApplication!
@@ -75,32 +77,61 @@ final class WindowControlsBackButtonTests: XCTestCase {
         }
     }
 
-    /// Where the middle of `element` is on screen. Accessibility reports a button in
-    /// screen coordinates, except one reaching outside the window, which it reports
-    /// in the window's own; an upright iPad turns the window's axes a quarter turn.
-    private func screenPoint(of element: XCUIElement, upright: Bool) -> CGVector {
+    private func assertWindowFillsScreen() {
+        let screen = XCUIScreen.main.screenshot().image.size
+        XCTAssertGreaterThanOrEqual(window.frame.width, screen.width - 1, "the window does not fill the screen: \(window.frame) of \(screen)")
+    }
+
+    /// Where a point `offset` along the chevron from its middle is on screen. Accessibility
+    /// reports a button in screen coordinates, except one reaching outside the window, which
+    /// it reports in the window's own; an upright iPad turns the window's axes a quarter turn.
+    private func screenPoint(of element: XCUIElement, offset: CGFloat, upright: Bool) -> CGVector {
         let frame = window.frame
         let reported = element.frame
         if frame.contains(reported) {
-            return CGVector(dx: reported.midX, dy: reported.midY)
+            return CGVector(dx: reported.midX + offset, dy: reported.midY)
         }
         if upright {
-            return CGVector(dx: frame.maxX - reported.midY, dy: frame.minY + reported.midX)
+            return CGVector(dx: frame.maxX - reported.midY, dy: frame.minY + reported.midX + offset)
         }
-        return CGVector(dx: frame.minX + reported.midX, dy: frame.minY + reported.midY)
+        return CGVector(dx: frame.minX + reported.midX + offset, dy: frame.minY + reported.midY)
     }
 
     private func touchBack(upright: Bool, arrivingAt marker: XCUIElement, _ screen: String) {
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5), "\(screen) has no back button")
-        let point = screenPoint(of: backButton, upright: upright)
-        let name = "\(screen)-\(upright ? "upright" : "landscape")"
-        UITestSupport.attachScreenshot("\(name)-before", to: self)
-        XCTContext.runActivity(named: "touch \(point) in window \(window.frame), back \(backButton.frame)") { _ in
-            screenOrigin.withOffset(point).tap()
+        for (edge, offset) in Self.chevronTouches {
+            XCTAssertTrue(backButton.waitForExistence(timeout: 5), "\(screen) has no back button")
+            let point = screenPoint(of: backButton, offset: offset, upright: upright)
+            let name = "\(screen)-\(upright ? "upright" : "landscape")-\(edge)"
+            UITestSupport.attachScreenshot("\(name)-before", to: self)
+            XCTContext.runActivity(named: "touch \(edge) \(point) in window \(window.frame), back \(backButton.frame)") { _ in
+                screenOrigin.withOffset(point).tap()
+            }
+            let arrived = marker.waitForExistence(timeout: 5)
+            UITestSupport.attachScreenshot("\(name)-after", to: self)
+            XCTAssertTrue(arrived, "the \(edge) of the back chevron of \(screen) did not respond to a touch")
+            guard edge != Self.chevronTouches.last?.edge else { return }
+            reopen(screen)
         }
-        let arrived = marker.waitForExistence(timeout: 5)
-        UITestSupport.attachScreenshot("\(name)-after", to: self)
-        XCTAssertTrue(arrived, "the back chevron of \(screen) did not respond to a touch")
+    }
+
+    private func openTheme() {
+        app.buttons["Theme"].tap()
+        XCTAssertTrue(app.staticTexts["Theme"].firstMatch.waitForExistence(timeout: 10), "theme never opened")
+    }
+
+    private func openSettings() {
+        home.tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "settings never opened")
+    }
+
+    /// Goes back to `screen` from where its back chevron led.
+    private func reopen(_ screen: String) {
+        switch screen {
+        case "theme": openTheme()
+        case "licenses": openLicenses()
+        case "settings": openSettings()
+        default: _ = UITestSupport.openStore(in: app, testCase: self)
+        }
     }
 
     private func openLicenses() {
@@ -119,11 +150,9 @@ final class WindowControlsBackButtonTests: XCTestCase {
         }
         if let windowWidth { shrinkWindow(toWidth: windowWidth) }
         UITestSupport.attachScreenshot("home-\(upright ? "upright" : "landscape")", to: self)
-        home.tap()
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "settings never opened")
+        openSettings()
 
-        app.buttons["Theme"].tap()
-        XCTAssertTrue(app.staticTexts["Theme"].firstMatch.waitForExistence(timeout: 10), "theme never opened")
+        openTheme()
         touchBack(upright: upright, arrivingAt: settings, "theme")
 
         openLicenses()
@@ -149,10 +178,16 @@ final class WindowControlsBackButtonTests: XCTestCase {
     }
 
     func testBackButtonsRespondInFullWindow() {
+        fillScreen()
+        assertWindowFillsScreen()
         walkBackButtons(upright: false, windowWidth: nil)
     }
 
     func testBackButtonsRespondInFullUprightWindow() {
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        fillScreen()
+        assertWindowFillsScreen()
         // The store's header sits under the status bar in this window, which takes the touch.
         walkBackButtons(upright: true, windowWidth: nil, throughStore: false)
     }

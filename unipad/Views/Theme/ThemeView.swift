@@ -70,17 +70,13 @@ struct ThemeView: View {
     private var themeListPanel: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Button { router.pop() } label: {
-                    Image(systemName: "chevron.left")
-                        .foregroundStyle(AppColors.textPrimary)
-                }
-                .padding(.trailing, 4)
+                ScreenHeaderBackButton { router.pop() }
 
                 Text(String(localized: "theme"))
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(AppColors.textPrimary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.5)
 
                 Spacer()
 
