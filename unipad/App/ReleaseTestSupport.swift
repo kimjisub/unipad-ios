@@ -82,6 +82,20 @@ nonisolated enum ReleaseTestSupport {
                     .write(to: pack.appendingPathComponent("keyLed/1 1 1 0"), atomically: true, encoding: .utf8)
                 try "on 1 1\ndelay 10000\noff 1 1\non 1 2\ndelay 1000\noff 1 2\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+            case "step-return":
+                let pack = library.appendingPathComponent("StepReturn")
+                try makePack(at: pack, title: "Step Return Fixture", chains: 1)
+                try "1 1 1 silence.wav\n1 1 2 silence.wav\n1 2 1 silence.wav\n"
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+                // Each pad keeps its own light long enough to be read after the autoplay ends.
+                try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
+                try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
+                for (x, y) in [(1, 1), (1, 2), (2, 1)] {
+                    try "on \(x) \(y) a 5\ndelay 60000\noff \(x) \(y)\n"
+                        .write(to: pack.appendingPathComponent("keyLed/1 \(x) \(y)"), atomically: true, encoding: .utf8)
+                }
+                try "o 1 1\nd 1000\no 1 2\no 2 1\n"
+                    .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
             case "chain-wait":
                 let pack = library.appendingPathComponent("ChainWait")
                 try makePack(at: pack, title: "Chain Wait Fixture")
