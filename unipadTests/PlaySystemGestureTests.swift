@@ -47,7 +47,7 @@ struct PlaySystemGestureTests {
     }
 
     private func expectEveryEdgeDeferred(in window: UIWindow) async throws {
-        try await PlayUsageScenario.waitWhile { deferredEdges(in: window) != .all }
+        try await settle(in: window) { $0 == .all }
         #expect(deferredEdges(in: window) == .all)
     }
 
@@ -55,14 +55,25 @@ struct PlaySystemGestureTests {
     /// already defers the left and right ones by itself.
     private func expectSystemSwipes(in window: UIWindow) async throws {
         let swipes: UIRectEdge = [.top, .bottom]
-        try await PlayUsageScenario.waitWhile { !deferredEdges(in: window).isDisjoint(with: swipes) }
+        try await settle(in: window) { $0.isDisjoint(with: swipes) }
         #expect(deferredEdges(in: window).isDisjoint(with: swipes))
     }
 
+    /// Waits for `edges` and for the push or pop to end: a stack loses a path change made during one.
+    private func settle(in window: UIWindow, until edges: (UIRectEdge) -> Bool) async throws {
+        try await PlayUsageScenario.waitWhile {
+            !edges(deferredEdges(in: window)) || deferringController(in: window)?.transitionCoordinator != nil
+        }
+    }
+
     private func deferredEdges(in window: UIWindow) -> UIRectEdge {
-        guard var controller = window.rootViewController else { return [] }
+        deferringController(in: window)?.preferredScreenEdgesDeferringSystemGestures ?? []
+    }
+
+    private func deferringController(in window: UIWindow) -> UIViewController? {
+        guard var controller = window.rootViewController else { return nil }
         while let child = controller.childForScreenEdgesDeferringSystemGestures { controller = child }
-        return controller.preferredScreenEdgesDeferringSystemGestures
+        return controller
     }
 }
 
