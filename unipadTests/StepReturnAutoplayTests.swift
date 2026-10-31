@@ -9,7 +9,7 @@ extension PlayUsageRecordTests {
     /// lights run on one manual clock, so the time away and each written gap are exact.
     @MainActor
     struct StepReturnAutoplayTests {
-        struct Pad: Hashable, CustomStringConvertible {
+        struct Pad: Hashable, Sendable, CustomStringConvertible {
             let x: Int
             let y: Int
             var description: String { "\(x),\(y)" }
@@ -120,6 +120,7 @@ extension PlayUsageRecordTests {
             func settle() async throws {
                 let target = passes.count + 2
                 try await s.waitWhile { passes.count < target && s.vm.autoPlayRunner?.active == true }
+                try #require(passes.count >= target || s.vm.autoPlayRunner?.active != true, "the runner stopped passing")
             }
 
             func advance(_ ms: Int64) async throws {
@@ -128,10 +129,10 @@ extension PlayUsageRecordTests {
             }
         }
 
-        private static let opening = Pad(x: 0, y: 0)
-        private static let lowerPad = Pad(x: 0, y: 1)
-        private static let upperPad = Pad(x: 1, y: 0)
-        private static let nextPad = Pad(x: 1, y: 1)
+        private nonisolated static let opening = Pad(x: 0, y: 0)
+        private nonisolated static let lowerPad = Pad(x: 0, y: 1)
+        private nonisolated static let upperPad = Pad(x: 1, y: 0)
+        private nonisolated static let nextPad = Pad(x: 1, y: 1)
         private static let gapMs: Int64 = 1000
 
         private static let keySound = "1 1 1 a.wav\n1 1 2 a.wav\n1 2 1 a.wav\n1 2 2 a.wav\n"
@@ -144,20 +145,21 @@ extension PlayUsageRecordTests {
             "o 1 1\nd 1000\no 1 2\no 2 1\n" + (finalGroup ? "" : "d 1000\no 2 2\nd 1000\n")
         }
 
-        @Test(arguments: [false, true], [Int64(1000), 10000])
-        func autoplayAfterPlayingToThePartialGroupSoundsOnlyTheUnpressedPad(finalGroup: Bool, awayMs: Int64) async throws {
-            for pressed in [Self.lowerPad, Self.upperPad] {
-                try await check(pressed: pressed, finalGroup: finalGroup, awayMs: awayMs, playFirst: true)
-            }
+        /// Either pad of the group may be the pressed one, before a final or a following group.
+        nonisolated static let cases: [(pressed: Pad, finalGroup: Bool, awayMs: Int64)] = [lowerPad, upperPad].flatMap { pressed in
+            [false, true].flatMap { finalGroup in [Int64(1000), 10000].map { (pressed, finalGroup, $0) } }
+        }
+
+        @Test(arguments: Self.cases)
+        func autoplayAfterPlayingToThePartialGroupSoundsOnlyTheUnpressedPad(pressed: Pad, finalGroup: Bool, awayMs: Int64) async throws {
+            try await check(pressed: pressed, finalGroup: finalGroup, awayMs: awayMs, playFirst: true)
         }
 
         /// Choosing autoplay straight after the return, without pressing Play. The shared behaviour
         /// does not cover this path; the result is kept as it is on the web and on Android.
-        @Test(arguments: [false, true], [Int64(1000), 10000])
-        func autoplayRightAfterTheReturnSoundsOnlyTheUnpressedPad(finalGroup: Bool, awayMs: Int64) async throws {
-            for pressed in [Self.lowerPad, Self.upperPad] {
-                try await check(pressed: pressed, finalGroup: finalGroup, awayMs: awayMs, playFirst: false)
-            }
+        @Test(arguments: Self.cases)
+        func autoplayRightAfterTheReturnSoundsOnlyTheUnpressedPad(pressed: Pad, finalGroup: Bool, awayMs: Int64) async throws {
+            try await check(pressed: pressed, finalGroup: finalGroup, awayMs: awayMs, playFirst: false)
         }
 
         private func check(pressed: Pad, finalGroup: Bool, awayMs: Int64, playFirst: Bool) async throws {
@@ -211,10 +213,7 @@ extension PlayUsageRecordTests {
                 try await screen.waitForLights([unpressed], "the replayed pad's own light must show alone")
                 #expect(screen.pads(lit: .guide).isEmpty, "no guide outlives step practice")
 
-                if finalGroup {
-                    try await s.waitWhile { outputs.ends == 0 }
-                    #expect(outputs.ends == 1)
-                } else {
+                if !finalGroup {
                     #expect(s.vm.playMode == .autoPlay)
                     try await screen.advance(Self.gapMs - 1)
                     #expect(outputs.inputs == [replayed], "the next group keeps its written gap")
@@ -227,8 +226,8 @@ extension PlayUsageRecordTests {
                     try await screen.advance(Self.gapMs - 1)
                     #expect(outputs.ends == 0, "the closing delay keeps its written length")
                     try await screen.advance(1)
-                    try await s.waitWhile { outputs.ends == 0 }
                 }
+                try await s.waitWhile { outputs.ends == 0 }
                 #expect(outputs.ends == 1)
                 #expect(!runner.active)
                 #expect(s.vm.playMode == .none)

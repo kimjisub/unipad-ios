@@ -51,6 +51,9 @@
             "name": "AutoPlayRelaunchTests"
           },
           {
+            "name": "StepReturnAutoplayTests"
+          },
+          {
             "name": "LaunchpadCoreCFWDriverTests"
           },
           {
