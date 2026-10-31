@@ -1196,7 +1196,7 @@ final class PlayViewModel {
 
     // MARK: - Volume Observer
 
-    private var volumeObservation: NSKeyValueObservation?
+    private(set) var volumeObservation: NSKeyValueObservation?
 
     func startVolumeObserver() {
         #if canImport(UIKit)
@@ -1325,6 +1325,9 @@ final class PlayViewModel {
 
     /// Called when sound loading completes to apply initial settings
     func onSoundLoadingComplete() {
+        // The report can arrive after the screen closed, when the main screen has the launchpad again.
+        guard enable else { return }
+        soundLoadingActive = false
         usageSession.loadSucceeded()
         startReady = true
         // onResume() is gated on this and nothing set it: after backgrounding, MIDI input, the
@@ -1340,7 +1343,11 @@ final class PlayViewModel {
     }
 
     func onSoundLoadingFailed() {
+        guard enable else { return }
+        soundLoadingActive = false
         usageSession.loadFailed(.soundEngine)
+        toastMessage = String(localized: "outOfCPU")
+        quitRequested = true
     }
 
     func onLoadFailed(_ error: Error) {
@@ -1378,17 +1385,13 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
     func onEnd() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingActive = false
             self?.viewModel?.onSoundLoadingComplete()
         }
     }
 
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingActive = false
             self?.viewModel?.onSoundLoadingFailed()
-            self?.viewModel?.toastMessage = String(localized: "outOfCPU")
-            self?.viewModel?.quitRequested = true
         }
     }
 }
