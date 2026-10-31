@@ -38,7 +38,6 @@ final class PlayViewModel {
         var locked = false
         var visible = true
         @ObservationIgnored var onCheckedChange: ((Bool) -> Void)?
-        @ObservationIgnored var onLongPress: (() -> Void)?
 
         init(checked: Bool = false) {
             self.checked = checked
@@ -359,10 +358,6 @@ final class PlayViewModel {
             self?.refreshWatermark()
         }
 
-        scbTraceLog.onLongPress = { [weak self] in
-            self?.clearTraceLog()
-        }
-
         scbWatermark.onCheckedChange = { [weak self] checked in
             PreferenceManager.shared.watermark = checked
             self?.refreshWatermark()
@@ -614,8 +609,8 @@ final class PlayViewModel {
         }
     }
 
-    /// Settings consume new controller presses. A release still reaches its own hold,
-    /// even if the options opened after that press; other inputs keep their owners.
+    /// Settings consume new controller presses. A release always passes through; it finds nothing
+    /// to end if the options opened after its press, since opening them releases held pads.
     func controllerPadTouch(x: Int, y: Int, isDown: Bool) {
         guard !isDown || !isOptionWindowVisible else { return }
         padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.midi))
@@ -680,7 +675,7 @@ final class PlayViewModel {
     }
 
     /// Retires controller inputs whose releases will be lost during options, pause or detachment.
-    /// Fingers and autoplay keep their own sounds, lights and press feedback.
+    /// Autoplay and fingers are not touched here; opening options releases fingers through `inputResetVersion`.
     fileprivate func releaseControllerPads() {
         for hold in Array(padHolds.keys) where !hold.byAutoPlay {
             guard let inputs = padHolds[hold] else { continue }

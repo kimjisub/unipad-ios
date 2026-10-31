@@ -1,10 +1,10 @@
 import XCTest
 
 /// Play screen input at its edges, through the real touch and pointer paths: a pad held while the
-/// screen rotates, pointer presses, drags, clicks and a chain click (iPad), and pads with and
-/// without `squareButton`. Each launch generates its packs in its own library ("Input Edges":
-/// every pad of both chains loops a silent sample forever, no LEDs, so a pad shows the feedback
-/// light only while it is held).
+/// screen rotates, a finger sliding across pads, pointer presses, drags, clicks and a chain click
+/// (iPad), and pads with and without `squareButton`. Each launch generates its packs in its own
+/// library ("Input Edges": every pad of both chains loops a silent sample forever, no LEDs, so a
+/// pad shows the feedback light only while it is held).
 ///
 /// XCUITest has no API to hold one input while sending another, but it waits for a gesture by
 /// running the main run loop, so a step on a run loop timer runs while an earlier press is still
@@ -198,6 +198,48 @@ final class PlayInputEdgeUITests: XCTestCase {
         }
         XCTAssertTrue(zip(sliding.means[destination], idle.means[destination]).contains { abs($0 - $1) > 0.5 },
                       "sliding on must record the destination pad")
+    }
+
+    /// Pictures along a slow drag: each pad lights on its own, in order, and none stays lit.
+    @MainActor
+    func testSlidingPressesEachPadInTurnAndLeavesNothingLit() throws {
+        openPack("Input Edges")
+        let menu = app.buttons["line.3.horizontal"]
+        menu.tap()
+        let slide = app.switches["SlideEnabled"]
+        guard slide.waitForExistence(timeout: 5) else {
+            XCTFail("the play menu must offer the slide-between-pads setting")
+            return
+        }
+        let original = (slide.value as? String) == "1"
+        defer {
+            menu.tap()
+            UITestSupport.setPlayOption("SlideEnabled", on: original, in: app)
+            UITestSupport.closePlayMenu(in: app)
+        }
+        UITestSupport.setPlayOption("SlideEnabled", on: true, in: app)
+        UITestSupport.closePlayMenu(in: app)
+        let idle = try settledPads()
+
+        let row = 2, columns = Array(2...5)
+        let press: TimeInterval = 0.5, secondsPerPad: TimeInterval = 2, restAtTheEnd: TimeInterval = 2
+        let duration = press + secondsPerPad * Double(columns.count - 1) + restAtTheEnd
+        let velocity = XCUIGestureVelocity(rawValue: grid.frame.width / 8 / secondsPerPad)
+        var pictures: [[String]] = []
+        let steps = stride(from: 0.5, to: duration - 1, by: 0.5).map { at in
+            Step(at, "picture at \(at) s") { pictures.append(try self.litPads(comparedWith: idle)) }
+        }
+        try whileHolding(for: duration, { _ in
+            pad(row, columns[0]).press(forDuration: press, thenDragTo: pad(row, columns[columns.count - 1]),
+                                       withVelocity: velocity, thenHoldForDuration: restAtTheEnd)
+        }, steps: steps)
+
+        // A picture taken as the finger crosses a border can catch two pads, one of them fading.
+        let litAlone = pictures.filter { $0.count == 1 }.map { $0[0] }
+            .reduce(into: [String]()) { if $0.last != $1 { $0.append($1) } }
+        XCTAssertEqual(litAlone, columns.map { "\(row + 1),\($0 + 1)" },
+                       "pads along the drag did not light one after another: \(pictures)")
+        try expectNoPadLit(comparedWith: idle, after: "sliding across the pads")
     }
 
     @MainActor
