@@ -11,6 +11,8 @@ private final class RecordingCrashlytics: CrashlyticsServiceProtocol, @unchecked
     func record(_ error: Error) {
         recorded.append(error as NSError)
     }
+
+    func setCustomValue(_ value: String?, forKey key: String) {}
 }
 
 @MainActor
