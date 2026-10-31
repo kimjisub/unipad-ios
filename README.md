@@ -284,11 +284,15 @@ immediately afterward.
 This checks simulator notification handling, not real APNs or Firebase delivery.
 The UI test skips unless invoked through this command.
 
-In Debug and builds compiled with `UNIPAD_RELEASE_TESTS`, launching once with
-`-UniPadFirebaseLocalOnly YES` saves the choice for subsequent launches from
-notifications or the Home Screen. `-UniPadFirebaseLocalOnly NO` clears it;
-uninstalling the app also resets it. Normal Release/store builds ignore both
-the saved choice and launch arguments. Unit test hosts always use local stubs.
+Debug and builds compiled with `UNIPAD_RELEASE_TESTS` use local Firebase stubs
+unless told otherwise, so a fresh install launched without arguments sends
+nothing to production. Launching once with `-UniPadFirebaseLocalOnly YES` or
+`NO` saves that choice for subsequent launches from notifications or the Home
+Screen; `NO` is what a check of real Firebase delivery needs, and running such a
+build from Xcode to try push, analytics or Crashlytics needs it too. Uninstalling
+the app resets the choice to local. Normal Release/store builds ignore both the
+saved choice and launch arguments and always use Firebase. Unit test hosts always
+use local stubs.
 
 ## Connecting a Launchpad
 
