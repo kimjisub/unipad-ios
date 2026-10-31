@@ -82,8 +82,8 @@
 "guidePlay" = "Rehber";
 "stepPractice" = "Adım";
 "feedbackLight" = "Geri bildirim ışığı";
-"traceLog" = "İzleme Günlüğü";
-"traceLogClear" = "İzleme günlüğü sıfırlandı.";
+"traceLog" = "İz kaydı";
+"traceLogClear" = "Tüm zincirlerin izleri temizlendi.";
 "record" = "Kaydet";
 "hideUI" = "Arayüzü Gizle";
 "watermark" = "Filigran";
@@ -211,7 +211,7 @@
 "settings_device" = "Cihaz";
 "settings_play" = "Play";
 "trace_log_classic" = "Dokunma sırasını padlerde numarala";
-"trace_log_classic_desc" = "Çalarken İzleme Günlüğü açıksa, dokunma sırasını çizgi ve nokta yerine her pad üzerinde sayı olarak gösterir";
+"trace_log_classic_desc" = "“İz kaydı” ile kaydedilen dokunmaları çizgi ve nokta yerine her pad üzerinde sayı olarak gösterir";
 "settings_info" = "Bilgi";
 "settings_storage" = "Depolama";
 "settings_theme" = "Tema";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Bu dosyayı okuma izni alınamadı.";
 "temporary_store_notice" = "Yer imleri ve oynatma sayıları şu anda yüklenemiyor veya kaydedilemiyor. Yaptığınız değişiklikler UniPad kapandığında kaybolacak.";
 "temporary_store_notice_dismiss" = "Kapat";
+
+/* Performance input and trace controls */
+"slide_title" = "Padler arasında kaydır";
+"slide_desc" = "Kapalıyken parmağınızı kaldırana kadar ilk pad basılı kalır. Açıkken parmağın geçtiği her pad çalınır.";
+"trace_display" = "İz görünümü";
+"trace_numbers" = "Sayılar";
+"trace_lines" = "Çizgiler ve noktalar";
+"trace_clear_all" = "Tüm izleri temizle";

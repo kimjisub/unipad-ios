@@ -9,6 +9,7 @@ struct ChainBarView: View {
     let cellSize: CGFloat
     let selectedChain: Int
     let theme: ThemeResourcesProtocol
+    var inputResetVersion: Int = 0
     let onChainTap: (Int) -> Void
 
     var body: some View {
@@ -18,6 +19,8 @@ struct ChainBarView: View {
                     color: index < chainColors.count ? chainColors[index] : .clear,
                     chainItem: index < chainItems.count ? chainItems[index] : nil,
                     theme: theme,
+                    inputResetVersion: inputResetVersion,
+                    isChain: index >= PlayViewModel.chainIndexOffset,
                     // Circles 0-7 are function keys, not chains; tapping one in Pro Light Mode used
                     // to select chain 1 (Android attaches no listener to them).
                     onTap: { if index >= PlayViewModel.chainIndexOffset { onChainTap(index - PlayViewModel.chainIndexOffset) } }
@@ -55,9 +58,19 @@ private struct ChainButtonView: View {
     let color: Color
     let chainItem: ChannelManager.Item?
     let theme: ThemeResourcesProtocol
+    let inputResetVersion: Int
+    let isChain: Bool
     let onTap: () -> Void
 
     var body: some View {
+        if isChain {
+            content.accessibilityAction { onTap() }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         GeometryReader { geometry in
             let size = min(geometry.size.width, geometry.size.height)
             ZStack {
@@ -87,9 +100,21 @@ private struct ChainButtonView: View {
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .overlay {
+                if isChain {
+                    MultiTouchView(
+                        gridOrigin: .zero,
+                        cellWidth: geometry.size.width,
+                        cellHeight: geometry.size.height,
+                        rows: 1,
+                        columns: 1,
+                        inputResetVersion: inputResetVersion,
+                        onPadTouch: { _, _, isDown, _ in if isDown { onTap() } }
+                    )
+                }
+            }
         }
         .contentShape(Rectangle())
-        .onTapGesture { onTap() }
     }
 
     private func chainImageForDrawableMode() -> PlatformImage? {

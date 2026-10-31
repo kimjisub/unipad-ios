@@ -17,7 +17,9 @@ struct PadGridView: View {
     var traceLogSequence: [(x: Int, y: Int)]? = nil
     var traceLogColor: Color = .white
     /// Classic trace log: the tap order printed on each pad instead of the line-and-dot path.
-    var traceLogClassic: Bool = false
+    var traceLogClassic: Bool = true
+    var slideEnabled: Bool = false
+    var inputResetVersion: Int = 0
     var onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     private var hasActiveGuide: Bool {
@@ -267,6 +269,8 @@ struct PadGridView: View {
                     cellHeight: cellHeight,
                     rows: rows,
                     columns: columns,
+                    slideEnabled: slideEnabled,
+                    inputResetVersion: inputResetVersion,
                     onPadTouch: onPadTouch
                 )
             }
@@ -345,6 +349,8 @@ struct MultiTouchView: UIViewRepresentable {
     let cellHeight: CGFloat
     let rows: Int
     let columns: Int
+    var slideEnabled: Bool = false
+    var inputResetVersion: Int = 0
     let onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     func makeUIView(context: Context) -> MultiTouchUIView {
@@ -355,17 +361,25 @@ struct MultiTouchView: UIViewRepresentable {
         view.cellHeight = cellHeight
         view.rows = rows
         view.columns = columns
+        view.slideEnabled = slideEnabled
+        view.inputResetVersion = inputResetVersion
         view.onPadTouch = onPadTouch
         view.backgroundColor = .clear
         return view
     }
 
     func updateUIView(_ uiView: MultiTouchUIView, context: Context) {
+        if uiView.gridOrigin != gridOrigin || uiView.cellWidth != cellWidth || uiView.cellHeight != cellHeight
+            || uiView.rows != rows || uiView.columns != columns {
+            uiView.screenChanged()
+        }
         uiView.gridOrigin = gridOrigin
         uiView.cellWidth = cellWidth
         uiView.cellHeight = cellHeight
         uiView.rows = rows
         uiView.columns = columns
+        uiView.slideEnabled = slideEnabled
+        uiView.inputResetVersion = inputResetVersion
         uiView.onPadTouch = onPadTouch
     }
 }
@@ -376,6 +390,12 @@ class MultiTouchUIView: UIView {
     var cellHeight: CGFloat = 0
     var rows: Int = 0
     var columns: Int = 0
+    var slideEnabled: Bool = false {
+        didSet { if oldValue != slideEnabled { screenChanged() } }
+    }
+    var inputResetVersion: Int = 0 {
+        didSet { if oldValue != inputResetVersion { screenChanged() } }
+    }
     var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
     private struct Finger {
@@ -399,6 +419,7 @@ class MultiTouchUIView: UIView {
     // A 180° turn keeps the view's size, so no layout pass reports it; the scene's orientation does.
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil { screenChanged() }
         screenGeometryObservation = window?.windowScene?.observe(\.effectiveGeometry, options: [.old, .new]) { [weak self] _, change in
             guard let old = change.oldValue, let new = change.newValue,
                   old.interfaceOrientation != new.interfaceOrientation else { return }
@@ -446,15 +467,17 @@ class MultiTouchUIView: UIView {
     /// `previous` is where the finger was at its last event, measured against where the view is
     /// now; leaving it out means the view has not moved since.
     func fingerMoved(_ finger: AnyHashable, to point: CGPoint, from previous: CGPoint? = nil) {
+        // UIKit may deliver a late move after cancellation. Only a new down can start a pad.
+        guard fingers[finger] != nil else { return }
         // A resting finger plays nothing until it is lifted, so it is not compared: its first move
         // after the pads moved would read as the pads moving again and release the newer fingers.
         if let previous, let seen = fingers[finger], !seen.restsSinceThePadsMoved,
            abs(previous.x - seen.seenAt.x) > 1 || abs(previous.y - seen.seenAt.y) > 1 {
             screenChanged()
         }
-        var state = fingers[finger] ?? Finger(seenAt: point)
+        guard var state = fingers[finger] else { return }
         state.seenAt = point
-        guard !state.restsSinceThePadsMoved else {
+        guard !state.restsSinceThePadsMoved, slideEnabled else {
             fingers[finger] = state
             return
         }
@@ -498,6 +521,8 @@ struct MultiTouchView: NSViewRepresentable {
     let cellHeight: CGFloat
     let rows: Int
     let columns: Int
+    var slideEnabled: Bool = false
+    var inputResetVersion: Int = 0
     let onPadTouch: (Int, Int, Bool, UUID) -> Void
 
     func makeNSView(context: Context) -> MultiTouchNSView {
@@ -507,6 +532,8 @@ struct MultiTouchView: NSViewRepresentable {
         view.cellHeight = cellHeight
         view.rows = rows
         view.columns = columns
+        view.slideEnabled = slideEnabled
+        view.inputResetVersion = inputResetVersion
         view.onPadTouch = onPadTouch
         return view
     }
@@ -517,6 +544,8 @@ struct MultiTouchView: NSViewRepresentable {
         nsView.cellHeight = cellHeight
         nsView.rows = rows
         nsView.columns = columns
+        nsView.slideEnabled = slideEnabled
+        nsView.inputResetVersion = inputResetVersion
         nsView.onPadTouch = onPadTouch
     }
 }
@@ -527,9 +556,23 @@ class MultiTouchNSView: NSView {
     var cellHeight: CGFloat = 0
     var rows: Int = 0
     var columns: Int = 0
+    var slideEnabled: Bool = false {
+        didSet { if oldValue != slideEnabled { cancelPress() } }
+    }
+    var inputResetVersion: Int = 0 {
+        didSet { if oldValue != inputResetVersion { cancelPress() } }
+    }
     var onPadTouch: ((Int, Int, Bool, UUID) -> Void)?
 
     private var activeCell: (row: Int, col: Int, id: UUID)?
+    private var isPointerDown = false
+    private var isCancelled = false
+
+    private func cancelPress() {
+        if let input = activeCell { onPadTouch?(input.row, input.col, false, input.id) }
+        activeCell = nil
+        isCancelled = true
+    }
 
     private func padAt(_ point: CGPoint) -> (Int, Int)? {
         let flipped = CGPoint(x: point.x, y: bounds.height - point.y)
@@ -537,6 +580,8 @@ class MultiTouchNSView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        isPointerDown = true
+        isCancelled = false
         let point = convert(event.locationInWindow, from: nil)
         guard let (row, col) = padAt(point) else { return }
         let id = UUID()
@@ -545,6 +590,7 @@ class MultiTouchNSView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard isPointerDown, !isCancelled, slideEnabled else { return }
         let point = convert(event.locationInWindow, from: nil)
         let next = padAt(point)
 
@@ -570,6 +616,7 @@ class MultiTouchNSView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        isPointerDown = false
         if let input = activeCell {
             onPadTouch?(input.row, input.col, false, input.id)
             activeCell = nil

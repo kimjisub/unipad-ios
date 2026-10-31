@@ -104,6 +104,8 @@ final class PlayViewModel {
     var isOptionWindowVisible = false
     var startReady = false
     var proLightModeEnabled = false
+    /// Invalidates fingers that were already down before the screen was covered.
+    var inputResetVersion = 0
 
     // Loading state
     var unipackLoading = true
@@ -156,6 +158,7 @@ final class PlayViewModel {
 
     init(usageAnalytics: UsageAnalytics = .shared) {
         usageSession = usageAnalytics.makePlaySession()
+        scbWatermark.setCheckedSilently(PreferenceManager.shared.watermark)
     }
 
     /// Builds the reader for a pack folder; a test swaps in a pack whose reads it can observe and hold.
@@ -274,6 +277,7 @@ final class PlayViewModel {
         chainColors = Array(repeating: .clear, count: Self.circleArraySize)
         chainItems = Array(repeating: nil, count: Self.circleArraySize)
         channelManager = ChannelManager(x: unipack.buttonX, y: unipack.buttonY)
+        scbTraceLog.setCheckedSilently(false)
         traceLogInit()
     }
 
@@ -356,12 +360,11 @@ final class PlayViewModel {
         }
 
         scbTraceLog.onLongPress = { [weak self] in
-            self?.traceLogInit()
-            self?.toastMessage = String(localized: "traceLogClear")
-            self?.refreshWatermark()
+            self?.clearTraceLog()
         }
 
-        scbWatermark.onCheckedChange = { [weak self] _ in
+        scbWatermark.onCheckedChange = { [weak self] checked in
+            PreferenceManager.shared.watermark = checked
             self?.refreshWatermark()
         }
 
@@ -446,6 +449,12 @@ final class PlayViewModel {
     func traceLogInit() {
         guard let unipack else { return }
         traceLogSequence = Array(repeating: [], count: unipack.chain)
+    }
+
+    func clearTraceLog() {
+        traceLogInit()
+        toastMessage = String(localized: "traceLogClear")
+        refreshWatermark()
     }
 
     private func traceLogLog(x: Int, y: Int) {
@@ -797,7 +806,10 @@ final class PlayViewModel {
 
     func toggleOptionWindow(_ show: Bool? = nil) {
         let showing = show ?? !isOptionWindowVisible
-        if showing { releaseControllerPads() }
+        if showing {
+            inputResetVersion += 1
+            releaseControllerPads()
+        }
         withAnimation(.easeInOut(duration: 0.3)) {
             isOptionWindowVisible = showing
         }
@@ -1044,6 +1056,7 @@ final class PlayViewModel {
     private func suspendPlayback() {
         playbackResumeRequest = nil
         guard enable else { return }
+        inputResetVersion += 1
         if suspendedPlayMode == nil, playMode != .none {
             suspendedPlayMode = playMode
             autoPlayRunner?.suspend()
@@ -1272,6 +1285,9 @@ final class PlayViewModel {
         guard enable else { return }
         discardPendingDeviceLights(repaintCurrentScreen: true)
         suspendedPlayMode = nil
+        inputResetVersion += 1
+        traceLogSequence = []
+        scbTraceLog.setCheckedSilently(false)
         padHolds.removeAll()
         usageSession.ended()
         enable = false

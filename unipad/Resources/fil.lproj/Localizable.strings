@@ -82,8 +82,8 @@
 "guidePlay" = "Gabay";
 "stepPractice" = "Hakbang";
 "feedbackLight" = "Feedback na ilaw";
-"traceLog" = "Trace Log";
-"traceLogClear" = "Na-reset na ang Trace Log.";
+"traceLog" = "Itala ang bakas";
+"traceLogClear" = "Nabura ang mga bakas ng lahat ng chain.";
 "record" = "I-record";
 "hideUI" = "Itago ang UI";
 "watermark" = "Watermark";
@@ -211,7 +211,7 @@
 "settings_device" = "Device";
 "settings_play" = "Play";
 "trace_log_classic" = "Numero ng pagkakasunod sa mga pad";
-"trace_log_classic_desc" = "Kapag naka-on ang Trace Log habang tumutugtog, ipakita ang pagkakasunod ng pag-tap bilang mga numero sa bawat pad sa halip na mga linya at tuldok";
+"trace_log_classic_desc" = "Ipakita ang mga pag-tap na nai-save gamit ang “Itala ang bakas” bilang mga numero sa bawat pad sa halip na mga linya at tuldok";
 "settings_info" = "Impormasyon";
 "settings_storage" = "Imbakan";
 "settings_theme" = "Tema";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Hindi makuha ang pahintulot para basahin ang file na iyon.";
 "temporary_store_notice" = "Hindi ma-load o ma-save ang mga bookmark at bilang ng paglalaro ngayon. Mawawala ang iyong mga pagbabago kapag isinara ang UniPad.";
 "temporary_store_notice_dismiss" = "Isara";
+
+/* Performance input and trace controls */
+"slide_title" = "Mag-slide sa pagitan ng mga pad";
+"slide_desc" = "Kapag naka-off, hawakan ang unang pad hanggang iangat ang daliri. Kapag naka-on, tugtugin ang bawat pad na dinaraanan ng daliri.";
+"trace_display" = "Estilo ng bakas";
+"trace_numbers" = "Mga numero";
+"trace_lines" = "Mga linya at tuldok";
+"trace_clear_all" = "Burahin ang lahat ng bakas";

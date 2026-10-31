@@ -82,8 +82,8 @@
 "guidePlay" = "Guida";
 "stepPractice" = "Passo";
 "feedbackLight" = "Luce di feedback";
-"traceLog" = "Registro Traccia";
-"traceLogClear" = "Il registro traccia è stato reimpostato.";
+"traceLog" = "Registra tracce";
+"traceLogClear" = "Tracce di tutte le catene cancellate.";
 "record" = "Registra";
 "hideUI" = "Nascondi UI";
 "watermark" = "Filigrana";
@@ -211,7 +211,7 @@
 "settings_device" = "Dispositivo";
 "settings_play" = "Play";
 "trace_log_classic" = "Numeri dell'ordine sui pad";
-"trace_log_classic_desc" = "Con il Registro Traccia attivo durante l'esecuzione, mostra l'ordine dei tocchi come numeri su ogni pad invece che con linee e punti";
+"trace_log_classic_desc" = "Mostra l'ordine dei tocchi salvati con «Registra tracce» come numeri su ogni pad invece di linee e punti";
 "settings_info" = "Informazioni";
 "settings_storage" = "Archiviazione";
 "settings_theme" = "Tema";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Non è stato possibile ottenere il permesso di leggere quel file.";
 "temporary_store_notice" = "Al momento non è possibile caricare o salvare i segnalibri e il numero di riproduzioni. Le modifiche che fai andranno perse alla chiusura di UniPad.";
 "temporary_store_notice_dismiss" = "Chiudi";
+
+/* Performance input and trace controls */
+"slide_title" = "Scorri tra i pad";
+"slide_desc" = "Disattivato: mantiene il primo pad fino al rilascio. Attivato: suona ogni pad su cui passa il dito.";
+"trace_display" = "Stile delle tracce";
+"trace_numbers" = "Numeri";
+"trace_lines" = "Linee e punti";
+"trace_clear_all" = "Cancella tutte le tracce";

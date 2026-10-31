@@ -82,8 +82,8 @@
 "guidePlay" = "Гид";
 "stepPractice" = "Шаг";
 "feedbackLight" = "Подсветка отклика";
-"traceLog" = "Журнал действий";
-"traceLogClear" = "Журнал действий сброшен.";
+"traceLog" = "Запись следа";
+"traceLogClear" = "Следы всех цепочек очищены.";
 "record" = "Запись";
 "hideUI" = "Скрыть UI";
 "watermark" = "Водяной знак";
@@ -211,7 +211,7 @@
 "settings_device" = "Устройство";
 "settings_play" = "Play";
 "trace_log_classic" = "Номера порядка нажатий на пэдах";
-"trace_log_classic_desc" = "Когда во время игры включён журнал действий, показывает порядок нажатий цифрами на пэдах вместо линий и точек";
+"trace_log_classic_desc" = "Показывает нажатия, сохранённые с помощью «Запись следа», цифрами на каждом пэде вместо линий и точек";
 "settings_info" = "Информация";
 "settings_storage" = "Хранилище";
 "settings_theme" = "Тема";
@@ -282,3 +282,11 @@
 "import_no_file_access" = "Не удалось получить разрешение на чтение этого файла.";
 "temporary_store_notice" = "Сейчас не удаётся загрузить или сохранить закладки и количество игр. Ваши изменения пропадут после закрытия UniPad.";
 "temporary_store_notice_dismiss" = "Закрыть";
+
+/* Performance input and trace controls */
+"slide_title" = "Скольжение между пэдами";
+"slide_desc" = "Выкл.: первый пэд удерживается до поднятия пальца. Вкл.: играет каждый пэд, на который перемещается палец.";
+"trace_display" = "Вид следа";
+"trace_numbers" = "Числа";
+"trace_lines" = "Линии и точки";
+"trace_clear_all" = "Очистить все следы";

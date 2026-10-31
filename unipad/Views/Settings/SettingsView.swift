@@ -13,7 +13,8 @@ struct SettingsView: View {
     /// device is the only thing that resolves those. It starts closed because a
     /// wall of `MidiManager.start()` in the middle of Settings is not a setting.
     @State private var showMidiLog = false
-    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = false
+    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = true
+    @AppStorage(PreferenceManager.Keys.slideEnabled) private var slideEnabled = false
 
     var initialCategory: SettingsViewModel.Category = .info
 
@@ -170,22 +171,39 @@ struct SettingsView: View {
                 // Play
                 sectionLabel(String(localized: "settings_play"))
                 settingsCard {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "trace_log_classic"))
-                                .font(.system(size: 14))
-                                .foregroundStyle(AppColors.textPrimary)
-                            Text(String(localized: "trace_log_classic_desc"))
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppColors.textSecondary)
+                    VStack(spacing: 0) {
+                        Toggle(isOn: $slideEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(localized: "slide_title"))
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(String(localized: "slide_desc"))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
                         }
-                        Spacer()
-                        Toggle("", isOn: $traceLogClassic)
-                            .labelsHidden()
-                            .tint(AppColors.blue)
+                        .accessibilityIdentifier("SlideEnabled")
+                        .tint(AppColors.blue)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        cardDivider
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(localized: "trace_log_classic"))
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(String(localized: "trace_log_classic_desc"))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $traceLogClassic)
+                                .labelsHidden()
+                                .tint(AppColors.blue)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
                 }
 
                 // MIDI support log, collapsed.

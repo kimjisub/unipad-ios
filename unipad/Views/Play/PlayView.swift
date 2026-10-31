@@ -7,7 +7,8 @@ struct PlayView: View {
     /// How many screens the navigation stack held with this one on top. Fewer means it was closed;
     /// as many or more, another screen covers it.
     @State private var stackDepth = 0
-    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = false
+    @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = true
+    @AppStorage(PreferenceManager.Keys.slideEnabled) private var slideEnabled = false
 
     private var theme: ThemeResourcesProtocol { ThemeManager.shared.activeResources }
 
@@ -182,6 +183,7 @@ struct PlayView: View {
                 cellSize: layout.chainWidth,
                 selectedChain: vm.chain.value,
                 theme: theme,
+                inputResetVersion: vm.inputResetVersion,
                 onChainTap: { vm.selectChain($0) }
             )
             .frame(width: layout.chainWidth * CGFloat(PlayViewModel.topBarCount), height: layout.chainHeight)
@@ -197,6 +199,7 @@ struct PlayView: View {
             cellSize: layout.chainWidth,
             selectedChain: vm.chain.value,
             theme: theme,
+            inputResetVersion: vm.inputResetVersion,
             onChainTap: { vm.selectChain($0) }
         )
         .frame(width: layout.chainWidth, height: layout.chainHeight * CGFloat(PlayViewModel.topBarCount))
@@ -214,9 +217,11 @@ struct PlayView: View {
             phantomImage: theme.phantom,
             phantomVariantImage: theme.phantomVariant,
             padGuideTargets: vm.padGuideTargets,
-            traceLogSequence: vm.scbTraceLog.checked && vm.chain.value >= 0 && vm.chain.value < vm.traceLogSequence.count ? vm.traceLogSequence[vm.chain.value] : nil,
+            traceLogSequence: vm.chain.value >= 0 && vm.chain.value < vm.traceLogSequence.count ? vm.traceLogSequence[vm.chain.value] : nil,
             traceLogColor: theme.traceLogColor,
             traceLogClassic: traceLogClassic,
+            slideEnabled: slideEnabled,
+            inputResetVersion: vm.inputResetVersion,
             onPadTouch: vm.screenPadTouch
         )
         .frame(width: layout.gridWidth, height: layout.gridHeight)
@@ -232,6 +237,7 @@ struct PlayView: View {
             cellSize: layout.chainWidth,
             selectedChain: vm.chain.value,
             theme: theme,
+            inputResetVersion: vm.inputResetVersion,
             onChainTap: { vm.selectChain($0) }
         )
         .frame(width: layout.chainWidth, height: layout.chainHeight * CGFloat(PlayViewModel.topBarCount))
@@ -247,6 +253,7 @@ struct PlayView: View {
                 cellSize: layout.chainWidth,
                 selectedChain: vm.chain.value,
                 theme: theme,
+                inputResetVersion: vm.inputResetVersion,
                 onChainTap: { vm.selectChain($0) }
             )
             .frame(width: layout.chainWidth * CGFloat(PlayViewModel.topBarCount), height: layout.chainHeight)
