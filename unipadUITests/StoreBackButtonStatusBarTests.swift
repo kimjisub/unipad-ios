@@ -52,11 +52,25 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
         sleep(2)
     }
 
+    private var screenSize: CGSize {
+        let shot = XCUIScreen.main.screenshot().image
+        let scale = shot.scale / UIScreen.main.scale
+        return CGSize(width: shot.size.width * scale, height: shot.size.height * scale)
+    }
+
     private func fillScreen() {
-        let screen = XCUIScreen.main.screenshot().image.size
+        let screen = screenSize
         for _ in 0..<3 where window.frame.width < screen.width - 1 {
             dragWindowCorner(to: CGVector(dx: screen.width - Self.dragHandleInset, dy: screen.height - Self.dragHandleInset))
         }
+    }
+
+    /// Stands the iPad up in a window of the full screen: iPadOS keeps a smaller window an earlier
+    /// test left behind, and the status bar does not reach one.
+    private func standUp(_ orientation: UIDeviceOrientation = .portrait) {
+        turn(orientation)
+        fillScreen()
+        XCTAssertEqual(window.frame.size, screenSize, "the upright window does not fill the screen")
     }
 
     /// How far below the window's top the chevron sits. An upright iPad keeps the app's landscape
@@ -82,14 +96,33 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
     }
 
     func testBackButtonRespondsWhenStoreOpensUpright() {
-        turn(.portrait)
+        standUp()
         _ = UITestSupport.openStore(in: app, testCase: self)
         touchBackButton("opened-upright")
     }
 
+    func testBackButtonRespondsWhenStoreOpensUprightFromLandscapeRight() {
+        turn(.landscapeRight)
+        standUp()
+        _ = UITestSupport.openStore(in: app, testCase: self)
+        touchBackButton("opened-upright-from-right")
+    }
+
+    func testBackButtonRespondsWhenStoreOpensUpsideDown() {
+        standUp(.portraitUpsideDown)
+        _ = UITestSupport.openStore(in: app, testCase: self)
+        touchBackButton("opened-upside-down")
+    }
+
+    func testBackButtonRespondsWhenStoreOpensUpsideDownFromLandscapeRight() {
+        turn(.landscapeRight)
+        standUp(.portraitUpsideDown)
+        _ = UITestSupport.openStore(in: app, testCase: self)
+        touchBackButton("opened-upside-down-from-right")
+    }
+
     func testShorterUprightWindowDoesNotMakeRoomForTheStatusBar() {
-        turn(.portrait)
-        fillScreen()
+        standUp()
         _ = UITestSupport.openStore(in: app, testCase: self)
         let fullWindowDrop = backButtonDropInUprightWindow
 
@@ -105,7 +138,7 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
 
     func testBackButtonRespondsAfterTurningUprightInStore() {
         _ = UITestSupport.openStore(in: app, testCase: self)
-        turn(.portrait)
+        standUp()
         touchBackButton("turned-upright")
     }
 
@@ -114,7 +147,7 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
         let landscapeFrame = UITestSupport.backButton(in: app).frame
         touchBackButton("opened-landscape")
 
-        turn(.portrait)
+        standUp()
         _ = UITestSupport.openStore(in: app, testCase: self)
         turn(.landscapeLeft)
         XCTAssertEqual(UITestSupport.backButton(in: app).frame, landscapeFrame,

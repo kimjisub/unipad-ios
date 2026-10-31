@@ -418,9 +418,8 @@ enum UITestSupport {
         for _ in 0..<maxSwipes {
             if isFullyVisible(element, in: app, within: scrollView) { return true }
             guard let scrollFrame = currentFrame(of: scrollView),
-                  let windowFrame = currentFrame(of: app.windows.firstMatch),
                   let frame = currentFrame(of: element) else { return false }
-            let viewport = scrollFrame.intersection(windowFrame)
+            let viewport = scrollFrame.intersection(app.windows.firstMatch.frame)
             guard !viewport.isEmpty else { return false }
             if let shift = nearbyShift(of: frame, into: viewport) {
                 drag(in: app, by: shift, within: viewport)
