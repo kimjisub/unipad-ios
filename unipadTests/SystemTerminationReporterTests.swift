@@ -197,6 +197,15 @@ struct SystemTerminationReporterTests {
         #expect(receipts.count == 1)
     }
 
+    @Test func aPayloadWithoutExitCountsCarriesNoCounts() throws {
+        reporter.report([day(0) { $0.hasExitCounts = false }])
+
+        let info = try #require(crashlytics.recorded.first?.userInfo as? [String: String])
+        #expect(info["payload_app_version"] == "4.3.0")
+        #expect(info["payload_app_build"] == "14")
+        #expect(info.keys.allSatisfy { $0.hasPrefix("payload_") })
+    }
+
     @Test func manyReportedPayloadsDoNotPushTheReceiptOut() {
         for index in 0...ReportedPayloadLedger.capacity {
             reporter.report([day(index) { $0.foregroundWatchdog = 1 }])

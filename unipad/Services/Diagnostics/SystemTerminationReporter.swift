@@ -79,6 +79,13 @@ nonisolated extension SystemExitCounts {
             "payload_end": end.formatted(.iso8601),
             "payload_app_version": appVersion,
             "payload_multiple_app_versions": String(includesMultipleAppVersions),
+        ]
+        if let appBuild { info["payload_app_build"] = appBuild }
+        return hasExitCounts ? info.merging(exitCountInfo) { current, _ in current } : info
+    }
+
+    private var exitCountInfo: [String: String] {
+        [
             "foreground_memory_limit": String(foregroundMemoryLimit),
             "foreground_watchdog": String(foregroundWatchdog),
             "foreground_abnormal": String(foregroundAbnormal),
@@ -89,8 +96,6 @@ nonisolated extension SystemExitCounts {
             "background_bad_access": String(backgroundBadAccess),
             "background_illegal_instruction": String(backgroundIllegalInstruction),
         ]
-        if let appBuild { info["payload_app_build"] = appBuild }
-        return info
     }
 
     /// MetricKit can deliver several payloads for one day; begin and end identify a payload.
@@ -122,7 +127,7 @@ struct ReportedPayloadLedger {
 }
 
 /// Sends system terminations from MetricKit payloads to Crashlytics as non-fatals, at most once per
-/// payload and reason, and one receipt per app version.
+/// payload and reason, plus at most one receipt of each kind per app version and build.
 final class SystemTerminationReporter {
     private let crashlytics: any CrashlyticsServiceProtocol
     private let payloads: ReportedPayloadLedger
