@@ -232,7 +232,14 @@ final class AutoPlayRunnerTests: XCTestCase {
     private func readySoundEngine() async throws -> SoundEngine {
         let loading = TestSoundLoadListener()
         let engine = SoundEngine(unipack: UniPack(), chain: ChainObserver(), loadingListener: loading)
-        try await wait { loading.finished }
+        // Sleeps, unlike `wait`: the load finishes on other threads, and yielding in a loop keeps the
+        // main thread so busy that on a loaded machine they miss the deadline.
+        try await PlayUsageScenario.waitWhile(timeout: 20) { !loading.finished }
+        guard loading.finished else {
+            engine.destroy()
+            XCTFail("The sound engine did not finish loading")
+            throw CancellationError()
+        }
         if let failure = loading.failure {
             engine.destroy()
             throw failure
