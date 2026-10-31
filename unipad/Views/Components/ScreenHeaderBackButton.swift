@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The back chevron of a screen that hides the navigation bar, where it is the only way out.
 /// Its tappable area is grown to at least 44pt around the glyph while the negative padding
-/// keeps the layout exactly where the glyph is.
+/// keeps the layout exactly where the glyph is. Beside the window controls of a resized
+/// window the controls take the part of that area that lies over them, not the glyph.
 struct ScreenHeaderBackButton: View {
     private static let hitOutset: CGFloat = 16
 
@@ -24,7 +25,8 @@ struct ScreenHeaderBackButton: View {
 extension View {
     /// Keeps a header drawn at the top of a screen clear of the window controls iPadOS 26
     /// puts in a resized window's top leading corner, where a touch would reach them
-    /// instead of the header. Nothing moves where the corner is free.
+    /// instead of the header. A full landscape window stays put; a full window on an upright
+    /// iPad reports the same corner as a resized one, so its header moves too.
     @ViewBuilder
     func avoidingWindowControls() -> some View {
         if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {

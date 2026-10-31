@@ -89,7 +89,9 @@ final class WindowControlsBackButtonTests: XCTestCase {
         let frame = window.frame
         let reported = element.frame
         if frame.contains(reported) {
-            return CGVector(dx: reported.midX + offset, dy: reported.midY)
+            return upright
+                ? CGVector(dx: reported.midX, dy: reported.midY + offset)
+                : CGVector(dx: reported.midX + offset, dy: reported.midY)
         }
         if upright {
             return CGVector(dx: frame.maxX - reported.midY, dy: frame.minY + reported.midX + offset)
