@@ -1297,7 +1297,6 @@ final class PlayViewModel {
         scbTraceLog.setCheckedSilently(false)
         padHolds.removeAll()
         usageSession.ended()
-        crashKeys.screenClosed()
         enable = false
         stopVolumeObserver()
         if let adapter = midiControllerAdapter {
@@ -1309,6 +1308,8 @@ final class PlayViewModel {
         ledRunner?.stop()
         soundEngine?.destroy()
         chain.clearObservers()
+        // Last, so a crash in the teardown above still reports the play window.
+        crashKeys.screenClosed()
     }
 
     func startLedRunner() {

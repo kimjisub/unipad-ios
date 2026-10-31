@@ -10,8 +10,6 @@ final class PlayCrashKeys {
         case closed
     }
 
-    private static let names = [UsageParam.orientation, UsageParam.screenShortSide, UsageParam.windowMode]
-
     private let crashlytics: any CrashlyticsServiceProtocol
     private var screen = Screen.shown
     private var layout: ScreenLayout?
@@ -28,16 +26,18 @@ final class PlayCrashKeys {
     }
 
     func screenCovered() {
+        guard screen != .closed else { return }
         screen = .covered
         writeKeys()
     }
 
     func screenShown() {
+        guard screen != .closed else { return }
         screen = .shown
         writeKeys()
     }
 
-    /// The view can still lay out while it leaves; nothing after this writes the keys again.
+    /// The view can still lay out while it leaves, so this is final: nothing writes the keys again.
     func screenClosed() {
         screen = .closed
         writeKeys()
@@ -45,11 +45,10 @@ final class PlayCrashKeys {
 
     private func writeKeys() {
         let current = screen == .shown ? layout : nil
-        guard current != written else { return }
+        guard current != written, let names = (current ?? written)?.parameters.keys else { return }
         written = current
-        let values = current?.parameters ?? [:]
-        for name in Self.names {
-            crashlytics.setCustomValue(values[name], forKey: "play_\(name)")
+        for name in names {
+            crashlytics.setCustomValue(current?.parameters[name], forKey: "play_\(name)")
         }
     }
 }
