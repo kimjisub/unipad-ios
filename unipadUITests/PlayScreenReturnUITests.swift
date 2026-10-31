@@ -4,6 +4,39 @@ import XCTest
 /// returns to the same performance. Lights are read from the pad grid's pixels, so the checks are
 /// about what is drawn, not about sound.
 final class PlayScreenReturnUITests: XCTestCase {
+    /// A pack closed from the play screen leaves the main screen working: the same pack opens again.
+    @MainActor
+    func testClosingAPackReturnsToTheMainScreenAndItOpensAgain() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "play-return")
+        app.launch()
+        defer { app.terminate() }
+        UITestSupport.dismissSystemAlerts()
+        let list = app.scrollViews["main.packList"]
+        let title = list.staticTexts.matching(NSPredicate(format: "label == %@", "Play Return Fixture")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 30), "the isolated library must stage the fixture")
+
+        for round in 1...2 {
+            // The pack stays selected on the way back, so a second tap would close it.
+            if round == 1 { title.tap() }
+            let play = app.buttons["Play"].firstMatch
+            XCTAssertTrue(play.waitForExistence(timeout: 5), "round \(round): the pack did not show Play")
+            play.tap()
+            let menu = app.buttons["line.3.horizontal"]
+            XCTAssertTrue(menu.waitForExistence(timeout: 30), "round \(round): the play screen never became ready")
+            UITestSupport.attachScreenshot("reopen-\(round)-1-play", to: self)
+
+            menu.tap()
+            let exit = app.buttons["rectangle.portrait.and.arrow.right"]
+            XCTAssertTrue(exit.waitForExistence(timeout: 5), "round \(round): the menu has no exit")
+            exit.tap()
+            XCTAssertTrue(UITestSupport.waitUntilHittable(title, timeout: 15), "round \(round): the main screen did not come back")
+            UITestSupport.attachScreenshot("reopen-\(round)-2-main", to: self)
+        }
+    }
+
     @MainActor
     func testAutoplayWaitsForManualResumeAfterReturningFromTheDeviceScreen() throws {
         continueAfterFailure = false
