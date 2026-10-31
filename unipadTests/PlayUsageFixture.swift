@@ -63,6 +63,7 @@ final class PlayUsageScenario {
         while condition() && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
     }
 
+    func packFile(_ name: String) -> URL { packFolder.appending(path: name) }
     func removePackFile(_ name: String) throws { try FileManager.default.removeItem(at: packFolder.appending(path: name)) }
 
     func press(_ x: Int = 0, _ y: Int = 0) { vm.padTouch(x: x, y: y, isDown: true, trigger: .pad(.screen)) }

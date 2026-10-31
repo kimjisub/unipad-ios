@@ -290,3 +290,16 @@
 "trace_numbers" = "数字";
 "trace_lines" = "線と点";
 "trace_clear_all" = "すべての軌跡を消去";
+
+"autoMappingConfirmTitle" = "自動演奏を調整しますか？";
+"autoMappingConfirmMessage" = "待ち時間を音の長さに置き換えます。現在の自動演奏をバックアップします。同時に押したパッドは同時のままです。";
+"autoMappingApply" = "調整する";
+"autoMappingSaved" = "自動演奏を保存しました。メニューから以前のものに復元できます。";
+"autoMappingFailed" = "保存できませんでした。既存の自動演奏は変更されていません。";
+"autoPlayRestore" = "以前の自動演奏に復元";
+"autoPlayNoBackup" = "保存されたバックアップはありません";
+"autoPlayRestoreConfirmTitle" = "直前のバックアップに戻しますか？";
+"autoPlayRestoreConfirmMessage" = "現在の自動演奏と入れ替えます。復元後も再び入れ替えられます。";
+"autoPlayRestoreApply" = "復元する";
+"autoPlayRestored" = "以前の自動演奏に復元しました。メニューから再び入れ替えられます。";
+"autoPlayRestoreFailed" = "復元できませんでした。現在の自動演奏とバックアップは変更されていません。";

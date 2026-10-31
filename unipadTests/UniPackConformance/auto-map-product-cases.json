@@ -1,0 +1,667 @@
+{
+  "sourceCommit": "43b8641542fca03c5d07c78d62fd0b470bde4362",
+  "sourceCorpusSha256": "859e24aafe7de59082daf45a5f0fb64b538d7330a662ce051145a556a8940b20",
+  "assets": {
+    "silence-10ms": {
+      "generator": "10 ms of silence (u8 value 128), 8 kHz mono u8 PCM WAV",
+      "bytes": 124,
+      "sha256": "48f9b734687b6c7b57cbcba2b5e799706c85c770d181de055b728abb2c9ca7e6",
+      "base64": "UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA=="
+    },
+    "tone-440": {
+      "generator": "10 ms sine, 440 Hz, 8 kHz mono u8 PCM WAV",
+      "bytes": 124,
+      "sha256": "c92bf9a21f15a6d98067e19814d8c12724b8eeae3b5fda492b82391e32b11f0d",
+      "base64": "UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAosDW4uPYwqWDYUMsHh0nPFh6nLvT4eTax6uJZ0gvIBwkN1NzlrbP3+Tdy7CQbU0zIhwiM01tkLDL3eTfz7aWc1M3JBwgL0hniavH2uTh0w=="
+    },
+    "tone-660": {
+      "generator": "10 ms sine, 660 Hz, 8 kHz mono u8 PCM WAV",
+      "bytes": 124,
+      "sha256": "18f9569dd586b62f518dd58070c1c925154d169ec3b4b3bfd8054b7c0672b2a3",
+      "base64": "UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAstbk2LSDUSwcJ0l6rNPk2rqJVy8dJERzps/j3b+QXTMdIj9toMvi38OWYzcfIDpnmsfg4cicaTwgHjZhlMLf4syib0AiHTJbjr3c49CodQ=="
+    }
+  },
+  "cases": [
+    {
+      "id": "MAP-P001",
+      "area": "auto-map",
+      "layer": "run",
+      "title": "explicit auto-map preserves waits, simultaneous presses and paired releases",
+      "productBehavior": true,
+      "observation": "auto-map",
+      "items": [
+        "PB-08"
+      ],
+      "basis": [
+        {
+          "type": "decision",
+          "ref": "meta/unipack-conformance/GRAMMAR.md G6 PB-08",
+          "note": "explicit auto-map preserves waits, simultaneous presses and paired releases"
+        }
+      ],
+      "expectedFailing": [
+        "web"
+      ],
+      "expectation": "determined",
+      "files": [
+        {
+          "path": "info",
+          "text": "title=Conformance\nproducerName=UniPad Conformance\nbuttonX=4\nbuttonY=3\nchain=2\nsquareButton=true"
+        },
+        {
+          "path": "keySound",
+          "text": "1 1 1 a.wav\n1 2 1 b.wav\n2 1 1 b.wav"
+        },
+        {
+          "path": "sounds/a.wav",
+          "asset": "tone-440"
+        },
+        {
+          "path": "sounds/b.wav",
+          "asset": "tone-660"
+        },
+        {
+          "path": "sounds/c.wav",
+          "asset": "silence-10ms"
+        },
+        {
+          "path": "autoPlay",
+          "text": "d 80\non 1 1\non 2 1\nd 20\nd 30\non 1 1\nd 999"
+        },
+        {
+          "path": "operation.json",
+          "text": "{\"durations\":{\"a.wav\":400.4,\"b.wav\":400.5}}"
+        }
+      ],
+      "fingerprint": "593032cf367515256fbbb94b1c5c654eb4fb5e23b9311151172da28ceb02fbb7",
+      "expected": {
+        "events": [
+          [
+            "on",
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            "off",
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            "on",
+            1000,
+            0,
+            1,
+            0,
+            0
+          ],
+          [
+            "off",
+            1000,
+            0,
+            1,
+            0
+          ],
+          [
+            "on",
+            1401,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            "off",
+            1401,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "known": {
+        "web": {
+          "status": "fail",
+          "actual": {
+            "events": [
+              [
+                "on",
+                80,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                "on",
+                480,
+                0,
+                1,
+                0,
+                0
+              ],
+              [
+                "on",
+                931,
+                0,
+                0,
+                0,
+                1
+              ],
+              [
+                "trailingDelay",
+                2330
+              ]
+            ]
+          },
+          "note": "Observed on the real web mapper or runner before product behavior corrections: missing paired releases, added sound-length waits or early completion before the final delay. This remains a failure, not a compatibility pass."
+        }
+      }
+    },
+    {
+      "id": "MAP-P002",
+      "area": "auto-map",
+      "layer": "run",
+      "title": "explicit auto-map preserves waits, simultaneous presses and paired releases",
+      "productBehavior": true,
+      "observation": "auto-map",
+      "items": [
+        "PB-08"
+      ],
+      "basis": [
+        {
+          "type": "decision",
+          "ref": "meta/unipack-conformance/GRAMMAR.md G6 PB-08",
+          "note": "explicit auto-map preserves waits, simultaneous presses and paired releases"
+        }
+      ],
+      "expectedFailing": [
+        "web"
+      ],
+      "expectation": "determined",
+      "files": [
+        {
+          "path": "info",
+          "text": "title=Conformance\nproducerName=UniPad Conformance\nbuttonX=4\nbuttonY=3\nchain=2\nsquareButton=true"
+        },
+        {
+          "path": "keySound",
+          "text": "1 1 1 a.wav\n1 2 1 b.wav\n2 1 1 b.wav"
+        },
+        {
+          "path": "sounds/a.wav",
+          "asset": "tone-440"
+        },
+        {
+          "path": "sounds/b.wav",
+          "asset": "tone-660"
+        },
+        {
+          "path": "sounds/c.wav",
+          "asset": "silence-10ms"
+        },
+        {
+          "path": "autoPlay",
+          "text": "on 1 1\nd 30\nd 40\non 2 1\nd 999"
+        },
+        {
+          "path": "operation.json",
+          "text": "{\"durations\":{\"a.wav\":null,\"b.wav\":900}}"
+        }
+      ],
+      "fingerprint": "5d4dc55e4bf3a4410f6b689a7780e4cffcd6a9ab7c998547c8f8b3e01161d349",
+      "expected": {
+        "events": [
+          [
+            "on",
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            "off",
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            "on",
+            1070,
+            0,
+            1,
+            0,
+            0
+          ],
+          [
+            "off",
+            1070,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      "known": {
+        "web": {
+          "status": "fail",
+          "actual": {
+            "events": [
+              [
+                "on",
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                "on",
+                70,
+                0,
+                1,
+                0,
+                0
+              ],
+              [
+                "trailingDelay",
+                1969
+              ]
+            ]
+          },
+          "note": "Observed on the real web mapper or runner before product behavior corrections: missing paired releases, added sound-length waits or early completion before the final delay. This remains a failure, not a compatibility pass."
+        }
+      }
+    },
+    {
+      "id": "MAP-P003",
+      "area": "auto-map",
+      "layer": "run",
+      "title": "explicit auto-map preserves waits, simultaneous presses and paired releases",
+      "productBehavior": true,
+      "observation": "auto-map",
+      "items": [
+        "PB-08"
+      ],
+      "basis": [
+        {
+          "type": "decision",
+          "ref": "meta/unipack-conformance/GRAMMAR.md G6 PB-08",
+          "note": "explicit auto-map preserves waits, simultaneous presses and paired releases"
+        }
+      ],
+      "expectedFailing": [
+        "web"
+      ],
+      "expectation": "determined",
+      "files": [
+        {
+          "path": "info",
+          "text": "title=Conformance\nproducerName=UniPad Conformance\nbuttonX=4\nbuttonY=3\nchain=2\nsquareButton=true"
+        },
+        {
+          "path": "keySound",
+          "text": "1 1 1 a.wav\n1 2 1 b.wav\n2 1 1 b.wav"
+        },
+        {
+          "path": "sounds/a.wav",
+          "asset": "tone-440"
+        },
+        {
+          "path": "sounds/b.wav",
+          "asset": "tone-660"
+        },
+        {
+          "path": "sounds/c.wav",
+          "asset": "silence-10ms"
+        },
+        {
+          "path": "autoPlay",
+          "text": "on 1 1\nd 80\non 2 1"
+        },
+        {
+          "path": "operation.json",
+          "text": "{\"durations\":{\"a.wav\":400.4,\"b.wav\":900}}"
+        }
+      ],
+      "fingerprint": "1a4e652b2085f6df19b5d7e7937628219f8610f0eb0ee8f985fe28e696a2b7b2",
+      "expected": {
+        "events": [
+          [
+            "on",
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            "off",
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            "on",
+            1400,
+            0,
+            1,
+            0,
+            0
+          ],
+          [
+            "off",
+            1400,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      "known": {
+        "web": {
+          "status": "fail",
+          "actual": {
+            "events": [
+              [
+                "on",
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                "on",
+                480,
+                0,
+                1,
+                0,
+                0
+              ],
+              [
+                "trailingDelay",
+                1380
+              ]
+            ]
+          },
+          "note": "Observed on the real web mapper or runner before product behavior corrections: missing paired releases, added sound-length waits or early completion before the final delay. This remains a failure, not a compatibility pass."
+        }
+      }
+    },
+    {
+      "id": "MAP-P004",
+      "area": "auto-map",
+      "layer": "run",
+      "title": "explicit auto-map preserves waits, simultaneous presses and paired releases",
+      "productBehavior": true,
+      "observation": "auto-map",
+      "items": [
+        "PB-08"
+      ],
+      "basis": [
+        {
+          "type": "decision",
+          "ref": "meta/unipack-conformance/GRAMMAR.md G6 PB-08",
+          "note": "explicit auto-map preserves waits, simultaneous presses and paired releases"
+        }
+      ],
+      "expectedFailing": [
+        "web"
+      ],
+      "expectation": "determined",
+      "files": [
+        {
+          "path": "info",
+          "text": "title=Conformance\nproducerName=UniPad Conformance\nbuttonX=4\nbuttonY=3\nchain=2\nsquareButton=true"
+        },
+        {
+          "path": "keySound",
+          "text": "1 1 1 a.wav\n1 2 1 b.wav\n2 1 1 b.wav"
+        },
+        {
+          "path": "sounds/a.wav",
+          "asset": "tone-440"
+        },
+        {
+          "path": "sounds/b.wav",
+          "asset": "tone-660"
+        },
+        {
+          "path": "sounds/c.wav",
+          "asset": "silence-10ms"
+        },
+        {
+          "path": "autoPlay",
+          "text": "on 1 1\nd 80\non 2 1"
+        },
+        {
+          "path": "operation.json",
+          "text": "{\"durations\":{\"a.wav\":400.5,\"b.wav\":900}}"
+        }
+      ],
+      "fingerprint": "9804b576dfe8a306157dfadd24a71ad23dcab18bbb4553ae295f1896020a230e",
+      "expected": {
+        "events": [
+          [
+            "on",
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            "off",
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            "on",
+            1401,
+            0,
+            1,
+            0,
+            0
+          ],
+          [
+            "off",
+            1401,
+            0,
+            1,
+            0
+          ]
+        ]
+      },
+      "known": {
+        "web": {
+          "status": "fail",
+          "actual": {
+            "events": [
+              [
+                "on",
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                "on",
+                481,
+                0,
+                1,
+                0,
+                0
+              ],
+              [
+                "trailingDelay",
+                1381
+              ]
+            ]
+          },
+          "note": "Observed on the real web mapper or runner before product behavior corrections: missing paired releases, added sound-length waits or early completion before the final delay. This remains a failure, not a compatibility pass."
+        }
+      }
+    },
+    {
+      "id": "MAP-P005",
+      "area": "auto-map",
+      "layer": "run",
+      "title": "explicit auto-map preserves waits, simultaneous presses and paired releases",
+      "productBehavior": true,
+      "observation": "auto-map",
+      "items": [
+        "PB-08"
+      ],
+      "basis": [
+        {
+          "type": "decision",
+          "ref": "meta/unipack-conformance/GRAMMAR.md G6 PB-08",
+          "note": "explicit auto-map preserves waits, simultaneous presses and paired releases"
+        }
+      ],
+      "expectedFailing": [
+        "web"
+      ],
+      "expectation": "determined",
+      "files": [
+        {
+          "path": "info",
+          "text": "title=Conformance\nproducerName=UniPad Conformance\nbuttonX=4\nbuttonY=3\nchain=2\nsquareButton=true"
+        },
+        {
+          "path": "keySound",
+          "text": "1 1 1 a.wav\n1 2 1 b.wav\n2 1 1 b.wav"
+        },
+        {
+          "path": "sounds/a.wav",
+          "asset": "tone-440"
+        },
+        {
+          "path": "sounds/b.wav",
+          "asset": "tone-660"
+        },
+        {
+          "path": "sounds/c.wav",
+          "asset": "silence-10ms"
+        },
+        {
+          "path": "autoPlay",
+          "text": "on 1 1\nd 50\nc 2\non 1 1\nd 50\non 1 1"
+        },
+        {
+          "path": "operation.json",
+          "text": "{\"durations\":{\"a.wav\":300,\"b.wav\":500}}"
+        }
+      ],
+      "fingerprint": "a92c23725fa3c527399157a5492ed498efc06ae5d628ea29e4e4d971284bf6e8",
+      "expected": {
+        "events": [
+          [
+            "on",
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            "off",
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            "chain",
+            1300,
+            1
+          ],
+          [
+            "on",
+            1300,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            "off",
+            1300,
+            1,
+            0,
+            0
+          ],
+          [
+            "on",
+            1800,
+            1,
+            0,
+            0,
+            1
+          ],
+          [
+            "off",
+            1800,
+            1,
+            0,
+            0
+          ]
+        ]
+      },
+      "known": {
+        "web": {
+          "status": "fail",
+          "actual": {
+            "events": [
+              [
+                "on",
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                "chain",
+                350,
+                1
+              ],
+              [
+                "on",
+                350,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                "on",
+                900,
+                1,
+                0,
+                0,
+                1
+              ],
+              [
+                "trailingDelay",
+                1400
+              ]
+            ]
+          },
+          "note": "Observed on the real web mapper or runner before product behavior corrections: missing paired releases, added sound-length waits or early completion before the final delay. This remains a failure, not a compatibility pass."
+        }
+      }
+    }
+  ]
+}

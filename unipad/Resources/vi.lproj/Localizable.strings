@@ -290,3 +290,16 @@
 "trace_numbers" = "Số";
 "trace_lines" = "Đường và chấm";
 "trace_clear_all" = "Xóa tất cả dấu vết";
+
+"autoMappingConfirmTitle" = "Căn chỉnh tự động phát?";
+"autoMappingConfirmMessage" = "Thời gian chờ sẽ thay bằng độ dài âm thanh. Bản tự động phát hiện tại sẽ được sao lưu. Các pad nhấn đồng thời vẫn cùng lúc.";
+"autoMappingApply" = "Căn chỉnh";
+"autoMappingSaved" = "Đã lưu tự động phát. Bạn có thể khôi phục bản trước từ menu.";
+"autoMappingFailed" = "Không thể lưu. Bản tự động phát hiện có không thay đổi.";
+"autoPlayRestore" = "Khôi phục tự động phát trước đó";
+"autoPlayNoBackup" = "Chưa có bản sao lưu";
+"autoPlayRestoreConfirmTitle" = "Khôi phục bản sao lưu trước?";
+"autoPlayRestoreConfirmMessage" = "Bản này sẽ đổi chỗ với tự động phát hiện tại. Bạn có thể đổi lại sau khi khôi phục.";
+"autoPlayRestoreApply" = "Khôi phục";
+"autoPlayRestored" = "Đã khôi phục tự động phát trước đó. Bạn có thể đổi lại từ menu.";
+"autoPlayRestoreFailed" = "Không thể khôi phục. Tự động phát hiện tại và bản sao lưu không thay đổi.";

@@ -313,3 +313,16 @@
 "trace_numbers" = "Numbers";
 "trace_lines" = "Lines and dots";
 "trace_clear_all" = "Clear all traces";
+
+"autoMappingConfirmTitle" = "Fit the autoplay?";
+"autoMappingConfirmMessage" = "Waits will match sound lengths. Your current autoplay will be backed up. Simultaneous pads stay together.";
+"autoMappingApply" = "Fit";
+"autoMappingSaved" = "Autoplay saved. You can restore the previous version from the menu.";
+"autoMappingFailed" = "Could not save. Your existing autoplay is unchanged.";
+"autoPlayRestore" = "Restore previous autoplay";
+"autoPlayNoBackup" = "No saved backup";
+"autoPlayRestoreConfirmTitle" = "Restore the previous backup?";
+"autoPlayRestoreConfirmMessage" = "It will swap with the current autoplay. You can swap them again after restoring.";
+"autoPlayRestoreApply" = "Restore";
+"autoPlayRestored" = "Previous autoplay restored. You can swap back from the menu.";
+"autoPlayRestoreFailed" = "Could not restore. Your current autoplay and backup are unchanged.";

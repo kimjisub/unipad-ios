@@ -134,6 +134,9 @@ final class PlayViewModel {
     var autoMappingActive = false
     var autoMappingProgress = 0
     var autoMappingMax = 0
+    /// Whether the pack holds a previous autoPlay to swap back to.
+    var autoPlayBackupExists = false
+    var canRestoreAutoPlay: Bool { autoPlayBackupExists && !autoMappingActive }
 
     // Toast
     var toastMessage: String?
@@ -248,6 +251,7 @@ final class PlayViewModel {
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+        refreshAutoPlayBackup()
 
         setupChainObserver()
 
@@ -403,6 +407,8 @@ final class PlayViewModel {
     private var autoMapper: UniPackAutoMapper?
     /// The mapper holds its listener weakly, so the adapter is kept alive here for the mapping's lifetime.
     private var autoMappingListenerAdapter: AutoMappingListenerAdapter?
+    /// Changes the pack's autoPlay file; a test swaps in one whose writes fail.
+    @ObservationIgnored var autoPlayReplacer = AutoPlayFileReplacer()
 
     func autoMapping() {
         guard let pack = unipack as? UniPackFolder else { return }
@@ -412,27 +418,55 @@ final class PlayViewModel {
         autoMappingProgress = 0
         autoMappingMax = 0
 
-        // The mapper replaces autoPlayTable when it finishes; a runner still iterating the old
-        // elements on its own thread would race that swap, so it is stopped before the mapper starts.
-        if playMode != .none { switchPlayMode(.none) }
-        autoPlayRunner?.stop()
-        autoPlayRunner = nil
-        autoPlayListenerAdapter = nil
+        releaseAutoPlayRunner()
 
         let adapter = AutoMappingListenerAdapter(viewModel: self)
         autoMappingListenerAdapter = adapter
-        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter)
+        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter, replacer: autoPlayReplacer)
         autoMapper = mapper
         mapper.start()
     }
 
+    /// Swaps the pack's autoPlay with its previous version. A failed swap changes neither file.
+    func restoreAutoPlay() {
+        guard canRestoreAutoPlay, let pack = unipack as? UniPackFolder, let file = pack.autoPlayFile else { return }
+
+        releaseAutoPlayRunner()
+        do {
+            try autoPlayReplacer.restore(file)
+            pack.reloadAutoPlay()
+            toastMessage = String(localized: "autoPlayRestored")
+        } catch {
+            logger.error("restoreAutoPlay: \(error.localizedDescription)")
+            toastMessage = String(localized: "autoPlayRestoreFailed")
+        }
+        rebuildAutoPlayRunner()
+    }
+
     fileprivate func finishAutoMapping() {
         releaseAutoMapper()
+        rebuildAutoPlayRunner()
+    }
 
+    /// Reloading replaces autoPlayTable; a runner still iterating the old elements on its own
+    /// thread would race that swap, so it is stopped before the file changes.
+    private func releaseAutoPlayRunner() {
+        if playMode != .none { switchPlayMode(.none) }
+        autoPlayRunner?.stop()
+        autoPlayRunner = nil
+        autoPlayListenerAdapter = nil
+    }
+
+    private func rebuildAutoPlayRunner() {
         guard let pack = unipack as? UniPackFolder else { return }
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+        refreshAutoPlayBackup()
+    }
+
+    private func refreshAutoPlayBackup() {
+        autoPlayBackupExists = (unipack as? UniPackFolder)?.autoPlayFile.map(AutoPlayFileReplacer.hasBackup(of:)) ?? false
     }
 
     private func releaseAutoMapper() {
@@ -1636,11 +1670,12 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
     }
 
     func onDone() {
+        viewModel?.toastMessage = String(localized: "autoMappingSaved")
         viewModel?.finishAutoMapping()
     }
 
     func onException(_ error: Error) {
-        viewModel?.toastMessage = error.localizedDescription
+        viewModel?.toastMessage = (error as? AutoMapperError)?.localizedDescription ?? String(localized: "autoMappingFailed")
         viewModel?.finishAutoMapping()
     }
 }
