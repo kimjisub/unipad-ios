@@ -29,6 +29,11 @@ private struct StatusBarClearance: ViewModifier {
 }
 
 /// Reports how far the status bar reaches below the top safe area of this view's window.
+///
+/// iPadOS reports the status bar and the same short safe area for a window shorter than the
+/// screen, where the bar covers nothing. The screen is reported at the window's size then too
+/// (see `WindowLayoutReader`), but such a window keeps its offset from the real screen, which
+/// tells it from a window of the full height (seen on iPadOS 27).
 private struct StatusBarOverlapReader: UIViewRepresentable {
     let onChange: (CGFloat) -> Void
 
@@ -64,8 +69,9 @@ private struct StatusBarOverlapReader: UIViewRepresentable {
         }
 
         private func report() {
-            guard let window, let statusBar = window.windowScene?.statusBarManager else { return }
-            let overlap = max(0, statusBar.statusBarFrame.maxY - window.safeAreaInsets.top)
+            guard let window, let scene = window.windowScene, let statusBar = scene.statusBarManager else { return }
+            let isFullHeight = window.convert(CGPoint.zero, to: scene.screen.coordinateSpace).y == 0
+            let overlap = isFullHeight ? max(0, statusBar.statusBarFrame.maxY - window.safeAreaInsets.top) : 0
             guard overlap != reported else { return }
             reported = overlap
             // These callbacks can arrive while SwiftUI is updating the view that hosts this one.
