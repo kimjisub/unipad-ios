@@ -139,6 +139,56 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertEqual(recorder.pressTimes, [1000, 12000])
     }
 
+    /// The play screen's own tests stay away for one real second. This stays for ten, past the end of
+    /// the song, in each play mode: the song neither moves nor ends before the explicit resume.
+    func testStayingAwayPastTheSongsEndLeavesEveryModeWhereItWas() async throws {
+        for mode in [PlayMode.autoPlay, .guidePlay, .stepPractice] {
+            let pack = UniPack()
+            pack.autoPlayTable = AutoPlay(elements: [.on(x: 0, y: 0, currChain: 0, num: 0),
+                .delay(delay: 1000), .on(x: 0, y: 1, currChain: 0, num: 0)])
+            let recorder = Recorder()
+            let clock = TestManualClock()
+            let reference = RunnerReference()
+            var tick = 0
+            var progress: Int?
+            var endedAt: Int64?
+            recorder.onFinish = { endedAt = clock.read() }
+            let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                clock: { clock.read() }, sleep: { _ in
+                    tick += 1
+                    switch tick {
+                    case 1:
+                        clock.advance(500)
+                        progress = reference.value.progress
+                        reference.value.suspend()
+                        reference.value.appWentAway()
+                    case 2...11: clock.advance(1000)
+                    case 12:
+                        XCTAssertEqual(reference.value.progress, progress, "\(mode)")
+                        XCTAssertEqual(recorder.ends, 0, "\(mode)")
+                        reference.value.appReturned()
+                    case 13: reference.value.resumeFromSuspension()
+                    default: clock.advance(1)
+                    }
+                    await Task.yield()
+                })
+            reference.value = runner
+            defer { runner.stop(); reference.value = nil }
+            runner.practiceGuide = mode != .autoPlay
+            runner.stepMode = mode == .stepPractice
+            runner.playmode = mode != .stepPractice
+            runner.launch()
+            try await wait { recorder.ends == 1 || tick > 1000 }
+            if mode == .stepPractice {
+                XCTAssertNil(endedAt, "step practice ended without a press")
+                XCTAssertEqual(runner.progress, progress)
+                XCTAssertEqual(recorder.litGuides, [0])
+            } else {
+                XCTAssertEqual(endedAt, 12000, "\(mode) must play on from where it stopped")
+            }
+        }
+    }
+
     func testLateTickKeepsScheduledPressAndReleaseTimes() async throws {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [
