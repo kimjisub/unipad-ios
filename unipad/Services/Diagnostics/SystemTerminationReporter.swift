@@ -10,6 +10,8 @@ nonisolated struct SystemExitCounts: Sendable, Equatable {
     var appVersion: String
     var appBuild: String?
     var includesMultipleAppVersions: Bool
+    /// False when Apple had no exit data for this payload, so every count below is only a default.
+    var hasExitCounts = true
 
     var foregroundMemoryLimit = 0
     var foregroundWatchdog = 0
@@ -55,6 +57,22 @@ nonisolated extension SystemExitCounts {
         return reasons.map { NSError(domain: $0.errorDomain, code: 1, userInfo: info) }
     }
 
+    /// Proof that MetricKit reached this install, sent even without terminations: a device with no
+    /// reason records otherwise looks the same whether nothing was terminated or nothing arrived.
+    var receipt: NSError {
+        NSError(domain: receiptDomain, code: 1, userInfo: userInfo)
+    }
+
+    /// One receipt per app version and build, kept apart for payloads without exit data so that one
+    /// of those does not use up the receipt that proves exit counts arrive.
+    var receiptKey: String {
+        "\(receiptDomain)-\(appVersion)-\(appBuild ?? "")"
+    }
+
+    private var receiptDomain: String {
+        SystemTerminationReason.errorDomainPrefix + (hasExitCounts ? "PayloadReceived" : "PayloadWithoutExitCounts")
+    }
+
     private var userInfo: [String: String] {
         var info = [
             "payload_begin": begin.formatted(.iso8601),
@@ -81,47 +99,63 @@ nonisolated extension SystemExitCounts {
     }
 }
 
-/// Payloads already sent, kept in user defaults so a payload delivered again is not sent twice.
+/// Records already sent, kept in user defaults so a payload delivered again is not sent twice.
 struct ReportedPayloadLedger {
-    static let defaultsKey = "SystemTerminationReportedPayloads"
+    static let payloadsKey = "SystemTerminationReportedPayloads"
+    static let receiptsKey = "SystemTerminationReportedReceipts"
     static let capacity = 64
 
     let defaults: UserDefaults
+    var defaultsKey = payloadsKey
 
     func contains(_ key: String) -> Bool {
         keys.contains(key)
     }
 
     func insert(_ key: String) {
-        defaults.set(Array((keys + [key]).suffix(Self.capacity)), forKey: Self.defaultsKey)
+        defaults.set(Array((keys + [key]).suffix(Self.capacity)), forKey: defaultsKey)
     }
 
     private var keys: [String] {
-        defaults.stringArray(forKey: Self.defaultsKey) ?? []
+        defaults.stringArray(forKey: defaultsKey) ?? []
     }
 }
 
 /// Sends system terminations from MetricKit payloads to Crashlytics as non-fatals, at most once per
-/// payload and reason.
+/// payload and reason, and one receipt per app version.
 final class SystemTerminationReporter {
     private let crashlytics: any CrashlyticsServiceProtocol
-    private let ledger: ReportedPayloadLedger
+    private let payloads: ReportedPayloadLedger
+    private let receipts: ReportedPayloadLedger
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UniPad", category: "SystemTermination")
 
-    init(crashlytics: any CrashlyticsServiceProtocol, ledger: ReportedPayloadLedger) {
+    init(crashlytics: any CrashlyticsServiceProtocol, defaults: UserDefaults) {
         self.crashlytics = crashlytics
-        self.ledger = ledger
+        payloads = ReportedPayloadLedger(defaults: defaults)
+        receipts = ReportedPayloadLedger(defaults: defaults, defaultsKey: ReportedPayloadLedger.receiptsKey)
     }
 
     func report(_ payloads: [SystemExitCounts]) {
         for counts in payloads {
-            let nonFatals = counts.nonFatals
-            guard !nonFatals.isEmpty, !ledger.contains(counts.payloadKey) else { continue }
-            for error in nonFatals {
-                logger.info("Reporting \(error.domain, privacy: .public) for \(counts.payloadKey, privacy: .public)")
-                crashlytics.record(error)
-            }
-            ledger.insert(counts.payloadKey)
+            reportTerminations(in: counts)
+            reportReceipt(of: counts)
         }
+    }
+
+    private func reportTerminations(in counts: SystemExitCounts) {
+        let nonFatals = counts.nonFatals
+        guard !nonFatals.isEmpty, !payloads.contains(counts.payloadKey) else { return }
+        for error in nonFatals {
+            logger.info("Reporting \(error.domain, privacy: .public) for \(counts.payloadKey, privacy: .public)")
+            crashlytics.record(error)
+        }
+        payloads.insert(counts.payloadKey)
+    }
+
+    private func reportReceipt(of counts: SystemExitCounts) {
+        guard !receipts.contains(counts.receiptKey) else { return }
+        logger.info("Reporting receipt \(counts.receiptKey, privacy: .public)")
+        crashlytics.record(counts.receipt)
+        receipts.insert(counts.receiptKey)
     }
 }
