@@ -24,6 +24,7 @@ NOT_RUN = [
     "-skip-testing:unipadUITests/LedAutoplayUITests",
     "-skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt",
     "-skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain",
+    "-skip-testing:unipadUITests/StoreBackButtonStatusBarTests",
 ]
 
 

@@ -103,7 +103,17 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
   the notification permission round trip (`ci/notification_roundtrip.py`),
   the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
-  download, and iPad pointer input. Run those separately when a change touches them.
+  download, iPad pointer input, and the store back button on an upright iPad. Run
+  those separately when a change touches them. For the last one, pass an iPad
+  simulator:
+
+  ```bash
+  xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
+    -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+    -only-testing:unipadUITests/StoreBackButtonStatusBarTests \
+    -parallel-testing-enabled NO -collect-test-diagnostics never
+  ```
+
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
   parts together must name every class:
 
