@@ -290,3 +290,16 @@
 "trace_numbers" = "Mga numero";
 "trace_lines" = "Mga linya at tuldok";
 "trace_clear_all" = "Burahin ang lahat ng bakas";
+
+"autoMappingConfirmTitle" = "Iangkop ang awtomatikong pagtugtog?";
+"autoMappingConfirmMessage" = "Papalitan ang paghihintay ng haba ng tunog. Iba-backup ang kasalukuyang pagtugtog. Mananatiling sabay ang mga pad na sabay na pinindot.";
+"autoMappingApply" = "Iangkop";
+"autoMappingSaved" = "Na-save ang awtomatikong pagtugtog. Maibabalik ang nauna mula sa menu.";
+"autoMappingFailed" = "Hindi na-save. Hindi nagbago ang dating awtomatikong pagtugtog.";
+"autoPlayRestore" = "Ibalik ang naunang awtomatikong pagtugtog";
+"autoPlayNoBackup" = "Walang naka-save na backup";
+"autoPlayRestoreConfirmTitle" = "Ibalik ang naunang backup?";
+"autoPlayRestoreConfirmMessage" = "Magpapalit ito ng puwesto sa kasalukuyang pagtugtog. Maaari silang ipagpalit muli.";
+"autoPlayRestoreApply" = "Ibalik";
+"autoPlayRestored" = "Naibalik ang naunang pagtugtog. Maaari silang ipagpalit muli sa menu.";
+"autoPlayRestoreFailed" = "Hindi naibalik. Hindi nagbago ang kasalukuyang pagtugtog at backup.";

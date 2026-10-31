@@ -199,7 +199,66 @@ enum ConformanceHarness {
         guard conformanceCase.layer == "run", !pack.criticalError else {
             return .value(conformanceCase.layer == "run" ? ["loaded": false] : parseResult(pack, root: root))
         }
+        if conformanceCase.observation == "auto-map" {
+            return try await autoMapResult(conformanceCase, pack: pack, root: root, corpus: corpus, deps: deps)
+        }
         return try await runScenario(conformanceCase, pack: pack, root: root, deps: deps)
+    }
+
+    // MARK: - Auto mapping
+
+    private final class AutoMapOutcome: UniPackAutoMapperListener {
+        var failure: Error?
+        var finished = false
+        func onStart() {}
+        func onGetWorkSize(_ size: Int) {}
+        func onProgress(_ progress: Int) {}
+        func onDone() { finished = true }
+        func onException(_ error: Error) { failure = error }
+    }
+
+    /// Runs the app's mapper with the case's sound lengths in place of reading the audio, then
+    /// reads what it saved back from disk the way the next launch does.
+    @MainActor
+    private static func autoMapResult(_ conformanceCase: ConformanceCase, pack: UniPack, root: URL, corpus: ConformanceCorpus, deps: ConformanceDeps) async throws -> ConformanceActual {
+        guard let folder = pack as? UniPackFolder else { throw ConformanceError.harness("the mapper needs a pack folder") }
+        guard let operation = conformanceCase.files.first(where: { $0.path == "operation.json" }),
+              let input = try JSONSerialization.jsonObject(with: corpus.bytes(of: operation)) as? [String: Any],
+              let durations = input["durations"] as? [String: Any]
+        else { throw ConformanceError.harness("\(conformanceCase.id) has no sound lengths") }
+        let lengths = durations.compactMapValues { $0 as? Double }
+
+        let outcome = AutoMapOutcome()
+        await UniPackAutoMapper(unipack: folder, listener: outcome, soundLength: { lengths[$0.lastPathComponent] }).start().value
+        if let failure = outcome.failure { return .failed("auto mapping failed: \(failure)") }
+        guard outcome.finished else { return .failed("auto mapping never finished") }
+
+        guard let elements = deps.load(root).autoPlayTable?.elements else { return .failed("the mapped autoPlay was not read back") }
+        return .value(["events": .array(autoMapEvents(elements))])
+    }
+
+    /// `[on,time,chain,x,y,num]`, `[off,time,chain,x,y]`, `[chain,time,chain]` and, for a wait
+    /// left after the last command, `[trailingDelay,time]`.
+    private static func autoMapEvents(_ elements: [AutoPlay.Element]) -> [JSONValue] {
+        var events: [JSONValue] = []
+        var time = 0
+        var endsInWait = false
+        for element in elements {
+            endsInWait = false
+            switch element {
+            case .on(let x, let y, let chain, let num):
+                events.append(["on", .int(time), .int(chain), .int(x), .int(y), .int(num)])
+            case .off(let x, let y, let chain):
+                events.append(["off", .int(time), .int(chain), .int(x), .int(y)])
+            case .chain(let chain):
+                events.append(["chain", .int(time), .int(chain)])
+            case .delay(let delay):
+                time += delay
+                endsInWait = true
+            }
+        }
+        if endsInWait { events.append(["trailingDelay", .int(time)]) }
+        return events
     }
 
     /// Conditions are evaluated before the self-checks, so an unavailable engine is a skipped test.

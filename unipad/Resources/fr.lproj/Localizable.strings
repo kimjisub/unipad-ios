@@ -290,3 +290,16 @@
 "trace_numbers" = "Numéros";
 "trace_lines" = "Lignes et points";
 "trace_clear_all" = "Effacer tous les tracés";
+
+"autoMappingConfirmTitle" = "Ajuster la lecture automatique ?";
+"autoMappingConfirmMessage" = "Les attentes suivront la durée des sons. La lecture actuelle sera sauvegardée. Les pads simultanés resteront ensemble.";
+"autoMappingApply" = "Ajuster";
+"autoMappingSaved" = "Lecture automatique enregistrée. Le menu permet de restaurer la précédente.";
+"autoMappingFailed" = "Enregistrement impossible. La lecture automatique existante reste inchangée.";
+"autoPlayRestore" = "Restaurer la lecture automatique précédente";
+"autoPlayNoBackup" = "Aucune sauvegarde enregistrée";
+"autoPlayRestoreConfirmTitle" = "Restaurer la sauvegarde précédente ?";
+"autoPlayRestoreConfirmMessage" = "Elle sera échangée avec la lecture actuelle. Vous pourrez les échanger à nouveau.";
+"autoPlayRestoreApply" = "Restaurer";
+"autoPlayRestored" = "Lecture précédente restaurée. Le menu permet de les échanger à nouveau.";
+"autoPlayRestoreFailed" = "Restauration impossible. La lecture actuelle et sa sauvegarde restent inchangées.";

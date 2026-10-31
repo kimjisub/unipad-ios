@@ -290,3 +290,16 @@
 "trace_numbers" = "Sayılar";
 "trace_lines" = "Çizgiler ve noktalar";
 "trace_clear_all" = "Tüm izleri temizle";
+
+"autoMappingConfirmTitle" = "Otomatik çalma ayarlansın mı?";
+"autoMappingConfirmMessage" = "Beklemeler ses uzunluklarıyla değiştirilecek. Mevcut otomatik çalma yedeklenecek. Aynı anda basılan padler birlikte kalacak.";
+"autoMappingApply" = "Ayarla";
+"autoMappingSaved" = "Otomatik çalma kaydedildi. Önceki sürümü menüden geri yükleyebilirsiniz.";
+"autoMappingFailed" = "Kaydedilemedi. Mevcut otomatik çalma değişmedi.";
+"autoPlayRestore" = "Önceki otomatik çalmayı geri yükle";
+"autoPlayNoBackup" = "Kayıtlı yedek yok";
+"autoPlayRestoreConfirmTitle" = "Önceki yedek geri yüklensin mi?";
+"autoPlayRestoreConfirmMessage" = "Mevcut otomatik çalmayla yer değiştirecek. Daha sonra yeniden değiştirebilirsiniz.";
+"autoPlayRestoreApply" = "Geri yükle";
+"autoPlayRestored" = "Önceki otomatik çalma geri yüklendi. Menüden yeniden değiştirebilirsiniz.";
+"autoPlayRestoreFailed" = "Geri yüklenemedi. Mevcut otomatik çalma ve yedek değişmedi.";

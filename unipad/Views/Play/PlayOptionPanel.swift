@@ -6,6 +6,8 @@ struct PlayOptionPanel: View {
     let onQuit: () -> Void
 
     @State private var infoExpanded: Bool = false
+    @State private var confirmingAutoMapping = false
+    @State private var confirmingRestore = false
     @AppStorage(PreferenceManager.Keys.slideEnabled) private var slideEnabled = false
     @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = true
 
@@ -27,6 +29,7 @@ struct PlayOptionPanel: View {
                     if let unipack = vm.unipack, unipack.autoPlayExist {
                         // Auto Mapping is conceptually tied to AutoPlay — lifted out of Tools
                         autoMappingRow
+                        restoreAutoPlayRow
                     }
                     Spacer().frame(height: 16)
                 }
@@ -182,7 +185,7 @@ struct PlayOptionPanel: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 8)
         } else {
-            Button { vm.autoMapping() } label: {
+            Button { confirmingAutoMapping = true } label: {
                 HStack {
                     Text(String(localized: "autoMapping"))
                         .font(.system(size: 13))
@@ -194,8 +197,51 @@ struct PlayOptionPanel: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("autoMapping")
+            .alert(String(localized: "autoMappingConfirmTitle"), isPresented: $confirmingAutoMapping) {
+                Button(String(localized: "cancel"), role: .cancel) {}
+                Button(String(localized: "autoMappingApply")) { vm.autoMapping() }
+            } message: {
+                Text(String(localized: "autoMappingConfirmMessage"))
+            }
+        }
+    }
+
+    private var restoreAutoPlayRow: some View {
+        // The row dims as a whole only in its label: the reason it is off has to stay readable.
+        let rowOpacity = vm.canRestoreAutoPlay ? 1 : PlayViewModel.lockedAlpha
+        return Button { confirmingRestore = true } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "autoPlayRestore"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppColors.playAccent.opacity(rowOpacity))
+                    if !vm.autoPlayBackupExists {
+                        Text(String(localized: "autoPlayNoBackup"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.65))
+                    }
+                }
+                Spacer()
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 14))
+                    .foregroundStyle(AppColors.playAccent.opacity(0.7 * rowOpacity))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!vm.canRestoreAutoPlay)
+        .accessibilityIdentifier("restoreAutoPlay")
+        .alert(String(localized: "autoPlayRestoreConfirmTitle"), isPresented: $confirmingRestore) {
+            Button(String(localized: "cancel"), role: .cancel) {}
+            Button(String(localized: "autoPlayRestoreApply")) { vm.restoreAutoPlay() }
+        } message: {
+            Text(String(localized: "autoPlayRestoreConfirmMessage"))
         }
     }
 

@@ -290,3 +290,16 @@
 "trace_numbers" = "संख्याएँ";
 "trace_lines" = "रेखाएँ और बिंदु";
 "trace_clear_all" = "सभी निशान मिटाएँ";
+
+"autoMappingConfirmTitle" = "अपने आप बजाने को समायोजित करें?";
+"autoMappingConfirmMessage" = "प्रतीक्षा की जगह ध्वनि की अवधि लगेगी। वर्तमान क्रम का बैकअप बनेगा। साथ दबाए गए पैड साथ ही रहेंगे।";
+"autoMappingApply" = "समायोजित करें";
+"autoMappingSaved" = "अपने आप बजाने का क्रम सहेजा गया। मेन्यू से पिछला क्रम बहाल कर सकते हैं।";
+"autoMappingFailed" = "सहेज नहीं सके। मौजूदा क्रम बदला नहीं है।";
+"autoPlayRestore" = "पिछला क्रम बहाल करें";
+"autoPlayNoBackup" = "कोई बैकअप नहीं है";
+"autoPlayRestoreConfirmTitle" = "पिछला बैकअप बहाल करें?";
+"autoPlayRestoreConfirmMessage" = "यह वर्तमान क्रम से बदल जाएगा। बहाल करने के बाद फिर बदल सकते हैं।";
+"autoPlayRestoreApply" = "बहाल करें";
+"autoPlayRestored" = "पिछला क्रम बहाल हुआ। मेन्यू से फिर बदल सकते हैं।";
+"autoPlayRestoreFailed" = "बहाल नहीं कर सके। वर्तमान क्रम और बैकअप बदले नहीं हैं।";

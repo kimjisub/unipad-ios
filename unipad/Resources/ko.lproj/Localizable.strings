@@ -267,7 +267,7 @@
 /* Additional */
 "MPP_playCount" = "플레이 횟수";
 "mb" = "MB";
-"autoMapping" = "자동 매핑";
+"autoMapping" = "자동 맞춤";
 
 /* MIDI 문제 신고 */
 "settings_midi_report" = "문제 신고";
@@ -313,3 +313,16 @@
 "trace_numbers" = "숫자";
 "trace_lines" = "선과 점";
 "trace_clear_all" = "흔적 모두 지우기";
+
+"autoMappingConfirmTitle" = "자동 연주를 맞출까요?";
+"autoMappingConfirmMessage" = "기다림을 소리 길이로 바꿉니다. 지금의 자동 연주는 백업합니다. 동시에 누른 패드는 함께 둡니다";
+"autoMappingApply" = "맞추기";
+"autoMappingSaved" = "자동 연주를 저장했습니다. 메뉴에서 이전 것으로 복원할 수 있어요";
+"autoMappingFailed" = "저장하지 못했습니다. 기존 자동 연주는 그대로입니다";
+"autoPlayRestore" = "이전 자동 연주로 복원";
+"autoPlayNoBackup" = "저장된 백업이 없습니다";
+"autoPlayRestoreConfirmTitle" = "직전 백업으로 되돌릴까요?";
+"autoPlayRestoreConfirmMessage" = "현재 자동 연주와 자리를 바꿉니다. 복원 후에도 다시 되돌릴 수 있어요";
+"autoPlayRestoreApply" = "복원하기";
+"autoPlayRestored" = "이전 자동 연주로 복원했습니다. 메뉴에서 다시 되돌릴 수 있어요";
+"autoPlayRestoreFailed" = "복원하지 못했습니다. 현재 자동 연주와 백업은 그대로입니다";
