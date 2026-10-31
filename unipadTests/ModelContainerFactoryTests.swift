@@ -242,6 +242,8 @@ private final class RecordingCrashlytics: CrashlyticsServiceProtocol, @unchecked
     func record(_ error: Error) {
         recorded.append(error)
     }
+
+    func setCustomValue(_ value: String?, forKey key: String) {}
 }
 
 private struct StoreOpenFailure: Error {}
