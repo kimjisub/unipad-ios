@@ -74,12 +74,8 @@ final class TraceLogClassicSettingTests: XCTestCase {
 
     /// The play option panel is taller than the screen; Trace Log sits in its lower TOOLS section.
     private func scrollIntoView(_ element: XCUIElement) {
-        let panel = app.scrollViews.firstMatch
-        let inView = { panel.frame.contains(element.frame) }
-        for _ in 0..<6 where !inView() {
-            if element.frame.midY < panel.frame.midY { panel.swipeDown(velocity: .slow) } else { panel.swipeUp(velocity: .slow) }
-        }
-        XCTAssertTrue(inView(), "\(element.label) never scrolled into view")
+        XCTAssertTrue(UITestSupport.scrollIntoPlayOptionPanel(element, in: app),
+                      "\(element.label) never scrolled into view")
     }
 
     @MainActor
