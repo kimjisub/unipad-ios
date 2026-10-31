@@ -38,6 +38,9 @@ not_run=(
   -skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt
   # Pointer input exists only on iPad; this script runs on an iPhone.
   -skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain
+  # Only an iPad window can be resized; this script runs on an iPhone. On an iPad simulator:
+  # xcodebuild test -project unipad.xcodeproj -scheme unipad -destination 'platform=iOS Simulator,id=<udid>' -only-testing:unipadUITests/WindowControlsBackButtonTests
+  -skip-testing:unipadUITests/WindowControlsBackButtonTests
 )
 
 configuration=${UNIPAD_UI_TEST_CONFIGURATION:-Debug}
