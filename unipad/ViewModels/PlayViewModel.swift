@@ -155,9 +155,11 @@ final class PlayViewModel {
     @ObservationIgnored private var userPausedTimedPlayback = false
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
+    @ObservationIgnored private let crashKeys: PlayCrashKeys
 
-    init(usageAnalytics: UsageAnalytics = .shared) {
+    init(usageAnalytics: UsageAnalytics = .shared, crashKeys: PlayCrashKeys? = nil) {
         usageSession = usageAnalytics.makePlaySession()
+        self.crashKeys = crashKeys ?? PlayCrashKeys(crashlytics: FirebaseManager.shared.crashlytics)
         scbWatermark.setCheckedSilently(PreferenceManager.shared.watermark)
     }
 
@@ -1242,9 +1244,11 @@ final class PlayViewModel {
         startVolumeObserver()
     }
 
-    /// Keeps the window layout that the next `play_start` or `play_end` reports.
+    /// Keeps the window layout that crash reports and the next `pack_load`, `play_start` or
+    /// `play_end` carry.
     func screenLayoutChanged(_ layout: ScreenLayout?) {
         usageSession.screenLayoutChanged(layout)
+        crashKeys.screenLayoutChanged(layout)
     }
 
     // MARK: - Covered by another screen
@@ -1258,12 +1262,14 @@ final class PlayViewModel {
         guard enable, !isCovered else { return }
         onPause()
         isCovered = true
+        crashKeys.screenCovered()
     }
 
     /// Restore the controller connection; playback still waits for an explicit user request.
     func screenShown() {
         guard enable, isCovered else { return }
         isCovered = false
+        crashKeys.screenShown()
         onResume()
     }
 
@@ -1291,6 +1297,7 @@ final class PlayViewModel {
         scbTraceLog.setCheckedSilently(false)
         padHolds.removeAll()
         usageSession.ended()
+        crashKeys.screenClosed()
         enable = false
         stopVolumeObserver()
         if let adapter = midiControllerAdapter {

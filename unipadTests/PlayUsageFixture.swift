@@ -8,6 +8,7 @@ import Testing
 @MainActor
 final class PlayUsageScenario {
     let sink = UsageAnalyticsTests.RecordingAnalytics()
+    let crashlytics = PlayCrashKeysTests.RecordingCrashlytics()
     let vm: PlayViewModel
     private let packFolder: URL
     private var restoresMidiDriver = false
@@ -20,7 +21,7 @@ final class PlayUsageScenario {
         keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:],
         grid: PackGrid = PackGrid()
     ) throws {
-        vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink))
+        vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink), crashKeys: PlayCrashKeys(crashlytics: crashlytics))
         packFolder = FileManager.default.temporaryDirectory.appendingPathComponent("PlayUsage-\(UUID().uuidString)")
         try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, grid: grid)
     }

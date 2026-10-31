@@ -190,6 +190,24 @@ struct PlayUsageRecordTests {
         }
     }
 
+    @Test func crashKeysFollowThePlayScreenWindowUntilItCloses() async throws {
+        try await PlayUsageScenario.run { s in
+            let screen = CGSize(width: 1376, height: 1032)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            #expect(s.crashlytics.keys == [
+                "play_orientation": "landscape", "play_screen_short_side": "840dp_plus", "play_window_mode": "full_screen",
+            ])
+            s.vm.screenCovered()
+            #expect(s.crashlytics.keys.isEmpty)
+            s.vm.screenShown()
+            #expect(s.crashlytics.keys["play_screen_short_side"] == "840dp_plus")
+            s.vm.cleanup()
+            #expect(s.crashlytics.keys.isEmpty)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            #expect(s.crashlytics.keys.isEmpty)
+        }
+    }
+
     @Test func midiModeKeyDoesNotCountAsHuman() async throws {
         try await PlayUsageScenario.run { s in
             try await s.loadReady()
