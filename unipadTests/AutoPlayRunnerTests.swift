@@ -230,9 +230,7 @@ final class AutoPlayRunnerTests: XCTestCase {
     }
 
     private func readySoundEngine() async throws -> SoundEngine {
-        let loading = TestSoundLoadListener()
-        let engine = SoundEngine(unipack: UniPack(), chain: ChainObserver(), loadingListener: loading)
-        try await wait { loading.finished }
+        let (engine, loading) = try await SoundEngineTestSupport.loadedEngine(UniPack())
         if let failure = loading.failure {
             engine.destroy()
             throw failure
