@@ -167,6 +167,14 @@ final class PlayViewModel {
     @ObservationIgnored var makeSoundEngine: (UniPack, ChainObserver, SoundEngine.LoadingListener) -> SoundEngine = {
         SoundEngine(unipack: $0, chain: $1, loadingListener: $2)
     }
+    /// Builds the light runner; a test swaps in one on a clock it controls.
+    @ObservationIgnored var makeLedRunner: (UniPack, LedRunner.Listener, ChainObserver) -> LedRunner = {
+        LedRunner(unipack: $0, listener: $1, chain: $2)
+    }
+    /// Builds the autoplay runner; a test swaps in one on a clock it controls.
+    @ObservationIgnored var makeAutoPlayRunner: @MainActor (UniPack, AutoPlayRunner.Listener, ChainObserver) -> AutoPlayRunner = {
+        AutoPlayRunner(unipack: $0, listener: $1, chain: $2)
+    }
 
     // MARK: - Load
 
@@ -237,11 +245,7 @@ final class PlayViewModel {
         if pack.keyLedExist {
             let adapter = LedListenerAdapter(viewModel: self)
             ledListenerAdapter = adapter
-            ledRunner = LedRunner(
-                unipack: pack,
-                listener: adapter,
-                chain: chain
-            )
+            ledRunner = makeLedRunner(pack, adapter, chain)
             logger.info("loadUnipack: LedRunner created")
         }
 
@@ -389,11 +393,7 @@ final class PlayViewModel {
     private func initAutoPlayRunner(pack: UniPack) {
         let apAdapter = AutoPlayListenerAdapter(viewModel: self)
         autoPlayListenerAdapter = apAdapter
-        autoPlayRunner = AutoPlayRunner(
-            unipack: pack,
-            listener: apAdapter,
-            chain: chain
-        )
+        autoPlayRunner = makeAutoPlayRunner(pack, apAdapter, chain)
         autoPlayProgressMax = pack.autoPlayTable?.elements.count ?? 0
         logger.info("initAutoPlayRunner: AutoPlayRunner created, elements=\(self.autoPlayProgressMax)")
     }

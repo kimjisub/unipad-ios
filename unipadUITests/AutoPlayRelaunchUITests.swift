@@ -115,6 +115,65 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         UITestSupport.attachScreenshot("pending-step-03-resumed", to: self)
     }
 
+    /// The screen side of `StepReturnAutoplayTests`: the same steps through the real background and
+    /// return, read from the pads as drawn. The fixture's last group is pads 1,2 and 2,1.
+    @MainActor
+    private func checkAutoplayAfterReturningToPartialStep(awayFor seconds: TimeInterval) throws {
+        continueAfterFailure = false
+        let orientation = XCUIDevice.shared.orientation
+        defer { XCUIDevice.shared.orientation = orientation }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: "step-return")
+        app.launch()
+        defer { app.terminate() }
+        UITestSupport.dismissSystemAlerts()
+        let title = app.staticTexts["Step Return Fixture"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 30))
+        title.tap()
+        let play = app.buttons["Play"].firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        play.tap()
+        let grid = app.otherElements["playPadGrid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 15))
+        let idle = try PadPixels.settled(grid)
+        choose("Step", app: app)
+        pressTopRow(grid, columns: 0..<2)
+        UITestSupport.attachScreenshot("step-return-01-partly-pressed", to: self)
+
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: seconds)
+        app.activate()
+        XCTAssertTrue(grid.waitForExistence(timeout: 15))
+        XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), [],
+                       "Leaving the app must clear the guides and lights until Play")
+        let resume = app.buttons["play.fill"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 5))
+        resume.tap()
+        UITestSupport.attachScreenshot("step-return-02-guide", to: self)
+        let guide = try PadPixels.settled(grid)
+        XCTAssertEqual(guide.changedPads(comparedWith: idle), ["2,1"], "Play must guide only the unpressed pad")
+
+        choose("Autoplay", app: app)
+        UITestSupport.attachScreenshot("step-return-03-autoplay", to: self)
+        let played = try PadPixels.settled(grid)
+        XCTAssertEqual(played.changedPads(comparedWith: idle), ["2,1"], "Autoplay must light only the unpressed pad")
+        XCTAssertEqual(played.changedPads(comparedWith: guide), ["2,1"], "The pad's own light must replace its guide")
+        let ended = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                              object: app.buttons["forward.end.fill"])
+        XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: 15), .completed, "The last group must end the song")
+    }
+
+    @MainActor
+    func testAutoplayAfterOneSecondAwayFromPartialStep() throws {
+        try checkAutoplayAfterReturningToPartialStep(awayFor: 1)
+    }
+
+    @MainActor
+    func testAutoplayAfterTenSecondsAwayFromPartialStep() throws {
+        try checkAutoplayAfterReturningToPartialStep(awayFor: 10)
+    }
+
     /// The fixture's three groups are one pad each, along the top row.
     @MainActor
     private func playAllGroups(_ grid: XCUIElement, app: XCUIApplication) {
