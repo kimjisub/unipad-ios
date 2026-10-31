@@ -8,7 +8,10 @@ final class AutoPlayRunnerTests: XCTestCase {
         var ends = 0
         var onFinish: (() -> Void)?
         var guidePads: [Int] = []
+        var guideChains: [Int] = []
+        var guideTargets: [Int64] = []
         var pressTimes: [Int64] = []
+        var pressedPads: [Int] = []
         var releaseTimes: [Int64] = []
         var inputBoundaries: [Int64?] = []
         /// Guide pads on screen, as the play screen tracks them.
@@ -17,17 +20,21 @@ final class AutoPlayRunnerTests: XCTestCase {
         func onEnd() { ends += 1; onFinish?() }
         func onPadTouchOn(x: Int, y: Int, inputID: UUID) {}
         func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID]) {}
-        func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) { pressTimes.append(scheduledAtMs) }
+        func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
+            pressedPads.append(x * 256 + y)
+            pressTimes.append(scheduledAtMs)
+        }
         func onPadTouchOff(x: Int, y: Int, inputIDs: [UUID], scheduledAtMs: Int64) { releaseTimes.append(scheduledAtMs) }
         func onInputTimeThrough(_ at: Int64?) { inputBoundaries.append(at) }
         func onChainChange(c: Int) {}
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
             guidePads.append(x * 256 + y)
+            guideTargets.append(targetWallTimeMs)
             litGuides.insert(x * 256 + y)
         }
         func onGuidePadOff(x: Int, y: Int) { litGuides.remove(x * 256 + y) }
         func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
-        func onGuideChainOn(c: Int) {}
+        func onGuideChainOn(c: Int) { guideChains.append(c) }
         func onRemoveGuide() { litGuides.removeAll() }
         func chainButsRefresh() {}
         func onProgressUpdate(progress: Int) {}
@@ -172,6 +179,17 @@ final class AutoPlayRunnerTests: XCTestCase {
         XCTAssertFalse(runner.active)
     }
 
+    private func readySoundEngine() async throws -> SoundEngine {
+        let loading = TestSoundLoadListener()
+        let engine = SoundEngine(unipack: UniPack(), chain: ChainObserver(), loadingListener: loading)
+        try await wait { loading.finished }
+        if let failure = loading.failure {
+            engine.destroy()
+            throw failure
+        }
+        return engine
+    }
+
     private func twoStepPack() -> UniPack {
         let pack = UniPack()
         pack.autoPlayTable = AutoPlay(elements: [
@@ -300,6 +318,205 @@ final class AutoPlayRunnerTests: XCTestCase {
         runner.stepMode = true
         runner.playmode = false
         runner.launch()
+    }
+
+
+    /// The guided chord is still owed until its pads are pressed. Scanning past it must not
+    /// discard it when sound-producing autoplay starts, even at the end of the table.
+    func testStepToSoundingAutoplayKeepsUnplayedPadsAcrossPauseDurations() async throws {
+        let engine = try await readySoundEngine()
+        defer { engine.destroy() }
+        let pressedPads: [Int?] = [nil, 1, 2]
+        for pauseBeforeFirstTick in [false, true] {
+            for pausedMs: Int64 in [0, 1, 300, 3_000] {
+                for pressedPad in pressedPads {
+                    for lastGroup in [false, true] {
+                        let label = "pauseBeforeFirstTick=\(pauseBeforeFirstTick), pause=\(pausedMs), pressed=\(String(describing: pressedPad)), final=\(lastGroup)"
+                        let pack = UniPack()
+                        var elements: [AutoPlay.Element] = [
+                            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
+                            .on(x: 0, y: 1, currChain: 0, num: 0),
+                            .on(x: 0, y: 2, currChain: 0, num: 0),
+                        ]
+                        if !lastGroup {
+                            elements += [.delay(delay: 250), .on(x: 0, y: 3, currChain: 0, num: 0)]
+                        }
+                        pack.autoPlayTable = AutoPlay(elements: elements)
+                        let clock = TestManualClock()
+                        let recorder = Recorder()
+                        var ticks = 0
+                        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                                    clock: { clock.read() }, sleep: { _ in
+                            ticks += 1
+                            await Task.yield()
+                        })
+                        let vm = PlayViewModel()
+                        vm.autoPlayRunner = runner
+                        vm.soundEngine = engine
+                        defer { runner.stop() }
+                        vm.switchPlayMode(.stepPractice)
+                        try await wait { recorder.guidePads == [0] }
+                        runner.stepPadPressed(x: 0, y: 0)
+                        try await wait { recorder.guidePads == [0, 1, 2] }
+                        // Leave this press queued, as a user's press can arrive just before
+                        // the mode button in the same tick.
+                        if let pressedPad { runner.stepPadPressed(x: 0, y: pressedPad) }
+                        clock.advance(pausedMs)
+                        if pauseBeforeFirstTick {
+                            let pausedTick = ticks + 2
+                            try await wait { ticks >= pausedTick }
+                        }
+                        vm.switchPlayMode(.autoPlay)
+                        if pauseBeforeFirstTick {
+                            vm.autoPlayPause()
+                            clock.advance(pausedMs)
+                            let pausedTick = ticks + 2
+                            try await wait { ticks >= pausedTick || !runner.active }
+                            vm.autoPlayResume()
+                            try await wait { runner.playmode }
+                        }
+                        let resumedAt = clock.read()
+                        let nextTick = ticks + 2
+                        try await wait { ticks >= nextTick || !runner.active }
+                        let pending = [1, 2].filter { $0 != pressedPad }
+                        XCTAssertEqual(recorder.pressedPads, pending, label)
+                        XCTAssertEqual(recorder.pressTimes, Array(repeating: resumedAt, count: pending.count), label)
+                        if !lastGroup {
+                            clock.advance(249)
+                            let nextTick = ticks + 2
+                            try await wait { ticks >= nextTick || !runner.active }
+                            XCTAssertEqual(recorder.pressedPads, pending, label)
+                            clock.advance(1)
+                            let finalTick = ticks + 2
+                            try await wait { ticks >= finalTick || !runner.active }
+                            XCTAssertEqual(recorder.pressedPads, pending + [3], label)
+                            XCTAssertEqual(recorder.pressTimes.last, resumedAt + 250, label)
+                        }
+                        XCTAssertFalse(runner.active, label)
+                    }
+                }
+            }
+        }
+    }
+
+    func testTimedGuideAfterStepAutoplayKeepsTheSongPosition() async throws {
+        let engine = try await readySoundEngine()
+        defer { engine.destroy() }
+        for pauseBeforeGuideTick in [false, true] {
+            let pack = UniPack()
+            pack.autoPlayTable = AutoPlay(elements: [
+                .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 5_000),
+                .on(x: 0, y: 1, currChain: 0, num: 0), .delay(delay: 5_000),
+                .on(x: 0, y: 2, currChain: 0, num: 0), .delay(delay: 5_000),
+            ])
+            let clock = TestManualClock()
+            let recorder = Recorder()
+            var ticks = 0
+            let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                clock: { clock.read() }, sleep: { _ in ticks += 1; await Task.yield() })
+            let vm = PlayViewModel()
+            vm.autoPlayRunner = runner
+            vm.soundEngine = engine
+            defer { runner.stop() }
+            vm.switchPlayMode(.stepPractice)
+            try await wait { recorder.guidePads == [0] }
+            runner.stepPadPressed(x: 0, y: 0)
+            try await wait { recorder.guidePads == [0, 1] }
+            clock.advance(300)
+            vm.switchPlayMode(.autoPlay)
+            try await wait { recorder.pressedPads == [1] }
+            XCTAssertEqual(recorder.pressTimes, [1_300])
+            recorder.guidePads.removeAll()
+            recorder.guideTargets.removeAll()
+
+            clock.advance(1_000)
+            vm.switchPlayMode(.guidePlay)
+            if pauseBeforeGuideTick {
+                vm.autoPlayPause()
+                clock.advance(3_000)
+                vm.autoPlayResume()
+                try await wait { runner.playmode }
+            }
+            var nextTick = ticks + 2
+            try await wait { ticks >= nextTick }
+            XCTAssertEqual(recorder.guidePads, [], "The next note is outside the guide lookahead")
+            clock.advance(3_200)
+            nextTick = ticks + 2
+            try await wait { ticks >= nextTick }
+            XCTAssertEqual(recorder.guidePads, [2], "Timed guidance must not repeat the note already played by autoplay")
+            XCTAssertEqual(recorder.guideTargets, [pauseBeforeGuideTick ? 9_300 : 6_300],
+                           "The next note stays five seconds after the resumed autoplay note, excluding pauses")
+        }
+    }
+
+    /// The play button in step practice resumes silent timed guidance. It is deliberately
+    /// outside the sounding-autoplay rule and keeps the existing scan position.
+    func testStepResumeKeepsExistingSilentGuideBehavior() async throws {
+        let engine = try await readySoundEngine()
+        defer { engine.destroy() }
+        for pausedMs: Int64 in [0, 1, 300, 3_000] {
+            for lastGroup in [false, true] {
+                let pack = UniPack()
+                var elements: [AutoPlay.Element] = [
+                    .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
+                    .on(x: 0, y: 1, currChain: 0, num: 0),
+                ]
+                if !lastGroup { elements += [.delay(delay: 4_000), .on(x: 0, y: 2, currChain: 0, num: 0)] }
+                pack.autoPlayTable = AutoPlay(elements: elements)
+                let clock = TestManualClock()
+                let recorder = Recorder()
+                var ticks = 0
+                let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                            clock: { clock.read() }, sleep: { _ in
+                    ticks += 1
+                    await Task.yield()
+                })
+                let vm = PlayViewModel()
+                vm.autoPlayRunner = runner
+                vm.soundEngine = engine
+                defer { runner.stop() }
+                vm.switchPlayMode(.stepPractice)
+                try await wait { recorder.guidePads == [0] }
+                runner.stepPadPressed(x: 0, y: 0)
+                try await wait { recorder.guidePads == [0, 1] }
+                clock.advance(pausedMs)
+                vm.autoPlayResume()
+                try await wait { runner.playmode }
+                let nextTick = ticks + 2
+                try await wait { ticks >= nextTick || !runner.active }
+                XCTAssertEqual(vm.playMode, .guidePlay)
+                XCTAssertTrue(runner.practiceGuide)
+                XCTAssertFalse(runner.stepMode)
+                XCTAssertEqual(recorder.pressedPads, [])
+                XCTAssertEqual(runner.progress, lastGroup ? 3 : 4, "The silent guide must retain its existing scan position")
+            }
+        }
+    }
+
+    func testReturningToStepPracticeDoesNotReusePreparationAcrossAChainWait() async throws {
+        let pack = UniPack()
+        pack.autoPlayTable = AutoPlay(elements: [
+            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 100),
+            .on(x: 0, y: 1, currChain: 1, num: 0),
+        ])
+        let clock = TestManualClock()
+        let recorder = Recorder()
+        let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                    clock: { clock.read() }, sleep: { _ in await Task.yield() })
+        let vm = PlayViewModel()
+        vm.autoPlayRunner = runner
+        defer { runner.stop() }
+        vm.switchPlayMode(.stepPractice)
+        try await wait { recorder.guidePads == [0] }
+        vm.switchPlayMode(.autoPlay)
+        // Return before autoplay emits the prepared group. A new practice scan owns it now.
+        vm.switchPlayMode(.stepPractice)
+        try await wait { recorder.guidePads == [0, 0] }
+        runner.stepPadPressed(x: 0, y: 0)
+        try await wait { recorder.guideChains == [1] }
+        vm.switchPlayMode(.autoPlay)
+        try await wait { !runner.active }
+        XCTAssertEqual(recorder.pressedPads, [1], "The old group's filter discarded the new chain's first note")
     }
 
     func testSuspendedStepPracticeDiscardsUnprocessedPresses() async throws {
