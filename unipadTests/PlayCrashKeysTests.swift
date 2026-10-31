@@ -75,6 +75,8 @@ struct PlayCrashKeysTests {
         #expect(crashlytics.keys.isEmpty)
 
         crashKeys.screenLayoutChanged(narrow)
+        crashKeys.screenCovered()
+        crashKeys.screenShown()
         #expect(crashlytics.keys.isEmpty)
     }
 
