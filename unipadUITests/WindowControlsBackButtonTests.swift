@@ -169,6 +169,39 @@ final class WindowControlsBackButtonTests: XCTestCase {
         touchBack(upright: upright, arrivingAt: home, "store")
     }
 
+    private func assertTitle(_ title: String, ownRow: Bool, _ screen: String) {
+        let text = app.staticTexts[title].firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 5), "\(screen) has no title")
+        let back = backButton.frame
+        if ownRow {
+            XCTAssertGreaterThan(text.frame.minY, back.midY, "the title of \(screen) is not under the chevron")
+        } else {
+            XCTAssertLessThan(abs(text.frame.midY - back.midY), back.height / 2, "the title of \(screen) left the chevron's row")
+        }
+    }
+
+    private func walkTitles(ownRow: Bool) {
+        openSettings()
+        assertTitle("Settings", ownRow: ownRow, "settings")
+        openTheme()
+        assertTitle("Theme", ownRow: ownRow, "theme")
+        screenOrigin.withOffset(screenPoint(of: backButton, offset: 0, upright: false)).tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "theme did not go back to settings")
+        openLicenses()
+        assertTitle("Open Source License", ownRow: ownRow, "licenses")
+    }
+
+    func testTitlesGetTheirOwnRowInNarrowWindow() {
+        shrinkWindow(toWidth: Self.narrowWidth)
+        walkTitles(ownRow: true)
+    }
+
+    func testTitlesStayBesideChevronInFullWindow() {
+        fillScreen()
+        assertWindowFillsScreen()
+        walkTitles(ownRow: false)
+    }
+
     func testBackButtonsRespondInNarrowLandscapeWindow() {
         walkBackButtons(upright: false, windowWidth: Self.narrowWidth)
     }

@@ -29,19 +29,7 @@ struct OpenSourceLicensesView: View {
 
     private var componentList: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                ScreenHeaderBackButton { router.pop() }
-
-                Text(String(localized: "openSourceLicense"))
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-
-                Spacer(minLength: 0)
-            }
-            .avoidingWindowControls()
-            .padding(.bottom, 24)
+            ScreenHeader(String(localized: "openSourceLicense"), titleLineLimit: 2) { router.pop() }
 
             ScrollView {
                 LazyVStack(spacing: 3) {

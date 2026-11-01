@@ -49,19 +49,7 @@ struct SettingsView: View {
 
     private var categoryNav: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                ScreenHeaderBackButton { router.pop() }
-
-                Text(String(localized: "setting"))
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-
-                Spacer(minLength: 0)
-            }
-            .avoidingWindowControls()
-            .padding(.bottom, 24)
+            ScreenHeader(String(localized: "setting")) { router.pop() }
 
             navItem(
                 icon: "info.circle",
