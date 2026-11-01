@@ -115,7 +115,9 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
 
 `ReleaseFeatures.xctestplan` selects the unit and UI tests that cover the app's
 basic features, so a release candidate can be checked in one run without the
-whole UI target. Run it against a Release build on an iPhone simulator:
+whole UI target. A plan entry selects a suite by its outermost name, so suites
+nested in `PlayUsageRecordTests` run through that one entry. Run it against a
+Release build on an iPhone simulator:
 
 ```bash
 UNIPAD_UI_TEST_CONFIGURATION=Release ci/ui-tests.sh <simulator-udid> -testPlan ReleaseFeatures

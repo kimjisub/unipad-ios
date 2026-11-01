@@ -48,19 +48,13 @@
             "name": "LedRunnerTests"
           },
           {
-            "name": "AutoPlayRelaunchTests"
-          },
-          {
-            "name": "StepReturnAutoplayTests"
+            "name": "PlayUsageRecordTests"
           },
           {
             "name": "LaunchpadCoreCFWDriverTests"
           },
           {
             "name": "LaunchpadProCFWDriverTests"
-          },
-          {
-            "name": "PlayViewModelLoadTests"
           },
           {
             "name": "MidiConnectionHelpTests"
@@ -79,9 +73,6 @@
           },
           {
             "name": "PlayLayoutTests"
-          },
-          {
-            "name": "PlayInterruptionTests"
           },
           {
             "name": "SoundEngineInterruptionTests"
