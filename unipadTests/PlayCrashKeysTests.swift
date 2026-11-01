@@ -8,6 +8,7 @@ struct PlayCrashKeysTests {
     final class RecordingCrashlytics: CrashlyticsServiceProtocol, @unchecked Sendable {
         private(set) var keys: [String: String] = [:]
         private(set) var writes = 0
+        var onWrite: () -> Void = {}
 
         func setCrashlyticsCollectionEnabled(_ enabled: Bool) {}
         func log(_ message: String) {}
@@ -16,6 +17,7 @@ struct PlayCrashKeysTests {
         func setCustomValue(_ value: String?, forKey key: String) {
             keys[key] = value
             writes += 1
+            onWrite()
         }
     }
 

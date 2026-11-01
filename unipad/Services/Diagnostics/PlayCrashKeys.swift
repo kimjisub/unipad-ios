@@ -2,7 +2,9 @@ import Foundation
 
 /// Crash reports carry the play screen's window in the same coarse buckets as `play_start`, so a
 /// crash in a large window can be told apart. The keys exist only while that screen is the one
-/// showing: a crash anywhere else reports no window, not the last one played in.
+/// showing: a crash anywhere else reports no window, not the last one played in. Non-fatals are
+/// different: the SDK sends the session's one set of keys with them, so one recorded on another
+/// screen can show these keys. Read them from crash events only.
 final class PlayCrashKeys {
     private enum Screen {
         case shown

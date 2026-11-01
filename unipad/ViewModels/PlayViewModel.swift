@@ -1308,7 +1308,8 @@ final class PlayViewModel {
         ledRunner?.stop()
         soundEngine?.destroy()
         chain.clearObservers()
-        // Last, so a crash in the teardown above still reports the play window.
+        // Last, so a crash in the teardown on this thread still reports the play window. The
+        // sound engine stops on its worker, which nothing here waits for.
         crashKeys.screenClosed()
     }
 
