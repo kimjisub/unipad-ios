@@ -9,8 +9,6 @@ struct OpenSourceLicensesView: View {
 
     private let licenses = OpenSourceLicense.bundled()
 
-    private static let backHitOutset: CGFloat = 16
-
     var body: some View {
         GeometryReader { geometry in
             let listWidth = min(max(geometry.size.width * 0.3, 180), 260)
@@ -32,22 +30,17 @@ struct OpenSourceLicensesView: View {
     private var componentList: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Button { router.pop() } label: {
-                    Image(systemName: "chevron.left")
-                        .foregroundStyle(AppColors.textPrimary)
-                        .padding(Self.backHitOutset)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .padding(-Self.backHitOutset)
-                .padding(.trailing, 4)
+                ScreenHeaderBackButton { router.pop() }
 
                 Text(String(localized: "openSourceLicense"))
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(AppColors.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
+
+                Spacer(minLength: 0)
             }
+            .avoidingWindowControls()
             .padding(.bottom, 24)
 
             ScrollView {
