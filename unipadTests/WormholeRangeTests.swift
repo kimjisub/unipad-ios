@@ -111,11 +111,12 @@ extension PlayUsageRecordTests {
         func guidePlayReachesTheEndAfterAMoveToAMissingChain(_ column: String) async throws {
             try await PlayUsageScenario.run(keySound: Self.keySound(column), autoPlay: Self.autoPlay) { s in
                 try await s.loadReady()
+                let clock = try s.useManualSongClock()
                 let runner = try #require(s.vm.autoPlayRunner)
                 s.vm.switchPlayMode(.guidePlay)
-                try await s.waitWhile { s.vm.padGuideTargets[0][1] == 0 && runner.active }
+                try await s.waitWhile { s.vm.padGuideTargets[0][1] == 0 }
                 #expect(s.vm.padGuideTargets[0][1] > 0, "the guide did not show the pad after the chain move")
-                try await s.autoplayEnded()
+                try await s.autoplayEnded(advancing: clock)
                 #expect(!runner.active)
                 #expect(s.vm.chain.value == 0)
             }
