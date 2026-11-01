@@ -38,7 +38,9 @@ final class WindowControlsBackButtonTests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
-        app.launchArguments += UITestSupport.englishLaunchArguments()
+        // An upright iPad turns the app on its side, where a swipe cannot scroll the pack list,
+        // so the store card has to be on screen without scrolling.
+        app.launchArguments += UITestSupport.englishLaunchArguments(library: "empty")
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "home never appeared")
