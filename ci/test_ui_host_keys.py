@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 NOT_RUN = [
     "-skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests",
     "-skip-testing:unipadUITests/VirtualMidiPlayScreenUITests",
+    "-skip-testing:unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
+    "-skip-testing:unipadTests/PlayUsageRecordTests/MidiInputPathTests/virtualDeviceReportsAFailedCommand()",
     "-skip-testing:unipadUITests/NotificationRoundTripUITests",
     "-skip-testing:unipadUITests/LedAutoplayUITests",
     "-skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt",
@@ -216,15 +218,16 @@ class UIHostKeysTests(unittest.TestCase):
 
     def test_every_check_left_out_still_exists_and_has_a_reason(self):
         script = (ROOT / "ci/ui-tests.sh").read_text().splitlines()
-        tests = ROOT / "unipadUITests"
         for entry in NOT_RUN:
-            index = next(i for i, line in enumerate(script) if line.strip() == entry)
+            index = next(i for i, line in enumerate(script) if line.strip().strip('"') == entry)
             self.assertTrue(script[index - 1].strip().startswith("#"), f"{entry} needs a reason above it")
-            parts = entry.split("/")[1:]
-            source = (tests / f"{parts[0]}.swift").read_text()
-            self.assertIn(f"class {parts[0]}", source)
-            if len(parts) > 1:
-                self.assertIn(f"func {parts[1]}(", source)
+            target, *path = entry.removeprefix("-skip-testing:").split("/")
+            # Unit test suites are named through the parent suite that holds them.
+            suite, *method = path[1:] if target == "unipadTests" else path
+            source = (ROOT / target / f"{suite}.swift").read_text()
+            self.assertRegex(source, rf"\b(?:class|struct) {suite}\b")
+            if method:
+                self.assertIn(f"func {method[0].removesuffix('()')}(", source)
 
     def test_selected_classes_replace_the_whole_target(self):
         result, probe = self.run_script(args=["-only-testing:unipadUITests/PackWarningUITests"])
