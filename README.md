@@ -272,20 +272,24 @@ python3 "$HARNESS/devices.py" native <udid> --generation <generation> -- \
 ```
 
 Do not run `ci/notification_roundtrip.py` directly. The native entry first
-confirms that the simulator's notification service answers, before anything is
-built. Skipped, a simulator that is not ready looks like an app failure, because
-a slow notification-settings callback can make the app skip its permission
-prompt.
+confirms that the simulator's notification service answers, before the test app
+is built. A direct run leaves out that confirmation, so a simulator that is not
+ready looks like an app failure: a slow notification-settings callback can make
+the app skip its permission prompt.
 
 Exit codes:
 
 - `0`: the check passed.
 - `75`: the app test never started, because the notification service did not
-  answer within 10 seconds or that readiness check could not finish. The
-  `DEVICE-NOT-READY notification service:` line gives the reason. Run the same
-  command again on the same lease; do not restart the simulator.
-- `1`: the app test failed, or the harness refused the run and printed why. Find
-  the cause in the saved evidence; never rerun a failed app test to get a pass.
+  answer within 10 seconds or that readiness check could not finish. A slow
+  service keeps the readiness check retrying for about 5 minutes before this
+  exit, so let the command run. The `DEVICE-NOT-READY notification service:` line
+  gives the reason. Run the same command again on the same lease; do not restart
+  the simulator.
+- `1`: the app test or its build failed, or the harness refused the run or could
+  not finish its cleanup, and printed why. After a cleanup failure the lease can
+  no longer be used. Find the cause in the output and saved evidence; never rerun
+  a failed app test to get a pass.
 
 The output directory must be new. The command builds and installs a separate
 Debug test app with fake Firebase configuration, then removes it on exit.
