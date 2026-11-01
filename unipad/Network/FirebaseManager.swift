@@ -44,6 +44,8 @@ protocol CrashlyticsServiceProtocol: Sendable {
     func setCrashlyticsCollectionEnabled(_ enabled: Bool)
     func log(_ message: String)
     func record(_ error: Error)
+    /// Sets a key on every report from now on. A nil value removes the key.
+    func setCustomValue(_ value: String?, forKey key: String)
 }
 
 /// Protocol for Firebase Remote Config.
@@ -215,6 +217,10 @@ final class CrashlyticsServiceStub: CrashlyticsServiceProtocol {
     func record(_ error: Error) {
         _ = error
     }
+
+    func setCustomValue(_ value: String?, forKey key: String) {
+        _ = (value, key)
+    }
 }
 
 final class RemoteConfigServiceStub: RemoteConfigServiceProtocol {
@@ -284,6 +290,10 @@ final class CrashlyticsServiceLive: CrashlyticsServiceProtocol, @unchecked Senda
 
     func record(_ error: Error) {
         Crashlytics.crashlytics().record(error: error)
+    }
+
+    func setCustomValue(_ value: String?, forKey key: String) {
+        Crashlytics.crashlytics().setCustomValue(value, forKey: key)
     }
 }
 #endif
