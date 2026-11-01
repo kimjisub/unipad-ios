@@ -291,12 +291,21 @@ Exit codes:
   cleanup failed, and the output says why. Find the cause in the output and saved
   evidence; never rerun a failed app test to get a pass. What a cleanup failure
   leaves depends on which cleanup failed:
-  - The harness could not finish its cleanup (`DEVICE-CLEANUP-UNVERIFIED <udid>`):
-    the lease can no longer be used.
-  - The script could not remove its test app (`"test_app_removed": false` and
-    `cleanup_error` in the printed report): the lease stays usable, but the next
-    run is refused with `already installed; refusing to replace its data` until
-    that app is removed.
+  - The harness could not finish its cleanup (a `DEVICE-CLEANUP-UNVERIFIED <udid>`
+    line): the lease can no longer be used, even if the printed report also shows
+    a script cleanup failure.
+  - The script could not remove its test apps (`cleanup_error` in the printed
+    report, with no such line): the lease stays usable. `"test_app_removed": false`
+    appears only when `simctl uninstall` itself failed; a `simctl` timeout leaves
+    the field out and stops before the second app. The harness removes no app
+    data, and either app left behind makes the next run stop with
+    `already installed; refusing to replace its data`, so remove whichever remains
+    before returning the simulator:
+
+    ```bash
+    xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipad
+    xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipadUITests.xctrunner
+    ```
 
 The output directory must be new. The command builds and installs a separate
 Debug test app with fake Firebase configuration, then removes it on exit.
@@ -312,7 +321,7 @@ local-only process with no local-only launch argument. `--timeout` (default 300
 seconds) bounds the UI test. Commands, exit codes, runtime logs and `UI.xcresult`
 are saved in the output directory. Return the simulator through your harness
 when the check has finished; after exit `75`, first run it again on the same
-lease.
+lease, and after a script cleanup failure, first remove the apps left behind.
 This checks simulator notification handling, not real APNs or Firebase delivery.
 The UI test skips when `xcodebuild` runs it directly, because only the script
 sets up what it needs.
