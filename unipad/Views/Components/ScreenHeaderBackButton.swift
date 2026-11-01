@@ -25,8 +25,8 @@ struct ScreenHeaderBackButton: View {
 extension View {
     /// Keeps a header drawn at the top of a screen clear of the window controls iPadOS 26
     /// puts in a resized window's top leading corner, where a touch would reach them
-    /// instead of the header. A full landscape window stays put; a full window on an upright
-    /// iPad reports the same corner as a resized one, so its header moves too.
+    /// instead of the header. A window that fills the screen has no such controls and stays put,
+    /// though on an upright iPad it reports the same corner as a resized one.
     @ViewBuilder
     func avoidingWindowControls() -> some View {
         if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {
@@ -44,12 +44,13 @@ private struct WindowControlsAvoidance: ViewModifier {
     /// A full window reports its rounded corner, a few points wide; only the controls reach this.
     private static let smallestControlsWidth: CGFloat = 20
 
+    @Environment(\.windowFillsScreen) private var windowFillsScreen
     @State private var cornerWidth: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
-            .padding(.leading, cornerWidth >= Self.smallestControlsWidth ? Self.touchMargin : 0)
-            .containerCornerOffset(.leading, sizeToFit: true)
+            .padding(.leading, !windowFillsScreen && cornerWidth >= Self.smallestControlsWidth ? Self.touchMargin : 0)
+            .containerCornerOffset(windowFillsScreen ? [] : .leading, sizeToFit: true)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.containerCornerInsets.topLeading.width
             } action: { width in

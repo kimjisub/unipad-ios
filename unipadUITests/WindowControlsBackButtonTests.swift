@@ -21,6 +21,8 @@ final class WindowControlsBackButtonTests: XCTestCase {
     private static let narrowWidth: CGFloat = 250
     private static let mediumWidth: CGFloat = 800
     private static let dragHandleInset: CGFloat = 6
+    /// The system reports the window controls this wide from the window's corner.
+    private static let controlsWidth: CGFloat = 54
     /// A finger lands anywhere on the chevron, whose glyph is 12.5pt wide.
     private static let chevronTouches: [(edge: String, offset: CGFloat)] = [("left edge", -6), ("middle", 0), ("right edge", 6)]
 
@@ -192,6 +194,33 @@ final class WindowControlsBackButtonTests: XCTestCase {
         }
     }
 
+    /// How far the chevron of each screen sits from its window's leading edge, in the app's
+    /// own coordinates. Goes back to the home screen.
+    private func chevronInsets(upright: Bool) throws -> [String: CGFloat] {
+        func inset(_ screen: String) throws -> CGFloat {
+            XCTAssertTrue(backButton.waitForExistence(timeout: 5), "\(screen) has no back button")
+            UITestSupport.attachScreenshot("\(screen)-chevron", to: self)
+            let inset = try backButton.snapshot().frame.minX - window.snapshot().frame.minX
+            XCTContext.runActivity(named: "\(screen): chevron \(inset) from the window edge") { _ in }
+            return inset
+        }
+        func back(to marker: XCUIElement) {
+            screenOrigin.withOffset(screenPoint(of: backButton, offset: 0, upright: upright)).tap()
+            XCTAssertTrue(marker.waitForExistence(timeout: 5), "the back chevron did not respond")
+        }
+        var insets: [String: CGFloat] = [:]
+        openSettings()
+        insets["settings"] = try inset("settings")
+        openTheme()
+        insets["theme"] = try inset("theme")
+        back(to: settings)
+        openLicenses()
+        insets["licenses"] = try inset("licenses")
+        back(to: settings)
+        back(to: home)
+        return insets
+    }
+
     private func walkTitles(ownRow: Bool, upright: Bool = false) throws {
         openSettings()
         try assertTitle("Settings", ownRow: ownRow, "settings")
@@ -237,6 +266,45 @@ final class WindowControlsBackButtonTests: XCTestCase {
         fillScreen()
         assertWindowFillsScreen()
         try walkTitles(ownRow: false, upright: true)
+    }
+
+    /// An upright iPad reports the corner of a resized window here, but shows no window controls.
+    func testHeadersStayAtTheEdgeOfFullUprightWindow() throws {
+        fillScreen()
+        assertWindowFillsScreen()
+        let landscape = try chevronInsets(upright: false)
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        fillScreen()
+        assertWindowFillsScreen()
+        let upright = try chevronInsets(upright: true)
+        XCTAssertEqual(upright, landscape, "the headers moved in the full upright window")
+    }
+
+    /// An upright window can change only its height or only its width, each of which has to
+    /// bring the headers back beside the controls, and filling the screen again moves them back.
+    func testHeadersClearControlsInEveryResizedUprightWindow() throws {
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        fillScreen()
+        assertWindowFillsScreen()
+        let full = try chevronInsets(upright: true)
+
+        shrinkWindow(toWidth: Self.narrowWidth)
+        assertHeadersClearControls(try chevronInsets(upright: true))
+
+        fillScreen()
+        assertWindowFillsScreen()
+        XCTAssertEqual(try chevronInsets(upright: true), full, "the headers did not return in the full window")
+
+        shrinkWindow(toHeight: Self.mediumWidth)
+        assertHeadersClearControls(try chevronInsets(upright: true))
+    }
+
+    private func assertHeadersClearControls(_ insets: [String: CGFloat]) {
+        for (screen, inset) in insets {
+            XCTAssertGreaterThanOrEqual(inset, Self.controlsWidth, "the chevron of \(screen) sits under the window controls")
+        }
     }
 
     func testBackButtonsRespondInNarrowLandscapeWindow() {
