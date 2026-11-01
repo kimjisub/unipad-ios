@@ -72,6 +72,13 @@ final class WindowControlsBackButtonTests: XCTestCase {
         XCTAssertLessThan(window.frame.width, width + 150, "the window did not shrink: \(window.frame)")
     }
 
+    private func shrinkWindow(toHeight height: CGFloat) {
+        for _ in 0..<3 where window.frame.height > height + 50 {
+            let frame = window.frame
+            dragWindowCorner(to: CGPoint(x: frame.maxX - Self.dragHandleInset, y: frame.midY + height / 2))
+        }
+    }
+
     private func fillScreen() {
         let screen = XCUIScreen.main.screenshot().image.size
         for _ in 0..<3 where window.frame.width < screen.width - 1 {
@@ -167,6 +174,69 @@ final class WindowControlsBackButtonTests: XCTestCase {
         guard throughStore else { return }
         _ = UITestSupport.openStore(in: app, testCase: self)
         touchBack(upright: upright, arrivingAt: home, "store")
+    }
+
+    /// Compares snapshot frames, which stay in the app's own coordinates when the iPad is upright.
+    private func assertTitle(_ title: String, ownRow: Bool, _ screen: String) throws {
+        let text = app.staticTexts[title].firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 5), "\(screen) has no title")
+        UITestSupport.attachScreenshot("\(screen)-title", to: self)
+        let titleFrame = try text.snapshot().frame
+        let back = try backButton.snapshot().frame
+        let appWindow = try window.snapshot().frame
+        XCTContext.runActivity(named: "\(screen): title \(titleFrame), back \(back), window \(appWindow)") { _ in }
+        if ownRow {
+            XCTAssertGreaterThan(titleFrame.minY, back.midY, "the title of \(screen) is not under the chevron")
+        } else {
+            XCTAssertLessThan(abs(titleFrame.midY - back.midY), back.height / 2, "the title of \(screen) left the chevron's row")
+        }
+    }
+
+    private func walkTitles(ownRow: Bool, upright: Bool = false) throws {
+        openSettings()
+        try assertTitle("Settings", ownRow: ownRow, "settings")
+        openTheme()
+        try assertTitle("Theme", ownRow: ownRow, "theme")
+        screenOrigin.withOffset(screenPoint(of: backButton, offset: 0, upright: upright)).tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "theme did not go back to settings")
+        openLicenses()
+        try assertTitle("Open Source License", ownRow: ownRow, "licenses")
+    }
+
+    func testTitlesGetTheirOwnRowInNarrowWindow() throws {
+        shrinkWindow(toWidth: Self.narrowWidth)
+        try walkTitles(ownRow: true)
+    }
+
+    func testTitlesStayBesideChevronInFullWindow() throws {
+        fillScreen()
+        assertWindowFillsScreen()
+        try walkTitles(ownRow: false)
+    }
+
+    /// An upright window that only gets narrower leaves the sideways app all of its width.
+    func testTitlesStayBesideChevronInNarrowUprightWindow() throws {
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        shrinkWindow(toWidth: Self.narrowWidth)
+        try walkTitles(ownRow: false, upright: true)
+    }
+
+    /// The height of an upright window is the width of the sideways app.
+    func testTitlesGetTheirOwnRowInShortUprightWindow() throws {
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        shrinkWindow(toWidth: Self.narrowWidth)
+        shrinkWindow(toHeight: Self.narrowWidth)
+        try walkTitles(ownRow: true, upright: true)
+    }
+
+    func testTitlesStayBesideChevronInFullUprightWindow() throws {
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        fillScreen()
+        assertWindowFillsScreen()
+        try walkTitles(ownRow: false, upright: true)
     }
 
     func testBackButtonsRespondInNarrowLandscapeWindow() {

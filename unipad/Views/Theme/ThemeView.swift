@@ -69,17 +69,7 @@ struct ThemeView: View {
 
     private var themeListPanel: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                ScreenHeaderBackButton { router.pop() }
-
-                Text(String(localized: "theme"))
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-
-                Spacer()
-
+            ScreenHeader(String(localized: "theme"), onBack: { router.pop() }) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {
                     vm.selectedIndex = vm.themes.count
@@ -89,8 +79,6 @@ struct ThemeView: View {
                         .foregroundStyle(AppColors.textPrimary)
                 }
             }
-            .avoidingWindowControls()
-            .padding(.bottom, 24)
 
             ScrollView {
                 LazyVStack(spacing: 3) {
