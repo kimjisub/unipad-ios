@@ -40,6 +40,7 @@ final class FirebaseRuntimeTests: XCTestCase {
 
     func testFreshInstallWithoutArgumentsIsLocalOnly() {
         withDefaults { defaults, suite in
+            defaults.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
             XCTAssertTrue(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: true))
             XCTAssertEqual(defaults.persistentDomain(forName: suite)?[FirebaseRuntime.localOnlyLaunchArgument] as? Bool, true)
         }

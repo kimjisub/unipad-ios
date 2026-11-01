@@ -285,8 +285,11 @@ This checks simulator notification handling, not real APNs or Firebase delivery.
 The UI test skips unless invoked through this command.
 
 Debug and builds compiled with `UNIPAD_RELEASE_TESTS` use local Firebase stubs
-unless told otherwise, so a fresh install launched without arguments sends
-nothing to production. Launching once with `-UniPadFirebaseLocalOnly YES` or
+unless told otherwise, so a fresh install launched without arguments sends no
+analytics, crash reports, push registrations or Remote Config requests to
+production. The stubs do not cover the store: it still reads the production
+catalog and downloads packs from production, unless a release check launches
+with its own fixtures. Launching once with `-UniPadFirebaseLocalOnly YES` or
 `NO` saves that choice for subsequent launches from notifications or the Home
 Screen; `NO` is what a check of real Firebase delivery needs, and running such a
 build from Xcode to try push, analytics or Crashlytics needs it too. Uninstalling

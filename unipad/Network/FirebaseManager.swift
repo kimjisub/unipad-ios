@@ -308,8 +308,9 @@ final class RemoteConfigServiceLive: RemoteConfigServiceProtocol, @unchecked Sen
 
 // MARK: - Firebase Runtime
 
-/// Keeps unit tests and Debug/release-check installs away from production Firebase, so a test
-/// launch that passes no arguments cannot reach the release numbers. Launch with
+/// Keeps unit tests and Debug/release-check installs on the local analytics, crash, push and
+/// Remote Config stubs, so a test launch that passes no arguments cannot reach the release
+/// analytics or crash numbers. The store catalog and downloads are not covered. Launch with
 /// `-UniPadFirebaseLocalOnly NO` to opt in to production; the choice survives notification and
 /// Home Screen launches without arguments until a reinstall. Store builds ignore it.
 enum FirebaseRuntime {
