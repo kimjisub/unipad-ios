@@ -101,7 +101,8 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   checks need Xcode 27 and iOS 27.
 - The script leaves out, by name, the checks it cannot set up, and lists why in
   `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
-  the notification permission round trip (`ci/notification_roundtrip.py`),
+  the notification permission round trip
+  ([Notification simulator check](#notification-simulator-check)),
   the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
   download, and iPad pointer input. Run those separately when a change touches them.
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
@@ -286,10 +287,25 @@ Exit codes:
   exit, so let the command run. The `DEVICE-NOT-READY notification service:` line
   gives the reason. Run the same command again on the same lease; do not restart
   the simulator.
-- `1`: the app test or its build failed, or the harness refused the run or could
-  not finish its cleanup, and printed why. After a cleanup failure the lease can
-  no longer be used. Find the cause in the output and saved evidence; never rerun
-  a failed app test to get a pass.
+- `1`: the app test or its build failed, or the harness refused the run, or a
+  cleanup failed, and the output says why. Find the cause in the output and saved
+  evidence; never rerun a failed app test to get a pass. What a cleanup failure
+  leaves depends on which cleanup failed:
+  - The harness could not finish its cleanup (a `DEVICE-CLEANUP-UNVERIFIED <udid>`
+    line): the lease can no longer be used, even if the printed report also shows
+    a script cleanup failure.
+  - The script could not remove its test apps (`cleanup_error` in the printed
+    report, with no such line): the lease stays usable. `"test_app_removed": false`
+    appears only when `simctl uninstall` itself failed; a `simctl` timeout leaves
+    the field out and ends the cleanup at that app, so a later app is not tried.
+    The harness removes no app data, and either app left behind makes the next run
+    stop with `already installed; refusing to replace its data`, so remove
+    whichever remains before returning the simulator:
+
+    ```bash
+    xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipad
+    xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipadUITests.xctrunner
+    ```
 
 The output directory must be new. The command builds and installs a separate
 Debug test app with fake Firebase configuration, then removes it on exit.
@@ -304,9 +320,11 @@ starts without the test's library argument. Runtime logs must show a new
 local-only process with no local-only launch argument. `--timeout` (default 300
 seconds) bounds the UI test. Commands, exit codes, runtime logs and `UI.xcresult`
 are saved in the output directory. Return the simulator through your harness
-immediately afterward.
+when the check has finished; after exit `75`, first run it again on the same
+lease, and after a script cleanup failure, first remove the apps left behind.
 This checks simulator notification handling, not real APNs or Firebase delivery.
-The UI test skips unless invoked through this command.
+The UI test skips when `xcodebuild` runs it directly, because only the script
+sets up what it needs.
 
 In Debug and builds compiled with `UNIPAD_RELEASE_TESTS`, launching once with
 `-UniPadFirebaseLocalOnly YES` saves the choice for subsequent launches from

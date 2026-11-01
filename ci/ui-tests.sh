@@ -30,7 +30,7 @@ not_run=(
   -skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests
   # Needs virtual MIDI devices: run ci/midi-input-tests.sh with unipadUITests/VirtualMidiPlayScreenUITests.
   -skip-testing:unipadUITests/VirtualMidiPlayScreenUITests
-  # Needs a fresh install for the notification permission: run ci/notification_roundtrip.py.
+  # Needs a fresh install for the notification permission: see "Notification simulator check" in README.md.
   -skip-testing:unipadUITests/NotificationRoundTripUITests
   # Needs a real sample pack installed and named in UNIPAD_LED_TIMING_VISUAL_PACK.
   -skip-testing:unipadUITests/LedAutoplayUITests
