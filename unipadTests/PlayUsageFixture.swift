@@ -53,6 +53,24 @@ final class PlayUsageScenario {
         try #require(!vm.isAutoPlayPlaying, "autoplay never ended")
     }
 
+    /// Puts the screen's autoplay on a song clock only the test moves. A guide lights only until its
+    /// note's song time, so on real time a busy machine can run past it between two polls.
+    func useManualSongClock() throws -> TestManualClock {
+        let runner = try #require(vm.autoPlayRunner)
+        let clock = TestManualClock()
+        runner.clock = { clock.read() }
+        return clock
+    }
+
+    /// Every poll moves the song on, so a run that has not read its start time yet still ends.
+    func autoplayEnded(advancing clock: TestManualClock) async throws {
+        try await waitWhile {
+            clock.advance(100)
+            return vm.isAutoPlayPlaying
+        }
+        try #require(!vm.isAutoPlayPlaying, "autoplay never ended")
+    }
+
     func waitWhile(timeout: TimeInterval = 10, _ condition: () -> Bool) async throws {
         try await Self.waitWhile(timeout: timeout, condition)
     }
