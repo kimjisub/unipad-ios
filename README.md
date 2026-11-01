@@ -297,10 +297,10 @@ Exit codes:
   - The script could not remove its test apps (`cleanup_error` in the printed
     report, with no such line): the lease stays usable. `"test_app_removed": false`
     appears only when `simctl uninstall` itself failed; a `simctl` timeout leaves
-    the field out and stops before the second app. The harness removes no app
-    data, and either app left behind makes the next run stop with
-    `already installed; refusing to replace its data`, so remove whichever remains
-    before returning the simulator:
+    the field out and ends the cleanup at that app, so a later app is not tried.
+    The harness removes no app data, and either app left behind makes the next run
+    stop with `already installed; refusing to replace its data`, so remove
+    whichever remains before returning the simulator:
 
     ```bash
     xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipad
