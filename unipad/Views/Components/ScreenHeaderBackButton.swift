@@ -41,7 +41,8 @@ extension View {
 private struct WindowControlsAvoidance: ViewModifier {
     /// The controls take touches past the corner the system reports for them.
     private static let touchMargin: CGFloat = 8
-    /// A full window reports its rounded corner, a few points wide; only the controls reach this.
+    /// A window without controls reports its rounded corner, a few points wide, unless it stands
+    /// upright; only the controls reach this.
     private static let smallestControlsWidth: CGFloat = 20
 
     @Environment(\.windowFillsScreen) private var windowFillsScreen

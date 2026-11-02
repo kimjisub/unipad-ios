@@ -81,16 +81,22 @@ final class WindowControlsBackButtonTests: XCTestCase {
         }
     }
 
+    /// A window can lose either side alone, so a full one has to reach the screen on both.
+    private func windowFills(_ screen: CGSize) -> Bool {
+        let frame = window.frame
+        return frame.width >= screen.width - 1 && frame.height >= screen.height - 1
+    }
+
     private func fillScreen() {
         let screen = XCUIScreen.main.screenshot().image.size
-        for _ in 0..<3 where window.frame.width < screen.width - 1 {
+        for _ in 0..<3 where !windowFills(screen) {
             dragWindowCorner(to: CGPoint(x: screen.width - Self.dragHandleInset, y: screen.height - Self.dragHandleInset))
         }
     }
 
     private func assertWindowFillsScreen() {
         let screen = XCUIScreen.main.screenshot().image.size
-        XCTAssertGreaterThanOrEqual(window.frame.width, screen.width - 1, "the window does not fill the screen: \(window.frame) of \(screen)")
+        XCTAssertTrue(windowFills(screen), "the window does not fill the screen: \(window.frame) of \(screen)")
     }
 
     /// Where a point `offset` along the chevron from its middle is on screen. Accessibility
