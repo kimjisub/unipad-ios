@@ -6,6 +6,21 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test(arguments: ["RUN-S-002", "RUN-S-007", "RUN-S-011", "RUN-S-013", "RUN-S-014"])
+    func wormholeCasesIgnoreWallTimeBeforeObserving(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        // Even a late wake must not advance a wormhole past the scenario's virtual time.
+        deps.beforeObserve = { try await Task.sleep(for: .milliseconds(200)) }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(value == sample.expected, "\(id): \(value.serialized())")
+    }
+
     @Test func caseSensitivityMatchesDistinctFileStorage() throws {
         let root = ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
