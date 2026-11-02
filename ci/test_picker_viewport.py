@@ -1,4 +1,4 @@
-"""Run the actual picker viewport check with both native folder layouts."""
+"""Run the actual picker viewport check with the iPhone folder layouts and the iPad sheet."""
 import os
 from pathlib import Path
 import subprocess
@@ -9,9 +9,12 @@ import unittest
 class PickerViewportTests(unittest.TestCase):
     def test_folder_navigation_waits_for_the_same_visible_controls(self):
         source = (Path(__file__).resolve().parents[1] / "unipadUITests/UITestSupport.swift").read_text()
-        start = source.index("        let search = app.searchFields.firstMatch")
+        start = source.index("        let tabs = app.tabBars.firstMatch")
         end = source.index("        func visible()", start)
         viewport = source[start:end]
+        start = source.index("    private static let fullPickerBar")
+        end = source.index("    /// The picker's Recents entry", start)
+        areas = source[start:end]
         start = source.index("    static func waitForSettledFrame(")
         end = source.index("    private static func attachPickerDiagnostics", start)
         wait = source[start:end]
@@ -33,12 +36,21 @@ final class Element {
         return true
     }
 }
+typealias XCUIElement = Element
+typealias XCUIApplication = App
 struct Query { let firstMatch: Element }
+struct Bars {
+    let bar: Element
+    subscript(_ identifier: String) -> Element { bar }
+}
 final class App {
     let searchFields: Query
     let tabBars: Query
-    let windows = Query(firstMatch: Element(frame: CGRect(x: 0, y: 0, width: 874, height: 402), arrivesAt: Date()))
-    init(lateTabs: Bool = false, missingTabs: Bool = false, missingSearch: Bool = false, tabY: Double = 338) {
+    let navigationBars = Bars(bar: Element(frame: CGRect(x: 400, y: 120, width: 600, height: 50), arrivesAt: Date()))
+    let windows: Query
+    init(lateTabs: Bool = false, missingTabs: Bool = false, missingSearch: Bool = false, tabY: Double = 338,
+         window: CGRect = CGRect(x: 0, y: 0, width: 874, height: 402)) {
+        windows = Query(firstMatch: Element(frame: window, arrivesAt: Date()))
         searchFields = Query(firstMatch: Element(frame: CGRect(x: 78, y: 78, width: 718, height: 44), arrivesAt: missingSearch ? nil : Date()))
         tabBars = Query(firstMatch: Element(frame: CGRect(x: 280, y: tabY, width: 314, height: 44),
             arrivesAt: missingTabs ? nil : Date().addingTimeInterval(lateTabs ? 0.5 : 0)))
@@ -46,7 +58,10 @@ final class App {
 }
 struct Support {
     static func attachPickerDiagnostics(in app: App, details: String) {}
-""" + wait + "\n    static func viewport(in app: App) -> CGRect {\n" + viewport + r"""
+    static var isPad = false
+""" + wait + areas + "\n    static func viewport(in app: App) -> CGRect {\n" \
+    + "        let list = Element(frame: CGRect(x: 400, y: 120, width: 600, height: 680), arrivesAt: Date())\n" \
+    + viewport + r"""
         return viewport
     }
 }
@@ -68,6 +83,13 @@ for (name, app) in [("missing search", App(missingSearch: true)),
     print(name, "rejected:", rejected)
     passed = passed && rejected
 }
+Support.isPad = true
+assertionFailures = 0
+let padRect = Support.viewport(in: App(missingTabs: true, missingSearch: true,
+    window: CGRect(x: 0, y: 0, width: 1376, height: 1032)))
+let padOK = assertionFailures == 0 && padRect == CGRect(x: 400, y: 174, width: 600, height: 582)
+print("sheet on an iPad", padOK ? "passed" : "failed")
+passed = passed && padOK
 exit(passed ? 0 : 1)
 """
         developer = subprocess.check_output(["xcode-select", "-p"], text=True).strip()
