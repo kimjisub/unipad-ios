@@ -42,6 +42,7 @@ struct ConformanceDeps {
     var turnOffAutoPlay: @MainActor (PlayViewModel) -> Void = { $0.switchPlayMode(.none) }
     var setupChainObserver: @MainActor (PlayViewModel) -> Void = { $0.setupChainObserver() }
     var soundOff: @MainActor (SoundEngine, Int, Int) -> Void = { $0.soundOff(x: $1, y: $2) }
+    var beforeObserve: @MainActor () async throws -> Void = {}
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
 }
@@ -346,6 +347,72 @@ enum ConformanceHarness {
         }
     }
 
+    /// Deadlines are captured at the press, before SoundEngine's main-actor task starts.
+    /// Each due wait is acknowledged by the real chain observer (or task cancellation), so
+    /// advancing time never guesses how many yields deliver the wormhole's chain change.
+    @MainActor
+    private final class WormholeClock {
+        @MainActor
+        private final class Wait {
+            let deadline: Int64
+            var continuation: CheckedContinuation<Void, Never>?
+            var released = false
+            var completed = false
+
+            init(deadline: Int64) { self.deadline = deadline }
+
+            func release() {
+                released = true
+                continuation?.resume()
+                continuation = nil
+            }
+        }
+
+        private let clock: TestManualClock
+        private var waits: [Wait] = []
+        private var completing: Wait?
+
+        init(clock: TestManualClock) { self.clock = clock }
+
+        func delayFromPress() -> @MainActor () async -> Void {
+            let wait = Wait(deadline: clock.read() + 100)
+            waits.append(wait)
+            return {
+                await withCheckedContinuation { continuation in
+                    if wait.released { continuation.resume() }
+                    else { wait.continuation = continuation }
+                }
+                if Task.isCancelled { wait.completed = true }
+            }
+        }
+
+        func chainChanged() { completing?.completed = true }
+
+        func advance() async throws {
+            for wait in waits where wait.deadline <= clock.read() {
+                let deadline = Date().addingTimeInterval(120)
+                while wait.continuation == nil {
+                    guard Date() < deadline else { throw ConformanceError.harness("wormhole did not register its virtual delay within 120 s") }
+                    await Task.yield()
+                }
+                completing = wait
+                wait.release()
+                while !wait.completed {
+                    guard Date() < deadline else { throw ConformanceError.harness("wormhole did not finish its virtual tick within 120 s") }
+                    await Task.yield()
+                }
+                completing = nil
+            }
+            waits.removeAll { $0.completed }
+        }
+
+        /// Call after destroying the engine; cancelled tasks must not retain a continuation.
+        func cancel() {
+            for wait in waits { wait.release() }
+            waits.removeAll()
+        }
+    }
+
     @MainActor
     private final class AutoRecorder: AutoPlayRunner.Listener {
         let log: EventLog
@@ -406,12 +473,14 @@ enum ConformanceHarness {
         let screen = usesScreenInputs || usesChainSelection ? PlayViewModel() : nil
         let inputScreen = usesScreenInputs ? screen : nil
         let chain = screen?.chain ?? ChainObserver()
+        let clock = TestManualClock()
+        let wormholeClock = WormholeClock(clock: clock)
         chain.range = 0...max(pack.chain - 1, 0)
         chain.addObserver { current, _ in
             if log.recordsChain { log.add(["chain", .int(current)]) }
+            wormholeClock.chainChanged()
         }
 
-        let clock = TestManualClock()
         // LedRunner keeps its listener weakly, so the recorder must be held here.
         let screenLights = ScreenLights(log: log)
         let recorder = LedRecorder(log: log, screenLights: screenLights)
@@ -445,9 +514,11 @@ enum ConformanceHarness {
             autoClock.ended = true
             autoClock.wake()
             led.stop()
-            guard !engineDestroyed else { return }
-            engineDestroyed = true
-            engine.destroy()
+            if !engineDestroyed {
+                engineDestroyed = true
+                engine.destroy()
+            }
+            wormholeClock.cancel()
         }
 
         func recordStops(since previousIDs: Set<Int>) {
@@ -474,6 +545,10 @@ enum ConformanceHarness {
             if down {
                 let playing = chain.value
                 let head = pack.soundGet(c: playing, x: x, y: y)
+                // A stopped engine ignores late presses and never starts their delay.
+                if !engineDestroyed, let head, head.wormhole != Sound.noWormhole, !byAutoPlay, trigger != .autoplay {
+                    engine.wormholeDelay = wormholeClock.delayFromPress()
+                }
                 let before = engine.playsStarted
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
@@ -512,10 +587,6 @@ enum ConformanceHarness {
             if let failure = loading.engineFailure { return .unverified("the audio engine is not usable here: \(failure.localizedDescription)") }
             if let failure = loading.loadFailure { return .failed("\(conformanceCase.id): no sound of the pack could be loaded: \(failure)") }
             guard loading.finished else { return .failed("sounds did not finish loading within \(deps.soundLoadTimeout) s") }
-
-            let hasWormhole = (0..<pack.chain).contains { c in
-                (0..<pack.buttonX).contains { x in (0..<pack.buttonY).contains { y in pack.soundTable?[c][x][y]?.contains { $0.wormhole != Sound.noWormhole } == true } }
-            }
 
             var checkpoints: [JSONValue] = []
             for step in conformanceCase.scenario {
@@ -581,11 +652,11 @@ enum ConformanceHarness {
                     log.recordsChain = true
                 case "advance":
                     let total = step["ms"]?.int ?? 0
-                    if hasWormhole { try await Task.sleep(nanoseconds: UInt64(total) * 1_000_000) }
                     var remaining = total
                     while remaining > 0 {
                         let tick = min(4, remaining)
                         clock.advance(Int64(tick))
+                        try await wormholeClock.advance()
                         autoClock.now += Int64(tick)
                         if autoPlay != nil { try await autoClock.tick() }
                         if led.active { led.loop() }
@@ -594,6 +665,7 @@ enum ConformanceHarness {
                         remaining -= tick
                     }
                 case "observe":
+                    try await deps.beforeObserve()
                     await Task.yield()
                     checkpoints.append(.array(log.drain()))
                 case "stop":
