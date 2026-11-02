@@ -30,7 +30,7 @@ not_run=(
   -skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests
   # Needs virtual MIDI devices: run ci/midi-input-tests.sh with unipadUITests/VirtualMidiPlayScreenUITests.
   -skip-testing:unipadUITests/VirtualMidiPlayScreenUITests
-  # Needs a fresh install for the notification permission: run ci/notification_roundtrip.py.
+  # Needs a fresh install for the notification permission: see "Notification simulator check" in README.md.
   -skip-testing:unipadUITests/NotificationRoundTripUITests
   # Needs a real sample pack installed and named in UNIPAD_LED_TIMING_VISUAL_PACK.
   -skip-testing:unipadUITests/LedAutoplayUITests
@@ -40,6 +40,9 @@ not_run=(
   -skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain
   # Only an upright iPad window has a safe area shorter than the status bar; this script runs on an iPhone.
   -skip-testing:unipadUITests/StoreBackButtonStatusBarTests
+  # Only an iPad window can be resized; this script runs on an iPhone. On an iPad simulator:
+  # xcodebuild test -project unipad.xcodeproj -scheme unipad -destination 'platform=iOS Simulator,id=<udid>' -only-testing:unipadUITests/WindowControlsBackButtonTests
+  -skip-testing:unipadUITests/WindowControlsBackButtonTests
 )
 
 configuration=${UNIPAD_UI_TEST_CONFIGURATION:-Debug}

@@ -128,7 +128,21 @@ struct ImportResultDialogTests {
         .environment(\.colorScheme, .dark)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
-        guard let data = renderer.uiImage?.pngData() else {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = renderer.scale
+        // Not `renderer.uiImage`: it waits 4 s for the GPU and comes back empty when the first
+        // shader compile takes longer, as it did on a busy GitHub runner. CoreGraphics needs no GPU.
+        var drew = false
+        let picture = UIGraphicsImageRenderer(size: screen.size, format: format).image { canvas in
+            renderer.render(rasterizationScale: renderer.scale) { size, draw in
+                // `ImageRenderer` draws for a context whose origin is at the bottom left.
+                canvas.cgContext.translateBy(x: 0, y: size.height)
+                canvas.cgContext.scaleBy(x: 1, y: -1)
+                draw(canvas.cgContext)
+                drew = true
+            }
+        }
+        guard drew, let data = picture.pngData() else {
             Issue.record("could not draw \(name)")
             return
         }

@@ -1,13 +1,13 @@
 import XCTest
 
-/// Opt in through ci/notification_roundtrip.py; notification permission needs a fresh install.
+/// Opt in through "Notification simulator check" in README.md; notification permission needs a fresh install.
 final class NotificationRoundTripUITests: XCTestCase {
     @MainActor
     func testPermissionAndNotificationLaunches() throws {
         continueAfterFailure = false
         let env = ProcessInfo.processInfo.environment
         guard let path = env["UNIPAD_NOTIFICATION_DIR"] else {
-            throw XCTSkip("Run ci/notification_roundtrip.py on a lent simulator")
+            throw XCTSkip("Run through the harness native entry: see \"Notification simulator check\" in README.md")
         }
         let directory = URL(fileURLWithPath: path)
         let token = try XCTUnwrap(env["UNIPAD_NOTIFICATION_TOKEN"])

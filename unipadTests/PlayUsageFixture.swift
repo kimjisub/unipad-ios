@@ -8,6 +8,7 @@ import Testing
 @MainActor
 final class PlayUsageScenario {
     let sink = UsageAnalyticsTests.RecordingAnalytics()
+    let crashlytics = PlayCrashKeysTests.RecordingCrashlytics()
     let vm: PlayViewModel
     private let packFolder: URL
     private var restoresMidiDriver = false
@@ -20,7 +21,7 @@ final class PlayUsageScenario {
         keySound: String = defaultKeySound, autoPlay: String = defaultAutoPlay, keyLed: [String: String] = [:],
         grid: PackGrid = PackGrid()
     ) throws {
-        vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink))
+        vm = PlayViewModel(usageAnalytics: UsageAnalytics(sink: sink), crashKeys: PlayCrashKeys(crashlytics: crashlytics))
         packFolder = FileManager.default.temporaryDirectory.appendingPathComponent("PlayUsage-\(UUID().uuidString)")
         try Self.writePack(to: packFolder, keySound: keySound, autoPlay: autoPlay, keyLed: keyLed, grid: grid)
     }
@@ -50,6 +51,24 @@ final class PlayUsageScenario {
 
     func autoplayEnded() async throws {
         try await waitWhile { vm.isAutoPlayPlaying }
+        try #require(!vm.isAutoPlayPlaying, "autoplay never ended")
+    }
+
+    /// Puts the screen's autoplay on a song clock only the test moves. A guide lights only until its
+    /// note's song time, so on real time a busy machine can run past it between two polls.
+    func useManualSongClock() throws -> TestManualClock {
+        let runner = try #require(vm.autoPlayRunner)
+        let clock = TestManualClock()
+        runner.clock = { clock.read() }
+        return clock
+    }
+
+    /// Every poll moves the song on, so a run that has not read its start time yet still ends.
+    func autoplayEnded(advancing clock: TestManualClock) async throws {
+        try await waitWhile {
+            clock.advance(100)
+            return vm.isAutoPlayPlaying
+        }
         try #require(!vm.isAutoPlayPlaying, "autoplay never ended")
     }
 

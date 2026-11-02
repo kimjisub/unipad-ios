@@ -190,6 +190,41 @@ struct PlayUsageRecordTests {
         }
     }
 
+    @Test func crashKeysFollowThePlayScreenWindowUntilItCloses() async throws {
+        try await PlayUsageScenario.run { s in
+            let screen = CGSize(width: 1376, height: 1032)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            #expect(s.crashlytics.keys == [
+                "play_orientation": "landscape", "play_screen_short_side": "840dp_plus", "play_window_mode": "full_screen",
+            ])
+            s.vm.screenCovered()
+            #expect(s.crashlytics.keys.isEmpty)
+            s.vm.screenShown()
+            #expect(s.crashlytics.keys["play_screen_short_side"] == "840dp_plus")
+            s.vm.cleanup()
+            #expect(s.crashlytics.keys.isEmpty)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            #expect(s.crashlytics.keys.isEmpty)
+        }
+    }
+
+    /// `chain.clearObservers()` is the last teardown step, so an observer that can still fire when
+    /// a key goes means the keys left before the teardown ended.
+    @Test func crashKeysOutlastThePlayScreenTeardown() async throws {
+        try await PlayUsageScenario.run { s in
+            let screen = CGSize(width: 1376, height: 1032)
+            s.vm.screenLayoutChanged(ScreenLayout(windowSize: screen, screenSize: screen))
+            var keyRemovedDuringTeardown = false
+            s.vm.chain.addObserver { _, _ in keyRemovedDuringTeardown = true }
+            s.crashlytics.onWrite = { [chain = s.vm.chain] in chain.refresh() }
+
+            s.vm.cleanup()
+
+            #expect(s.crashlytics.keys.isEmpty)
+            #expect(!keyRemovedDuringTeardown)
+        }
+    }
+
     @Test func midiModeKeyDoesNotCountAsHuman() async throws {
         try await PlayUsageScenario.run { s in
             try await s.loadReady()
