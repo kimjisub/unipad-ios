@@ -187,11 +187,11 @@ final class PlayViewModel {
         logger.info("loadUnipack: url=\(url.path), exists=\(FileManager.default.fileExists(atPath: url.path))")
 
         // The folder reads run off the main actor so the loading screen keeps drawing. The screen
-        // may be left meanwhile (cleanup() has run and the task is cancelled): whatever a read
-        // returns after that must not build an engine or touch state.
+        // may be left meanwhile: whatever a read returns after that must not build an engine,
+        // which nothing would destroy, or touch state.
         let pack = makePack(url)
         _ = await Task.detached(priority: .userInitiated) { pack.load() }.value
-        if Task.isCancelled { return }
+        if isLoadAbandoned { return }
 
         if pack.criticalError {
             logger.error("loadUnipack: critical error - \(pack.errorDetail ?? "unknown")")
@@ -215,7 +215,7 @@ final class PlayViewModel {
                 }
             }
         }.value
-        if Task.isCancelled { return }
+        if isLoadAbandoned { return }
 
         unipackWarning = pack.errorDetail
 
@@ -256,6 +256,10 @@ final class PlayViewModel {
         unipackLoading = false
         logger.info("loadUnipack: loading phase complete, waiting for sound buffers")
     }
+
+    /// cleanup() runs when the route changes; the task is cancelled only once the screen has
+    /// disappeared, more than half a second later, so a closed screen can see an uncancelled task.
+    private var isLoadAbandoned: Bool { Task.isCancelled || !enable }
 
     func initState() {
         guard let unipack else { return }
@@ -1198,7 +1202,9 @@ final class PlayViewModel {
 
     // MARK: - Volume Observer
 
-    private(set) var volumeObservation: NSKeyValueObservation?
+    private var volumeObservation: NSKeyValueObservation?
+
+    var isWatchingVolume: Bool { volumeObservation != nil }
 
     func startVolumeObserver() {
         #if canImport(UIKit)
@@ -1381,14 +1387,16 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
     func onStart(soundCount: Int) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingMax = soundCount
-            self?.viewModel?.soundLoadingProgress = 0
+            guard let vm = self?.viewModel, vm.enable else { return }
+            vm.soundLoadingMax = soundCount
+            vm.soundLoadingProgress = 0
         }
     }
 
     func onProgressTick() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingProgress += 1
+            guard let vm = self?.viewModel, vm.enable else { return }
+            vm.soundLoadingProgress += 1
         }
     }
 
