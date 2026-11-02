@@ -313,8 +313,49 @@ struct UsageAnalyticsTests {
         #expect(sink.events(named: "play_end").map(\.parameters) == [[
             "duration_bucket": "lt_1s", "orientation": "portrait", "screen_short_side": "600dp_839dp", "window_mode": "multi_window",
         ]])
-        for name in ["pack_load", "play_first_input"] {
-            #expect(sink.events(named: name).allSatisfy { $0.parameters["window_mode"] == nil }, "\(name)")
+        #expect(sink.events(named: "play_first_input").allSatisfy { $0.parameters["window_mode"] == nil })
+    }
+
+    @Test func everyPackLoadResultCarriesTheLayoutAtThatMoment() {
+        let window = ["orientation": "portrait", "screen_short_side": "600dp_839dp", "window_mode": "multi_window"]
+        let finishes: [(PlaySessionTracker) -> Void] = [
+            { $0.loadSucceeded() },
+            { $0.loadFailed(.soundEngine) },
+            { $0.ended() },
+        ]
+        let results = [
+            ["result": "success", "duration_bucket": "lt_1s"],
+            ["result": "failure", "error_type": "sound_engine"],
+            ["result": "cancelled"],
+        ]
+
+        for (finish, result) in zip(finishes, results) {
+            let (sink, _, session) = makeSession()
+            session.screenLayoutChanged(layout(874, 402))
+            session.loadStarted()
+            session.screenLayoutChanged(layout(684, 1032, screen: CGSize(width: 1032, height: 1376)))
+            session.screenLayoutChanged(nil)
+            finish(session)
+            #expect(sink.events(named: "pack_load").map(\.parameters) == [result.merging(window) { $1 }])
+        }
+    }
+
+    @Test func packLoadWithoutAKnownWindowCarriesNoLayout() {
+        let finishes: [(PlaySessionTracker) -> Void] = [
+            { $0.loadSucceeded() },
+            { $0.loadFailed(.soundEngine) },
+            { $0.ended() },
+        ]
+
+        for finish in finishes {
+            let (sink, _, session) = makeSession()
+            session.loadStarted()
+            session.screenLayoutChanged(nil)
+            session.screenLayoutChanged(layout(0, 1032))
+            finish(session)
+            let parameters = sink.events(named: "pack_load").map(\.parameters)
+            #expect(parameters.count == 1)
+            #expect(parameters.allSatisfy { Set($0.keys).isDisjoint(with: ["orientation", "screen_short_side", "window_mode"]) })
         }
     }
 

@@ -101,7 +101,8 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   checks need Xcode 27 and iOS 27.
 - The script leaves out, by name, the checks it cannot set up, and lists why in
   `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
-  the notification permission round trip (`ci/notification_roundtrip.py`),
+  the notification permission round trip
+  ([Notification simulator check](#notification-simulator-check)),
   the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
   download, and iPad pointer input. Run those separately when a change touches them.
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
@@ -260,12 +261,51 @@ checking a different source or expected app ID.
 
 ## Notification simulator check
 
-Acquire an iPhone simulator through your device harness, then run:
+Acquire an iPhone simulator through your device harness, read its lease
+generation, then run the check through the harness's native entry from the
+repository root:
 
 ```bash
-python3 ci/notification_roundtrip.py --simulator <udid> \
+python3 "$HARNESS/devices.py" lease <udid>
+python3 "$HARNESS/devices.py" native <udid> --generation <generation> -- \
+  ci/notification_roundtrip.py --simulator <udid> \
   --derived-data <scratch>/dd --output <scratch>/notifications
 ```
+
+Do not run `ci/notification_roundtrip.py` directly. The native entry first
+confirms that the simulator's notification service answers, before the test app
+is built. A direct run leaves out that confirmation, so a simulator that is not
+ready looks like an app failure: a slow notification-settings callback can make
+the app skip its permission prompt.
+
+Exit codes:
+
+- `0`: the check passed.
+- `75`: the app test never started, because the notification service did not
+  answer within 10 seconds or that readiness check could not finish. A slow
+  service keeps the readiness check retrying for about 5 minutes before this
+  exit, so let the command run. The `DEVICE-NOT-READY notification service:` line
+  gives the reason. Run the same command again on the same lease; do not restart
+  the simulator.
+- `1`: the app test or its build failed, or the harness refused the run, or a
+  cleanup failed, and the output says why. Find the cause in the output and saved
+  evidence; never rerun a failed app test to get a pass. What a cleanup failure
+  leaves depends on which cleanup failed:
+  - The harness could not finish its cleanup (a `DEVICE-CLEANUP-UNVERIFIED <udid>`
+    line): the lease can no longer be used, even if the printed report also shows
+    a script cleanup failure.
+  - The script could not remove its test apps (`cleanup_error` in the printed
+    report, with no such line): the lease stays usable. `"test_app_removed": false`
+    appears only when `simctl uninstall` itself failed; a `simctl` timeout leaves
+    the field out and ends the cleanup at that app, so a later app is not tried.
+    The harness removes no app data, and either app left behind makes the next run
+    stop with `already installed; refusing to replace its data`, so remove
+    whichever remains before returning the simulator:
+
+    ```bash
+    xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipad
+    xcrun simctl uninstall <udid> io.unipad.tests.notifications.unipadUITests.xctrunner
+    ```
 
 The output directory must be new. The command builds and installs a separate
 Debug test app with fake Firebase configuration, then removes it on exit.
@@ -280,15 +320,24 @@ starts without the test's library argument. Runtime logs must show a new
 local-only process with no local-only launch argument. `--timeout` (default 300
 seconds) bounds the UI test. Commands, exit codes, runtime logs and `UI.xcresult`
 are saved in the output directory. Return the simulator through your harness
-immediately afterward.
+when the check has finished; after exit `75`, first run it again on the same
+lease, and after a script cleanup failure, first remove the apps left behind.
 This checks simulator notification handling, not real APNs or Firebase delivery.
-The UI test skips unless invoked through this command.
+The UI test skips when `xcodebuild` runs it directly, because only the script
+sets up what it needs.
 
-In Debug and builds compiled with `UNIPAD_RELEASE_TESTS`, launching once with
-`-UniPadFirebaseLocalOnly YES` saves the choice for subsequent launches from
-notifications or the Home Screen. `-UniPadFirebaseLocalOnly NO` clears it;
-uninstalling the app also resets it. Normal Release/store builds ignore both
-the saved choice and launch arguments. Unit test hosts always use local stubs.
+Debug and builds compiled with `UNIPAD_RELEASE_TESTS` use local Firebase stubs
+unless told otherwise, so a fresh install launched without arguments sends no
+analytics, crash reports, push registrations or Remote Config requests to
+production. The stubs do not cover the store: it still reads the production
+catalog and downloads packs from production, unless a release check launches
+with its own fixtures. Launching once with `-UniPadFirebaseLocalOnly YES` or
+`NO` saves that choice for subsequent launches from notifications or the Home
+Screen; `NO` is what a check of real Firebase delivery needs, and running such a
+build from Xcode to try push, analytics or Crashlytics needs it too. Uninstalling
+the app resets the choice to local. Normal Release/store builds ignore both the
+saved choice and launch arguments and always use Firebase. Unit test hosts always
+use local stubs.
 
 ## Connecting a Launchpad
 

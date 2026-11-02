@@ -20,7 +20,7 @@ nonisolated final class MetricKitExitSubscriber: NSObject, MXMetricManagerSubscr
     static func start(reportingTo crashlytics: any CrashlyticsServiceProtocol) {
         guard active == nil else { return }
         let subscriber = MetricKitExitSubscriber(
-            reporter: SystemTerminationReporter(crashlytics: crashlytics, ledger: ReportedPayloadLedger(defaults: .standard))
+            reporter: SystemTerminationReporter(crashlytics: crashlytics, defaults: .standard)
         )
         active = subscriber
         DispatchQueue.global(qos: .utility).async {
@@ -29,7 +29,7 @@ nonisolated final class MetricKitExitSubscriber: NSObject, MXMetricManagerSubscr
     }
 
     func didReceive(_ payloads: [MXMetricPayload]) {
-        let counts = payloads.compactMap(SystemExitCounts.init)
+        let counts = payloads.map(SystemExitCounts.init)
         guard !counts.isEmpty else { return }
         Task { @MainActor [reporter] in
             reporter.report(counts)
@@ -38,25 +38,27 @@ nonisolated final class MetricKitExitSubscriber: NSObject, MXMetricManagerSubscr
 }
 
 nonisolated extension SystemExitCounts {
-    init?(_ payload: MXMetricPayload) {
-        guard let exits = payload.applicationExitMetrics else { return nil }
-        let foreground = exits.foregroundExitData
-        let background = exits.backgroundExitData
+    init(_ payload: MXMetricPayload) {
+        let exits = payload.applicationExitMetrics
         self.init(
             begin: payload.timeStampBegin,
             end: payload.timeStampEnd,
             appVersion: payload.latestApplicationVersion,
             appBuild: payload.metaData?.applicationBuildVersion,
             includesMultipleAppVersions: payload.includesMultipleApplicationVersions,
-            foregroundMemoryLimit: foreground.cumulativeMemoryResourceLimitExitCount,
-            foregroundWatchdog: foreground.cumulativeAppWatchdogExitCount,
-            foregroundAbnormal: foreground.cumulativeAbnormalExitCount,
-            foregroundBadAccess: foreground.cumulativeBadAccessExitCount,
-            foregroundIllegalInstruction: foreground.cumulativeIllegalInstructionExitCount,
-            backgroundMemoryLimit: background.cumulativeMemoryResourceLimitExitCount,
-            backgroundAbnormal: background.cumulativeAbnormalExitCount,
-            backgroundBadAccess: background.cumulativeBadAccessExitCount,
-            backgroundIllegalInstruction: background.cumulativeIllegalInstructionExitCount
+            hasExitCounts: exits != nil
         )
+        guard let exits else { return }
+        let foreground = exits.foregroundExitData
+        let background = exits.backgroundExitData
+        foregroundMemoryLimit = foreground.cumulativeMemoryResourceLimitExitCount
+        foregroundWatchdog = foreground.cumulativeAppWatchdogExitCount
+        foregroundAbnormal = foreground.cumulativeAbnormalExitCount
+        foregroundBadAccess = foreground.cumulativeBadAccessExitCount
+        foregroundIllegalInstruction = foreground.cumulativeIllegalInstructionExitCount
+        backgroundMemoryLimit = background.cumulativeMemoryResourceLimitExitCount
+        backgroundAbnormal = background.cumulativeAbnormalExitCount
+        backgroundBadAccess = background.cumulativeBadAccessExitCount
+        backgroundIllegalInstruction = background.cumulativeIllegalInstructionExitCount
     }
 }

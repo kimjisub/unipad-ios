@@ -16,49 +16,50 @@ extension PlayUsageRecordTests {
             case appAway, covered, audioInterruption, routeLoss, mediaReset
         }
 
+        /// One real second outlasts the time limits this path can meet (a gap over 100 ms counts as
+        /// a suspension; pads and finished light scenes wait 1 s). Longer stays add no limit, and run
+        /// on a virtual clock in `AutoPlayRunnerTests` and `LedRunnerTests.discardedScenesNeverReturn`.
         @Test(arguments: Boundary.allCases, [PlayMode.autoPlay, .guidePlay, .stepPractice])
         func leavingPlayRequiresManualResume(boundary: Boundary, mode: PlayMode) async throws {
-            for seconds in [1, 10] {
-                try await Self.run { s in
-                    try await s.loadReady()
-                    let runner = try #require(s.vm.autoPlayRunner)
-                    let engine = try #require(s.vm.soundEngine)
-                    s.vm.switchPlayMode(mode)
-                    try await s.waitWhile { runner.progress < 1 }
-                    s.press() // A held human loop must be released in every mode too.
-                    switch boundary {
-                    case .appAway: s.vm.onPause()
-                    case .covered: s.vm.screenCovered()
-                    case .audioInterruption: engine.handleInterruption(interruption(.began))
-                    case .routeLoss:
-                        NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
-                            userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
-                    case .mediaReset: engine.handleMediaServicesReset()
-                    }
-                    let progress = runner.progress
-                    #expect(!s.vm.isAutoPlayPlaying)
-                    #expect(s.vm.playMode == mode)
-                    #expect(engine.activePlayIDs.isEmpty)
-                    try await Task.sleep(for: .seconds(seconds))
-                    switch boundary {
-                    case .covered: s.vm.screenShown()
-                    case .audioInterruption:
-                        engine.handleInterruption(interruption(.ended, shouldResume: true))
-                        try await waitForRecovery(s, engine)
-                    default: s.vm.onResume()
-                    }
-                    try await Task.sleep(for: .milliseconds(100))
-                    #expect(!s.vm.isAutoPlayPlaying)
-                    #expect(runner.progress == progress)
-                    #expect(s.vm.playMode == mode)
-                    #expect(engine.activePlayIDs.isEmpty)
-                    try await waitForRecovery(s, engine)
-                    try #require(!engine.isPlaybackSuppressed)
-                    s.vm.autoPlayResume()
-                    #expect(s.vm.playMode == mode)
-                    #expect(runner.playmode == (mode != .stepPractice))
-                    #expect(!runner.isSuspended)
+            try await Self.run { s in
+                try await s.loadReady()
+                let runner = try #require(s.vm.autoPlayRunner)
+                let engine = try #require(s.vm.soundEngine)
+                s.vm.switchPlayMode(mode)
+                try await s.waitWhile { runner.progress < 1 }
+                s.press() // A held human loop must be released in every mode too.
+                switch boundary {
+                case .appAway: s.vm.onPause()
+                case .covered: s.vm.screenCovered()
+                case .audioInterruption: engine.handleInterruption(interruption(.began))
+                case .routeLoss:
+                    NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
+                        userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+                case .mediaReset: engine.handleMediaServicesReset()
                 }
+                let progress = runner.progress
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(s.vm.playMode == mode)
+                #expect(engine.activePlayIDs.isEmpty)
+                try await Task.sleep(for: .seconds(1))
+                switch boundary {
+                case .covered: s.vm.screenShown()
+                case .audioInterruption:
+                    engine.handleInterruption(interruption(.ended, shouldResume: true))
+                    try await waitForRecovery(s, engine)
+                default: s.vm.onResume()
+                }
+                try await Task.sleep(for: .milliseconds(100))
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(runner.progress == progress)
+                #expect(s.vm.playMode == mode)
+                #expect(engine.activePlayIDs.isEmpty)
+                try await waitForRecovery(s, engine)
+                try #require(!engine.isPlaybackSuppressed)
+                s.vm.autoPlayResume()
+                #expect(s.vm.playMode == mode)
+                #expect(runner.playmode == (mode != .stepPractice))
+                #expect(!runner.isSuspended)
             }
         }
 
@@ -356,8 +357,8 @@ extension PlayUsageRecordTests {
             }
         }
 
-        @Test(arguments: [0, 1, 2], [1, 10])
-        func lightsOnlyResumeForNewInput(loop: Int, seconds: Int) async throws {
+        @Test(arguments: [0, 1, 2])
+        func lightsOnlyResumeForNewInput(loop: Int) async throws {
             try await PlayUsageScenario.run(keySound: "1 1 1 a.wav 0\n", autoPlay: "delay 60000\n",
                 keyLed: ["1 1 1 \(loop)": "on 1 1 a 5\ndelay 100\non 1 2 a 9\ndelay 20000\n"]) { s in
                 try await s.loadReady()
@@ -371,7 +372,7 @@ extension PlayUsageRecordTests {
                 s.vm.scbLed.forceSetChecked(false)
                 #expect(!lights.isEventExist(x: 0, y: 0))
                 let before = runner.progress
-                try await Task.sleep(for: .seconds(seconds))
+                try await Task.sleep(for: .seconds(1))
                 #expect(engine.activePlayIDs == audio)
                 #expect(s.vm.isAutoPlayPlaying)
                 #expect(runner.progress == before) // Still inside the final 60-second wait.
