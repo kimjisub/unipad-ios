@@ -290,3 +290,16 @@
 "trace_numbers" = "数字";
 "trace_lines" = "线和点";
 "trace_clear_all" = "清除所有轨迹";
+
+"autoMappingConfirmTitle" = "调整自动演奏吗？";
+"autoMappingConfirmMessage" = "等待时间将替换为声音长度。当前自动演奏将备份。同时按下的打击垫仍将同时演奏。";
+"autoMappingApply" = "调整";
+"autoMappingSaved" = "已保存自动演奏。可从菜单恢复之前的版本。";
+"autoMappingFailed" = "无法保存。现有自动演奏保持不变。";
+"autoPlayRestore" = "恢复之前的自动演奏";
+"autoPlayNoBackup" = "没有已保存的备份";
+"autoPlayRestoreConfirmTitle" = "恢复上次备份吗？";
+"autoPlayRestoreConfirmMessage" = "它将与当前自动演奏交换。恢复后仍可再次交换。";
+"autoPlayRestoreApply" = "恢复";
+"autoPlayRestored" = "已恢复之前的自动演奏。可从菜单再次交换。";
+"autoPlayRestoreFailed" = "无法恢复。当前自动演奏和备份均保持不变。";
