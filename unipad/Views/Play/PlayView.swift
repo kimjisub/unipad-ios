@@ -502,7 +502,6 @@ struct PlayView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             }
-            .accessibilityIdentifier("soundLoadFailure")
         }
     }
 
@@ -670,6 +669,5 @@ struct SoundLoadDetailsView: View {
                 }
             }
         }
-        .accessibilityIdentifier("soundLoadDetails")
     }
 }

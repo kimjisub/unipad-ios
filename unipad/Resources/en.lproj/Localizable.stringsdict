@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>sound_load_too_large %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@sounds@ that are too long or too large won't play</string>
+		<key>sounds</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld sound</string>
+			<key>other</key>
+			<string>%lld sounds</string>
+		</dict>
+	</dict>
+	<key>sound_load_unreadable %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Can't read the %#@files@</string>
+		<key>files</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>file of %lld sound</string>
+			<key>other</key>
+			<string>files of %lld sounds</string>
+		</dict>
+	</dict>
+	<key>sound_load_undecodable %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Can't play %#@sounds@</string>
+		<key>sounds</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld sound</string>
+			<key>other</key>
+			<string>%lld sounds</string>
+		</dict>
+	</dict>
+	<key>sound_load_out_of_memory %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Not enough device memory to load %#@sounds@. Close other apps and open the pack again.</string>
+		<key>sounds</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld sound</string>
+			<key>other</key>
+			<string>%lld sounds</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

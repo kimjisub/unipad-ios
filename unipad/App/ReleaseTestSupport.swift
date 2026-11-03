@@ -181,6 +181,17 @@ nonisolated enum ReleaseTestSupport {
                 try fm.removeItem(at: pack.appendingPathComponent("autoPlay"))
                 try (kind == "warning-sound" ? "1 1 1 nope.wav\n" : "1 1 1 silence.wav\n")
                     .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+            case "sound-partial", "sound-none":
+                // An empty file cannot be read. The partial pack still has a sound that plays on its
+                // second pad; the other has no sound left at all.
+                let pack = library.appendingPathComponent("SoundFailure")
+                try makePack(at: pack, title: kind == "sound-partial" ? "Partial Sound Fixture" : "No Sound Fixture")
+                try "title=\(kind == "sound-partial" ? "Partial Sound Fixture" : "No Sound Fixture")\nproducerName=Tests\nbuttonX=3\nbuttonY=4\nchain=1\nsquareButton=true\n"
+                    .write(to: pack.appendingPathComponent("info"), atomically: true, encoding: .utf8)
+                try fm.removeItem(at: pack.appendingPathComponent("autoPlay"))
+                try Data().write(to: pack.appendingPathComponent("sounds/empty.wav"))
+                try (kind == "sound-partial" ? "1 1 1 empty.wav\n1 1 2 silence.wav\n" : "1 1 1 empty.wav\n")
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
             case "chain-release":
                 // The screen check passes the approved archive's exact bytes; staging it is the
                 // direct extraction its fixture README requires, not a ZIP import.
