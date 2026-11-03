@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Pulihkan";
 "autoPlayRestored" = "Putar otomatis sebelumnya dipulihkan. Keduanya dapat ditukar lagi dari menu.";
 "autoPlayRestoreFailed" = "Gagal memulihkan. Putar otomatis saat ini dan cadangan tidak berubah.";
+"sound_load_too_large %lld" = "%lld suara yang terlalu panjang atau besar tidak akan diputar";
+"sound_load_unreadable %lld" = "Tidak dapat membaca file %lld suara";
+"sound_load_undecodable %lld" = "Tidak dapat memutar %lld suara";
+"sound_load_out_of_memory %lld" = "Memori perangkat tidak cukup untuk memuat %lld suara. Tutup aplikasi lain dan buka paket lagi.";
+"sound_load_all_failed" = "Tidak dapat membuka suara paket ini";
+"sound_load_details" = "Lihat detail";
+"sound_load_retry" = "Coba lagi";
+"sound_load_pack_list" = "Daftar paket";
+"sound_load_close" = "Tutup";
+"sound_load_reason_too_large" = "Terlalu panjang atau besar";
+"sound_load_reason_unreadable" = "File tidak dapat dibaca";
+"sound_load_reason_undecodable" = "Tidak dapat diputar";
+"sound_load_reason_out_of_memory" = "Memori perangkat tidak cukup";

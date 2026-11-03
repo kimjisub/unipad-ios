@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "復元する";
 "autoPlayRestored" = "以前の自動演奏に復元しました。メニューから再び入れ替えられます。";
 "autoPlayRestoreFailed" = "復元できませんでした。現在の自動演奏とバックアップは変更されていません。";
+"sound_load_too_large %lld" = "長すぎる・大きすぎるサウンド%lld個は再生しません";
+"sound_load_unreadable %lld" = "サウンド%lld個のファイルを読み込めません";
+"sound_load_undecodable %lld" = "サウンド%lld個を再生できません";
+"sound_load_out_of_memory %lld" = "デバイスのメモリが不足しているため、サウンド%lld個を読み込めませんでした。他のアプリを閉じてパックを開き直してください";
+"sound_load_all_failed" = "このパックのサウンドを開けません";
+"sound_load_details" = "詳細";
+"sound_load_retry" = "再試行";
+"sound_load_pack_list" = "パック一覧";
+"sound_load_close" = "閉じる";
+"sound_load_reason_too_large" = "長すぎる・大きすぎる";
+"sound_load_reason_unreadable" = "ファイルを読み込めない";
+"sound_load_reason_undecodable" = "再生できない";
+"sound_load_reason_out_of_memory" = "デバイスのメモリ不足";

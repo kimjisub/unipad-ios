@@ -326,3 +326,16 @@
 "autoPlayRestoreApply" = "복원하기";
 "autoPlayRestored" = "이전 자동 연주로 복원했습니다. 메뉴에서 다시 되돌릴 수 있어요";
 "autoPlayRestoreFailed" = "복원하지 못했습니다. 현재 자동 연주와 백업은 그대로입니다";
+"sound_load_too_large %lld" = "너무 길거나 큰 소리 %lld개는 재생하지 않습니다";
+"sound_load_unreadable %lld" = "소리 %lld개의 파일을 읽을 수 없습니다";
+"sound_load_undecodable %lld" = "소리 %lld개를 재생할 수 없습니다";
+"sound_load_out_of_memory %lld" = "기기 메모리가 부족해 소리 %lld개를 불러오지 못했습니다. 다른 앱을 닫고 팩을 다시 열어 보세요";
+"sound_load_all_failed" = "이 팩의 소리를 열 수 없습니다";
+"sound_load_details" = "자세히 보기";
+"sound_load_retry" = "다시 시도";
+"sound_load_pack_list" = "팩 목록";
+"sound_load_close" = "닫기";
+"sound_load_reason_too_large" = "너무 길거나 큰 소리";
+"sound_load_reason_unreadable" = "파일을 읽을 수 없음";
+"sound_load_reason_undecodable" = "재생할 수 없음";
+"sound_load_reason_out_of_memory" = "기기 메모리 부족";

@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "恢复";
 "autoPlayRestored" = "已恢复之前的自动演奏。可从菜单再次交换。";
 "autoPlayRestoreFailed" = "无法恢复。当前自动演奏和备份均保持不变。";
+"sound_load_too_large %lld" = "%lld 个过长或过大的声音不会播放";
+"sound_load_unreadable %lld" = "无法读取 %lld 个声音的文件";
+"sound_load_undecodable %lld" = "无法播放 %lld 个声音";
+"sound_load_out_of_memory %lld" = "设备内存不足，无法加载 %lld 个声音。请关闭其他应用后重新打开音色包";
+"sound_load_all_failed" = "无法打开此音色包的声音";
+"sound_load_details" = "查看详情";
+"sound_load_retry" = "重试";
+"sound_load_pack_list" = "音色包列表";
+"sound_load_close" = "关闭";
+"sound_load_reason_too_large" = "过长或过大";
+"sound_load_reason_unreadable" = "无法读取文件";
+"sound_load_reason_undecodable" = "无法播放";
+"sound_load_reason_out_of_memory" = "设备内存不足";

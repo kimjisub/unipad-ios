@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Khôi phục";
 "autoPlayRestored" = "Đã khôi phục tự động phát trước đó. Bạn có thể đổi lại từ menu.";
 "autoPlayRestoreFailed" = "Không thể khôi phục. Tự động phát hiện tại và bản sao lưu không thay đổi.";
+"sound_load_too_large %lld" = "%lld âm thanh quá dài hoặc quá lớn sẽ không được phát";
+"sound_load_unreadable %lld" = "Không đọc được tệp của %lld âm thanh";
+"sound_load_undecodable %lld" = "Không phát được %lld âm thanh";
+"sound_load_out_of_memory %lld" = "Thiết bị không đủ bộ nhớ để tải %lld âm thanh. Hãy đóng các ứng dụng khác và mở lại gói.";
+"sound_load_all_failed" = "Không mở được âm thanh của gói này";
+"sound_load_details" = "Xem chi tiết";
+"sound_load_retry" = "Thử lại";
+"sound_load_pack_list" = "Danh sách gói";
+"sound_load_close" = "Đóng";
+"sound_load_reason_too_large" = "Quá dài hoặc quá lớn";
+"sound_load_reason_unreadable" = "Không đọc được tệp";
+"sound_load_reason_undecodable" = "Không phát được";
+"sound_load_reason_out_of_memory" = "Thiếu bộ nhớ thiết bị";

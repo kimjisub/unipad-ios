@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "ပြန်ယူရန်";
 "autoPlayRestored" = "ယခင်တီးခတ်မှုကို ပြန်ယူပြီးပါပြီ။ မီနူးမှ ထပ်လဲနိုင်ပါသည်။";
 "autoPlayRestoreFailed" = "ပြန်မယူနိုင်ပါ။ လက်ရှိတီးခတ်မှုနှင့် အရန် မပြောင်းလဲပါ။";
+"sound_load_too_large %lld" = "အလွန်ရှည် သို့မဟုတ် ကြီးလွန်းသော အသံ %lld ခုကို မဖွင့်ပါ";
+"sound_load_unreadable %lld" = "အသံ %lld ခု၏ ဖိုင်များကို မဖတ်နိုင်ပါ";
+"sound_load_undecodable %lld" = "အသံ %lld ခုကို မဖွင့်နိုင်ပါ";
+"sound_load_out_of_memory %lld" = "စက်ပစ္စည်းမှတ်ဉာဏ် မလုံလောက်၍ အသံ %lld ခုကို မဖွင့်နိုင်ပါ။ အခြားအက်ပ်များကို ပိတ်ပြီး pack ကို ပြန်ဖွင့်ပါ။";
+"sound_load_all_failed" = "ဤ pack ၏ အသံများကို မဖွင့်နိုင်ပါ";
+"sound_load_details" = "အသေးစိတ်";
+"sound_load_retry" = "ထပ်စမ်းရန်";
+"sound_load_pack_list" = "Pack စာရင်း";
+"sound_load_close" = "ပိတ်ရန်";
+"sound_load_reason_too_large" = "အလွန်ရှည် သို့မဟုတ် ကြီးလွန်း";
+"sound_load_reason_unreadable" = "ဖိုင်ကို မဖတ်နိုင်";
+"sound_load_reason_undecodable" = "မဖွင့်နိုင်";
+"sound_load_reason_out_of_memory" = "စက်မှတ်ဉာဏ် မလုံလောက်";

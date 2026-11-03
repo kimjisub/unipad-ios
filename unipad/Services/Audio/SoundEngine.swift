@@ -136,14 +136,37 @@ final class SoundEngine {
     }
     /// Lets tests exercise older systems whose file reader does not support Ogg Opus.
     private let openAudioFile: (URL) throws -> AVAudioFile
-    private let packBudget: SoundFileLimits.PackBudget
+    /// Reads a file's real length and format before anything is decoded. A test seam.
+    private let inspect: (URL) -> AudioAdmission.Inspection
+    /// Bytes the app may still allocate before the system ends it, or nil where the system does not
+    /// say (the simulator). A test seam.
+    private let availableMemory: () -> Int?
     private let observeLoading: (LoadingEvent) -> Void
 
     protocol LoadingListener: AnyObject {
         func onStart(soundCount: Int)
         func onProgressTick()
-        func onEnd()
+        /// Loading finished; `report` names every sound file that will not play and why.
+        func onEnd(_ report: SoundLoadReport)
+        /// The engine itself could not start. Nothing in the pack can play.
         func onException(_ error: Error)
+    }
+
+    /// Every sound is kept as 48 kHz stereo float whatever the output device runs at, so the same
+    /// file costs the same memory and is admitted the same way on every route; the mixer converts
+    /// to the device as it plays.
+    nonisolated static let storageFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+
+    /// Room left for the decoder, the converter and the rest of the app beyond a sound's own buffers.
+    nonisolated static let memoryHeadroom = 64 * 1_024 * 1_024
+
+    nonisolated static func processAvailableMemory() -> Int? {
+        #if os(iOS)
+        let available = os_proc_available_memory()
+        return available > 0 ? available : nil
+        #else
+        return nil
+        #endif
     }
 
     /// `activateSession` applies the category and activates the session, on the worker. A test seam: a
@@ -153,12 +176,14 @@ final class SoundEngine {
         chain: ChainObserver,
         loadingListener: LoadingListener,
         activateSession: @escaping () throws -> Void = SoundEngine.configureSession,
-        packBudget: SoundFileLimits.PackBudget = .init(),
         openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
+        inspect: @escaping (URL) -> AudioAdmission.Inspection = AudioFileInspection.inspect(url:),
+        availableMemory: @escaping () -> Int? = SoundEngine.processAvailableMemory,
         observeLoading: @escaping (LoadingEvent) -> Void = { _ in }
     ) {
         self.openAudioFile = openAudioFile
-        self.packBudget = packBudget
+        self.inspect = inspect
+        self.availableMemory = availableMemory
         self.observeLoading = observeLoading
         self.unipack = unipack
         self.chain = chain
@@ -262,13 +287,12 @@ final class SoundEngine {
     }
 
     nonisolated private struct SetUp {
-        let format: AVAudioFormat
         /// False when another app held the session (a call in progress): the engine was not started.
         let hasSession: Bool
     }
 
-    /// Runs on the worker. Configures the session before reading the engine's format, so the nodes
-    /// are connected at the session's sample rate. A session that cannot be activated says nothing
+    /// Runs on the worker. The nodes carry the storage format and the mixer converts it to the
+    /// session's. A session that cannot be activated says nothing
     /// about the pack or the device: the nodes are connected anyway and the engine starts when the
     /// session is taken back, as after an interruption.
     nonisolated private static func setUp(
@@ -282,14 +306,15 @@ final class SoundEngine {
             logger.error("Failed to configure AVAudioSession: \(error.localizedDescription)")
             hasSession = false
         }
-        let format = engine.mainMixerNode.outputFormat(forBus: 0)
-        logger.info("Playback format: sampleRate=\(format.sampleRate), channels=\(format.channelCount)")
+        let output = engine.mainMixerNode.outputFormat(forBus: 0)
+        logger.info("Output format: sampleRate=\(output.sampleRate), channels=\(output.channelCount)")
+        let format = storageFormat
         for node in nodes {
             engine.attach(node)
             engine.connect(node, to: engine.mainMixerNode, format: format)
         }
         engine.prepare()
-        guard hasSession else { return .success(SetUp(format: format, hasSession: false)) }
+        guard hasSession else { return .success(SetUp(hasSession: false)) }
         do {
             try engine.start()
             logger.info("AVAudioEngine started successfully with \(nodes.count) player nodes")
@@ -297,15 +322,13 @@ final class SoundEngine {
             logger.error("Failed to start AVAudioEngine: \(error.localizedDescription)")
             return .failure(error)
         }
-        return .success(SetUp(format: format, hasSession: true))
+        return .success(SetUp(hasSession: true))
     }
 
     private func finishSetUp(_ result: Result<SetUp, Error>, table: [[[Deque<Sound>?]]]?, soundCount: Int) {
         guard !isDestroyed() else { return }
-        let playbackFormat: AVAudioFormat
         switch result {
         case .success(let setUp):
-            playbackFormat = setUp.format
             if !setUp.hasSession { gate.startedWithoutSession() }
         case .failure(let error):
             // Nothing will play on this engine; a later notification must not start it.
@@ -315,65 +338,63 @@ final class SoundEngine {
         }
         isUsable = true
         loadingListener?.onStart(soundCount: soundCount)
-        load(table, as: playbackFormat)
+        load(table)
     }
 
-    private func load(_ table: [[[Deque<Sound>?]]]?, as playbackFormat: AVAudioFormat) {
+    /// Selects the files the pack may keep before decoding any, then decodes only those, in the
+    /// order they were selected. A file that fails to decode keeps its reservation: what is selected
+    /// never depends on how decoding went.
+    private func load(_ table: [[[Deque<Sound>?]]]?) {
         let unipack = self.unipack
+        let inspect = self.inspect, openAudioFile = self.openAudioFile, availableMemory = self.availableMemory
         observeLoading(.loadQueued)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             self.observeLoading(.loadStarted)
-            guard let table else {
-                self.observeLoading(.completionQueued)
-                DispatchQueue.main.async { [weak self] in
-                    self?.loadingListener?.onEnd()
-                    self?.observeLoading(.completionDelivered)
+            var report = SoundLoadReport()
+            defer {
+                if !self.isDestroyed() {
+                    self.observeLoading(.completionQueued)
+                    DispatchQueue.main.async { [weak self, report] in
+                        self?.loadingListener?.onEnd(report)
+                        self?.observeLoading(.completionDelivered)
+                    }
                 }
-                return
             }
-            // One failing file (a damaged .ogg, a 0-byte wav) used to abort the
-            // whole load and kick the user out of the pack; Android's SoundPool skips it.
-            var loaded = 0
-            var firstError: Error?
+            guard let table else { return }
+            let (plan, facts) = Self.select(table, of: unipack, inspect: inspect)
             // One decoded buffer per file, shared by every pad that maps it (Android and web decode
             // per file); decoding per keySound line multiplied load time and memory on packs that
             // reuse a sample.
-            var byFile: [URL: AVAudioPCMBuffer] = [:]
-            // A file that failed fails again for every line that maps it; decoding it again could
-            // cost a whole sound's memory and time each time before the same error.
-            var failedFiles: [URL: Error] = [:]
-            var budget = self.packBudget
+            var byFile: [String: AVAudioPCMBuffer] = [:]
+            var settled = Set<String>()
             outer: for i in 0..<unipack.chain {
                 for j in 0..<unipack.buttonX {
                     for k in 0..<unipack.buttonY {
                         guard let sounds = table[i][j][k] else { continue }
                         for sound in sounds {
                             if self.isDestroyed() { break outer }
-                            do {
-                                let playBuffer: AVAudioPCMBuffer
-                                if let cached = byFile[sound.file] {
-                                    playBuffer = cached
-                                } else if let failure = failedFiles[sound.file] {
-                                    throw failure
-                                } else {
+                            let identity = Self.identity(of: sound)
+                            if settled.insert(identity).inserted {
+                                if let failure = plan[identity] ?? nil {
+                                    report.failed(sound.file, failure)
+                                } else if let facts = facts[identity] {
+                                    self.observeLoading(.soundStarted)
                                     do {
-                                        self.observeLoading(.soundStarted)
-                                        defer { self.observeLoading(.soundFinished) }
-                                        playBuffer = try Self.decode(sound.file, as: playbackFormat, within: &budget, opening: self.openAudioFile)
+                                        byFile[identity] = try Self.decode(sound.file, facts: facts, opening: openAudioFile,
+                                                                           availableMemory: availableMemory)
+                                        report.loaded()
                                     } catch {
-                                        failedFiles[sound.file] = error
-                                        throw error
+                                        logger.error("sound load failed: \(sound.file.lastPathComponent): \(error.localizedDescription)")
+                                        report.failed(sound.file, Self.failure(of: error))
                                     }
-                                    byFile[sound.file] = playBuffer
+                                    self.observeLoading(.soundFinished)
                                 }
+                            }
+                            if let playBuffer = byFile[identity] {
                                 self.buffersLock.lock()
                                 if !self.destroyed { self.buffers[sound.id] = playBuffer }
                                 self.buffersLock.unlock()
-                                loaded += 1
-                            } catch {
-                                logger.error("sound load failed: \(sound.file.lastPathComponent): \(error.localizedDescription)")
-                                if firstError == nil { firstError = error }
                             }
                             DispatchQueue.main.async { [weak self] in
                                 self?.loadingListener?.onProgressTick()
@@ -382,19 +403,51 @@ final class SoundEngine {
                     }
                 }
             }
-            if self.isDestroyed() { return }
-            self.observeLoading(.completionQueued)
-            if loaded == 0, let firstError {
-                DispatchQueue.main.async { [weak self] in
-                    self?.loadingListener?.onException(firstError)
-                    self?.observeLoading(.completionDelivered)
-                }
-            } else {
-                DispatchQueue.main.async { [weak self] in
-                    self?.loadingListener?.onEnd()
-                    self?.observeLoading(.completionDelivered)
+        }
+    }
+
+    /// The same file reached through different keySound spellings is one sound.
+    nonisolated private static func identity(of sound: Sound) -> String {
+        sound.file.standardizedFileURL.path
+    }
+
+    /// Per file the pack uses, nil when it was selected or the reason it will not play; and the
+    /// inspected facts of the selected ones.
+    nonisolated private static func select(
+        _ table: [[[Deque<Sound>?]]], of unipack: UniPack, inspect: (URL) -> AudioAdmission.Inspection
+    ) -> (plan: [String: SoundLoadReport.Failure?], facts: [String: AudioAdmission.Facts]) {
+        var references: [AudioAdmission.Reference] = []
+        var urls: [String: URL] = [:]
+        for i in 0..<unipack.chain {
+            for j in 0..<unipack.buttonX {
+                for k in 0..<unipack.buttonY {
+                    for (line, sound) in (table[i][j][k] ?? Deque()).enumerated() {
+                        let identity = Self.identity(of: sound)
+                        urls[identity] = urls[identity] ?? sound.file
+                        references.append(.init(chain: i, x: j, y: k, line: line, identity: identity))
+                    }
                 }
             }
+        }
+        var facts: [String: AudioAdmission.Facts] = [:]
+        let bounds = AudioAdmission.Bounds(chains: unipack.chain, width: unipack.buttonX, height: unipack.buttonY)
+        let plan = (try? AudioAdmission.select(references, bounds: bounds) { identity in
+            guard let url = urls[identity] else { return .rejected(.readFailure) }
+            let inspection = inspect(url)
+            facts[identity] = inspection.facts
+            return inspection
+        }) ?? AudioAdmission.Plan(files: [], reservedCost: 0)
+        var result: [String: SoundLoadReport.Failure?] = [:]
+        for file in plan.files {
+            result[file.identity] = file.exclusion.map(SoundLoadReport.Failure.init)
+        }
+        return (result, facts)
+    }
+
+    nonisolated private static func failure(of error: Error) -> SoundLoadReport.Failure {
+        switch error {
+        case SoundEngineError.outOfMemory, SoundEngineError.bufferCreationFailed: return .outOfMemory
+        default: return .undecodable
         }
     }
 
@@ -410,24 +463,28 @@ final class SoundEngine {
         return buffers[id]
     }
 
-    /// Decodes `url` in `playbackFormat`. A sound that would take the pack past `budget` is refused
-    /// before each buffer for it is allocated, by the length its header claims.
-    static func decode(
-        _ url: URL, as playbackFormat: AVAudioFormat, within budget: inout SoundFileLimits.PackBudget,
-        opening openAudioFile: (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) }
+    /// Decodes a selected file into the storage format. Its buffers are sized by the frames the
+    /// inspector found in the file, never by the length its header claims, and each is refused
+    /// before it is allocated when the device has no memory left for it.
+    nonisolated static func decode(
+        _ url: URL, facts: AudioAdmission.Facts,
+        opening openAudioFile: (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
+        availableMemory: () -> Int? = SoundEngine.processAvailableMemory
     ) throws -> AVAudioPCMBuffer {
-        let spent = budget
-        let source = try decodeAudioBuffer(from: url, opening: openAudioFile) { format, frames in
-            let claimed = try SoundFileLimits.resampledFrameCount(
-                frames, from: format.sampleRate, to: playbackFormat.sampleRate, channels: playbackFormat.channelCount)
-            try spent.check(claimed, channels: playbackFormat.channelCount)
+        let target = storageFormat
+        let source = try decodeAudioBuffer(from: url, holding: facts, opening: openAudioFile) { format, frames in
+            // The source buffer and the converted one exist together for a moment.
+            let stored = try SoundFileLimits.resampledFrameCount(
+                frames, from: format.sampleRate, to: target.sampleRate, channels: target.channelCount)
+            let bytes = (Int(frames) * Int(format.channelCount) + Int(stored) * Int(target.channelCount))
+                * MemoryLayout<Float>.size
+            if let available = availableMemory(), available - memoryHeadroom < bytes {
+                throw SoundEngineError.outOfMemory
+            }
         }
-        let converted = try convertIfNeeded(source, to: playbackFormat)
+        let converted = try convertIfNeeded(source, to: target)
         // A converted buffer is already sized by the frames the source holds.
-        let playBuffer = converted === source ? try fitted(source) : converted
-        // The allocated capacity, not the frames it holds, is what the buffer keeps in memory.
-        try budget.spend(playBuffer.frameCapacity, channels: playBuffer.format.channelCount)
-        return playBuffer
+        return converted === source ? try fitted(source) : converted
     }
 
     /// The decoded sound in a buffer no larger than the frames it holds. `admit` sees the format and
@@ -439,10 +496,11 @@ final class SoundEngine {
         try fitted(decodeAudioBuffer(from: url, admitting: admit))
     }
 
-    /// The decoded sound in a buffer sized by the length the file claims, which can be far more than
-    /// it holds.
-    private static func decodeAudioBuffer(
+    /// The decoded sound in a buffer sized by the frames `facts` found in the file or, without them,
+    /// by the length the file claims, which can be far more than it holds.
+    nonisolated private static func decodeAudioBuffer(
         from url: URL,
+        holding facts: AudioAdmission.Facts? = nil,
         opening openAudioFile: (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
         admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void
     ) throws -> AVAudioPCMBuffer {
@@ -453,8 +511,9 @@ final class SoundEngine {
             return try OggAudioDecoder.decode(url, admitting: admit)
         }
         let format = audioFile.processingFormat
+        let frames = try facts.map { try inspectedFrames($0, at: format.sampleRate) } ?? audioFile.length
         let frameCount = try SoundFileLimits.sourceFrameCount(
-            audioFile.length, sampleRate: format.sampleRate, channels: format.channelCount)
+            frames, sampleRate: format.sampleRate, channels: format.channelCount)
         try admit(format, frameCount)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw SoundEngineError.bufferCreationFailed
@@ -463,10 +522,20 @@ final class SoundEngine {
         return buffer
     }
 
+    /// The inspected frames at the rate the decoder delivers, which differs for a format such as
+    /// HE-AAC whose decoder doubles the rate it was stored at.
+    nonisolated private static func inspectedFrames(_ facts: AudioAdmission.Facts, at rate: Double) throws -> AVAudioFramePosition {
+        let frames = AVAudioFramePosition(facts.frames)
+        guard rate != Double(facts.sampleRate) else { return frames }
+        let scaled = (Double(frames) * rate / Double(facts.sampleRate)).rounded(.up)
+        guard let count = AVAudioFramePosition(exactly: scaled) else { throw SoundFileLimits.Violation.tooLong }
+        return count
+    }
+
     /// A copy of `buffer` no larger than the frames it holds. A compressed file's header can claim far
     /// more than it holds (MP3s cut from a song can keep the whole song's length), and the buffer
     /// sized by that claim is released once the copy is made.
-    private static func fitted(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+    nonisolated private static func fitted(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
         guard buffer.frameLength < buffer.frameCapacity else { return buffer }
         guard let fitted = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: max(buffer.frameLength, 1)) else {
             throw SoundEngineError.bufferCreationFailed
@@ -482,7 +551,7 @@ final class SoundEngine {
         return fitted
     }
 
-    private static func convertIfNeeded(_ input: AVAudioPCMBuffer, to targetFormat: AVAudioFormat) throws -> AVAudioPCMBuffer {
+    nonisolated private static func convertIfNeeded(_ input: AVAudioPCMBuffer, to targetFormat: AVAudioFormat) throws -> AVAudioPCMBuffer {
         if input.format.sampleRate == targetFormat.sampleRate &&
             input.format.channelCount == targetFormat.channelCount &&
             input.format.commonFormat == targetFormat.commonFormat &&
@@ -832,6 +901,8 @@ final class SoundEngine {
         case bufferCreationFailed
         case converterCreationFailed
         case conversionFailed
+        /// The device has no memory left for the sound's samples.
+        case outOfMemory
     }
 }
 

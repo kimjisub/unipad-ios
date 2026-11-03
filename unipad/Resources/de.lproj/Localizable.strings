@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Wiederherstellen";
 "autoPlayRestored" = "Vorheriges Autoplay wiederhergestellt. Im Menü kann erneut getauscht werden.";
 "autoPlayRestoreFailed" = "Wiederherstellung fehlgeschlagen. Autoplay und Sicherung bleiben unverändert.";
+"sound_load_too_large %lld" = "%lld zu lange oder zu große Sounds werden nicht abgespielt";
+"sound_load_unreadable %lld" = "Die Dateien von %lld Sounds können nicht gelesen werden";
+"sound_load_undecodable %lld" = "%lld Sounds können nicht abgespielt werden";
+"sound_load_out_of_memory %lld" = "Nicht genug Gerätespeicher, um %lld Sounds zu laden. Schließe andere Apps und öffne das Pack erneut.";
+"sound_load_all_failed" = "Die Sounds dieses Packs können nicht geöffnet werden";
+"sound_load_details" = "Details";
+"sound_load_retry" = "Erneut versuchen";
+"sound_load_pack_list" = "Pack-Liste";
+"sound_load_close" = "Schließen";
+"sound_load_reason_too_large" = "Zu lang oder zu groß";
+"sound_load_reason_unreadable" = "Datei nicht lesbar";
+"sound_load_reason_undecodable" = "Nicht abspielbar";
+"sound_load_reason_out_of_memory" = "Nicht genug Gerätespeicher";

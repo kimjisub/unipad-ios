@@ -116,6 +116,12 @@ final class PlayViewModel {
     var soundLoadingActive = false
     var soundLoadingProgress = 0
     var soundLoadingMax = 0
+    /// The sound files that will not play, told once over the play screen; nil once seen.
+    var soundLoadNotice: SoundLoadReport?
+    /// The pack uses sounds and none can play: the play screen is not shown.
+    var soundLoadFailure: SoundLoadReport?
+    /// The report whose files and reasons are listed in detail.
+    var soundLoadDetails: SoundLoadReport?
 
     // LED color grid for SwiftUI rendering
     var padColors: [[Color]] = []
@@ -1371,10 +1377,16 @@ final class PlayViewModel {
     }
 
     /// Called when sound loading completes to apply initial settings
-    func onSoundLoadingComplete() {
+    func onSoundLoadingComplete(_ report: SoundLoadReport = SoundLoadReport()) {
         // The report can arrive after the screen closed, when the main screen has the launchpad again.
         guard enable else { return }
         soundLoadingActive = false
+        if report.nothingPlays {
+            soundLoadFailure = report
+            usageSession.loadFailed(.soundEngine)
+            return
+        }
+        if !report.entries.isEmpty { soundLoadNotice = report }
         usageSession.loadSucceeded()
         startReady = true
         // onResume() is gated on this and nothing set it: after backgrounding, MIDI input, the
@@ -1396,6 +1408,29 @@ final class PlayViewModel {
         toastMessage = String(localized: "outOfCPU")
         // PlayView closes the screen on top, which is not this one while another covers it.
         if isCovered { quitsWhenShown = true } else { quitRequested = true }
+    }
+
+    /// One line per reason, with how many files it covers, in a fixed order.
+    static func soundLoadSummary(_ report: SoundLoadReport) -> [String] {
+        SoundLoadReport.Failure.allCases.compactMap { failure in
+            let count = report.count(failure)
+            guard count > 0 else { return nil }
+            switch failure {
+            case .tooLarge: return String(localized: "sound_load_too_large \(count)")
+            case .unreadable: return String(localized: "sound_load_unreadable \(count)")
+            case .undecodable: return String(localized: "sound_load_undecodable \(count)")
+            case .outOfMemory: return String(localized: "sound_load_out_of_memory \(count)")
+            }
+        }
+    }
+
+    static func soundLoadReason(_ failure: SoundLoadReport.Failure) -> String {
+        switch failure {
+        case .tooLarge: String(localized: "sound_load_reason_too_large")
+        case .unreadable: String(localized: "sound_load_reason_unreadable")
+        case .undecodable: String(localized: "sound_load_reason_undecodable")
+        case .outOfMemory: String(localized: "sound_load_reason_out_of_memory")
+        }
     }
 
     func onLoadFailed(_ error: Error) {
@@ -1433,9 +1468,9 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
         }
     }
 
-    func onEnd() {
+    func onEnd(_ report: SoundLoadReport) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.onSoundLoadingComplete()
+            self?.viewModel?.onSoundLoadingComplete(report)
         }
     }
 

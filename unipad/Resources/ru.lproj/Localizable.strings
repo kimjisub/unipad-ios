@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Восстановить";
 "autoPlayRestored" = "Предыдущее автовоспроизведение восстановлено. В меню можно поменять их снова.";
 "autoPlayRestoreFailed" = "Не удалось восстановить. Текущее автовоспроизведение и резервная копия не изменены.";
+"sound_load_too_large %lld" = "Слишком длинные или большие звуки (%lld) не будут воспроизводиться";
+"sound_load_unreadable %lld" = "Не удаётся прочитать файлы звуков: %lld";
+"sound_load_undecodable %lld" = "Не удаётся воспроизвести звуки: %lld";
+"sound_load_out_of_memory %lld" = "Недостаточно памяти устройства, чтобы загрузить звуки: %lld. Закройте другие приложения и откройте пак снова.";
+"sound_load_all_failed" = "Не удаётся открыть звуки этого пака";
+"sound_load_details" = "Подробнее";
+"sound_load_retry" = "Повторить";
+"sound_load_pack_list" = "Список паков";
+"sound_load_close" = "Закрыть";
+"sound_load_reason_too_large" = "Слишком длинный или большой";
+"sound_load_reason_unreadable" = "Не удаётся прочитать файл";
+"sound_load_reason_undecodable" = "Не удаётся воспроизвести";
+"sound_load_reason_out_of_memory" = "Недостаточно памяти";

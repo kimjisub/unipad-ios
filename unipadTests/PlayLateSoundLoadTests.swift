@@ -23,6 +23,7 @@ extension PlayUsageRecordTests {
             #expect(!vm.isWatchingVolume, "the closed play screen watches the volume again")
             #expect(!vm.startReady, "the closed play screen became ready")
             #expect(!vm.uiLoaded, "the closed play screen was marked as shown")
+            #expect(vm.soundLoadFailure == nil, "the closed play screen showed that its sounds failed")
         }
 
         /// Loads with the engine held just before it sends its report; `meanwhile` runs while the
@@ -111,7 +112,7 @@ extension PlayUsageRecordTests {
                 let adapter = SoundLoadingAdapter(viewModel: vm)
                 adapter.onStart(soundCount: 5)
                 adapter.onProgressTick()
-                adapter.onEnd()
+                adapter.onEnd(SoundLoadReport())
                 vm.cleanup()
                 try await Task.sleep(for: .milliseconds(100))
 
@@ -122,9 +123,9 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// A failure on a screen still open has to reach the user: without the message and the request
-        /// to close, the loading screen stays up with no way out.
-        @Test func aFailedLoadOnAnOpenScreenTellsTheUserAndAsksToClose() async throws {
+        /// A failure on a screen still open has to reach the user: without the failure screen, the
+        /// loading screen stays up with no way out.
+        @Test func aFailedLoadOnAnOpenScreenTellsTheUser() async throws {
             try await PlayUsageScenario.run { s in
                 s.vm.makeSoundEngine = { pack, chain, listener in
                     SoundEngine(
@@ -132,10 +133,10 @@ extension PlayUsageRecordTests {
                         openAudioFile: { _ in throw CocoaError(.fileReadCorruptFile) })
                 }
                 try await s.load()
-                try await s.waitWhile(timeout: 20) { !s.vm.quitRequested }
+                try await s.waitWhile(timeout: 20) { s.vm.soundLoadFailure == nil }
 
-                try #require(s.vm.quitRequested, "the open screen never asked to close")
-                #expect(s.vm.toastMessage == String(localized: "outOfCPU"))
+                let failure = try #require(s.vm.soundLoadFailure, "the open screen never said its sounds failed")
+                #expect(failure.count(.undecodable) == failure.entries.count && !failure.entries.isEmpty)
                 #expect(!s.vm.soundLoadingActive, "the loading screen stayed up")
                 #expect(!s.vm.startReady)
                 #expect(s.sink.events(named: "pack_load").first?.parameters["result"] != "success")

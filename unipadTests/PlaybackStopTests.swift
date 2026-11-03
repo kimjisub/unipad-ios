@@ -90,7 +90,7 @@ final class PlaybackStopTests: XCTestCase {
                         releasedAdapter = adapter
                         adapter.onStart(soundCount: 1)
                         adapter.onProgressTick()
-                        adapter.onEnd()
+                        adapter.onEnd(SoundLoadReport())
                         adapter.onException(NSError(domain: "PlaybackStopTests", code: 1))
                     }
                     XCTAssertNil(releasedAdapter, "queued callbacks must not retain the listener")
