@@ -71,6 +71,20 @@ struct ConformanceRegressionTests {
         #expect(sample.classify(value).status == "pass", "\(id): \(value.serialized())")
     }
 
+    /// The recorded repeat is the one the engine scheduled. A negative written value is stored
+    /// below -1 and played once, so reporting the stored value would misstate the playback.
+    @Test(arguments: ["RUN-G613", "RUN-S-005", "RUN-S-008"])
+    func soundRepeatsAreObservedAsTheEngineSchedulesThem(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "pass", "\(id): \(value.serialized())")
+    }
+
     @Test(arguments: ["RUN-S-008", "RUN-S-009"])
     func omittingSoundOffFailsTheReleaseCase(id: String) async throws {
         let corpus = try ConformanceCorpus.load()
