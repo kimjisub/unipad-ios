@@ -340,7 +340,7 @@ struct MainView: View {
                         UnipackListItemView(
                             title: item.unipack.criticalError
                                 ? String(localized: "errOccur")
-                                : item.unipack.title,
+                                : item.unipack.displayTitle,
                             subtitle: item.unipack.criticalError
                                 ? item.unipack.getPathString()
                                 : item.unipack.producerName,

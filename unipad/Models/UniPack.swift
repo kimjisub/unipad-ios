@@ -13,6 +13,11 @@ nonisolated class UniPack: Equatable, Hashable {
     var id: String { fatalError("Subclasses must override id") }
 
     var title = ""
+    /// The name shown for the pack in the list and its detail panel: its folder name when the info
+    /// file gives no title, so packs without one can still be told apart.
+    var displayTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? id : title
+    }
     var producerName = ""
     var buttonX = 0
     var buttonY = 0
