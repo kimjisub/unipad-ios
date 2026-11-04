@@ -154,6 +154,46 @@ final class ExternalFileImportTests: XCTestCase {
         UITestSupport.attachScreenshot("opus-after-pad", to: self)
     }
 
+    /// Two packs without a title, alike but for their folder names, are told apart by those names in
+    /// the list and the detail heading; a titled pack keeps its title. Play still opens after the
+    /// missing-title warning.
+    func testPacksWithoutATitleShowTheirFolderNames() throws {
+        for (archive, warns) in [("INF-008", true), ("INF-008-B", true), ("INF-001", false)] {
+            try open(archive)
+            XCTAssertEqual(title.label, warns ? "Warning" : "Pack imported!", archive)
+            ok.tap()
+            XCTAssertFalse(title.exists)
+        }
+        let list = app.scrollViews["main.packList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 30))
+        UITestSupport.attachScreenshot("untitled-pack-list", to: self)
+        let names = ["INF-008", "INF-008-B", "Conformance Pack"]
+        for name in names {
+            XCTAssertTrue(list.staticTexts[name].firstMatch.waitForExistence(timeout: 15), "no list row shows \(name)")
+        }
+
+        let heading = app.descendants(matching: .any)["main.pack.title"]
+        for name in names {
+            list.staticTexts[name].firstMatch.tap()
+            let shown = expectation(for: NSPredicate(format: "label == %@", name), evaluatedWith: heading)
+            wait(for: [shown], timeout: 15)
+            UITestSupport.attachScreenshot("untitled-pack-detail-\(name)", to: self)
+        }
+
+        list.staticTexts["INF-008"].firstMatch.tap()
+        let playButton = app.buttons["Play"].firstMatch
+        XCTAssertTrue(playButton.waitForExistence(timeout: 15))
+        playButton.tap()
+        let warning = app.alerts["Warning"]
+        XCTAssertTrue(warning.waitForExistence(timeout: 15), "the missing-title warning did not appear")
+        XCTAssertTrue(warning.staticTexts["info : title was missing\ninfo : producerName was missing"].exists,
+                      "warning content: \(warning.debugDescription)")
+        UITestSupport.attachScreenshot("untitled-pack-play-warning", to: self)
+        warning.buttons["Accept"].tap()
+        XCTAssertTrue(app.otherElements["playPadGrid"].waitForExistence(timeout: 30))
+        UITestSupport.attachScreenshot("untitled-pack-ready-to-play", to: self)
+    }
+
     func testMissingFromEmptyLibrary() throws { try open("Missing"); assertMissing() }
     func testBrokenFromEmptyLibrary() throws { try open("Broken"); assertBroken() }
     func testNormalAfterPickerResult() throws { try importWithPicker(); try open("Normal"); assertNormal() }

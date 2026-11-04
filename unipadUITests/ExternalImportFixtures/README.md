@@ -36,3 +36,10 @@ priority over pack lights. Its timed screenshots must finish while the pad is
 still held. The fixtures contain no recordings or third-party artwork.
 
 `LightDiscard.uni` is a silent 8x8 pack with a finite repeating two-pad light scene. `LightDiscardUITests` disables lights during that scene, reenables them without a new press, and checks that only a fresh press starts another scene.
+
+`INF-008.zip` and `INF-001.zip` are the cases of those numbers in the shared
+UniPack conformance corpus, byte for byte (`meta/ios-conformance-ui/pack-fingerprints.json`).
+INF-008 has neither a title nor a producer; `INF-008-B.zip` is the same file
+under another name, so the two import into folders that differ only in name.
+INF-001 is titled `Conformance Pack`. `testPacksWithoutATitleShowTheirFolderNames`
+checks that the list and the detail heading name the untitled packs by their folders.
