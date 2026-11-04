@@ -674,7 +674,8 @@ final class PlayViewModel {
         ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs, owner: owner)
     }
 
-    /// Retires controller inputs whose releases will be lost during options, pause or detachment.
+    /// Lets go of held controller pads when the options open, which consume new presses, or when the
+    /// controller detaches, after which no release arrives.
     /// Autoplay and fingers are not touched here; opening options releases fingers through `inputResetVersion`.
     fileprivate func releaseControllerPads() {
         for hold in Array(padHolds.keys) where !hold.byAutoPlay {
