@@ -148,7 +148,8 @@ final class PlayScreenReturnUITests: XCTestCase {
         let closeHelp = app.buttons["midi.help.close"]
         XCTAssertTrue(closeHelp.waitForExistence(timeout: 5), "the connection help did not open")
         closeHelp.tap()
-        XCTAssertTrue(UITestSupport.waitUntilHittable(ok, timeout: 5), "the connection help did not close")
+        let helpClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: closeHelp)
+        XCTAssertEqual(XCTWaiter.wait(for: [helpClosed], timeout: 5), .completed, "the connection help did not close")
         UITestSupport.attachScreenshot("failure-01-device-screen", to: self)
 
         // Long enough for every sound to fail under load; the failure must not close the device screen.
