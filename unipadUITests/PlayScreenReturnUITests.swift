@@ -113,8 +113,9 @@ final class PlayScreenReturnUITests: XCTestCase {
         XCTAssertEqual(pressed.changedPads(comparedWith: still), ["8,8"], "a pressed pad drew no light after the return")
     }
 
-    /// The sounds fail to load while the device screen covers the play screen. The device screen
-    /// stays until the user leaves it; then the play screen closes too, back to the pack list.
+    /// The sounds fail to load while the user reads the device screen over the play screen. The
+    /// device screen stays until the user leaves it; then the play screen closes too, back to the
+    /// pack list.
     @MainActor
     func testASoundLoadFailingUnderTheDeviceScreenClosesThePlayScreenAfterTheReturn() throws {
         continueAfterFailure = false
@@ -140,8 +141,14 @@ final class PlayScreenReturnUITests: XCTestCase {
         let open = app.buttons["Open"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 5), "the connection banner is not shown")
         open.tap()
-        let ok = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "OK")).firstMatch
+        let ok = app.buttons["midi.confirm"]
         XCTAssertTrue(ok.waitForExistence(timeout: 10), "the device screen did not open")
+        // Reading the connection help stops the device screen from confirming itself after 5 s.
+        app.buttons["midi.help.open"].tap()
+        let closeHelp = app.buttons["midi.help.close"]
+        XCTAssertTrue(closeHelp.waitForExistence(timeout: 5), "the connection help did not open")
+        closeHelp.tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(ok, timeout: 5), "the connection help did not close")
         UITestSupport.attachScreenshot("failure-01-device-screen", to: self)
 
         // Long enough for every sound to fail under load; the failure must not close the device screen.
