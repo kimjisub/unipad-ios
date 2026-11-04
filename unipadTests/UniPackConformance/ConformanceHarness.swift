@@ -45,6 +45,8 @@ struct ConformanceDeps {
     var beforeObserve: @MainActor () async throws -> Void = {}
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
+    var audioCost: (AudioAdmission.Facts) -> AudioAdmission.Cost = AudioAdmission.cost
+    var inspectAudio: (Data) -> AudioAdmission.Inspection = AudioFileInspection.inspect
 }
 
 enum ConformanceHarness {
@@ -182,6 +184,9 @@ enum ConformanceHarness {
         }
         if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
            !(conformanceCase.requiresCaseSensitiveFiles && caseSensitiveFileSystem) { return .unverified(reason) }
+        if let observed = ConformanceProductObservation.actual(for: conformanceCase, corpus: corpus, deps: deps) {
+            return observed
+        }
         if conformanceCase.soundIdentity {
             return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps, report: identityReport)
         }
@@ -260,6 +265,14 @@ enum ConformanceHarness {
         }
         if endsInWait { events.append(["trailingDelay", .int(time)]) }
         return events
+    }
+
+    /// The corpus writes the scheduled repeat in the stored form: -1 endless, 0 once, N for N+1 plays.
+    private static func repeatValue(_ repeats: SoundRepeat) -> Int {
+        switch repeats {
+        case .endless: return -1
+        case .plays(let total): return total - 1
+        }
     }
 
     /// Conditions are evaluated before the self-checks, so an unavailable engine is a skipped test.
@@ -616,15 +629,15 @@ enum ConformanceHarness {
                 // A replacement's stop precedes the next start. The removed IDs belong to the
                 // engine, not the current chain or the pad's already-advanced queue head.
                 recordStops(since: previousIDs)
-                if engine.playsStarted > before, let head {
-                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file)), .int(head.loop)])
+                if engine.playsStarted > before, let head, let repeats = engine.lastStartedRepeat {
+                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file)), .int(repeatValue(repeats))])
                     if watchesStops {
                         for id in engine.activePlayIDs.subtracting(previousIDs) {
                             voices[id] = ["soundStop", .int(playing), .int(x), .int(y), .string(soundName(head.file))]
                         }
                     }
                 }
-                if head?.loop == -1 {
+                if engine.playsStarted > before, engine.lastStartedRepeat == .endless {
                     for id in engine.activePlayIDs.subtracting(previousIDs) { loopingPads[id] = (x, y) }
                 }
                 if inputScreen == nil { deps.ledEventOn(led, x, y) }

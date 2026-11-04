@@ -131,6 +131,9 @@ struct ConformanceCorpus {
             case "undetermined": determined = false
             case let other: throw LoadError.invalid("\(id): expectation is \(other.map { "\"\($0)\"" } ?? "missing"), not determined or undetermined")
             }
+            if let observation = value["observation"], observation != .null, observation.string == nil {
+                throw LoadError.invalid("\(id): observation must be a string")
+            }
             let known = (value["known"]?.object ?? [:]).compactMapValues { pin -> ConformanceKnown? in
                 guard let status = pin["status"]?.string, let actual = pin["actual"], let note = pin["note"]?.string else { return nil }
                 let others = (pin["otherActuals"]?.array ?? []).compactMap { $0.object?["actual"] }
