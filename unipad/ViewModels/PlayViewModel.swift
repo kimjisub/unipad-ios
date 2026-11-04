@@ -190,11 +190,11 @@ final class PlayViewModel {
         logger.info("loadUnipack: url=\(url.path), exists=\(FileManager.default.fileExists(atPath: url.path))")
 
         // The folder reads run off the main actor so the loading screen keeps drawing. The screen
-        // may be left meanwhile (cleanup() has run and the task is cancelled): whatever a read
-        // returns after that must not build an engine or touch state.
+        // may be left meanwhile: whatever a read returns after that must not build an engine,
+        // which nothing would destroy, or touch state.
         let pack = makePack(url)
         _ = await Task.detached(priority: .userInitiated) { pack.load() }.value
-        if Task.isCancelled { return }
+        if isLoadAbandoned { return }
 
         if pack.criticalError {
             logger.error("loadUnipack: critical error - \(pack.errorDetail ?? "unknown")")
@@ -218,7 +218,7 @@ final class PlayViewModel {
                 }
             }
         }.value
-        if Task.isCancelled { return }
+        if isLoadAbandoned { return }
 
         unipackWarning = pack.errorDetail
 
@@ -260,6 +260,10 @@ final class PlayViewModel {
         unipackLoading = false
         logger.info("loadUnipack: loading phase complete, waiting for sound buffers")
     }
+
+    /// cleanup() runs when the route changes; the task is cancelled only once the screen has
+    /// disappeared, more than half a second later, so a closed screen can see an uncancelled task.
+    private var isLoadAbandoned: Bool { Task.isCancelled || !enable }
 
     func initState() {
         guard let unipack else { return }
@@ -1234,6 +1238,8 @@ final class PlayViewModel {
 
     private var volumeObservation: NSKeyValueObservation?
 
+    var isWatchingVolume: Bool { volumeObservation != nil }
+
     func startVolumeObserver() {
         #if canImport(UIKit)
         // SoundEngine keeps the session active: it takes it back after an interruption and activates
@@ -1368,6 +1374,9 @@ final class PlayViewModel {
 
     /// Called when sound loading completes to apply initial settings
     func onSoundLoadingComplete() {
+        // The report can arrive after the screen closed, when the main screen has the launchpad again.
+        guard enable else { return }
+        soundLoadingActive = false
         usageSession.loadSucceeded()
         startReady = true
         // onResume() is gated on this and nothing set it: after backgrounding, MIDI input, the
@@ -1383,7 +1392,11 @@ final class PlayViewModel {
     }
 
     func onSoundLoadingFailed() {
+        guard enable else { return }
+        soundLoadingActive = false
         usageSession.loadFailed(.soundEngine)
+        toastMessage = String(localized: "outOfCPU")
+        quitRequested = true
     }
 
     func onLoadFailed(_ error: Error) {
@@ -1408,30 +1421,28 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
     func onStart(soundCount: Int) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingMax = soundCount
-            self?.viewModel?.soundLoadingProgress = 0
+            guard let vm = self?.viewModel, vm.enable else { return }
+            vm.soundLoadingMax = soundCount
+            vm.soundLoadingProgress = 0
         }
     }
 
     func onProgressTick() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingProgress += 1
+            guard let vm = self?.viewModel, vm.enable else { return }
+            vm.soundLoadingProgress += 1
         }
     }
 
     func onEnd() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingActive = false
             self?.viewModel?.onSoundLoadingComplete()
         }
     }
 
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingActive = false
             self?.viewModel?.onSoundLoadingFailed()
-            self?.viewModel?.toastMessage = String(localized: "outOfCPU")
-            self?.viewModel?.quitRequested = true
         }
     }
 }
