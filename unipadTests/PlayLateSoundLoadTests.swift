@@ -96,10 +96,6 @@ extension PlayUsageRecordTests {
                 try #require(s.vm.startReady, "the pack never became ready")
                 #expect(MidiManager.shared.controller == nil, "the screen took the launchpad while the app was away")
                 #expect(!s.vm.isWatchingVolume, "the screen watched the volume while the app was away")
-                let feedbackLight = s.vm.scbFeedbackLight.checked
-                MidiManager.shared.controller?.onFunctionKeyTouch(f: 0, upDown: true)
-                try await Task.sleep(for: .milliseconds(100))
-                #expect(s.vm.scbFeedbackLight.checked == feedbackLight, "a launchpad button changed a setting while the app was away")
 
                 s.vm.onResume()
                 #expect(MidiManager.shared.controller != nil, "the launchpad did not come back with the app")

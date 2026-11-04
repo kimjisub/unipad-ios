@@ -1386,11 +1386,11 @@ final class PlayViewModel {
         uiLoaded = true
         initSetting()
         updateVolumeUI()
+        logger.info("Sound loading complete, startReady=true")
         // The launchpad and the volume come with the screen being shown again or the app's return.
         guard !isCovered, !isAppAway else { return }
         setupMidiController()
         startVolumeObserver()
-        logger.info("Sound loading complete, startReady=true")
     }
 
     func onSoundLoadingFailed() {

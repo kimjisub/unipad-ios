@@ -138,6 +138,7 @@ final class PlayScreenReturnUITests: XCTestCase {
         // before that would only restart the load when the play screen is shown again.
         let soundProgress = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", ".*\\(\\d+/\\d+\\)")).firstMatch
         XCTAssertTrue(soundProgress.waitForExistence(timeout: 30), "the sounds never started loading")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "the pack warned on opening, so more than its sounds failed")
         let open = app.buttons["Open"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 5), "the connection banner is not shown")
         open.tap()

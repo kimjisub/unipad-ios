@@ -117,6 +117,8 @@ nonisolated enum ReleaseTestSupport {
                 // reading files; the device screen can be opened over the play screen meanwhile.
                 let pack = library.appendingPathComponent("SoundFailure")
                 try makePack(at: pack, title: "Sound Failure Fixture", chains: 1)
+                // The default autoplay names chain 2, which a one-chain pack warns about on opening.
+                try removeLightsAndAutoPlay(from: pack)
                 try fm.removeItem(at: pack.appendingPathComponent("sounds/silence.wav"))
                 var keySound = ""
                 for i in 0..<3_000 {
