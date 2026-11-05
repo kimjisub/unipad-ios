@@ -39,8 +39,8 @@ final class WindowControlsBackButtonTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
         // An upright iPad turns the app on its side, where a swipe cannot scroll the pack list,
-        // so the store card has to be on screen without scrolling.
-        app.launchArguments += UITestSupport.englishLaunchArguments(library: "empty")
+        // so use a small private library with the store card already on screen.
+        app.launchArguments += UITestSupport.isolatedLibraryLaunchArguments()
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "home never appeared")
@@ -154,7 +154,7 @@ final class WindowControlsBackButtonTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["openSourceLicenseText"].waitForExistence(timeout: 10), "licenses never opened")
     }
 
-    private func walkBackButtons(upright: Bool, windowWidth: CGFloat?, throughStore: Bool = true) {
+    private func walkBackButtons(upright: Bool, windowWidth: CGFloat?) {
         if upright {
             XCUIDevice.shared.orientation = .portrait
             sleep(2)
@@ -171,7 +171,6 @@ final class WindowControlsBackButtonTests: XCTestCase {
 
         touchBack(upright: upright, arrivingAt: home, "settings")
 
-        guard throughStore else { return }
         _ = UITestSupport.openStore(in: app, testCase: self)
         touchBack(upright: upright, arrivingAt: home, "store")
     }
@@ -262,7 +261,6 @@ final class WindowControlsBackButtonTests: XCTestCase {
         sleep(2)
         fillScreen()
         assertWindowFillsScreen()
-        // The store's header sits under the status bar in this window, which takes the touch.
-        walkBackButtons(upright: true, windowWidth: nil, throughStore: false)
+        walkBackButtons(upright: true, windowWidth: nil)
     }
 }

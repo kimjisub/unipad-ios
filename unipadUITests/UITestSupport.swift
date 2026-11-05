@@ -371,10 +371,12 @@ enum UITestSupport {
     /// XCUITest can report offscreen rows as hittable in landscapeRight. Use
     /// the window and scroll viewport instead, and require the whole row so
     /// its activation point cannot still sit below the fold.
+    /// The window's frame comes from a snapshot too: on an upright iPad its `frame` property is
+    /// 834 by 1210 while every snapshot, the window's included, is 1210 by 834.
     static func isFullyVisible(_ element: XCUIElement, in app: XCUIApplication,
                                within scrollView: XCUIElement? = nil) -> Bool {
-        guard let frame = currentFrame(of: element) else { return false }
-        var viewport = app.windows.firstMatch.frame
+        guard let frame = currentFrame(of: element),
+              var viewport = currentFrame(of: app.windows.firstMatch) else { return false }
         if let scrollView {
             guard let scrollFrame = currentFrame(of: scrollView) else { return false }
             viewport = viewport.intersection(scrollFrame)
