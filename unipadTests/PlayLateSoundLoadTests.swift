@@ -72,19 +72,40 @@ extension PlayUsageRecordTests {
             }
         }
 
-        /// The device screen opened from the connection banner is on top when the load fails. Closing
-        /// the top screen then would close the device screen and leave this one open without sound;
-        /// this screen closes once it is shown again.
-        @Test func aLoadFailingUnderTheDeviceScreenClosesThisScreenWhenItIsShownAgain() async throws {
+        /// The device screen opened from the connection banner is on top when the engine cannot start.
+        /// Closing the top screen then would close the device screen and leave this one open without
+        /// sound; this screen closes once it is shown again.
+        @Test func anEngineFailingUnderTheDeviceScreenClosesThisScreenWhenItIsShownAgain() async throws {
+            let vm = PlayViewModel()
+            vm.screenCovered()
+            let adapter = SoundLoadingAdapter(viewModel: vm)
+            adapter.onException(CocoaError(.fileReadCorruptFile))
+            try await PlayUsageScenario.waitWhile(timeout: 5) { vm.toastMessage == nil }
+            withExtendedLifetime(adapter) {}
+
+            #expect(!vm.quitRequested, "the covered screen asked to close the screen on top")
+            #expect(!vm.soundLoadingActive, "the loading screen stayed up")
+            #expect(vm.toastMessage == String(localized: "outOfCPU"))
+
+            vm.screenShown()
+            #expect(vm.quitRequested, "the screen did not close once it was shown again")
+            vm.cleanup()
+        }
+
+        /// Every sound fails while the device screen is on top. Nothing closes: the device screen stays,
+        /// and this screen says why its sounds cannot play once it is shown again.
+        @Test func soundsFailingUnderTheDeviceScreenLeaveItOpenAndTellOnTheReturn() async throws {
             try await PlayUsageScenario.run { s in
                 try await loadWithTheReportHeld(s, soundsFail: true) { s.vm.screenCovered() }
 
                 #expect(!s.vm.quitRequested, "the covered screen asked to close the screen on top")
                 #expect(!s.vm.soundLoadingActive, "the loading screen stayed up")
-                #expect(s.vm.toastMessage == String(localized: "outOfCPU"))
+                let failure = try #require(s.vm.soundLoadFailure, "the screen never said its sounds failed")
+                #expect(failure.count(.undecodable) == failure.entries.count && !failure.entries.isEmpty)
 
                 s.vm.screenShown()
-                #expect(s.vm.quitRequested, "the screen did not close once it was shown again")
+                #expect(!s.vm.quitRequested, "the screen closed instead of saying why its sounds failed")
+                #expect(s.vm.soundLoadFailure == failure)
             }
         }
 

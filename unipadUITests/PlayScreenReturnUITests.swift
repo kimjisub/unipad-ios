@@ -114,10 +114,10 @@ final class PlayScreenReturnUITests: XCTestCase {
     }
 
     /// The sounds fail to load while the user reads the device screen over the play screen. The
-    /// device screen stays until the user leaves it; then the play screen closes too, back to the
-    /// pack list.
+    /// device screen stays until the user leaves it; then the play screen says its sounds cannot
+    /// open, and its pack list button goes back to the list.
     @MainActor
-    func testASoundLoadFailingUnderTheDeviceScreenClosesThePlayScreenAfterTheReturn() throws {
+    func testASoundLoadFailingUnderTheDeviceScreenTellsAfterTheReturn() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
@@ -160,10 +160,12 @@ final class PlayScreenReturnUITests: XCTestCase {
         XCTAssertEqual(outcome, .timedOut, "the failed load closed the device screen instead of the play screen")
         ok.tap()
 
-        let backAtTheList = UITestSupport.waitUntilHittable(title, timeout: 15)
+        let failure = app.staticTexts["Can't open this pack's sounds"]
+        XCTAssertTrue(failure.waitForExistence(timeout: 15), "the play screen did not say its sounds failed")
         UITestSupport.attachScreenshot("failure-03-after-the-return", to: self)
         XCTAssertFalse(soundProgress.exists, "the sounds were still loading when the device screen closed; nothing was checked")
-        XCTAssertTrue(backAtTheList, "the play screen stayed open after its sounds failed to load")
+        app.buttons["soundLoadPackListButton"].tap()
+        XCTAssertTrue(UITestSupport.waitUntilHittable(title, timeout: 15), "the pack list button did not go back to the list")
     }
 
     /// The pads whose colour changed over one second.

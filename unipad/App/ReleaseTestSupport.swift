@@ -127,8 +127,8 @@ nonisolated enum ReleaseTestSupport {
                 try makePack(at: library.appendingPathComponent("Faded"), title: "Alan Walker - Faded",
                              producer: "Otarygen, 김지섭, K1A2", chains: 6)
             case "sound-failure":
-                // Every sound fails to open, so the load fails, but only after a few seconds of
-                // reading files; the device screen can be opened over the play screen meanwhile.
+                // No sound can be read, so nothing plays, but only after a few seconds of reading
+                // files; the device screen can be opened over the play screen meanwhile.
                 let pack = library.appendingPathComponent("SoundFailure")
                 try makePack(at: pack, title: "Sound Failure Fixture", chains: 1)
                 // The default autoplay names chain 2, which a one-chain pack warns about on opening.
