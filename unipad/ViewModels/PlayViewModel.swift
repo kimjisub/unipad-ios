@@ -1291,6 +1291,7 @@ final class PlayViewModel {
 
     /// Another screen was pushed over this one (the device screen opened from the connection banner).
     @ObservationIgnored private var isCovered = false
+    @ObservationIgnored private var quitsWhenShown = false
 
     /// The performance stays, paused, for when this screen is shown again: held pads are released,
     /// a playing autoplay pauses, and the launchpad and the volume buttons go to the screen on top.
@@ -1307,6 +1308,7 @@ final class PlayViewModel {
         isCovered = false
         crashKeys.screenShown()
         onResume()
+        if quitsWhenShown { quitRequested = true }
     }
 
     /// The launchpad this screen lights; none while another screen covers it and has the launchpad.
@@ -1380,11 +1382,11 @@ final class PlayViewModel {
         uiLoaded = true
         initSetting()
         updateVolumeUI()
-        // A covered screen gets these when it is shown again.
-        guard !isCovered else { return }
+        logger.info("Sound loading complete, startReady=true")
+        // The launchpad and the volume come with the screen being shown again or the app's return.
+        guard !isCovered, !isAppAway else { return }
         setupMidiController()
         startVolumeObserver()
-        logger.info("Sound loading complete, startReady=true")
     }
 
     func onSoundLoadingFailed() {
@@ -1392,7 +1394,8 @@ final class PlayViewModel {
         soundLoadingActive = false
         usageSession.loadFailed(.soundEngine)
         toastMessage = String(localized: "outOfCPU")
-        quitRequested = true
+        // PlayView closes the screen on top, which is not this one while another covers it.
+        if isCovered { quitsWhenShown = true } else { quitRequested = true }
     }
 
     func onLoadFailed(_ error: Error) {
