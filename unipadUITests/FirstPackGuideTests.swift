@@ -222,9 +222,7 @@ final class FirstPackGuideTests: XCTestCase {
     func testPreparedArchiveCanBeSelectedFromRecentItems() throws {
         launch(Self.korean)
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let recents = app.tabBars.buttons
-            .matching(NSPredicate(format: "label IN %@", ["Recents", "최근 항목"]))
-            .firstMatch
+        let recents = UITestSupport.filePickerRecents(in: app)
         // iOS can restore a folder with no tab bar. Return to Locations before
         // selecting Recents, rather than assuming tabs are present in that folder.
         for _ in 0..<4 {

@@ -47,6 +47,7 @@ final class PlayThemeLayoutTests: XCTestCase {
     private static let landscapeSafeAreas: [String: (side: CGFloat, bottom: CGFloat)] = [
         "844x390": (47, 21),   // iPhone 16e
         "874x402": (62, 20),   // iPhone 17 Pro
+        "1376x1032": (0, 20), // iPad Pro 13-inch (M5), both landscape directions
     ]
 
     private func safeArea(of window: CGRect) throws -> CGRect {
@@ -176,7 +177,7 @@ final class PlayThemeLayoutTests: XCTestCase {
         if apply.waitForExistence(timeout: 5) { apply.tap() }
         UITestSupport.attachScreenshot("walk-1-theme-applied", to: self)
         for _ in 0..<2 where !app.buttons["gearshape"].exists {
-            app.buttons["chevron.left"].firstMatch.tap()
+            UITestSupport.tapBack(in: app)
             _ = app.buttons["gearshape"].waitForExistence(timeout: 5)
         }
 

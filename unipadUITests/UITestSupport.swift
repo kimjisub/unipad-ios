@@ -7,6 +7,8 @@ import XCTest
 
 enum UITestSupport {
 
+    static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
     static var isReleaseSuite: Bool { ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" }
 
     /// Launch arguments for tests that find controls by their English text
@@ -176,32 +178,22 @@ enum UITestSupport {
         openFolder(fixtureFolder, "isolated picker")
         let cell = app.cells.containing(.staticText, identifier: "ReleaseFixture-\(token).zip").firstMatch
         let icon = cell.images.firstMatch
-        let list = app.collectionViews.firstMatch
+        // The sidebar of an iPad's picker is a collection view too, and it comes first.
+        let list = isPad ? app.collectionViews["File View"] : app.collectionViews.firstMatch
         XCTAssertTrue(list.waitForExistence(timeout: 10))
-        let search = app.searchFields.firstMatch
         let tabs = app.tabBars.firstMatch
-        // A folder can keep its search field and file grid while iOS hides the
-        // floating tabs. Reserve their entire 64-point bottom area in either
-        // layout, so a late tab bar cannot cover the icon or the drag path.
-        // Any visible tabs must still fit on screen and stay below the search.
+        let filesTop = isPad ? app.navigationBars[fullPickerBar] : app.searchFields.firstMatch
         var viewport = CGRect.null
         let controlsSettled = waitForSettledFrame(timeout: 20,
-            waitForArrival: { search.waitForExistence(timeout: $0) },
+            waitForArrival: { filesTop.waitForExistence(timeout: $0) },
             frame: {
-                let screen = app.windows.firstMatch.frame
-                guard search.exists, screen.contains(search.frame) else { return nil }
-                var bottom = screen.maxY - 68
-                if tabs.exists {
-                    guard screen.contains(tabs.frame), tabs.frame.minY > search.frame.maxY + 8 else { return nil }
-                    bottom = min(bottom, tabs.frame.minY - 4)
-                }
-                guard bottom > search.frame.maxY + 4 else { return nil }
-                viewport = CGRect(x: screen.minX, y: search.frame.maxY + 4, width: screen.width,
-                                  height: bottom - search.frame.maxY - 4)
-                return viewport
+                guard let area = isPad ? filesInPadSheet(list, below: filesTop)
+                                       : filesAbovePhoneTabs(tabs, below: filesTop, in: app) else { return nil }
+                viewport = area
+                return area
             })
         if !controlsSettled {
-            attachPickerDiagnostics(in: app, details: "folder controls: search exists \(search.exists), tabs exist \(tabs.exists)")
+            attachPickerDiagnostics(in: app, details: "folder controls: top exists \(filesTop.exists), tabs exist \(tabs.exists)")
         }
         XCTAssertTrue(controlsSettled, "the unobscured file area must be visible and stable")
         func visible() -> Bool { icon.exists && viewport.contains(icon.frame) && icon.isHittable }
@@ -249,6 +241,45 @@ enum UITestSupport {
         }
         attachPickerDiagnostics(in: app, details: "the picker stayed open after choosing the archive")
         XCTFail("the file picker must close once the prepared archive is chosen")
+    }
+
+    private static let fullPickerBar = "FullDocumentManagerViewControllerNavigationBar"
+
+    /// The part of an iPad picker's file list no bar covers. There the picker is a sheet in the
+    /// middle of the screen whose folder bar holds search as a button, and it has no tabs, only
+    /// an item count along the list's bottom edge.
+    private static func filesInPadSheet(_ list: XCUIElement, below bar: XCUIElement) -> CGRect? {
+        guard bar.exists, list.exists else { return nil }
+        let top = bar.frame.maxY + 4
+        let bottom = list.frame.maxY - 44
+        guard bottom > top else { return nil }
+        return CGRect(x: list.frame.minX, y: top, width: list.frame.width, height: bottom - top)
+    }
+
+    /// The part of an iPhone picker's file grid no bar covers.
+    ///
+    /// A folder can keep its search field and file grid while iOS hides the floating tabs.
+    /// Reserve their entire 64-point bottom area in either layout, so a late tab bar cannot
+    /// cover the icon or the drag path. Any visible tabs must still fit on screen and stay
+    /// below the search.
+    private static func filesAbovePhoneTabs(_ tabs: XCUIElement, below search: XCUIElement,
+                                            in app: XCUIApplication) -> CGRect? {
+        let screen = app.windows.firstMatch.frame
+        guard search.exists, screen.contains(search.frame) else { return nil }
+        var bottom = screen.maxY - 68
+        if tabs.exists {
+            guard screen.contains(tabs.frame), tabs.frame.minY > search.frame.maxY + 8 else { return nil }
+            bottom = min(bottom, tabs.frame.minY - 4)
+        }
+        guard bottom > search.frame.maxY + 4 else { return nil }
+        return CGRect(x: screen.minX, y: search.frame.maxY + 4, width: screen.width,
+                      height: bottom - search.frame.maxY - 4)
+    }
+
+    /// The picker's Recents entry: a tab on an iPhone, a row of the sidebar on an iPad.
+    static func filePickerRecents(in app: XCUIApplication) -> XCUIElement {
+        let isRecents = NSPredicate(format: "label IN %@", ["Recents", "최근 항목"])
+        return (isPad ? app.cells : app.tabBars.buttons).matching(isRecents).firstMatch
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself
@@ -314,8 +345,7 @@ enum UITestSupport {
     /// On an iPad the picker ends as a sheet in the middle of the screen with its
     /// sidebar shown, and the cancel button, drawn as an X, stays in the sidebar's bar.
     static func settledFilePickerCancelButton(in app: XCUIApplication, timeout: TimeInterval) -> XCUIElement? {
-        let onPad = UIDevice.current.userInterfaceIdiom == .pad
-        let bar = app.navigationBars[onPad ? "DOCSidebarView" : "FullDocumentManagerViewControllerNavigationBar"]
+        let bar = app.navigationBars[isPad ? "DOCSidebarView" : fullPickerBar]
         let cancel = bar.buttons
             .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
             .firstMatch
@@ -323,7 +353,7 @@ enum UITestSupport {
         let didSettle = waitForSettledFrame(timeout: timeout,
             waitForArrival: { cancel.waitForExistence(timeout: $0) },
             frame: {
-                guard onPad || currentFrame(of: bar)?.width == screenWidth else { return nil }
+                guard isPad || currentFrame(of: bar)?.width == screenWidth else { return nil }
                 return currentFrame(of: cancel)
             })
         guard didSettle else {
