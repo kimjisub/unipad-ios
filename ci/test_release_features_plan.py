@@ -52,6 +52,17 @@ class ReleaseFeaturesPlanTests(unittest.TestCase):
                 for method in test_class.get("xctestMethods", []):
                     self.assertIn(f"func {method.removesuffix('()')}(", source, f"{name}/{method} does not exist")
 
+    def test_every_selected_suite_is_top_level(self):
+        # A plan entry selects a Swift Testing suite by its outermost name. Naming a suite nested
+        # in another one selects nothing, and the plan still passes without running it.
+        for entry in self.plan["testTargets"]:
+            target = entry["target"]["name"]
+            sources = swift_sources(target).values()
+            for suite in entry["selectedTests"].get("suites", []):
+                pattern = re.compile(rf"^(?:[^\s/].*\s)?(?:struct|class)\s+{re.escape(suite['name'])}\b", re.MULTILINE)
+                self.assertTrue(any(pattern.search(text) for text in sources),
+                                f"{target}/{suite['name']} is nested, so the plan does not run it")
+
     def test_nothing_selected_is_left_out_by_the_ui_script(self):
         script = (ROOT / "ci/ui-tests.sh").read_text()
         left_out = re.findall(r"-skip-testing:unipadUITests/(\w+)(?:/(\w+))?", script)

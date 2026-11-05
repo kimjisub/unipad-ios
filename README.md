@@ -126,7 +126,9 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
 
 `ReleaseFeatures.xctestplan` selects the unit and UI tests that cover the app's
 basic features, so a release candidate can be checked in one run without the
-whole UI target. Run it against a Release build on an iPhone simulator:
+whole UI target. A plan entry selects a suite by its outermost name, so suites
+nested in `PlayUsageRecordTests` run through that one entry. Run it against a
+Release build on an iPhone simulator:
 
 ```bash
 UNIPAD_UI_TEST_CONFIGURATION=Release ci/ui-tests.sh <simulator-udid> -testPlan ReleaseFeatures
@@ -152,7 +154,7 @@ servers: features marked "fixture" below are checked against them by hand.
 | Launch, empty and filled pack list, Settings and back | `HomeCardVisibilityTests`, `HomeSettingsEntryTests`, `SettingsBackNavigationTests`, `MainListReadTests` | |
 | Import from a file, the result, opening the pack; share codes are retired, and an old share-code link leaves home as it is without a request | `ExternalFileImportTests`, `ImportResultDialogFlowTests`, `FirstPackGuideTests`, `RetiredShareLinkTests`, `AppRouterDeepLinkTests`, importer unit tests | Another app opening a `unipad://` link |
 | Pad sound requests, `keyLed` lights, chain changes, several fingers | `MultiTouchPlayTests`, `MultiTouchPlayUITests`, `PlayChainLayoutTests`, `ChainReleaseTests`, `ChainReleaseUITests`, `LedRunnerTests`, `PlaybackStopTests` | Audible sound and touch latency; several real fingers on screen (synthetic input only) |
-| Autoplay start, pause, resume and stop; practice modes | `ReleaseFeatureUITests`, `AutoPlayRelaunchUITests`, `PlaybackStopUITests`, `AutoPlayRunnerTests`, `AutoPlayRelaunchTests` | |
+| Autoplay start, pause, resume and stop; practice modes | `ReleaseFeatureUITests`, `AutoPlayRelaunchUITests`, `PlaybackStopUITests`, `AutoPlayRunnerTests`, `AutoPlayRelaunchTests`, `StepReturnAutoplayTests` | |
 | Launchpad and MIDI: discovery, input, LED output | `LaunchpadCoreCFWDriverTests`, `LaunchpadProCFWDriverTests`, `PlayViewModelLoadTests`, `MidiConnectionHelpTests`; the virtual MK2 round trip below | A physical Launchpad over USB, models other than MK2, unplugging and replugging |
 | Store download (fixture), pack deletion with play history and bookmarks | `StoreDownloadTests`, `StoreDownloadFailureUITests`, `ReleaseFeatureUITests` (download then open), `PackDeletionUITests`, `UniPackDownloaderTests`, `PackDeletionTests` | The live store and download servers |
 | Language, theme, rotation, notch and home indicator | `AppLanguageTests`, `LocalizationBundleTests`, `PlayThemeLayoutTests`, `HomeGuidingCardsTests`, `PlayChainLayoutTests`, `PlayLayoutTests` | Language follows the system setting; the app has no language switch of its own |

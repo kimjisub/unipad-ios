@@ -85,34 +85,83 @@ final class AutoPlayRelaunchUITests: XCTestCase {
     /// this silent fixture gives that request a sustained light for the screen comparison.
     @MainActor
     func testStepToAutoplayShowsThePendingPad() throws {
+        try withPlayScreen(library: "step-resume", title: "Step Resume Fixture") { app, grid, idle in
+            choose("Step", app: app)
+            UITestSupport.attachScreenshot("pending-step-01-guide", to: self)
+            choose("Autoplay", app: app)
+            XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
+            UITestSupport.attachScreenshot("pending-step-02-autoplay", to: self)
+            XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,1"],
+                           "Sounding autoplay must trigger the unplayed guided pad's light")
+            app.buttons["pause.fill"].tap()
+            app.buttons["play.fill"].tap()
+            UITestSupport.attachScreenshot("pending-step-03-resumed", to: self)
+        }
+    }
+
+    /// One case of `StepReturnAutoplayTests` through the real background and return, read from the
+    /// pads as drawn: pad 1,2 pressed, Play first, and the fixture's last group is pads 1,2 and 2,1.
+    @MainActor
+    private func checkAutoplayAfterReturningToPartialStep(awayFor seconds: TimeInterval) throws {
+        try withPlayScreen(library: "step-return", title: "Step Return Fixture") { app, grid, idle in
+            choose("Step", app: app)
+            pressTopRow(grid, columns: 0..<2)
+            UITestSupport.attachScreenshot("step-return-01-partly-pressed", to: self)
+
+            XCUIDevice.shared.press(.home)
+            Thread.sleep(forTimeInterval: seconds)
+            app.activate()
+            XCTAssertTrue(grid.waitForExistence(timeout: 15))
+            XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), [],
+                           "Leaving the app must clear the guides and lights until Play")
+            let resume = app.buttons["play.fill"]
+            XCTAssertTrue(resume.waitForExistence(timeout: 5))
+            resume.tap()
+            UITestSupport.attachScreenshot("step-return-02-guide", to: self)
+            let guide = try PadPixels.settled(grid)
+            XCTAssertEqual(guide.changedPads(comparedWith: idle), ["2,1"], "Play must guide only the unpressed pad")
+
+            choose("Autoplay", app: app)
+            UITestSupport.attachScreenshot("step-return-03-autoplay", to: self)
+            let played = try PadPixels.settled(grid)
+            XCTAssertEqual(played.changedPads(comparedWith: idle), ["2,1"], "Autoplay must light only the unpressed pad")
+            XCTAssertEqual(played.changedPads(comparedWith: guide), ["2,1"], "The pad's own light must replace its guide")
+            waitForTransportToGo(app, timeout: 15, "The last group must end the song")
+        }
+    }
+
+    /// Runs `body` on a fixture pack's play screen, in landscape, with the unlit pads as its baseline.
+    @MainActor
+    private func withPlayScreen(library: String, title: String,
+                                _ body: (XCUIApplication, XCUIElement, PadPixels) throws -> Void) throws {
         continueAfterFailure = false
         let orientation = XCUIDevice.shared.orientation
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: "step-resume")
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: library)
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
-        let title = app.staticTexts["Step Resume Fixture"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 30))
-        title.tap()
+        let pack = app.staticTexts[title].firstMatch
+        XCTAssertTrue(pack.waitForExistence(timeout: 30))
+        pack.tap()
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 10))
         play.tap()
         let grid = app.otherElements["playPadGrid"]
         XCTAssertTrue(grid.waitForExistence(timeout: 15))
-        let idle = try PadPixels.settled(grid)
-        choose("Step", app: app)
-        UITestSupport.attachScreenshot("pending-step-01-guide", to: self)
-        choose("Autoplay", app: app)
-        XCTAssertTrue(app.buttons["pause.fill"].waitForExistence(timeout: 5))
-        UITestSupport.attachScreenshot("pending-step-02-autoplay", to: self)
-        XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,1"],
-                       "Sounding autoplay must trigger the unplayed guided pad's light")
-        app.buttons["pause.fill"].tap()
-        app.buttons["play.fill"].tap()
-        UITestSupport.attachScreenshot("pending-step-03-resumed", to: self)
+        try body(app, grid, try PadPixels.settled(grid))
+    }
+
+    @MainActor
+    func testAutoplayAfterOneSecondAwayFromPartialStep() throws {
+        try checkAutoplayAfterReturningToPartialStep(awayFor: 1)
+    }
+
+    @MainActor
+    func testAutoplayAfterTenSecondsAwayFromPartialStep() throws {
+        try checkAutoplayAfterReturningToPartialStep(awayFor: 10)
     }
 
     /// The fixture's three groups are one pad each, along the top row.
@@ -124,9 +173,7 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         UITestSupport.attachScreenshot("step-last-group", to: self)
         XCTAssertTrue(transport.exists, "Step practice ended before its last group was played")
         pressTopRow(grid, columns: 2..<3)
-        let ended = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: transport)
-        XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: 15), .completed,
-                       "Step practice did not finish after its last group")
+        waitForTransportToGo(app, timeout: 15, "Step practice did not finish after its last group")
     }
 
     @MainActor
@@ -152,10 +199,15 @@ final class AutoPlayRelaunchUITests: XCTestCase {
 
     @MainActor
     private func waitForSongEnd(_ app: XCUIApplication) {
-        let transport = app.buttons["forward.end.fill"]
-        XCTAssertTrue(transport.waitForExistence(timeout: 5))
-        let ended = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: transport)
-        XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: 240), .completed,
-                       "Autoplay did not reach the end after starting")
+        XCTAssertTrue(app.buttons["forward.end.fill"].waitForExistence(timeout: 5))
+        waitForTransportToGo(app, timeout: 240, "Autoplay did not reach the end after starting")
+    }
+
+    /// A short last group may already be over when this starts, so it only waits for the button to go.
+    @MainActor
+    private func waitForTransportToGo(_ app: XCUIApplication, timeout: TimeInterval, _ message: String) {
+        let ended = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                              object: app.buttons["forward.end.fill"])
+        XCTAssertEqual(XCTWaiter().wait(for: [ended], timeout: timeout), .completed, message)
     }
 }
