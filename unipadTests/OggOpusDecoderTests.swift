@@ -51,13 +51,13 @@ struct OggOpusDecoderTests {
         #expect(!allocated)
     }
 
-    @Test func checksThePackBudgetBeforeAllocatingPCM() throws {
-        let budget = SoundFileLimits.PackBudget(limit: 1_024)
+    @Test func checksTheAdmissionBeforeAllocatingPCM() throws {
+        struct Refused: Error {}
         var claimed: AVAudioFrameCount = 0
-        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+        #expect(throws: Refused.self) {
             try OggOpusDecoder.decode(fixture()) { format, frames in
                 claimed = frames
-                try budget.check(frames, channels: format.channelCount)
+                guard try SoundFileLimits.fits(frames, channels: format.channelCount, within: 1_024) else { throw Refused() }
             }
         }
         #expect(claimed == 24_000)

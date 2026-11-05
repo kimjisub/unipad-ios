@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Ripristina";
 "autoPlayRestored" = "Riproduzione precedente ripristinata. Puoi scambiarle di nuovo dal menu.";
 "autoPlayRestoreFailed" = "Ripristino non riuscito. La riproduzione attuale e la copia sono invariate.";
+"sound_load_too_large %lld" = "%lld suoni troppo lunghi o grandi non verranno riprodotti";
+"sound_load_unreadable %lld" = "Impossibile leggere i file di %lld suoni";
+"sound_load_undecodable %lld" = "Impossibile riprodurre %lld suoni";
+"sound_load_out_of_memory %lld" = "Memoria del dispositivo insufficiente per caricare %lld suoni. Chiudi le altre app e riapri il pack.";
+"sound_load_all_failed" = "Impossibile aprire i suoni di questo pack";
+"sound_load_details" = "Dettagli";
+"sound_load_retry" = "Riprova";
+"sound_load_pack_list" = "Elenco pack";
+"sound_load_close" = "Chiudi";
+"sound_load_reason_too_large" = "Troppo lungo o grande";
+"sound_load_reason_unreadable" = "File illeggibile";
+"sound_load_reason_undecodable" = "Impossibile riprodurre";
+"sound_load_reason_out_of_memory" = "Memoria insufficiente";

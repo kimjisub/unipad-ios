@@ -42,16 +42,10 @@ final class OnePadPack: UniPack {
 
 @MainActor
 enum SoundEngineTestSupport {
-    /// 100 ms of silence: the engine only has to be able to decode and schedule it.
+    /// 100 ms of 48 kHz stereo silence: the engine only has to be able to decode and schedule it.
+    /// A WAV, because the pack loader reads only the formats every app shares.
     static func writeSilentSound() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "SoundEngineTestSupport-\(UUID().uuidString).caf")
-        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
-        buffer.frameLength = 4_800
-        try file.write(from: buffer)
-        return url
+        try writeWav(sampleRate: 48_000, frames: 4_800, channels: 2)
     }
 
     /// A sparse 16-bit PCM WAV of `frames` silent frames whose header claims `sampleRate`, written
@@ -107,13 +101,15 @@ enum SoundEngineTestSupport {
     /// Starts a real engine on `pack` and waits until it has finished loading the sounds.
     static func loadedEngine(
         _ pack: UniPack, chain: ChainObserver? = nil,
-        packBudget: SoundFileLimits.PackBudget = .init(),
-        openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) }
+        openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
+        inspect: @escaping (URL) -> AudioAdmission.Inspection = AudioFileInspection.inspect(url:),
+        availableMemory: @escaping () -> Int? = SoundEngine.processAvailableMemory
     ) async throws -> (SoundEngine, TestSoundLoadListener) {
         let listener = TestSoundLoadListener()
         let trace = SoundLoadingTrace()
         let engine = SoundEngine(unipack: pack, chain: chain ?? ChainObserver(), loadingListener: listener,
-                                 packBudget: packBudget, openAudioFile: openAudioFile, observeLoading: trace.record)
+                                 openAudioFile: openAudioFile, inspect: inspect, availableMemory: availableMemory,
+                                 observeLoading: trace.record)
 
         do {
             try await waitForLoad(listener, trace: trace)
@@ -218,7 +214,7 @@ struct SoundEngineLoadingWaitTests {
 
     @Test func aFinishedLoadDoesNotFailAnExpiredDeadline() async throws {
         let listener = TestSoundLoadListener()
-        listener.onEnd()
+        listener.onEnd(SoundLoadReport())
         try await SoundEngineTestSupport.waitForLoad(listener, trace: SoundLoadingTrace(), timeout: .zero)
     }
 

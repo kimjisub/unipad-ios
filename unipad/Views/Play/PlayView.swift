@@ -4,6 +4,10 @@ struct PlayView: View {
     let packPath: String
     @Environment(AppRouter.self) private var router
     @State private var vm = PlayViewModel()
+    /// Raised to open the pack again from the start, on a fresh model.
+    @State private var loadAttempt = 0
+    /// The window's layout as last reported, handed to the model a retry builds.
+    @State private var lastLayout: ScreenLayout?
     /// How many screens the navigation stack held with this one on top. Fewer means it was closed;
     /// as many or more, another screen covers it.
     @State private var stackDepth = 0
@@ -20,13 +24,17 @@ struct PlayView: View {
             optionWindowOverlay
             loadingOverlay
             errorOverlay
+            soundFailureOverlay
         }
         .background {
             Color.black.ignoresSafeArea()
         }
         #if os(iOS)
         .background {
-            WindowLayoutReader { vm.screenLayoutChanged($0) }
+            WindowLayoutReader {
+                lastLayout = $0
+                vm.screenLayoutChanged($0)
+            }
         }
         #endif
         .platformNavigationBarHidden(true)
@@ -49,6 +57,26 @@ struct PlayView: View {
             }
         } message: {
             Text(vm.unipackWarning ?? "")
+        }
+        .alert(soundNoticeTitle, isPresented: Binding(
+            get: { vm.soundLoadNotice != nil && vm.unipackWarning == nil && vm.soundLoadDetails == nil },
+            set: { if !$0 { vm.soundLoadNotice = nil } }
+        )) {
+            Button(String(localized: "sound_load_details")) {
+                vm.soundLoadDetails = vm.soundLoadNotice
+                vm.soundLoadNotice = nil
+            }
+            Button(String(localized: "accept"), role: .cancel) {
+                vm.soundLoadNotice = nil
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { vm.soundLoadDetails != nil },
+            set: { if !$0 { vm.soundLoadDetails = nil } }
+        )) {
+            SoundLoadDetailsView(report: vm.soundLoadDetails ?? SoundLoadReport()) {
+                vm.soundLoadDetails = nil
+            }
         }
         .overlay(alignment: .bottom) {
             if let toast = vm.toastMessage {
@@ -89,7 +117,7 @@ struct PlayView: View {
             UIApplication.shared.isIdleTimerDisabled = true
             #endif
         }
-        .task {
+        .task(id: loadAttempt) {
             do {
                 try await vm.loadUnipack(path: packPath)
             } catch {
@@ -436,6 +464,69 @@ struct PlayView: View {
         }
     }
 
+    private var soundNoticeTitle: String {
+        vm.soundLoadNotice.map { PlayViewModel.soundLoadSummary($0).joined(separator: "\n") } ?? ""
+    }
+
+    /// The pack uses sounds and none of them can play.
+    @ViewBuilder
+    private var soundFailureOverlay: some View {
+        if let report = vm.soundLoadFailure {
+            ZStack {
+                Color.black.opacity(0.7).ignoresSafeArea()
+                VStack(spacing: 12) {
+                    Image(systemName: "speaker.slash.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.yellow)
+                    Text(String(localized: "sound_load_all_failed"))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                    ForEach(PlayViewModel.soundLoadSummary(report), id: \.self) { line in
+                        Text(line)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    HStack(spacing: 12) {
+                        soundFailureButton("sound_load_details", id: "soundLoadDetailsButton") {
+                            vm.soundLoadDetails = report
+                        }
+                        soundFailureButton("sound_load_retry", id: "soundLoadRetryButton") {
+                            retryLoad()
+                        }
+                        soundFailureButton("sound_load_pack_list", id: "soundLoadPackListButton", prominent: true) {
+                            router.pop()
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            }
+        }
+    }
+
+    private func soundFailureButton(_ key: String.LocalizationValue, id: String, prominent: Bool = false,
+                                    action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(String(localized: key))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(prominent ? Color(hex: 0xFF6B6B) : Color.white.opacity(0.2))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .accessibilityIdentifier(id)
+    }
+
+    /// Opens the pack again on a fresh model: the same files, the same selection, nothing rewritten.
+    private func retryLoad() {
+        vm.cleanup()
+        vm = PlayViewModel()
+        vm.screenLayoutChanged(lastLayout)
+        loadAttempt += 1
+    }
+
     // MARK: - Back Action
 
     private func handleBackAction() {
@@ -547,5 +638,36 @@ struct PlayLayout {
         let halfHeight = max(center.y, screenSize.height - center.y)
         let scale = max(halfWidth * 2 / imageSize.width, halfHeight * 2 / imageSize.height)
         return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+}
+
+/// The sound files of a pack that will not play, by name, with why.
+struct SoundLoadDetailsView: View {
+    let report: SoundLoadReport
+    let close: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List(Array(report.entries.enumerated()), id: \.offset) { _, entry in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.file.lastPathComponent)
+                        .font(.system(size: 14, weight: .medium))
+                    Text(PlayViewModel.soundLoadReason(entry.failure))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .navigationTitle(String(localized: "sound_load_details"))
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "sound_load_close"), action: close)
+                        .accessibilityIdentifier("soundLoadDetailsClose")
+                }
+            }
+        }
     }
 }

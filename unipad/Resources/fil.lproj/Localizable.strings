@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Ibalik";
 "autoPlayRestored" = "Naibalik ang naunang pagtugtog. Maaari silang ipagpalit muli sa menu.";
 "autoPlayRestoreFailed" = "Hindi naibalik. Hindi nagbago ang kasalukuyang pagtugtog at backup.";
+"sound_load_too_large %lld" = "Hindi ipe-play ang %lld tunog na masyadong mahaba o malaki";
+"sound_load_unreadable %lld" = "Hindi mabasa ang mga file ng %lld tunog";
+"sound_load_undecodable %lld" = "Hindi ma-play ang %lld tunog";
+"sound_load_out_of_memory %lld" = "Kulang ang memory ng device para i-load ang %lld tunog. Isara ang ibang app at buksan muli ang pack.";
+"sound_load_all_failed" = "Hindi mabuksan ang mga tunog ng pack na ito";
+"sound_load_details" = "Mga detalye";
+"sound_load_retry" = "Subukan muli";
+"sound_load_pack_list" = "Listahan ng pack";
+"sound_load_close" = "Isara";
+"sound_load_reason_too_large" = "Masyadong mahaba o malaki";
+"sound_load_reason_unreadable" = "Hindi mabasa ang file";
+"sound_load_reason_undecodable" = "Hindi ma-play";
+"sound_load_reason_out_of_memory" = "Kulang ang memory ng device";

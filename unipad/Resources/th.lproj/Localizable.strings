@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "กู้คืน";
 "autoPlayRestored" = "กู้คืนการเล่นก่อนหน้าแล้ว สลับกลับได้จากเมนู";
 "autoPlayRestoreFailed" = "กู้คืนไม่ได้ การเล่นปัจจุบันและข้อมูลสำรองไม่เปลี่ยนแปลง";
+"sound_load_too_large %lld" = "เสียงที่ยาวหรือใหญ่เกินไป %lld รายการจะไม่เล่น";
+"sound_load_unreadable %lld" = "อ่านไฟล์ของเสียง %lld รายการไม่ได้";
+"sound_load_undecodable %lld" = "เล่นเสียง %lld รายการไม่ได้";
+"sound_load_out_of_memory %lld" = "หน่วยความจำอุปกรณ์ไม่พอสำหรับโหลดเสียง %lld รายการ ปิดแอปอื่นแล้วเปิดแพ็กอีกครั้ง";
+"sound_load_all_failed" = "เปิดเสียงของแพ็กนี้ไม่ได้";
+"sound_load_details" = "ดูรายละเอียด";
+"sound_load_retry" = "ลองอีกครั้ง";
+"sound_load_pack_list" = "รายการแพ็ก";
+"sound_load_close" = "ปิด";
+"sound_load_reason_too_large" = "ยาวหรือใหญ่เกินไป";
+"sound_load_reason_unreadable" = "อ่านไฟล์ไม่ได้";
+"sound_load_reason_undecodable" = "เล่นไม่ได้";
+"sound_load_reason_out_of_memory" = "หน่วยความจำอุปกรณ์ไม่พอ";

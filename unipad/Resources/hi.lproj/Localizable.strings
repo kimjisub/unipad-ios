@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "बहाल करें";
 "autoPlayRestored" = "पिछला क्रम बहाल हुआ। मेन्यू से फिर बदल सकते हैं।";
 "autoPlayRestoreFailed" = "बहाल नहीं कर सके। वर्तमान क्रम और बैकअप बदले नहीं हैं।";
+"sound_load_too_large %lld" = "बहुत लंबी या बड़ी %lld ध्वनियाँ नहीं चलेंगी";
+"sound_load_unreadable %lld" = "%lld ध्वनियों की फ़ाइलें पढ़ी नहीं जा सकतीं";
+"sound_load_undecodable %lld" = "%lld ध्वनियाँ चलाई नहीं जा सकतीं";
+"sound_load_out_of_memory %lld" = "डिवाइस मेमोरी कम होने से %lld ध्वनियाँ लोड नहीं हो सकीं। दूसरे ऐप बंद करके पैक फिर से खोलें।";
+"sound_load_all_failed" = "इस पैक की ध्वनियाँ नहीं खुल सकतीं";
+"sound_load_details" = "विवरण देखें";
+"sound_load_retry" = "फिर से कोशिश करें";
+"sound_load_pack_list" = "पैक सूची";
+"sound_load_close" = "बंद करें";
+"sound_load_reason_too_large" = "बहुत लंबी या बड़ी";
+"sound_load_reason_unreadable" = "फ़ाइल पढ़ी नहीं जा सकती";
+"sound_load_reason_undecodable" = "चलाई नहीं जा सकती";
+"sound_load_reason_out_of_memory" = "डिवाइस मेमोरी कम";

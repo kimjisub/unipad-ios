@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Pulihkan";
 "autoPlayRestored" = "Main automatik sebelumnya dipulihkan. Kedua-duanya boleh ditukar semula melalui menu.";
 "autoPlayRestoreFailed" = "Tidak dapat memulihkan. Main automatik semasa dan sandaran tidak berubah.";
+"sound_load_too_large %lld" = "%lld bunyi yang terlalu panjang atau besar tidak akan dimainkan";
+"sound_load_unreadable %lld" = "Tidak dapat membaca fail %lld bunyi";
+"sound_load_undecodable %lld" = "Tidak dapat memainkan %lld bunyi";
+"sound_load_out_of_memory %lld" = "Memori peranti tidak mencukupi untuk memuatkan %lld bunyi. Tutup apl lain dan buka pek semula.";
+"sound_load_all_failed" = "Tidak dapat membuka bunyi pek ini";
+"sound_load_details" = "Lihat butiran";
+"sound_load_retry" = "Cuba lagi";
+"sound_load_pack_list" = "Senarai pek";
+"sound_load_close" = "Tutup";
+"sound_load_reason_too_large" = "Terlalu panjang atau besar";
+"sound_load_reason_unreadable" = "Fail tidak dapat dibaca";
+"sound_load_reason_undecodable" = "Tidak dapat dimainkan";
+"sound_load_reason_out_of_memory" = "Memori peranti tidak mencukupi";

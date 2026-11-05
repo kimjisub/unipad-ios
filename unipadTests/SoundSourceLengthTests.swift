@@ -80,7 +80,7 @@ struct SoundSourceLengthTests {
     }
 
     /// An Ogg file can declare one frame and hold ten minutes. Each larger buffer it needs is checked
-    /// against the pack's limit before it is allocated, so it is refused while still small instead
+    /// against a limit before it is allocated, so it is refused while still small instead
     /// of after decoding all ten minutes.
     @Test func anOggHoldingMoreThanItDeclaresIsRefusedAsItsBufferGrows() throws {
         let fixture = try #require(Bundle(for: OnePadPack.self).url(forResource: "vorbis-at-limit", withExtension: "ogg"))
@@ -88,28 +88,30 @@ struct SoundSourceLengthTests {
             .appending(path: "SoundSourceLengthTests-\(UUID().uuidString).ogg")
         try oggWithFinalGranule(1, at: fixture).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        // What a pack that has spent all but 8 MiB of its limit has left.
-        let budget = SoundFileLimits.PackBudget(limit: 8 * 1_024 * 1_024)
+        // What a device with 8 MiB left could hold.
+        let limit: UInt64 = 8 * 1_024 * 1_024
         var admitted: [AVAudioFrameCount] = []
-        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+        #expect(throws: Refused.self) {
             try SoundEngine.loadAudioBuffer(from: url) { format, frames in
-                try budget.check(frames, channels: format.channelCount)
+                guard try SoundFileLimits.fits(frames, channels: format.channelCount, within: limit) else { throw Refused() }
                 admitted.append(frames)
             }
         }
         #expect(admitted.count > 1, "the buffer grew without being checked")
-        #expect(admitted.allSatisfy { UInt64($0) * 2 * 4 <= budget.limit })
+        #expect(admitted.allSatisfy { UInt64($0) * 2 * 4 <= limit })
     }
 
-    /// The pack's limit is applied to what the header claims, before the decoded buffer exists.
+    private struct Refused: Error {}
+
+    /// A limit is applied to what the header claims, before the decoded buffer exists.
     @Test(arguments: [("vorbis-at-limit", "ogg"), ("mp3-tone-named-wav", "wav")])
     func theClaimIsCheckedBeforeDecoding(_ name: String, _ ext: String) throws {
         let url = try #require(Bundle(for: OnePadPack.self).url(forResource: name, withExtension: ext))
         var claimed: AVAudioFrameCount?
-        #expect(throws: SoundFileLimits.Violation.packTooLarge) {
+        #expect(throws: Refused.self) {
             try SoundEngine.loadAudioBuffer(from: url) { _, frames in
                 claimed = frames
-                throw SoundFileLimits.Violation.packTooLarge
+                throw Refused()
             }
         }
         #expect((claimed ?? 0) > 0)

@@ -326,3 +326,16 @@
 "autoPlayRestoreApply" = "Restore";
 "autoPlayRestored" = "Previous autoplay restored. You can swap back from the menu.";
 "autoPlayRestoreFailed" = "Could not restore. Your current autoplay and backup are unchanged.";
+"sound_load_too_large %lld" = "%lld sounds that are too long or too large won't play";
+"sound_load_unreadable %lld" = "Can't read the files of %lld sounds";
+"sound_load_undecodable %lld" = "Can't play %lld sounds";
+"sound_load_out_of_memory %lld" = "Not enough device memory to load %lld sounds. Close other apps and open the pack again.";
+"sound_load_all_failed" = "Can't open this pack's sounds";
+"sound_load_details" = "Details";
+"sound_load_retry" = "Try again";
+"sound_load_pack_list" = "Pack list";
+"sound_load_close" = "Close";
+"sound_load_reason_too_large" = "Too long or too large";
+"sound_load_reason_unreadable" = "Can't read the file";
+"sound_load_reason_undecodable" = "Can't play";
+"sound_load_reason_out_of_memory" = "Not enough device memory";

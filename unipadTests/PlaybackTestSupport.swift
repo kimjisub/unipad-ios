@@ -8,16 +8,29 @@ import Foundation
 final class TestSoundLoadListener: SoundEngine.LoadingListener {
     private(set) var finished = false
     private(set) var engineFailure: Error?
-    private(set) var loadFailure: Error?
+    private var lateFailure: Error?
+    /// What the engine said of the pack's sound files when it finished.
+    private(set) var report: SoundLoadReport?
+    /// The pack uses sounds and none of them can play.
+    var loadFailure: Error? {
+        lateFailure ?? report.flatMap { $0.nothingPlays ? NothingPlays(report: $0) : nil }
+    }
     var failure: Error? { engineFailure ?? loadFailure }
     private var started = false
     func onStart(soundCount: Int) { started = true }
     func onProgressTick() {}
-    func onEnd() { finished = true }
-    func onException(_ error: Error) {
-        if started { loadFailure = error } else { engineFailure = error }
+    func onEnd(_ report: SoundLoadReport) {
+        self.report = report
         finished = true
     }
+    func onException(_ error: Error) {
+        if started { lateFailure = error } else { engineFailure = error }
+        finished = true
+    }
+}
+
+struct NothingPlays: Error {
+    let report: SoundLoadReport
 }
 
 final class TestManualClock: @unchecked Sendable {

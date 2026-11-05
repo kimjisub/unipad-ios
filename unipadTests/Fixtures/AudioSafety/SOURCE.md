@@ -37,7 +37,9 @@ can decode, while requiring inspection to exclude them. `ssnd-first.aiff` also
 retains its native decoding check of 13,230 mono frames at 44.1 kHz.
 These are deliberate format boundaries, not evidence of damaged audio.
 
-G.711 mu-law and A-law WAV in `../NativeAudio` remain a separate shared
-structural-reader coverage gap and keep their existing `INVALID_FORMAT`
-expectations. None of these checks certifies playback integration or changes the
-currently connected decoder.
+G.711 mu-law and A-law WAV in `../NativeAudio` are excluded the same way: all three
+inspectors leave them out, so they keep their `INVALID_FORMAT` expectations and are
+not part of the shared corpus. Pack loading now uses the inspector, so every file
+excluded here is reported as a file that cannot be read and is never handed to the
+native decoder (`SoundSelectionLoadingTests`). None of these checks certifies
+device memory or playback on a real device.

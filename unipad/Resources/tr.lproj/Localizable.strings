@@ -303,3 +303,16 @@
 "autoPlayRestoreApply" = "Geri yükle";
 "autoPlayRestored" = "Önceki otomatik çalma geri yüklendi. Menüden yeniden değiştirebilirsiniz.";
 "autoPlayRestoreFailed" = "Geri yüklenemedi. Mevcut otomatik çalma ve yedek değişmedi.";
+"sound_load_too_large %lld" = "Çok uzun veya çok büyük %lld ses çalınmayacak";
+"sound_load_unreadable %lld" = "%lld sesin dosyaları okunamıyor";
+"sound_load_undecodable %lld" = "%lld ses çalınamıyor";
+"sound_load_out_of_memory %lld" = "%lld sesi yüklemek için cihaz belleği yetersiz. Diğer uygulamaları kapatıp paketi yeniden açın.";
+"sound_load_all_failed" = "Bu paketin sesleri açılamıyor";
+"sound_load_details" = "Ayrıntılar";
+"sound_load_retry" = "Tekrar dene";
+"sound_load_pack_list" = "Paket listesi";
+"sound_load_close" = "Kapat";
+"sound_load_reason_too_large" = "Çok uzun veya çok büyük";
+"sound_load_reason_unreadable" = "Dosya okunamıyor";
+"sound_load_reason_undecodable" = "Çalınamıyor";
+"sound_load_reason_out_of_memory" = "Cihaz belleği yetersiz";
