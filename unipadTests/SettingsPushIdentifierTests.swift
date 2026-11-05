@@ -20,9 +20,6 @@ struct SettingsPushIdentifierTests {
         func register() async throws -> PushRegistration {
             try await PushRegistrar(client: client).register()
         }
-
-        func subscribeToTopic(_ topic: String) async throws {}
-        func unsubscribeFromTopic(_ topic: String) async throws {}
     }
 
     private func makeViewModel(_ client: ScriptedClient) -> (SettingsViewModel, () -> [String]) {

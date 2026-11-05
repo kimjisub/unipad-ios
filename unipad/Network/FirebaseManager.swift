@@ -29,8 +29,6 @@ protocol FCMServiceProtocol: Sendable {
     /// Whether FCM addresses this install by installation ID instead of a registration token.
     var usesInstallationID: Bool { get }
     func register() async throws -> PushRegistration
-    func subscribeToTopic(_ topic: String) async throws
-    func unsubscribeFromTopic(_ topic: String) async throws
 }
 
 /// Protocol for Firebase Analytics.
@@ -176,16 +174,6 @@ final class FCMServiceStub: FCMServiceProtocol {
     func register() async throws -> PushRegistration {
         throw PushRegistrationError.unavailable
     }
-
-    func subscribeToTopic(_ topic: String) async throws {
-        // TODO: Implement with Firebase Messaging SDK
-        // try await Messaging.messaging().subscribe(toTopic: topic)
-    }
-
-    func unsubscribeFromTopic(_ topic: String) async throws {
-        // TODO: Implement with Firebase Messaging SDK
-        // try await Messaging.messaging().unsubscribe(fromTopic: topic)
-    }
 }
 
 /// Writes events to the unified log instead of sending them; used whenever Firebase is not live.
@@ -250,30 +238,6 @@ final class MessagingServiceLive: NSObject, FCMServiceProtocol, @unchecked Senda
 
     func register() async throws -> PushRegistration {
         try await PushRegistrar(client: registrationClient).register()
-    }
-
-    func subscribeToTopic(_ topic: String) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            Messaging.messaging().subscribe(toTopic: topic) { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
-    }
-
-    func unsubscribeFromTopic(_ topic: String) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            Messaging.messaging().unsubscribe(fromTopic: topic) { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
     }
 }
 #endif
