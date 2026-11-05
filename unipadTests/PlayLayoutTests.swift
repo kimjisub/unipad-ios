@@ -208,14 +208,10 @@ struct PlayLayoutTests {
     /// The cells the pad view hits, as PlayView frames it.
     @MainActor
     private func padTouchGrid(rows: Int, columns: Int, square: Bool, in l: PlayLayout) throws -> PadTouchGrid {
-        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: l.gridWidth, height: l.gridHeight)
         let grid = PadGridView(columns: columns, rows: rows, isSquareButton: square, padColors: [], padLedColors: [],
                                padItems: [], onPadTouch: { _, _, _, _ in })
             .frame(width: l.gridWidth, height: l.gridHeight)
-        window.rootViewController = UIHostingController(rootView: grid)
-        window.isHidden = false
+        let window = try UIWindow.showing(grid, frame: CGRect(x: 0, y: 0, width: l.gridWidth, height: l.gridHeight))
         defer { window.isHidden = true }
         window.layoutIfNeeded()
         func find(_ view: UIView) -> MultiTouchUIView? {
