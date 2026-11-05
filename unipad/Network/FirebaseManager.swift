@@ -4,9 +4,6 @@ import os
 #if canImport(FirebaseAnalytics)
 import FirebaseAnalytics
 #endif
-#if canImport(FirebaseMessaging)
-import FirebaseMessaging
-#endif
 #if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
 #endif
@@ -163,7 +160,7 @@ final class RealtimeDatabaseService: FirestoreServiceProtocol {
     }
 }
 
-/// Stub FCM service. Replace with real Firebase implementation.
+/// Push registration that always fails as unavailable; used whenever Firebase Messaging is not live.
 final class FCMServiceStub: FCMServiceProtocol {
     let usesInstallationID: Bool
 
@@ -229,7 +226,7 @@ final class AnalyticsServiceLive: AnalyticsServiceProtocol, @unchecked Sendable 
 #endif
 
 #if canImport(FirebaseMessaging)
-final class MessagingServiceLive: NSObject, FCMServiceProtocol, @unchecked Sendable {
+final class MessagingServiceLive: FCMServiceProtocol, @unchecked Sendable {
     private let registrationClient = FirebaseMessagingRegistrationClient()
 
     var usesInstallationID: Bool {
