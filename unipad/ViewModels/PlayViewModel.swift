@@ -38,7 +38,6 @@ final class PlayViewModel {
         var locked = false
         var visible = true
         @ObservationIgnored var onCheckedChange: ((Bool) -> Void)?
-        @ObservationIgnored var onLongPress: (() -> Void)?
 
         init(checked: Bool = false) {
             self.checked = checked
@@ -134,6 +133,9 @@ final class PlayViewModel {
     var autoMappingActive = false
     var autoMappingProgress = 0
     var autoMappingMax = 0
+    /// Whether the pack holds a previous autoPlay to swap back to.
+    var autoPlayBackupExists = false
+    var canRestoreAutoPlay: Bool { autoPlayBackupExists && !autoMappingActive }
 
     // Toast
     var toastMessage: String?
@@ -155,9 +157,11 @@ final class PlayViewModel {
     @ObservationIgnored private var userPausedTimedPlayback = false
 
     @ObservationIgnored private let usageSession: PlaySessionTracker
+    @ObservationIgnored private let crashKeys: PlayCrashKeys
 
-    init(usageAnalytics: UsageAnalytics = .shared) {
+    init(usageAnalytics: UsageAnalytics = .shared, crashKeys: PlayCrashKeys? = nil) {
         usageSession = usageAnalytics.makePlaySession()
+        self.crashKeys = crashKeys ?? PlayCrashKeys(crashlytics: FirebaseManager.shared.crashlytics)
         scbWatermark.setCheckedSilently(PreferenceManager.shared.watermark)
     }
 
@@ -193,11 +197,11 @@ final class PlayViewModel {
         logger.info("loadUnipack: url=\(url.path), exists=\(FileManager.default.fileExists(atPath: url.path))")
 
         // The folder reads run off the main actor so the loading screen keeps drawing. The screen
-        // may be left meanwhile (cleanup() has run and the task is cancelled): whatever a read
-        // returns after that must not build an engine or touch state.
+        // may be left meanwhile: whatever a read returns after that must not build an engine,
+        // which nothing would destroy, or touch state.
         let pack = makePack(url)
         _ = await Task.detached(priority: .userInitiated) { pack.load() }.value
-        if Task.isCancelled { return }
+        if isLoadAbandoned { return }
 
         if pack.criticalError {
             logger.error("loadUnipack: critical error - \(pack.errorDetail ?? "unknown")")
@@ -221,7 +225,7 @@ final class PlayViewModel {
                 }
             }
         }.value
-        if Task.isCancelled { return }
+        if isLoadAbandoned { return }
 
         unipackWarning = pack.errorDetail
 
@@ -252,12 +256,17 @@ final class PlayViewModel {
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+        refreshAutoPlayBackup()
 
         setupChainObserver()
 
         unipackLoading = false
         logger.info("loadUnipack: loading phase complete, waiting for sound buffers")
     }
+
+    /// cleanup() runs when the route changes; the task is cancelled only once the screen has
+    /// disappeared, more than half a second later, so a closed screen can see an uncancelled task.
+    private var isLoadAbandoned: Bool { Task.isCancelled || !enable }
 
     func initState() {
         guard let unipack else { return }
@@ -363,10 +372,6 @@ final class PlayViewModel {
             self?.refreshWatermark()
         }
 
-        scbTraceLog.onLongPress = { [weak self] in
-            self?.clearTraceLog()
-        }
-
         scbWatermark.onCheckedChange = { [weak self] checked in
             PreferenceManager.shared.watermark = checked
             self?.refreshWatermark()
@@ -403,6 +408,8 @@ final class PlayViewModel {
     private var autoMapper: UniPackAutoMapper?
     /// The mapper holds its listener weakly, so the adapter is kept alive here for the mapping's lifetime.
     private var autoMappingListenerAdapter: AutoMappingListenerAdapter?
+    /// Changes the pack's autoPlay file; a test swaps in one whose writes fail.
+    @ObservationIgnored var autoPlayReplacer = AutoPlayFileReplacer()
 
     func autoMapping() {
         guard let pack = unipack as? UniPackFolder else { return }
@@ -412,27 +419,55 @@ final class PlayViewModel {
         autoMappingProgress = 0
         autoMappingMax = 0
 
-        // The mapper replaces autoPlayTable when it finishes; a runner still iterating the old
-        // elements on its own thread would race that swap, so it is stopped before the mapper starts.
-        if playMode != .none { switchPlayMode(.none) }
-        autoPlayRunner?.stop()
-        autoPlayRunner = nil
-        autoPlayListenerAdapter = nil
+        releaseAutoPlayRunner()
 
         let adapter = AutoMappingListenerAdapter(viewModel: self)
         autoMappingListenerAdapter = adapter
-        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter)
+        let mapper = UniPackAutoMapper(unipack: pack, listener: adapter, replacer: autoPlayReplacer)
         autoMapper = mapper
         mapper.start()
     }
 
+    /// Swaps the pack's autoPlay with its previous version. A failed swap changes neither file.
+    func restoreAutoPlay() {
+        guard canRestoreAutoPlay, let pack = unipack as? UniPackFolder, let file = pack.autoPlayFile else { return }
+
+        releaseAutoPlayRunner()
+        do {
+            try autoPlayReplacer.restore(file)
+            pack.reloadAutoPlay()
+            toastMessage = String(localized: "autoPlayRestored")
+        } catch {
+            logger.error("restoreAutoPlay: \(error.localizedDescription)")
+            toastMessage = String(localized: "autoPlayRestoreFailed")
+        }
+        rebuildAutoPlayRunner()
+    }
+
     fileprivate func finishAutoMapping() {
         releaseAutoMapper()
+        rebuildAutoPlayRunner()
+    }
 
+    /// Reloading replaces autoPlayTable; a runner still iterating the old elements on its own
+    /// thread would race that swap, so it is stopped before the file changes.
+    private func releaseAutoPlayRunner() {
+        if playMode != .none { switchPlayMode(.none) }
+        autoPlayRunner?.stop()
+        autoPlayRunner = nil
+        autoPlayListenerAdapter = nil
+    }
+
+    private func rebuildAutoPlayRunner() {
         guard let pack = unipack as? UniPackFolder else { return }
         if pack.autoPlayExist {
             initAutoPlayRunner(pack: pack)
         }
+        refreshAutoPlayBackup()
+    }
+
+    private func refreshAutoPlayBackup() {
+        autoPlayBackupExists = (unipack as? UniPackFolder)?.autoPlayFile.map(AutoPlayFileReplacer.hasBackup(of:)) ?? false
     }
 
     private func releaseAutoMapper() {
@@ -614,8 +649,8 @@ final class PlayViewModel {
         }
     }
 
-    /// Settings consume new controller presses. A release still reaches its own hold,
-    /// even if the options opened after that press; other inputs keep their owners.
+    /// Settings consume new controller presses. A release always passes through; it finds nothing
+    /// to end if the options opened after its press, since opening them releases held pads.
     func controllerPadTouch(x: Int, y: Int, isDown: Bool) {
         guard !isDown || !isOptionWindowVisible else { return }
         padTouch(x: x, y: y, isDown: isDown, trigger: .pad(.midi))
@@ -679,8 +714,9 @@ final class PlayViewModel {
         ledRunner?.eventOff(x: x, y: y, releasedAt: ledTimeMs, owner: owner)
     }
 
-    /// Retires controller inputs whose releases will be lost during options, pause or detachment.
-    /// Fingers and autoplay keep their own sounds, lights and press feedback.
+    /// Lets go of held controller pads when the options open, which consume new presses, or when the
+    /// controller detaches, after which no release arrives.
+    /// Autoplay and fingers are not touched here; opening options releases fingers through `inputResetVersion`.
     fileprivate func releaseControllerPads() {
         for hold in Array(padHolds.keys) where !hold.byAutoPlay {
             guard let inputs = padHolds[hold] else { continue }
@@ -1198,6 +1234,8 @@ final class PlayViewModel {
 
     private var volumeObservation: NSKeyValueObservation?
 
+    var isWatchingVolume: Bool { volumeObservation != nil }
+
     func startVolumeObserver() {
         #if canImport(UIKit)
         // SoundEngine keeps the session active: it takes it back after an interruption and activates
@@ -1242,15 +1280,18 @@ final class PlayViewModel {
         startVolumeObserver()
     }
 
-    /// Keeps the window layout that the next `play_start` or `play_end` reports.
+    /// Keeps the window layout that crash reports and the next `pack_load`, `play_start` or
+    /// `play_end` carry.
     func screenLayoutChanged(_ layout: ScreenLayout?) {
         usageSession.screenLayoutChanged(layout)
+        crashKeys.screenLayoutChanged(layout)
     }
 
     // MARK: - Covered by another screen
 
     /// Another screen was pushed over this one (the device screen opened from the connection banner).
     @ObservationIgnored private var isCovered = false
+    @ObservationIgnored private var quitsWhenShown = false
 
     /// The performance stays, paused, for when this screen is shown again: held pads are released,
     /// a playing autoplay pauses, and the launchpad and the volume buttons go to the screen on top.
@@ -1258,13 +1299,16 @@ final class PlayViewModel {
         guard enable, !isCovered else { return }
         onPause()
         isCovered = true
+        crashKeys.screenCovered()
     }
 
     /// Restore the controller connection; playback still waits for an explicit user request.
     func screenShown() {
         guard enable, isCovered else { return }
         isCovered = false
+        crashKeys.screenShown()
         onResume()
+        if quitsWhenShown { quitRequested = true }
     }
 
     /// The launchpad this screen lights; none while another screen covers it and has the launchpad.
@@ -1302,6 +1346,9 @@ final class PlayViewModel {
         ledRunner?.stop()
         soundEngine?.destroy()
         chain.clearObservers()
+        // Last, so a crash in the teardown on this thread still reports the play window. The
+        // sound engine stops on its worker, which nothing here waits for.
+        crashKeys.screenClosed()
     }
 
     func startLedRunner() {
@@ -1325,6 +1372,9 @@ final class PlayViewModel {
 
     /// Called when sound loading completes to apply initial settings
     func onSoundLoadingComplete() {
+        // The report can arrive after the screen closed, when the main screen has the launchpad again.
+        guard enable else { return }
+        soundLoadingActive = false
         usageSession.loadSucceeded()
         startReady = true
         // onResume() is gated on this and nothing set it: after backgrounding, MIDI input, the
@@ -1332,15 +1382,20 @@ final class PlayViewModel {
         uiLoaded = true
         initSetting()
         updateVolumeUI()
-        // A covered screen gets these when it is shown again.
-        guard !isCovered else { return }
+        logger.info("Sound loading complete, startReady=true")
+        // The launchpad and the volume come with the screen being shown again or the app's return.
+        guard !isCovered, !isAppAway else { return }
         setupMidiController()
         startVolumeObserver()
-        logger.info("Sound loading complete, startReady=true")
     }
 
     func onSoundLoadingFailed() {
+        guard enable else { return }
+        soundLoadingActive = false
         usageSession.loadFailed(.soundEngine)
+        toastMessage = String(localized: "outOfCPU")
+        // PlayView closes the screen on top, which is not this one while another covers it.
+        if isCovered { quitsWhenShown = true } else { quitRequested = true }
     }
 
     func onLoadFailed(_ error: Error) {
@@ -1365,30 +1420,28 @@ final class SoundLoadingAdapter: SoundEngine.LoadingListener {
 
     func onStart(soundCount: Int) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingMax = soundCount
-            self?.viewModel?.soundLoadingProgress = 0
+            guard let vm = self?.viewModel, vm.enable else { return }
+            vm.soundLoadingMax = soundCount
+            vm.soundLoadingProgress = 0
         }
     }
 
     func onProgressTick() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingProgress += 1
+            guard let vm = self?.viewModel, vm.enable else { return }
+            vm.soundLoadingProgress += 1
         }
     }
 
     func onEnd() {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingActive = false
             self?.viewModel?.onSoundLoadingComplete()
         }
     }
 
     func onException(_ error: Error) {
         Task { @MainActor [weak self] in
-            self?.viewModel?.soundLoadingActive = false
             self?.viewModel?.onSoundLoadingFailed()
-            self?.viewModel?.toastMessage = String(localized: "outOfCPU")
-            self?.viewModel?.quitRequested = true
         }
     }
 }
@@ -1636,11 +1689,12 @@ private final class AutoMappingListenerAdapter: UniPackAutoMapperListener {
     }
 
     func onDone() {
+        viewModel?.toastMessage = String(localized: "autoMappingSaved")
         viewModel?.finishAutoMapping()
     }
 
     func onException(_ error: Error) {
-        viewModel?.toastMessage = error.localizedDescription
+        viewModel?.toastMessage = (error as? AutoMapperError)?.localizedDescription ?? String(localized: "autoMappingFailed")
         viewModel?.finishAutoMapping()
     }
 }

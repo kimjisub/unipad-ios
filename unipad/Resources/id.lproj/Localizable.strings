@@ -290,3 +290,16 @@
 "trace_numbers" = "Angka";
 "trace_lines" = "Garis dan titik";
 "trace_clear_all" = "Hapus semua jejak";
+
+"autoMappingConfirmTitle" = "Sesuaikan putar otomatis?";
+"autoMappingConfirmMessage" = "Jeda akan mengikuti durasi suara. Putar otomatis saat ini akan dicadangkan. Pad yang ditekan bersamaan tetap bersamaan.";
+"autoMappingApply" = "Sesuaikan";
+"autoMappingSaved" = "Putar otomatis disimpan. Versi sebelumnya dapat dipulihkan dari menu.";
+"autoMappingFailed" = "Gagal menyimpan. Putar otomatis yang ada tidak berubah.";
+"autoPlayRestore" = "Pulihkan putar otomatis sebelumnya";
+"autoPlayNoBackup" = "Tidak ada cadangan tersimpan";
+"autoPlayRestoreConfirmTitle" = "Pulihkan cadangan sebelumnya?";
+"autoPlayRestoreConfirmMessage" = "Cadangan akan ditukar dengan putar otomatis saat ini. Keduanya dapat ditukar lagi.";
+"autoPlayRestoreApply" = "Pulihkan";
+"autoPlayRestored" = "Putar otomatis sebelumnya dipulihkan. Keduanya dapat ditukar lagi dari menu.";
+"autoPlayRestoreFailed" = "Gagal memulihkan. Putar otomatis saat ini dan cadangan tidak berubah.";

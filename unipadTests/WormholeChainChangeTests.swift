@@ -44,6 +44,17 @@ extension PlayUsageRecordTests {
             try await Task.sleep(for: .milliseconds(50))
         }
 
+        @Test func theDefaultDelayWaitsAtLeast100Milliseconds() async throws {
+            try await PlayUsageScenario.run(keySound: Self.keySound, grid: .init(chain: 3)) { s in
+                try await s.loadReady()
+                let engine = try #require(s.vm.soundEngine)
+                let start = ContinuousClock.now
+                await engine.wormholeDelay()
+                #expect(start.duration(to: .now) >= .milliseconds(100),
+                        "the production delay must not finish before 100 ms")
+            }
+        }
+
         @Test func theChainMovesWhenTheDelayEnds() async throws {
             try await Self.run { s, delay in
                 delay.end()

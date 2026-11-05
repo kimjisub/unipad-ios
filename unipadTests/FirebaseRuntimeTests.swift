@@ -38,19 +38,37 @@ final class FirebaseRuntimeTests: XCTestCase {
         }
     }
 
-    func testFreshInstallIsNotLocalOnly() {
-        withDefaults { defaults, _ in
+    func testFreshInstallWithoutArgumentsIsLocalOnly() {
+        withDefaults { defaults, suite in
+            defaults.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
+            XCTAssertTrue(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: true))
+            XCTAssertEqual(defaults.persistentDomain(forName: suite)?[FirebaseRuntime.localOnlyLaunchArgument] as? Bool, true)
+        }
+    }
+
+    func testExplicitNoOnFreshInstallIsKept() {
+        withDefaults { defaults, suite in
+            defaults.setVolatileDomain([FirebaseRuntime.localOnlyLaunchArgument: "NO"], forName: UserDefaults.argumentDomain)
             XCTAssertFalse(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: true))
+            XCTAssertEqual(defaults.persistentDomain(forName: suite)?[FirebaseRuntime.localOnlyLaunchArgument] as? Bool, false)
+            defaults.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
+            XCTAssertFalse(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: true),
+                           "a later launch lost the explicit choice")
         }
     }
 
     func testStoreBuildIgnoresArgumentsAndSavedChoice() {
-        withDefaults { defaults, _ in
-            defaults.set(true, forKey: FirebaseRuntime.localOnlyLaunchArgument)
-            defaults.setVolatileDomain([FirebaseRuntime.localOnlyLaunchArgument: "YES"], forName: UserDefaults.argumentDomain)
-            XCTAssertFalse(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: false))
-            defaults.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
-            XCTAssertFalse(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: false))
+        for saved in [nil, true, false] as [Bool?] {
+            for argument in [nil, "YES", "NO"] as [String?] {
+                withDefaults { defaults, suite in
+                    if let saved { defaults.set(saved, forKey: FirebaseRuntime.localOnlyLaunchArgument) }
+                    defaults.setVolatileDomain(argument.map { [FirebaseRuntime.localOnlyLaunchArgument: $0] } ?? [:],
+                                               forName: UserDefaults.argumentDomain)
+                    XCTAssertFalse(FirebaseRuntime.resolveLocalOnly(defaults: defaults, allowsOverride: false),
+                                   "saved \(String(describing: saved)), argument \(String(describing: argument))")
+                    XCTAssertEqual(defaults.persistentDomain(forName: suite)?[FirebaseRuntime.localOnlyLaunchArgument] as? Bool, saved)
+                }
+            }
         }
     }
 }

@@ -54,11 +54,12 @@ struct MainPackPanel: View {
 
                 // Title
                 MarqueeText(
-                    text: unipack.title,
+                    text: unipack.displayTitle,
                     font: .system(size: 16),
                     color: Color(hex: 0x1A1A1A),
                     fontSize: 16
                 )
+                .accessibilityIdentifier("main.pack.title")
 
                 // Producer + action buttons
                 HStack {

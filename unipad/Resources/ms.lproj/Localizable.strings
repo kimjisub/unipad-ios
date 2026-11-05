@@ -290,3 +290,16 @@
 "trace_numbers" = "Nombor";
 "trace_lines" = "Garisan dan titik";
 "trace_clear_all" = "Padam semua jejak";
+
+"autoMappingConfirmTitle" = "Laraskan main automatik?";
+"autoMappingConfirmMessage" = "Masa menunggu akan mengikut panjang bunyi. Main automatik semasa akan disandarkan. Pad yang ditekan serentak kekal serentak.";
+"autoMappingApply" = "Laraskan";
+"autoMappingSaved" = "Main automatik disimpan. Versi sebelumnya boleh dipulihkan melalui menu.";
+"autoMappingFailed" = "Tidak dapat menyimpan. Main automatik sedia ada tidak berubah.";
+"autoPlayRestore" = "Pulihkan main automatik sebelumnya";
+"autoPlayNoBackup" = "Tiada sandaran tersimpan";
+"autoPlayRestoreConfirmTitle" = "Pulihkan sandaran sebelumnya?";
+"autoPlayRestoreConfirmMessage" = "Sandaran akan ditukar dengan main automatik semasa. Kedua-duanya boleh ditukar semula.";
+"autoPlayRestoreApply" = "Pulihkan";
+"autoPlayRestored" = "Main automatik sebelumnya dipulihkan. Kedua-duanya boleh ditukar semula melalui menu.";
+"autoPlayRestoreFailed" = "Tidak dapat memulihkan. Main automatik semasa dan sandaran tidak berubah.";

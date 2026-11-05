@@ -17,6 +17,7 @@ struct StoreView: View {
                     .frame(width: geometry.size.width * 0.6)
             }
         }
+        .clearingStatusBar()
         .background(AppColors.background1)
         .platformNavigationBarHidden(true)
         .onAppear {

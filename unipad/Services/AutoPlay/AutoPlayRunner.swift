@@ -18,7 +18,8 @@ final class AutoPlayRunner {
     private let unipack: UniPack
     private let chain: ChainObserver
     private let loopDelay: TimeInterval
-    private let clock: () -> Int64
+    /// Set before launch; a test puts the screen's own runner on a clock it moves itself.
+    var clock: () -> Int64
     private let sleep: @MainActor (UInt64) async throws -> Void
 
     var playmode: Bool = true {

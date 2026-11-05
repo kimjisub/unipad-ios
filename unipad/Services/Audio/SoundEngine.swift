@@ -96,6 +96,8 @@ final class SoundEngine {
     var onInterruption: ((Interruption) -> Void)?
     /// How many pads have reached `play()`. A test seam, and the counter a suppressed pad leaves alone.
     private(set) var playsStarted = 0
+    /// How the last pad that reached `play()` was scheduled. A test seam.
+    private(set) var lastStartedRepeat: SoundRepeat?
     /// Test observations for finite-loop completion and stale callback cancellation.
     private let repeatScheduler = FiniteRepeatScheduler()
     var repeatedBuffersScheduled: Int { repeatScheduler.buffersScheduled }
@@ -704,7 +706,8 @@ final class SoundEngine {
         nextPlayID += 1
         stopID[c][x][y] = playID
         nodePlayID[nodeIndex] = playID
-        nodeIsLoop[nodeIndex] = sound.loop == -1
+        let repeats = SoundRepeat(storedLoop: sound.loop)
+        nodeIsLoop[nodeIndex] = repeats == .endless
         startCounter += 1
         nodeStartOrder[nodeIndex] = startCounter
         // Frees the node for reuse when a one-shot finishes, so stealing only happens when every
@@ -737,15 +740,16 @@ final class SoundEngine {
                 engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
             }
 
-            // Android SoundPool.play(loop=N) plays N+1 times total (1 initial + N repeats)
-            if sound.loop == -1 {
+            switch repeats {
+            case .endless:
                 node.scheduleBuffer(buffer, at: nil, options: .loops)
-            } else if sound.loop > 0 {
-                repeatFailure = repeatScheduler.start(buffer, node: node, totalPlays: sound.loop + 1, completion: release)
-            } else {
+                node.play()
+            case .plays(let total) where total > 1:
+                repeatFailure = repeatScheduler.start(buffer, node: node, totalPlays: total, completion: release)
+            case .plays:
                 node.scheduleBuffer(buffer, at: nil, options: []) { release(nil) }
+                node.play()
             }
-            if sound.loop <= 0 { node.play() }
         }
         if let failure = failure ?? repeatFailure {
             logger.error("play() raised: \(failure, privacy: .public)")
@@ -756,7 +760,8 @@ final class SoundEngine {
             return
         }
         playsStarted += 1
-        if sound.loop == -1 {
+        lastStartedRepeat = repeats
+        if repeats == .endless {
             // Voices already replaced or stolen are dropped, so repeated presses do not pile up.
             var voices = inputPlayback[input, default: []].filter(nodePlayID.contains)
             voices.append(playID)
@@ -827,6 +832,20 @@ final class SoundEngine {
         case bufferCreationFailed
         case converterCreationFailed
         case conversionFailed
+    }
+}
+
+/// How a keySound line's stored loop value (written value minus one) is played, as Android's
+/// SoundPool.play(loop: N) plays it N+1 times: -1 endlessly, a positive value that many times
+/// plus one, and anything else, including a negative written value, once.
+nonisolated enum SoundRepeat: Equatable {
+    case endless
+    case plays(Int)
+
+    init(storedLoop loop: Int) {
+        if loop == -1 { self = .endless }
+        else if loop > 0 { self = .plays(loop + 1) }
+        else { self = .plays(1) }
     }
 }
 

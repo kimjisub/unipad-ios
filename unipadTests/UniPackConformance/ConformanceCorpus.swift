@@ -36,6 +36,7 @@ struct ConformanceCase {
     var soundIdentity = false
     var requiresCaseSensitiveFiles = false
     var screenInputs = false
+    var observation: String?
 }
 
 struct ConformanceCorpus {
@@ -130,6 +131,9 @@ struct ConformanceCorpus {
             case "undetermined": determined = false
             case let other: throw LoadError.invalid("\(id): expectation is \(other.map { "\"\($0)\"" } ?? "missing"), not determined or undetermined")
             }
+            if let observation = value["observation"], observation != .null, observation.string == nil {
+                throw LoadError.invalid("\(id): observation must be a string")
+            }
             let known = (value["known"]?.object ?? [:]).compactMapValues { pin -> ConformanceKnown? in
                 guard let status = pin["status"]?.string, let actual = pin["actual"], let note = pin["note"]?.string else { return nil }
                 let others = (pin["otherActuals"]?.array ?? []).compactMap { $0.object?["actual"] }
@@ -150,7 +154,8 @@ struct ConformanceCorpus {
                 unobserved: (value["unobserved"]?.object ?? [:]).compactMapValues(\.string),
                 soundIdentity: value["soundIdentity"] == .bool(true),
                 requiresCaseSensitiveFiles: value["requiresCaseSensitiveFiles"] == .bool(true),
-                screenInputs: value["screenInputs"] == .bool(true)
+                screenInputs: value["screenInputs"] == .bool(true),
+                observation: value["observation"]?.string
             )
         }
         return ConformanceCorpus(sha256: sha256Hex(data), source: source, assets: assets, cases: cases)

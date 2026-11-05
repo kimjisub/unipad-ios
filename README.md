@@ -104,7 +104,17 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   the notification permission round trip
   ([Notification simulator check](#notification-simulator-check)),
   the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
-  download, and iPad pointer input. Run those separately when a change touches them.
+  download, iPad pointer input, and the store back button on an upright iPad. Run
+  those separately when a change touches them. For the last one, pass an iPad
+  simulator:
+
+  ```bash
+  xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
+    -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+    -only-testing:unipadUITests/StoreBackButtonStatusBarTests \
+    -parallel-testing-enabled NO -collect-test-diagnostics never
+  ```
+
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
   parts together must name every class:
 
@@ -328,11 +338,18 @@ This checks simulator notification handling, not real APNs or Firebase delivery.
 The UI test skips when `xcodebuild` runs it directly, because only the script
 sets up what it needs.
 
-In Debug and builds compiled with `UNIPAD_RELEASE_TESTS`, launching once with
-`-UniPadFirebaseLocalOnly YES` saves the choice for subsequent launches from
-notifications or the Home Screen. `-UniPadFirebaseLocalOnly NO` clears it;
-uninstalling the app also resets it. Normal Release/store builds ignore both
-the saved choice and launch arguments. Unit test hosts always use local stubs.
+Debug and builds compiled with `UNIPAD_RELEASE_TESTS` use local Firebase stubs
+unless told otherwise, so a fresh install launched without arguments sends no
+analytics, crash reports, push registrations or Remote Config requests to
+production. The stubs do not cover the store: it still reads the production
+catalog and downloads packs from production, unless a release check launches
+with its own fixtures. Launching once with `-UniPadFirebaseLocalOnly YES` or
+`NO` saves that choice for subsequent launches from notifications or the Home
+Screen; `NO` is what a check of real Firebase delivery needs, and running such a
+build from Xcode to try push, analytics or Crashlytics needs it too. Uninstalling
+the app resets the choice to local. Normal Release/store builds ignore both the
+saved choice and launch arguments and always use Firebase. Unit test hosts always
+use local stubs.
 
 ## Connecting a Launchpad
 

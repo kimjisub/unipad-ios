@@ -371,10 +371,12 @@ enum UITestSupport {
     /// XCUITest can report offscreen rows as hittable in landscapeRight. Use
     /// the window and scroll viewport instead, and require the whole row so
     /// its activation point cannot still sit below the fold.
+    /// The window's frame comes from a snapshot too: on an upright iPad its `frame` property is
+    /// 834 by 1210 while every snapshot, the window's included, is 1210 by 834.
     static func isFullyVisible(_ element: XCUIElement, in app: XCUIApplication,
                                within scrollView: XCUIElement? = nil) -> Bool {
-        guard let frame = currentFrame(of: element) else { return false }
-        var viewport = app.windows.firstMatch.frame
+        guard let frame = currentFrame(of: element),
+              var viewport = currentFrame(of: app.windows.firstMatch) else { return false }
         if let scrollView {
             guard let scrollFrame = currentFrame(of: scrollView) else { return false }
             viewport = viewport.intersection(scrollFrame)
@@ -525,12 +527,7 @@ enum UITestSupport {
             XCTFail("no \(label) option in the menu")
             return
         }
-        let panel = app.scrollViews.firstMatch
-        let inView = { panel.frame.contains(row.frame) }
-        for _ in 0..<6 where !inView() {
-            if row.frame.midY < panel.frame.midY { panel.swipeDown(velocity: .slow) } else { panel.swipeUp(velocity: .slow) }
-        }
-        guard inView() else {
+        guard scrollIntoPlayOptionPanel(row, in: app) else {
             XCTFail("\(label) option never scrolled into view")
             return
         }
@@ -539,6 +536,27 @@ enum UITestSupport {
         guard isOn() != on else { return }
         row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(isOn(), on, "\(label) option did not switch")
+    }
+
+    /// Drags the open option panel until the element is fully inside it. A swipe's fixed length can
+    /// jump over a row that lands between two scroll positions, so each drag covers the row's own
+    /// distance from the panel's centre and holds at the end to stop the panel coasting.
+    @discardableResult
+    static func scrollIntoPlayOptionPanel(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        let panel = app.scrollViews.firstMatch
+        let inView = { panel.frame.contains(element.frame) }
+        let centre = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        for _ in 0..<6 where !inView() {
+            let reach = panel.frame.height * 0.8
+            let distance = min(max(element.frame.midY - panel.frame.midY, -reach), reach)
+            centre.withOffset(CGVector(dx: 0, dy: distance / 2)).press(
+                forDuration: 0.1,
+                thenDragTo: centre.withOffset(CGVector(dx: 0, dy: -distance / 2)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.3
+            )
+        }
+        return inView()
     }
 
     /// Closes the play screen's option panel by tapping the uncovered strip at the window's leading

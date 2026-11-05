@@ -6,6 +6,21 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ConformanceRegressionTests {
+    @Test(arguments: ["RUN-S-002", "RUN-S-007", "RUN-S-011", "RUN-S-013", "RUN-S-014"])
+    func wormholeCasesIgnoreWallTimeBeforeObserving(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        var deps = ConformanceDeps()
+        // Even a late wake must not advance a wormhole past the scenario's virtual time.
+        deps.beforeObserve = { try await Task.sleep(for: .milliseconds(200)) }
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus, deps: deps)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(value == sample.expected, "\(id): \(value.serialized())")
+    }
+
     @Test func caseSensitivityMatchesDistinctFileStorage() throws {
         let root = ProcessInfo.processInfo.environment["UNIPACK_CASE_ROOT"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
@@ -46,6 +61,20 @@ struct ConformanceRegressionTests {
 
     @Test(arguments: ["RUN-L-006", "RUN-L-007", "RUN-A-001", "RUN-A-002", "RUN-RP-003", "RUN-RP-004", "RUN-RP-005", "RUN-S-008", "RUN-S-009", "RUN-S-010", "RUN-S-012", "RUN-S-013"])
     func playbackCasesAreMeasured(id: String) async throws {
+        let corpus = try ConformanceCorpus.load()
+        let sample = try #require(corpus.cases.first { $0.id == id })
+        let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)
+        guard case .value(let value) = actual else {
+            Issue.record("\(id) was not measured: \(actual)")
+            return
+        }
+        #expect(sample.classify(value).status == "pass", "\(id): \(value.serialized())")
+    }
+
+    /// The recorded repeat is the one the engine scheduled. A negative written value is stored
+    /// below -1 and played once, so reporting the stored value would misstate the playback.
+    @Test(arguments: ["RUN-G613", "RUN-S-005", "RUN-S-008"])
+    func soundRepeatsAreObservedAsTheEngineSchedulesThem(id: String) async throws {
         let corpus = try ConformanceCorpus.load()
         let sample = try #require(corpus.cases.first { $0.id == id })
         let actual = try await ConformanceHarness.actual(for: sample, corpus: corpus)

@@ -4,6 +4,20 @@ The test bundle contains the unchanged shared corpus and its SHA-256. The harnes
 compares recorded output with the corpus expectations; it does not derive those
 expectations from the iOS implementation.
 
+`AutoMapProductTests` runs the five shared mapping operations through the app's mapper,
+with each operation's sound lengths supplied in place of reading audio, and reports the
+commands read back from the saved file. It says nothing about decoding real sounds.
+
+Product observation kinds are read explicitly. Audio costs, physical file facts,
+generated PCM recipes, and file selection call `AudioAdmission` and
+`AudioFileInspection`, rather than loading `operation.json` as a pack. The generated
+PCM files are sparse physical files; their frame count comes from inspection,
+not the misleading duration claim. Unknown kinds and missing or malformed operation
+inputs fail. Admission and inspection fault checks require changed app output to
+change the result. Runner observations record the actual completion callback,
+read `active`, and call the runner's suspension methods. These are runner-level
+observations; they do not establish rendered screen input or physical sound.
+
 `RUN-L-006`, `RUN-L-007`, `RUN-A-001`, `RUN-A-002`, `RUN-RP-003`, and `RUN-RP-004`
 were marked `unobserved` for iOS until the harness gained the virtual autoplay clock
 and the screen-return observation below; the corpus no longer marks them. A case the

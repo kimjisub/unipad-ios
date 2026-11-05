@@ -290,3 +290,16 @@
 "trace_numbers" = "Zahlen";
 "trace_lines" = "Linien und Punkte";
 "trace_clear_all" = "Alle Spuren löschen";
+
+"autoMappingConfirmTitle" = "Autoplay anpassen?";
+"autoMappingConfirmMessage" = "Wartezeiten werden durch Klanglängen ersetzt. Das aktuelle Autoplay wird gesichert. Gleichzeitig gedrückte Pads bleiben gleichzeitig.";
+"autoMappingApply" = "Anpassen";
+"autoMappingSaved" = "Autoplay gespeichert. Die vorherige Version kann im Menü wiederhergestellt werden.";
+"autoMappingFailed" = "Speichern fehlgeschlagen. Das bisherige Autoplay bleibt unverändert.";
+"autoPlayRestore" = "Vorheriges Autoplay wiederherstellen";
+"autoPlayNoBackup" = "Keine gespeicherte Sicherung";
+"autoPlayRestoreConfirmTitle" = "Vorherige Sicherung wiederherstellen?";
+"autoPlayRestoreConfirmMessage" = "Sie wird mit dem aktuellen Autoplay getauscht. Der Tausch lässt sich wiederholen.";
+"autoPlayRestoreApply" = "Wiederherstellen";
+"autoPlayRestored" = "Vorheriges Autoplay wiederhergestellt. Im Menü kann erneut getauscht werden.";
+"autoPlayRestoreFailed" = "Wiederherstellung fehlgeschlagen. Autoplay und Sicherung bleiben unverändert.";

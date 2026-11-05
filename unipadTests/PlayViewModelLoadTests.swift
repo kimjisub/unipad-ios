@@ -122,8 +122,10 @@ extension PlayUsageRecordTests {
             #expect(!pack.holdExpired, "the held read kept the main actor from running other work")
         }
 
-        @Test(arguments: [false, true])
-        func leavingWhileTheReadIsRunningStartsNothing(_ detail: Bool) async throws {
+        /// A screen that closes is cleaned up at once, and its task is cancelled only when it has
+        /// disappeared, so a read can end on a closed screen whose task still runs.
+        @Test(arguments: [false, true], [false, true])
+        func leavingWhileTheReadIsRunningStartsNothing(_ detail: Bool, taskCancelled: Bool) async throws {
             let pack = ProbePack(holdInfo: !detail, holdDetail: detail, infoWarning: "info warning")
             let vm = makeViewModel(pack)
             let loading = Task { try await vm.loadUnipack(path: "/probe") }
@@ -131,7 +133,7 @@ extension PlayUsageRecordTests {
                 try await Task.sleep(nanoseconds: 5_000_000)
             }
 
-            loading.cancel()
+            if taskCancelled { loading.cancel() }
             vm.cleanup()
             pack.release()
             try await loading.value

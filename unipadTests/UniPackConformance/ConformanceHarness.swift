@@ -42,8 +42,11 @@ struct ConformanceDeps {
     var turnOffAutoPlay: @MainActor (PlayViewModel) -> Void = { $0.switchPlayMode(.none) }
     var setupChainObserver: @MainActor (PlayViewModel) -> Void = { $0.setupChainObserver() }
     var soundOff: @MainActor (SoundEngine, Int, Int) -> Void = { $0.soundOff(x: $1, y: $2) }
+    var beforeObserve: @MainActor () async throws -> Void = {}
     var soundLoadTimeout: TimeInterval = 20
     var ledEventOn: @MainActor (LedRunner, Int, Int) -> Void = { runner, x, y in runner.eventOn(x: x, y: y) }
+    var audioCost: (AudioAdmission.Facts) -> AudioAdmission.Cost = AudioAdmission.cost
+    var inspectAudio: (Data) -> AudioAdmission.Inspection = AudioFileInspection.inspect
 }
 
 enum ConformanceHarness {
@@ -181,6 +184,9 @@ enum ConformanceHarness {
         }
         if let reason = conformanceCase.unobserved[ConformanceCorpus.platform],
            !(conformanceCase.requiresCaseSensitiveFiles && caseSensitiveFileSystem) { return .unverified(reason) }
+        if let observed = ConformanceProductObservation.actual(for: conformanceCase, corpus: corpus, deps: deps) {
+            return observed
+        }
         if conformanceCase.soundIdentity {
             return try await ConformanceSoundIdentity.actual(for: conformanceCase, corpus: corpus, deps: deps, report: identityReport)
         }
@@ -199,7 +205,74 @@ enum ConformanceHarness {
         guard conformanceCase.layer == "run", !pack.criticalError else {
             return .value(conformanceCase.layer == "run" ? ["loaded": false] : parseResult(pack, root: root))
         }
+        if conformanceCase.observation == "auto-map" {
+            return try await autoMapResult(conformanceCase, pack: pack, root: root, corpus: corpus, deps: deps)
+        }
         return try await runScenario(conformanceCase, pack: pack, root: root, deps: deps)
+    }
+
+    // MARK: - Auto mapping
+
+    private final class AutoMapOutcome: UniPackAutoMapperListener {
+        var failure: Error?
+        var finished = false
+        func onStart() {}
+        func onGetWorkSize(_ size: Int) {}
+        func onProgress(_ progress: Int) {}
+        func onDone() { finished = true }
+        func onException(_ error: Error) { failure = error }
+    }
+
+    /// Runs the app's mapper with the case's sound lengths in place of reading the audio, then
+    /// reads what it saved back from disk the way the next launch does.
+    @MainActor
+    private static func autoMapResult(_ conformanceCase: ConformanceCase, pack: UniPack, root: URL, corpus: ConformanceCorpus, deps: ConformanceDeps) async throws -> ConformanceActual {
+        guard let folder = pack as? UniPackFolder else { throw ConformanceError.harness("the mapper needs a pack folder") }
+        guard let operation = conformanceCase.files.first(where: { $0.path == "operation.json" }),
+              let input = try JSONSerialization.jsonObject(with: corpus.bytes(of: operation)) as? [String: Any],
+              let durations = input["durations"] as? [String: Any]
+        else { throw ConformanceError.harness("\(conformanceCase.id) has no sound lengths") }
+        let lengths = durations.compactMapValues { $0 as? Double }
+
+        let outcome = AutoMapOutcome()
+        await UniPackAutoMapper(unipack: folder, listener: outcome, soundLength: { lengths[$0.lastPathComponent] }).start().value
+        if let failure = outcome.failure { return .failed("auto mapping failed: \(failure)") }
+        guard outcome.finished else { return .failed("auto mapping never finished") }
+
+        guard let elements = deps.load(root).autoPlayTable?.elements else { return .failed("the mapped autoPlay was not read back") }
+        return .value(["events": .array(autoMapEvents(elements))])
+    }
+
+    /// `[on,time,chain,x,y,num]`, `[off,time,chain,x,y]`, `[chain,time,chain]` and, for a wait
+    /// left after the last command, `[trailingDelay,time]`.
+    private static func autoMapEvents(_ elements: [AutoPlay.Element]) -> [JSONValue] {
+        var events: [JSONValue] = []
+        var time = 0
+        var endsInWait = false
+        for element in elements {
+            endsInWait = false
+            switch element {
+            case .on(let x, let y, let chain, let num):
+                events.append(["on", .int(time), .int(chain), .int(x), .int(y), .int(num)])
+            case .off(let x, let y, let chain):
+                events.append(["off", .int(time), .int(chain), .int(x), .int(y)])
+            case .chain(let chain):
+                events.append(["chain", .int(time), .int(chain)])
+            case .delay(let delay):
+                time += delay
+                endsInWait = true
+            }
+        }
+        if endsInWait { events.append(["trailingDelay", .int(time)]) }
+        return events
+    }
+
+    /// The corpus writes the scheduled repeat in the stored form: -1 endless, 0 once, N for N+1 plays.
+    private static func repeatValue(_ repeats: SoundRepeat) -> Int {
+        switch repeats {
+        case .endless: return -1
+        case .plays(let total): return total - 1
+        }
     }
 
     /// Conditions are evaluated before the self-checks, so an unavailable engine is a skipped test.
@@ -346,6 +419,72 @@ enum ConformanceHarness {
         }
     }
 
+    /// Deadlines are captured at the press, before SoundEngine's main-actor task starts.
+    /// Each due wait is acknowledged by the real chain observer (or task cancellation), so
+    /// advancing time never guesses how many yields deliver the wormhole's chain change.
+    @MainActor
+    private final class WormholeClock {
+        @MainActor
+        private final class Wait {
+            let deadline: Int64
+            var continuation: CheckedContinuation<Void, Never>?
+            var released = false
+            var completed = false
+
+            init(deadline: Int64) { self.deadline = deadline }
+
+            func release() {
+                released = true
+                continuation?.resume()
+                continuation = nil
+            }
+        }
+
+        private let clock: TestManualClock
+        private var waits: [Wait] = []
+        private var completing: Wait?
+
+        init(clock: TestManualClock) { self.clock = clock }
+
+        func delayFromPress() -> @MainActor () async -> Void {
+            let wait = Wait(deadline: clock.read() + 100)
+            waits.append(wait)
+            return {
+                await withCheckedContinuation { continuation in
+                    if wait.released { continuation.resume() }
+                    else { wait.continuation = continuation }
+                }
+                if Task.isCancelled { wait.completed = true }
+            }
+        }
+
+        func chainChanged() { completing?.completed = true }
+
+        func advance() async throws {
+            for wait in waits where wait.deadline <= clock.read() {
+                let deadline = Date().addingTimeInterval(120)
+                while wait.continuation == nil {
+                    guard Date() < deadline else { throw ConformanceError.harness("wormhole did not register its virtual delay within 120 s") }
+                    await Task.yield()
+                }
+                completing = wait
+                wait.release()
+                while !wait.completed {
+                    guard Date() < deadline else { throw ConformanceError.harness("wormhole did not finish its virtual tick within 120 s") }
+                    await Task.yield()
+                }
+                completing = nil
+            }
+            waits.removeAll { $0.completed }
+        }
+
+        /// Call after destroying the engine; cancelled tasks must not retain a continuation.
+        func cancel() {
+            for wait in waits { wait.release() }
+            waits.removeAll()
+        }
+    }
+
     @MainActor
     private final class AutoRecorder: AutoPlayRunner.Listener {
         let log: EventLog
@@ -406,12 +545,14 @@ enum ConformanceHarness {
         let screen = usesScreenInputs || usesChainSelection ? PlayViewModel() : nil
         let inputScreen = usesScreenInputs ? screen : nil
         let chain = screen?.chain ?? ChainObserver()
+        let clock = TestManualClock()
+        let wormholeClock = WormholeClock(clock: clock)
         chain.range = 0...max(pack.chain - 1, 0)
         chain.addObserver { current, _ in
             if log.recordsChain { log.add(["chain", .int(current)]) }
+            wormholeClock.chainChanged()
         }
 
-        let clock = TestManualClock()
         // LedRunner keeps its listener weakly, so the recorder must be held here.
         let screenLights = ScreenLights(log: log)
         let recorder = LedRecorder(log: log, screenLights: screenLights)
@@ -445,9 +586,11 @@ enum ConformanceHarness {
             autoClock.ended = true
             autoClock.wake()
             led.stop()
-            guard !engineDestroyed else { return }
-            engineDestroyed = true
-            engine.destroy()
+            if !engineDestroyed {
+                engineDestroyed = true
+                engine.destroy()
+            }
+            wormholeClock.cancel()
         }
 
         func recordStops(since previousIDs: Set<Int>) {
@@ -474,6 +617,10 @@ enum ConformanceHarness {
             if down {
                 let playing = chain.value
                 let head = pack.soundGet(c: playing, x: x, y: y)
+                // A stopped engine ignores late presses and never starts their delay.
+                if !engineDestroyed, let head, head.wormhole != Sound.noWormhole, !byAutoPlay, trigger != .autoplay {
+                    engine.wormholeDelay = wormholeClock.delayFromPress()
+                }
                 let before = engine.playsStarted
                 let previousIDs = engine.activePlayIDs
                 if let screen = inputScreen {
@@ -482,15 +629,15 @@ enum ConformanceHarness {
                 // A replacement's stop precedes the next start. The removed IDs belong to the
                 // engine, not the current chain or the pad's already-advanced queue head.
                 recordStops(since: previousIDs)
-                if engine.playsStarted > before, let head {
-                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file)), .int(head.loop)])
+                if engine.playsStarted > before, let head, let repeats = engine.lastStartedRepeat {
+                    log.add(["sound", .int(playing), .int(x), .int(y), .string(soundName(head.file)), .int(repeatValue(repeats))])
                     if watchesStops {
                         for id in engine.activePlayIDs.subtracting(previousIDs) {
                             voices[id] = ["soundStop", .int(playing), .int(x), .int(y), .string(soundName(head.file))]
                         }
                     }
                 }
-                if head?.loop == -1 {
+                if engine.playsStarted > before, engine.lastStartedRepeat == .endless {
                     for id in engine.activePlayIDs.subtracting(previousIDs) { loopingPads[id] = (x, y) }
                 }
                 if inputScreen == nil { deps.ledEventOn(led, x, y) }
@@ -512,10 +659,6 @@ enum ConformanceHarness {
             if let failure = loading.engineFailure { return .unverified("the audio engine is not usable here: \(failure.localizedDescription)") }
             if let failure = loading.loadFailure { return .failed("\(conformanceCase.id): no sound of the pack could be loaded: \(failure)") }
             guard loading.finished else { return .failed("sounds did not finish loading within \(deps.soundLoadTimeout) s") }
-
-            let hasWormhole = (0..<pack.chain).contains { c in
-                (0..<pack.buttonX).contains { x in (0..<pack.buttonY).contains { y in pack.soundTable?[c][x][y]?.contains { $0.wormhole != Sound.noWormhole } == true } }
-            }
 
             var checkpoints: [JSONValue] = []
             for step in conformanceCase.scenario {
@@ -581,11 +724,11 @@ enum ConformanceHarness {
                     log.recordsChain = true
                 case "advance":
                     let total = step["ms"]?.int ?? 0
-                    if hasWormhole { try await Task.sleep(nanoseconds: UInt64(total) * 1_000_000) }
                     var remaining = total
                     while remaining > 0 {
                         let tick = min(4, remaining)
                         clock.advance(Int64(tick))
+                        try await wormholeClock.advance()
                         autoClock.now += Int64(tick)
                         if autoPlay != nil { try await autoClock.tick() }
                         if led.active { led.loop() }
@@ -594,6 +737,7 @@ enum ConformanceHarness {
                         remaining -= tick
                     }
                 case "observe":
+                    try await deps.beforeObserve()
                     await Task.yield()
                     checkpoints.append(.array(log.drain()))
                 case "stop":
