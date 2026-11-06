@@ -1,0 +1,98 @@
+{
+  "fixture_version": 1,
+  "sample_rate": 48000,
+  "frames_per_sound": 48000,
+  "sample_format": "s16le",
+  "channel_order": [
+    "left",
+    "right"
+  ],
+  "peak_amplitude": 8000,
+  "fade_frames": 480,
+  "frequencies_hz": {
+    "pad-a.wav": [
+      440,
+      880
+    ],
+    "pad-b.wav": [
+      662,
+      998
+    ],
+    "left.wav": [
+      1110,
+      0
+    ],
+    "right.wav": [
+      0,
+      1374
+    ],
+    "silence.wav": [
+      0,
+      0
+    ]
+  },
+  "pads": [
+    {
+      "chain": 1,
+      "row": 1,
+      "column": 1,
+      "sound": "pad-a.wav",
+      "total_plays": 1,
+      "held_loop": false
+    },
+    {
+      "chain": 1,
+      "row": 1,
+      "column": 2,
+      "sound": "pad-b.wav",
+      "total_plays": 1,
+      "held_loop": false
+    },
+    {
+      "chain": 1,
+      "row": 1,
+      "column": 3,
+      "sound": "left.wav",
+      "total_plays": 1,
+      "held_loop": false
+    },
+    {
+      "chain": 1,
+      "row": 1,
+      "column": 4,
+      "sound": "right.wav",
+      "total_plays": 1,
+      "held_loop": false
+    },
+    {
+      "chain": 1,
+      "row": 1,
+      "column": 5,
+      "sound": "silence.wav",
+      "total_plays": 1,
+      "held_loop": false
+    },
+    {
+      "chain": 1,
+      "row": 1,
+      "column": 6,
+      "sound": "pad-a.wav",
+      "total_plays": 0,
+      "held_loop": true
+    }
+  ],
+  "unmapped_control": {
+    "chain": 1,
+    "row": 1,
+    "column": 8
+  },
+  "sha256": {
+    "info": "772833bfb3b4c9addc04aa39a690317a122f8ed0a74badcdc82cf4e3a87e9a28",
+    "keySound": "e719978d7e855fc2645f6428c48fe08a82e37fc7d1679fdb18a4df80ccd29567",
+    "sounds/left.wav": "fe1dbdef925adb438459314bc073cb1a586f8bedb5c3fb6c58a9909f37fda5bd",
+    "sounds/pad-a.wav": "70835ce944abe3b223704b54220168bf653e8b3701bf5a72aa1bc5267c6689eb",
+    "sounds/pad-b.wav": "0dcdc75b9dc3aa3a28e60fc8ad9640a3ef8d1cc0471785f8ba127dce4fa74ddb",
+    "sounds/right.wav": "c551105f69ec6f250fd7ac01f8da03d2107fbea9a33dc6526c034dad074027f4",
+    "sounds/silence.wav": "ede1f6dd33abfce7bb3a45ba79b0ab5f8baae692709dd32214a41da9af55ab13"
+  }
+}
