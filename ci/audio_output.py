@@ -73,8 +73,11 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
         first = ready["first_frame_monotonic_ns"]
         before = (gesture["invoked_ns"] - first) / 1e9
         after = (gesture["completed_ns"] - first) / 1e9
+        # A held loop has already played when its gesture completes. Reserve
+        # its stop residual and quiet tail, rather than another one-second play.
+        remaining = 0.5 + (THRESHOLDS["stop_tail_seconds"] if stopped else 1.0)
         if (gesture["invoked_ns"] - ready["notified_monotonic_ns"] < 500_000_000
-                or before < 0.5 or after < before or after > 2.5):
+                or before < 0.5 or after < before or after > 4 - remaining):
             return finish("environment_unverified", "input did not leave the required baseline and tail")
         with wave.open(str(Path(path)), "rb") as sound:
             rate, channels = sound.getframerate(), sound.getnchannels()

@@ -69,6 +69,9 @@ must match for 0.75–1.16 s. Channel matches must remain continuous for at leas
 must match for at least 1.05 s (beyond a single play), and must be quiet within
 0.1 s of gesture completion. These limits check a repeatable digital
 signal, not physical input latency. A different reference must be rejected.
+Within the same four-second capture, a stopped loop reserves 0.1 s of residual
+output and the final 0.5 s of quiet after gesture completion. A one-shot reserves
+another full second of playback and that quiet tail.
 
 To validate the checker, repeat with a new output directory and
 `--block-playback --verified-capture /path/to/positive/summary.json`. The blocked

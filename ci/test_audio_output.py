@@ -114,6 +114,15 @@ class AudioOutputTests(unittest.TestCase):
         self.input["completed_ns"] = 101_000_000_000
         self.assertEqual(self.verdict(stopped=True)["status"], "fail")
 
+    def test_stopped_loop_reserves_stop_tail_not_another_full_play(self):
+        self.write(["pad-a.wav"], repeat_for=1.2)
+        self.input["completed_ns"] = 102_600_000_000
+        self.assertEqual(self.verdict(stopped=True)["status"], "pass",
+                         "a stopped loop has room for residual output and the quiet tail")
+        self.input["completed_ns"] = 103_500_000_000
+        self.assertEqual(self.verdict(stopped=True)["status"], "environment_unverified",
+                         "the same four-second capture must still contain the entire quiet tail")
+
     def test_process_selection_requires_exact_owned_unique_bundle(self):
         mine = {"pid": 12, "bundle_id": "kim.jisub.unipad", "in_this_simulator": True}
         other = {"pid": 13, "bundle_id": "kim.jisub.unipad", "in_this_simulator": False}
