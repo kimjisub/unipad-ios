@@ -123,12 +123,13 @@ final class ExternalFileImportTests: XCTestCase {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
         defer { safari.terminate(); app.activate() }
-        // Foreground state is observed asynchronously; activation also waits for event readiness.
+        let addressDeadline = Date().addingTimeInterval(10)
+        // Activate the browser before sending address-editing events.
         safari.activate()
         // .invalid needs no live website. Read the active tab's editor: the collapsed
         // address hides the scheme, and a browser-wide match can find another tab.
         let expected = "https://example.invalid"
-        XCTAssertEqual(try currentSafariAddress(in: safari), expected)
+        XCTAssertEqual(try currentSafariAddress(in: safari, deadline: addressDeadline), expected)
         let capture = XCTAttachment(screenshot: safari.screenshot())
         capture.name = "scheme-less-website-browser-destination"
         capture.lifetime = .keepAlways
@@ -154,9 +155,10 @@ final class ExternalFileImportTests: XCTestCase {
         XCTAssertNotEqual(shownWrongPath, expected)
     }
 
-    private func currentSafariAddress(in safari: XCUIApplication) throws -> String {
-        // Share the original ten-second address deadline across both controls.
-        let deadline = Date().addingTimeInterval(10)
+    private func currentSafariAddress(
+        in safari: XCUIApplication, deadline: Date = Date().addingTimeInterval(10)
+    ) throws -> String {
+        // Both controls use what remains of the same address deadline.
         let activeAddress = NSPredicate(format: "identifier BEGINSWITH %@", "SearchFieldItemView?isActive=true&")
         let collapsed = safari.buttons.matching(activeAddress).element
         XCTAssertTrue(collapsed.waitForExistence(timeout: max(0, deadline.timeIntervalSinceNow)))
