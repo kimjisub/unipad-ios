@@ -29,10 +29,51 @@ python3 ci/audio_output_fixture.py /path/to/new/reference-pack
 python3 -m unittest discover -s ci -p test_audio_output_fixture.py -v
 ```
 
-These files alone do not verify output. The external check must establish the
-lent simulator's exact app process, await recorder readiness, discard the initial
-buffer, capture the quiet baseline and actual screen input, and compare each
-channel with these references. Missing permission, packets, or readiness is an
-unverified environment, never an output pass. Signal thresholds still require
-calibration with repeated normal and silent controls. Physical speakers,
-headphones, Bluetooth, sound quality, and performance latency are outside scope.
+Run the opt-in external check on an already acquired simulator:
+
+```sh
+python3 ci/audio_output_check.py --simulator "$SIMULATOR_UDID" \
+  --generation "$RENTAL_GENERATION" --device-tools /path/to/managed-device-tools \
+  --recorder-binary /path/to/managed/process-tap \
+  --derived-data /path/to/DerivedData --output /path/to/new/positive --repeats 3
+```
+
+The device tools directory must provide `devices.py` (generation-protected app
+installation, file staging, process selection, and `record --pid --ready`) and
+`ios_tests.py`. The recorder must already have system audio permission. This
+script neither grants permission nor changes the Mac's output device. Return
+the simulator through its device tool as soon as device work ends.
+
+Each XCUITest input follows recorder readiness and a 0.5-second quiet baseline.
+The recorder drops the initial 0.1 seconds. Both processes use `CLOCK_UPTIME_RAW`
+timestamps to locate input in the WAV. The actual reference is played only by
+the real app's pads. Every case preserves its original four-second WAV, readiness
+notice, input times, selected process, recorder result, and numeric verdict.
+The suite also preserves build/test logs, the result bundle, app and recorder
+hashes, source commit and diff hash, environment, and staged pack hashes. Callback
+padding remains in the original; analysis is restricted to the first four seconds.
+Existing output folders are refused. Archive each round before another round.
+
+The versioned thresholds in `ci/audio_output.py` require -50 dBFS RMS and 20 dB
+over a nonzero baseline, with a quiet baseline/tail below -65 dBFS. Phase-neutral
+reference fitting runs in 40 ms windows: expected frequencies must explain at
+least 85% of power, each mixed component at least 15%, and each one-shot tone
+must match for 0.75–1.16 s. Channel matches must remain continuous for at least
+0.75 s; both mixed pads must overlap continuously for at least 0.25 s. The loop is held for 1.2 s,
+must match for at least 1.05 s (beyond a single play), and must be quiet within
+0.1 s of gesture completion. These limits check a repeatable digital
+signal, not physical input latency. A different reference must be rejected.
+
+To validate the checker, repeat with a new output directory and
+`--block-playback --verified-capture /path/to/positive/summary.json`. The blocked
+trial maps every sound to the owned silent file; it must exit **1**. Run the
+normal configuration again afterwards; it must exit **0**. The positive receipt
+only establishes the recording environment and must match the app, recorder,
+source and device. It never replaces a new recording or makes a silent recording
+pass. Missing permission, packets, timestamps, ownership or the timing budget is
+**environment unverified**, exit **2**, and never an output pass. A first entirely
+silent run without a verified recording path also exits 2.
+
+`ci/ui-tests.sh` excludes this class because it needs the external recorder; run
+it separately when checking the whole UI suite. These tests do not verify
+physical speakers, headphones, Bluetooth, sound quality, or performance latency.

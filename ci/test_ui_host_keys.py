@@ -18,6 +18,7 @@ FAKE_PROBE_BUILD = ('if [ "$1" = --sdk ]; then\n'
 
 ROOT = Path(__file__).resolve().parents[1]
 NOT_RUN = [
+    "-skip-testing:unipadUITests/AudioOutputUITests",
     "-skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests",
     "-skip-testing:unipadUITests/VirtualMidiPlayScreenUITests",
     "-skip-testing:unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
