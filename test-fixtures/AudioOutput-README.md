@@ -45,6 +45,12 @@ script neither grants permission nor changes the Mac's output device. Return
 the simulator through its device tool as soon as device work ends.
 
 Each XCUITest input follows recorder readiness and a 0.5-second quiet baseline.
+The host signals `target-ready` after selecting the owned process and hashing
+the installed app. This is a preparation boundary, not evidence of audio packets.
+The UI allows 12 seconds for that preparation, then a separate 12 seconds for
+the recorder's readiness notice; the host's recording-ready limit remains 10
+seconds. Discovery must not consume the ready window and cause the UI to
+terminate the app while the recorder is resolving its sound object.
 The recorder drops the initial 0.1 seconds. Both processes use `CLOCK_UPTIME_RAW`
 timestamps to locate input in the WAV. The actual reference is played only by
 the real app's pads. Every case preserves its original four-second WAV, readiness

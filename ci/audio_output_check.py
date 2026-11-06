@@ -189,6 +189,8 @@ class Run:
         args = self.args
         command = [sys.executable, str(args.device_tools / "devices.py"), "record", args.simulator,
                    str(step / "output.wav"), "4", "--pid", str(pid), "--ready", str(step / "ready.json")]
+        # Discovery and app hashing precede the UI peer's recorder-ready deadline.
+        (step / "target-ready").touch()
         with tempfile_log(step / "recorder.log") as log:
             recorder = self.start(command, log)
             ready = self.wait(step / "ready.json", recorder, 10)

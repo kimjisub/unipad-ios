@@ -41,6 +41,10 @@ final class AudioOutputUITests: XCTestCase {
         for scenario in scenarios {
             let step = directory.appendingPathComponent(scenario.name)
             try Data("request".utf8).write(to: step.appendingPathComponent("request"), options: .atomic)
+            // The host selects the process and hashes the installed app first.
+            // Starting both deadlines at request could terminate the app while
+            // the recorder is still resolving that process's sound object.
+            _ = try waitForFile(step.appendingPathComponent("target-ready"), in: directory)
             let notice = try waitForFile(step.appendingPathComponent("ready.json"), in: directory)
             let ready = try XCTUnwrap(JSONSerialization.jsonObject(with: notice) as? [String: Any])
             XCTAssertEqual(ready["ready"] as? Bool, true)

@@ -1,7 +1,9 @@
 from pathlib import Path
+import json
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 import audio_output_check as check
@@ -60,6 +62,46 @@ class AudioOutputCheckTests(unittest.TestCase):
                 if child.poll() is None:
                     child.kill()
                     child.wait(timeout=5)
+
+    def test_capture_peer_receives_target_ready_before_recorder_starts(self):
+        """The UI peer must know when discovery and app hashing have ended."""
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            runner = check.Run.__new__(check.Run)
+            runner.args = SimpleNamespace(device_tools=root, simulator="owned-device")
+            runner.output = root / "round"
+            runner.output.mkdir()
+            runner.children, runner.commands, runner.results = [], [], []
+            runner.report = {"cases": runner.results}
+            step = runner.output / "normal-a"
+            step.mkdir()
+            (step / "input.json").write_text(json.dumps({
+                "invoked_ns": 1_600_000_000, "completed_ns": 1_700_000_000}))
+            reference = check.ROOT / "test-fixtures/AudioOutput/sounds/pad-a.wav"
+            # This peer produces a synthetic receipt, never real device evidence.
+            (root / "devices.py").write_text('''import json, sys, wave
+from pathlib import Path
+output = Path(sys.argv[3])
+step = output.parent
+if not (step / "target-ready").exists():
+    sys.exit("UI peer cannot start its readiness deadline before host preparation ends")
+ready = Path(sys.argv[sys.argv.index("--ready") + 1])
+ready.write_text(json.dumps({"ready": True, "clock": "CLOCK_UPTIME_RAW",
+    "first_frame_monotonic_ns": 1000000000, "notified_monotonic_ns": 1000000000,
+    "initial_discard_seconds": 0.1}))
+with wave.open(''' + repr(str(reference)) + ''', "rb") as source:
+    samples = source.readframes(source.getnframes())
+with wave.open(str(output), "wb") as target:
+    target.setparams((2, 2, 48000, 0, "NONE", "not compressed"))
+    target.writeframes(bytes(33600 * 4) + samples + bytes(110400 * 4))
+print(json.dumps({"pid": 123, "complete": True}))
+''')
+            case = {"name": "normal-a", "kind": "normal-a", "expected": ((440,), (880,))}
+            try:
+                runner.record(case, step, 123, SimpleNamespace(poll=lambda: None))
+                self.assertEqual(runner.results[0]["verdict"]["status"], "pass")
+            finally:
+                runner.close()
 
 
 if __name__ == "__main__":
