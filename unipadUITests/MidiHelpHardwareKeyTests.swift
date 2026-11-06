@@ -201,7 +201,20 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         // Enabling speaks nothing of its own; any current speech is an unrelated
         // system announcement (e.g. "Port on right"), and without one reading it
         // throws "No speech available". Start reading by moving instead.
-        var speech = try voiceOver.moveForward().utterance
+        // isEnabled does not report command readiness. Diagnose a failed first
+        // delivery without retrying it or treating it as missing app content.
+        var speech: String
+        do {
+            speech = try VoiceOverReading.firstSpeech { try voiceOver.moveForward().utterance }
+        } catch let error as VoiceOverReading.AutomationNotReady {
+            let diagnostic = XCTAttachment(string: "\(error.localizedDescription)\n"
+                + "language=\(language)\nVoiceOver enabled=\(voiceOver.isEnabled)\n"
+                + "\(voiceOver.debugDescription)\n\(app.debugDescription)")
+            diagnostic.name = "voiceover-first-command-\(language)"
+            diagnostic.lifetime = .keepAlways
+            add(diagnostic)
+            throw error
+        }
         var transcript = [speech]
         // Enabling VoiceOver over an open help may start in its body; read back
         // to the fixed header first.
@@ -220,9 +233,12 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         attachment.name = "voiceover-speech-\(language)"
         attachment.lifetime = .keepAlways
         add(attachment)
-        XCTAssertTrue(transcript.contains { $0.contains(labels.title) }, text)
-        XCTAssertTrue(transcript.contains { $0.contains(labels.model) && $0.contains("Launchpad S") }, text)
-        XCTAssertTrue(transcript.contains { $0.contains(labels.close) }, text)
+        XCTAssertTrue(transcript.contains { $0.contains(labels.title) },
+                      "App speech is missing the help title:\n\(text)")
+        XCTAssertTrue(transcript.contains { $0.contains(labels.model) && $0.contains("Launchpad S") },
+                      "App speech is missing the selected model:\n\(text)")
+        XCTAssertTrue(transcript.contains { $0.contains(labels.close) },
+                      "App speech is missing the close button:\n\(text)")
         UITestSupport.attachScreenshot("voiceover-help-\(language)", to: self)
 
         for _ in 0..<24 where !speech.contains(labels.close) {
