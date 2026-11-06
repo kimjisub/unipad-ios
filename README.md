@@ -26,7 +26,8 @@ UniPad is a performance-based rhythm game that enables connection with a launchp
 
 Ogg sounds can contain either Vorbis or Opus audio. Both are decoded locally,
 including on iOS versions without native Ogg support. WAV, MP3 and AAC sounds
-continue to use the system decoder.
+continue to use the system decoder. M4A files containing Opus use the built-in
+Opus decoder when the system cannot read their audio packets.
 
 ## Getting Started
 

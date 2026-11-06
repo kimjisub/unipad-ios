@@ -472,7 +472,7 @@ final class SoundEngine {
         availableMemory: () -> Int? = SoundEngine.processAvailableMemory
     ) throws -> AVAudioPCMBuffer {
         let target = storageFormat
-        let source = try decodeAudioBuffer(from: url, holding: facts, opening: openAudioFile) { format, frames in
+        let source = try decodeAudioBuffer(from: url, holding: facts, opening: openAudioFile, availableMemory: availableMemory) { format, frames in
             // The source buffer and the converted one exist together for a moment.
             let stored = try SoundFileLimits.resampledFrameCount(
                 frames, from: format.sampleRate, to: target.sampleRate, channels: target.channelCount)
@@ -502,13 +502,16 @@ final class SoundEngine {
         from url: URL,
         holding facts: AudioAdmission.Facts? = nil,
         opening openAudioFile: (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) },
+        availableMemory: () -> Int? = SoundEngine.processAvailableMemory,
         admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void
     ) throws -> AVAudioPCMBuffer {
         let audioFile: AVAudioFile
         do {
             audioFile = try openAudioFile(url)
-        } catch _ where OggVorbisDecoder.isOgg(url) {
-            return try OggAudioDecoder.decode(url, admitting: admit)
+        } catch {
+            if OggVorbisDecoder.isOgg(url) { return try OggAudioDecoder.decode(url, admitting: admit) }
+            if let buffer = try Mp4OpusDecoder.decodeIfSupported(url, holding: facts, availableMemory: availableMemory, admitting: admit) { return buffer }
+            throw error
         }
         let format = audioFile.processingFormat
         let frames = try facts.map { try inspectedFrames($0, at: format.sampleRate) } ?? audioFile.length
@@ -518,7 +521,14 @@ final class SoundEngine {
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw SoundEngineError.bufferCreationFailed
         }
-        try audioFile.read(into: buffer)
+        do {
+            try audioFile.read(into: buffer)
+        } catch {
+            if let fallback = try Mp4OpusDecoder.decodeIfSupported(url, holding: facts, availableMemory: availableMemory, admitting: admit) { return fallback }
+            throw error
+        }
+        if buffer.frameLength == 0,
+           let fallback = try Mp4OpusDecoder.decodeIfSupported(url, holding: facts, availableMemory: availableMemory, admitting: admit) { return fallback }
         return buffer
     }
 
