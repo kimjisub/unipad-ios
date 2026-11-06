@@ -86,6 +86,21 @@ nonisolated enum Mp4AudioInspection {
     }
     /// Validate sample extents and reserve physical output independently of container timestamps.
     static func inspect(_ d: AudioRead) throws -> AudioAdmission.Facts {
+        try inspect(d, remux: nil)
+    }
+
+    static func opusFacts(_ d: AudioRead) throws -> AudioAdmission.Facts {
+        try inspect(d, remux: nil, opusOnly: true)
+    }
+
+    /// Reuses the same validated sample extents and physical packet durations as admission.
+    static func opusOgg(_ d: AudioRead) throws -> (data: Data, facts: AudioAdmission.Facts) {
+        let remux = Mp4OpusOggStream()
+        let facts = try inspect(d, remux: remux)
+        return (try remux.finish(), facts)
+    }
+
+    private static func inspect(_ d: AudioRead, remux: Mp4OpusOggStream?, opusOnly: Bool = false) throws -> AudioAdmission.Facts {
         let top = try boxes(d, 0, d.size), media = top.filter { $0.type == "mdat" }, movies = top.filter { $0.type == "moov" }
         try AudioRead.require(!media.isEmpty && movies.count == 1)
         for track in try boxes(d, movies[0].data, movies[0].end).filter({ $0.type == "trak" }) {
@@ -104,6 +119,16 @@ nonisolated enum Mp4AudioInspection {
             try AudioRead.require(entries.count == d.uint(stsd.data + 4, 4) && !entries.isEmpty)
             let codecs = try entries.map { try codec(d, $0) }, c = codecs[0]
             try AudioRead.require(codecs.allSatisfy { $0 == c })
+            if opusOnly || remux != nil { try AudioRead.require(c.type == "Opus") }
+            if let remux {
+                for entry in entries {
+                    let headerSize = try d.uint(entry.data + 8, 2) == 1 ? 44 : 28
+                    let config = try child(d, Box(type: "entry", data: entry.data + headerSize, end: entry.end), "dOps")
+                    let configSize = try d.byte(config.data + 10) == 0 ? 11 : 13 + c.channels
+                    try d.range(config.data, configSize, config.end)
+                    try remux.start(d.data.subdata(in: (d.data.startIndex + config.data)..<(d.data.startIndex + config.data + configSize)))
+                }
+            }
             let rate = c.rate, channels = c.channels, aacFrames = c.aacFrames
             let stts = try child(d, stbl, "stts"), timeCount = try tableCount(d, stts, 8)
             var samples = 0, ticks = 0, verifiedFrames = 0
@@ -183,7 +208,9 @@ nonisolated enum Mp4AudioInspection {
                                 return try d.byte(start + index)
                             }
                         } else { throw AudioRead.Failure.invalid }
-                        physicalFrames = try AudioRead.add(physicalFrames, frames); packetAt += size
+                        physicalFrames = try AudioRead.add(physicalFrames, frames)
+                        try remux?.append(d.data[(d.data.startIndex + packetAt)..<(d.data.startIndex + packetAt + size)], frames: frames)
+                        packetAt += size
                     }
                 }
                 starts[chunk - 1] = offset; ends[chunk - 1] = offset + bytes; used += count
