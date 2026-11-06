@@ -123,6 +123,8 @@ final class ExternalFileImportTests: XCTestCase {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
         defer { safari.terminate(); app.activate() }
+        // Foreground state is observed asynchronously; activation also waits for event readiness.
+        safari.activate()
         // .invalid needs no live website. Read the active tab's editor: the collapsed
         // address hides the scheme, and a browser-wide match can find another tab.
         let expected = "https://example.invalid"
