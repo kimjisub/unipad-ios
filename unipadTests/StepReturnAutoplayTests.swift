@@ -437,6 +437,96 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test(arguments: [false, true])
+        func seekingWhilePausedThenPlayingAStepKeepsTheFollowingGap(seekBack: Bool) async throws {
+            // The next button moves from index 3 to 43; Prev then scans zero delays back to
+            // that same note. Neither pending seek may replace the interval after a press.
+            let text = "d 1000\no 1 1\nf 1 1\nd 1000\n"
+                + String(repeating: "d 0\n", count: 39)
+                + "o 1 2\nf 1 2\nd 1000\no 2 1\nf 2 1\nd 1000\n"
+            try await PlayUsageScenario.run(keySound: Self.keySound, autoPlay: text) { s in
+                let screen = GatedScreen(s)
+                try await s.loadReady()
+                defer { screen.stop() }
+                s.vm.switchPlayMode(.guidePlay)
+                try await s.waitWhile { screen.ticks == 0 }
+                screen.clock.advance(500)
+                s.vm.autoPlayPause()
+                try await screen.tick()
+                s.vm.autoPlayNext()
+                try await screen.tick()
+                if seekBack { s.vm.autoPlayPrev(); try await screen.tick() }
+                #expect(screen.isGuided(Self.lowerPad))
+                s.vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen), ledTimeMs: screen.clock.read())
+                s.vm.padTouch(x: 0, y: 1, isDown: false, trigger: .pad(.screen), ledTimeMs: screen.clock.read())
+                try await screen.tick()
+                #expect(screen.isGuided(Self.upperPad))
+                screen.clock.advance(2000)
+                let resumedAt = screen.clock.read()
+                let recorder = try #require(screen.outputs)
+                let before = recorder.guides.count
+                let plays = s.vm.soundEngine?.playsStarted
+                try await screen.resume()
+                try await screen.tick()
+                #expect(recorder.guides.count == before, "the following note is still beyond the 800 ms lookahead")
+                try await screen.tick(at: resumedAt + 200)
+                #expect(recorder.guides.last?.pad == Self.upperPad)
+                #expect(recorder.guides.last?.target == resumedAt + 1000)
+                try await screen.tick(at: resumedAt + 999)
+                #expect(screen.isGuided(Self.upperPad))
+                try await screen.tick(at: resumedAt + 1000)
+                #expect(!screen.isGuided(Self.upperPad))
+                try await screen.tick(at: resumedAt + 2000)
+                #expect(recorder.ends == 1)
+                #expect(recorder.inputs.isEmpty)
+                #expect(s.vm.soundEngine?.playsStarted == plays)
+            }
+        }
+
+        @Test(arguments: ["beforeResumeTick", "pauseBeforeResumeTick", "waitingForChain"])
+        func switchingResumedGuideToAutoplayNeverSoundsThePlayedChordMember(transition: String) async throws {
+            let chainWait = transition == "waitingForChain"
+            let gap = chainWait ? 100 : 1000
+            let text = "d 1000\no 1 1\no 1 2\nf 1 1\nf 1 2\nd \(gap)\n"
+                + (chainWait ? "c 2\n" : "") + "o 2 1\nf 2 1\nd 1000\n"
+            try await PlayUsageScenario.run(keySound: Self.keySound + "2 2 1 a.wav\n", autoPlay: text,
+                grid: PlayUsageScenario.PackGrid(buttonX: 2, buttonY: 2, chain: 2)) { s in
+                let screen = GatedScreen(s)
+                try await s.loadReady()
+                defer { screen.stop() }
+                s.vm.switchPlayMode(.guidePlay)
+                try await s.waitWhile { screen.ticks == 0 }
+                screen.clock.advance(500)
+                s.vm.autoPlayPause()
+                try await screen.tick()
+                s.vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen), ledTimeMs: screen.clock.read())
+                s.vm.padTouch(x: 0, y: 1, isDown: false, trigger: .pad(.screen), ledTimeMs: screen.clock.read())
+                try await screen.tick()
+                screen.clock.advance(2000)
+                let recorder = try #require(screen.outputs)
+                try await screen.resume()
+                if chainWait {
+                    try await screen.tick()
+                    try await screen.tick(at: screen.clock.read() + 2000)
+                } else if transition == "pauseBeforeResumeTick" {
+                    s.vm.autoPlayPause()
+                    // No runner pass has scanned a new paused step yet.
+                }
+                let before = recorder.inputs.count
+                let plays = s.vm.soundEngine?.playsStarted ?? 0
+                s.vm.switchPlayMode(.autoPlay)
+                try await screen.tick()
+                #expect(recorder.inputs.dropFirst(before).map(\.pad) == [Self.opening])
+                try await screen.tick(at: screen.clock.read() + Int64(gap))
+                #expect(recorder.inputs.dropFirst(before).map(\.pad) == [Self.opening, Self.upperPad])
+                #expect(!recorder.inputs.dropFirst(before).contains { $0.pad == Self.lowerPad },
+                        "the manually played chord member must never sound again")
+                #expect((s.vm.soundEngine?.playsStarted ?? 0) == plays + 2)
+                try await screen.tick(at: screen.clock.read() + 1000)
+                #expect(recorder.ends == 1)
+            }
+        }
+
         private func check(pressed: Pad, finalGroup: Bool, awayMs: Int64, playFirst: Bool) async throws {
             let unpressed = pressed == Self.lowerPad ? Self.upperPad : Self.lowerPad
             try await PlayUsageScenario.run(keySound: Self.keySound, autoPlay: Self.autoPlay(finalGroup: finalGroup),

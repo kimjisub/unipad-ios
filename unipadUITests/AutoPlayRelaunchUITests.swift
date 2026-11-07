@@ -103,24 +103,31 @@ final class AutoPlayRelaunchUITests: XCTestCase {
     /// live in the gated runner tests; here a played paused step must not appear again.
     @MainActor
     func testTimedGuideDoesNotRepeatTheStepPlayedWhilePaused() throws {
-        try withPlayScreen(library: "timed-step-resume", title: "Timed Step Resume Fixture") { app, grid, _ in
+        try withPlayScreen(library: "timed-step-resume", title: "Timed Step Resume Fixture",
+                           launchArguments: ["-UniPadReleaseGuideLookaheadMs", "60000", "-SelectedTheme", "default"]) { app, grid, _ in
             choose("Guide", app: app)
             app.buttons["pause.fill"].tap()
-            UITestSupport.attachScreenshot("timed-resume-01-paused-first-guide", to: self)
-            XCTAssertEqual(try guidePads(grid.screenshot()), ["1,1"])
+            let paused = attachGuideScreenshot(grid, name: "timed-resume-01-paused-first-guide")
+            XCTAssertEqual(try guidePads(paused), ["1,1"])
             pressTopRow(grid, columns: 0..<1)
-            UITestSupport.attachScreenshot("timed-resume-02-first-played", to: self)
-            XCTAssertEqual(try guidePads(grid.screenshot()), ["1,2"],
+            let played = attachGuideScreenshot(grid, name: "timed-resume-02-first-played")
+            XCTAssertEqual(try guidePads(played), ["1,2"],
                            "The press must replace the first guide with the second")
             app.buttons["play.fill"].tap()
-            let resumed = grid.screenshot()
-            let attachment = XCTAttachment(screenshot: resumed)
-            attachment.name = "timed-resume-03-after-resume"
-            attachment.lifetime = .keepAlways
-            add(attachment)
+            let resumed = attachGuideScreenshot(grid, name: "timed-resume-03-after-resume")
             XCTAssertEqual(try guidePads(resumed), ["1,2"],
                            "Only the next unplayed step may return in the timed guide")
         }
+    }
+
+    @MainActor
+    private func attachGuideScreenshot(_ grid: XCUIElement, name: String) -> XCUIScreenshot {
+        let screenshot = grid.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        return screenshot
     }
 
     /// The pinned default theme draws green guide outlines; step practice fills the same pads.
@@ -168,17 +175,14 @@ final class AutoPlayRelaunchUITests: XCTestCase {
 
     /// Runs `body` on a fixture pack's play screen, in landscape, with the unlit pads as its baseline.
     @MainActor
-    private func withPlayScreen(library: String, title: String,
+    private func withPlayScreen(library: String, title: String, launchArguments: [String] = [],
                                 _ body: (XCUIApplication, XCUIElement, PadPixels) throws -> Void) throws {
         continueAfterFailure = false
         let orientation = XCUIDevice.shared.orientation
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: library)
-        if library == "timed-step-resume" {
-            app.launchArguments += ["-UniPadReleaseGuideLookaheadMs", "60000", "-SelectedTheme", "default"]
-        }
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: library) + launchArguments
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()

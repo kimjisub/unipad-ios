@@ -351,6 +351,8 @@ final class AutoPlayRunner {
                     delayAccum = self.timeMs(at: self.progress, in: autoPlay)
                     if let playedSongTime = pending.playedSongTime {
                         startTime = resumedAt - playedSongTime
+                        // A later step press supersedes an earlier paused seek.
+                        rebaseSeekOnResume = false
                     }
                     self.pendingGuideResume = nil
                 }
@@ -482,7 +484,8 @@ final class AutoPlayRunner {
                             let element = autoPlay.elements[self.progress]
                             switch element {
                             case .on(let x, let y, let currChain, let num):
-                                let unplayed = self.pendingAutoplayStep?.pads.contains(self.guideKey(x: x, y: y)) ?? true
+                                let unplayed = !self.skippedGuideLines.contains(self.progress)
+                                    && (self.pendingAutoplayStep?.pads.contains(self.guideKey(x: x, y: y)) ?? true)
                                 if !self.practiceGuide && unplayed {
                                     if self.chain.value != currChain {
                                         self.listener?.onChainChange(c: currChain)
@@ -657,6 +660,10 @@ final class AutoPlayRunner {
     /// Restore unplayed steps to the timed cursor. Displaying a step does not consume it;
     /// an actually played step instead starts its following written interval at resume.
     func prepareStepForGuide() {
+        defer {
+            stepMode = false
+            resetStepState(preservingPendingGuide: true)
+        }
         guard practiceGuide, stepMode, let origin = stepScanOrigin,
               let autoPlay = unipack.autoPlayTable else { return }
         drainPressedKeys()
@@ -692,7 +699,9 @@ final class AutoPlayRunner {
 
     func resetStepState(preservingPendingAutoplay: Bool = false, preservingPendingGuide: Bool = false) {
         if !preservingPendingAutoplay { pendingAutoplayStep = nil }
-        if !preservingPendingGuide {
+        // A direct switch to sounding autoplay can precede the first resumed pass too.
+        // It still needs the prepared clock and the lines already played by hand.
+        if !preservingPendingGuide && !preservingPendingAutoplay {
             pendingGuideResume = nil
             skippedGuideLines.removeAll()
         }
