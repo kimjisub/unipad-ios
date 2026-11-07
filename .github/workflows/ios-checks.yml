@@ -78,7 +78,7 @@ jobs:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
           xcodebuild test -quiet \
-            -project unipad.xcodeproj -scheme unipad -configuration Debug \
+            -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
