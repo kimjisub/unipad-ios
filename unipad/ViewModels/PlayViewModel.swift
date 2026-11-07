@@ -990,9 +990,8 @@ final class PlayViewModel {
             isAutoPlayPlaying = true
             runner.beforeStartPlaying = true
         case .guidePlay:
+            runner.prepareStepForGuide()
             runner.practiceGuide = true
-            runner.stepMode = false
-            runner.resetStepState()
             removeAllGuide()
             runner.playmode = true
             isPracticeMode = true
@@ -1055,8 +1054,7 @@ final class PlayViewModel {
             // Play is an explicit request to start, even if the user paused before leaving.
             // Step practice instead resumes listening for a fresh pad in the same mode.
             if userPausedTimedPlayback && mode == .stepPractice {
-                runner.stepMode = false
-                runner.resetStepState()
+                runner.prepareStepForGuide()
                 removeAllGuide()
             }
             runner.playmode = mode != .stepPractice || userPausedTimedPlayback
@@ -1067,8 +1065,12 @@ final class PlayViewModel {
             return
         }
         userPausedTimedPlayback = false
-        runner.stepMode = false
-        runner.resetStepState(preservingPendingAutoplay: !runner.practiceGuide)
+        if runner.practiceGuide {
+            runner.prepareStepForGuide()
+        } else {
+            runner.stepMode = false
+            runner.resetStepState(preservingPendingAutoplay: true)
+        }
         removeAllGuide()
         ledInit()
         runner.playmode = true

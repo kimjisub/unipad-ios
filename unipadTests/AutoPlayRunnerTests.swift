@@ -497,46 +497,56 @@ final class AutoPlayRunnerTests: XCTestCase {
         }
     }
 
-    /// The play button in step practice resumes silent timed guidance. It is deliberately
-    /// outside the sounding-autoplay rule and keeps the existing scan position.
-    func testStepResumeKeepsExistingSilentGuideBehavior() async throws {
+    /// Displaying a chord never consumes its unplayed members. Presses queued just before Play
+    /// are settled first, including either member of the chord and a chord ending the file.
+    func testStepResumeGuidesOnlyUnplayedChordMembersSilently() async throws {
         let engine = try await readySoundEngine()
         defer { engine.destroy() }
         for pausedMs: Int64 in [0, 1, 300, 3_000] {
             for lastGroup in [false, true] {
-                let pack = UniPack()
-                var elements: [AutoPlay.Element] = [
-                    .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 200),
-                    .on(x: 0, y: 1, currChain: 0, num: 0),
-                ]
-                if !lastGroup { elements += [.delay(delay: 4_000), .on(x: 0, y: 2, currChain: 0, num: 0)] }
-                pack.autoPlayTable = AutoPlay(elements: elements)
-                let clock = TestManualClock()
-                let recorder = Recorder()
-                var ticks = 0
-                let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
-                                            clock: { clock.read() }, sleep: { _ in
-                    ticks += 1
-                    await Task.yield()
-                })
-                let vm = PlayViewModel()
-                vm.autoPlayRunner = runner
-                vm.soundEngine = engine
-                defer { runner.stop() }
-                vm.switchPlayMode(.stepPractice)
-                try await wait { recorder.guidePads == [0] }
-                runner.stepPadPressed(x: 0, y: 0)
-                try await wait { recorder.guidePads == [0, 1] }
-                clock.advance(pausedMs)
-                vm.autoPlayResume()
-                try await wait { runner.playmode }
-                let nextTick = ticks + 2
-                try await wait { ticks >= nextTick || !runner.active }
-                XCTAssertEqual(vm.playMode, .guidePlay)
-                XCTAssertTrue(runner.practiceGuide)
-                XCTAssertFalse(runner.stepMode)
-                XCTAssertEqual(recorder.pressedPads, [])
-                XCTAssertEqual(runner.progress, lastGroup ? 3 : 4, "The silent guide must retain its existing scan position")
+                for pressedPad in [nil, 1, 2] as [Int?] {
+                    let pack = UniPack()
+                    var elements: [AutoPlay.Element] = [
+                        .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 50), .delay(delay: 150),
+                        .on(x: 0, y: 1, currChain: 0, num: 0), .on(x: 0, y: 2, currChain: 0, num: 0),
+                    ]
+                    if !lastGroup { elements += [.delay(delay: 4_000), .on(x: 0, y: 3, currChain: 0, num: 0)] }
+                    pack.autoPlayTable = AutoPlay(elements: elements)
+                    let clock = TestManualClock()
+                    let recorder = Recorder()
+                    var ticks = 0
+                    let runner = AutoPlayRunner(unipack: pack, listener: recorder, chain: ChainObserver(),
+                                                clock: { clock.read() }, sleep: { _ in
+                        ticks += 1
+                        await Task.yield()
+                    })
+                    let vm = PlayViewModel()
+                    vm.autoPlayRunner = runner
+                    vm.soundEngine = engine
+                    defer { runner.stop() }
+                    vm.switchPlayMode(.stepPractice)
+                    try await wait { recorder.guidePads == [0] }
+                    runner.stepPadPressed(x: 0, y: 0)
+                    try await wait { recorder.guidePads == [0, 1, 2] }
+                    if let pressedPad { runner.stepPadPressed(x: 0, y: pressedPad) }
+                    clock.advance(pausedMs)
+                    let shown = recorder.guidePads.count
+                    let resumedAt = clock.read()
+                    vm.autoPlayResume()
+                    try await wait { runner.playmode }
+                    let nextTick = ticks + 2
+                    try await wait { ticks >= nextTick || !runner.active }
+                    let pending = [1, 2].filter { $0 != pressedPad }
+                    XCTAssertEqual(vm.playMode, .guidePlay)
+                    XCTAssertTrue(runner.practiceGuide)
+                    XCTAssertFalse(runner.stepMode)
+                    XCTAssertEqual(recorder.pressedPads, [])
+                    XCTAssertEqual(Array(recorder.guidePads.dropFirst(shown)), pending)
+                    let dueAt = pressedPad == nil ? resumedAt + 200 : resumedAt
+                    XCTAssertEqual(Array(recorder.guideTargets.dropFirst(shown)), Array(repeating: dueAt, count: pending.count))
+                    XCTAssertEqual(runner.progress, pressedPad == nil ? 3 : (lastGroup ? 5 : 6),
+                                   "Only notes whose deadlines have arrived may advance")
+                }
             }
         }
     }

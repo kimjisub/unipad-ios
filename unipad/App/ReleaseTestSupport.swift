@@ -96,6 +96,12 @@ nonisolated enum ReleaseTestSupport {
                 }
                 try "o 1 1\nd 1000\no 1 2\no 2 1\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+            case "timed-step-resume":
+                let pack = library.appendingPathComponent("TimedStepResume")
+                try makePack(at: pack, title: "Timed Step Resume Fixture", chains: 1)
+                try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
+                try "d 60000\no 1 1\nf 1 1\nd 60000\no 1 2\nf 1 2\nd 60000\no 2 1\nf 2 1\nd 60000\n"
+                    .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
             case "chain-wait":
                 let pack = library.appendingPathComponent("ChainWait")
                 try makePack(at: pack, title: "Chain Wait Fixture")

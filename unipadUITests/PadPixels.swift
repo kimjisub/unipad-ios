@@ -5,7 +5,7 @@ struct PadPixels {
     struct Unreadable: Error {}
     let means: [[Double]]
 
-    init(_ screenshot: XCUIScreenshot) throws {
+    init(_ screenshot: XCUIScreenshot, insetFraction: Double = 0.25) throws {
         // A landscape screenshot is stored sideways with an orientation flag; draw it upright.
         let shot = screenshot.image
         let format = UIGraphicsImageRendererFormat()
@@ -18,11 +18,13 @@ struct PadPixels {
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { throw Unreadable() }
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let xInset = Int(Double(width) * insetFraction / 8)
+        let yInset = Int(Double(height) * insetFraction / 8)
         means = (0..<64).map { index in
             let row = index / 8, col = index % 8
-            // The middle half of each pad, clear of the borders shared with its neighbours.
-            let xs = (col * width / 8 + width / 32)..<((col + 1) * width / 8 - width / 32)
-            let ys = (row * height / 8 + height / 32)..<((row + 1) * height / 8 - height / 32)
+            // Ordinary lights use the middle half; guide outlines need the pad's edge too.
+            let xs = (col * width / 8 + xInset)..<((col + 1) * width / 8 - xInset)
+            let ys = (row * height / 8 + yInset)..<((row + 1) * height / 8 - yInset)
             var sum = [0.0, 0.0, 0.0]
             for y in ys {
                 for x in xs {

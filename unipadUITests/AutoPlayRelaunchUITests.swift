@@ -99,6 +99,49 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         }
     }
 
+    /// The long gaps leave room for actual screen input and captures. Exact millisecond cases
+    /// live in the gated runner tests; here a played paused step must not appear again.
+    @MainActor
+    func testTimedGuideDoesNotRepeatTheStepPlayedWhilePaused() throws {
+        try withPlayScreen(library: "timed-step-resume", title: "Timed Step Resume Fixture",
+                           launchArguments: ["-UniPadReleaseGuideLookaheadMs", "60000", "-SelectedTheme", "default"]) { app, grid, _ in
+            choose("Guide", app: app)
+            app.buttons["pause.fill"].tap()
+            let paused = attachGuideScreenshot(grid, name: "timed-resume-01-paused-first-guide")
+            XCTAssertEqual(try guidePads(paused), ["1,1"])
+            pressTopRow(grid, columns: 0..<1)
+            let played = attachGuideScreenshot(grid, name: "timed-resume-02-first-played")
+            XCTAssertEqual(try guidePads(played), ["1,2"],
+                           "The press must replace the first guide with the second")
+            app.buttons["play.fill"].tap()
+            let resumed = attachGuideScreenshot(grid, name: "timed-resume-03-after-resume")
+            XCTAssertEqual(try guidePads(resumed), ["1,2"],
+                           "Only the next unplayed step may return in the timed guide")
+        }
+    }
+
+    @MainActor
+    private func attachGuideScreenshot(_ grid: XCUIElement, name: String) -> XCUIScreenshot {
+        let screenshot = grid.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        return screenshot
+    }
+
+    /// The pinned default theme draws green guide outlines; step practice fills the same pads.
+    /// Sample the outline too so changing the countdown's fill cannot look like a missing guide.
+    @MainActor
+    private func guidePads(_ screenshot: XCUIScreenshot) throws -> [String] {
+        let pixels = try PadPixels(screenshot, insetFraction: 0.05)
+        return pixels.means.indices.compactMap { index in
+            let rgb = pixels.means[index]
+            return rgb[1] > rgb[0] + 20 && rgb[1] > rgb[2] + 20
+                ? "\(index / 8 + 1),\(index % 8 + 1)" : nil
+        }
+    }
+
     /// One case of `StepReturnAutoplayTests` through the real background and return, read from the
     /// pads as drawn: pad 1,2 pressed, Play first, and the fixture's last group is pads 1,2 and 2,1.
     @MainActor
@@ -132,14 +175,14 @@ final class AutoPlayRelaunchUITests: XCTestCase {
 
     /// Runs `body` on a fixture pack's play screen, in landscape, with the unlit pads as its baseline.
     @MainActor
-    private func withPlayScreen(library: String, title: String,
+    private func withPlayScreen(library: String, title: String, launchArguments: [String] = [],
                                 _ body: (XCUIApplication, XCUIElement, PadPixels) throws -> Void) throws {
         continueAfterFailure = false
         let orientation = XCUIDevice.shared.orientation
         defer { XCUIDevice.shared.orientation = orientation }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
-        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: library)
+        app.launchArguments = UITestSupport.isolatedLibraryLaunchArguments(library: library) + launchArguments
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
