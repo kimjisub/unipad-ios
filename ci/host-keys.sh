@@ -105,7 +105,31 @@ xcrun --sdk iphonesimulator clang -dynamiclib -fobjc-arc -arch arm64 -arch x86_6
   -mios-simulator-version-min=17.0 -framework UIKit \
   -o $keys/key-arrival-probe.dylib ${0:A:h}/key-arrival-probe.m
 
+# Keep the simulator's short-lived automation events beside the test results,
+# including when xcodebuild fails. Direct callers without a result bundle use
+# the derived-data folder's parent.
+output=${derived:h}
+arguments=("$@")
+for (( i=1; i < ${#arguments}; i++ )); do
+  if [[ ${arguments[$i]} == -resultBundlePath ]]; then
+    bundle=${arguments[$((i + 1))]}
+    output=${bundle:h}
+  fi
+done
+mkdir -p "$output"
+started=$(date '+%Y-%m-%d %H:%M:%S%z')
+
 result=0
 TEST_RUNNER_HOST_KEYS_DIR=$keys xcodebuild "$@" \
   -destination "id=$udid" -derivedDataPath $derived -parallel-testing-enabled NO -collect-test-diagnostics never || result=$?
+collection=0
+xcrun simctl spawn "$udid" log show --start "$started" --style compact --info --debug \
+  --predicate 'subsystem == "com.apple.Accessibility" AND category == "AXVOAutomation"' \
+  >"$output/voiceover-automation.log" 2>"$output/voiceover-automation-collection.log" || collection=$?
+if ! print -r -- "start=$started device=$udid exit=$collection" >>"$output/voiceover-automation-collection.log"; then
+  print -u2 "Could not save VoiceOver log collection status; test exit remains $result"
+fi
+if (( collection != 0 )); then
+  print -u2 "VoiceOver automation log collection failed (exit $collection); see $output/voiceover-automation-collection.log"
+fi
 exit $result

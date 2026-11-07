@@ -36,14 +36,18 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             throw XCTSkip("Needs a real key press from the host: run ci/host-keys.sh")
         }
         #if compiler(>=6.4)
-        if #available(iOS 27.0, *) { try XCUIDevice.shared.voiceOverService.disable() }
+        if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
+            try XCUIDevice.shared.voiceOverService.disable()
+        }
         #endif
         XCUIDevice.shared.orientation = .landscapeLeft
     }
 
     override func tearDownWithError() throws {
         #if compiler(>=6.4)
-        if #available(iOS 27.0, *) { try XCUIDevice.shared.voiceOverService.disable() }
+        if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
+            try XCUIDevice.shared.voiceOverService.disable()
+        }
         #endif
     }
 
@@ -175,13 +179,17 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     // VoiceOver automation is supplied by Xcode 27; older compilers lack it.
     #if compiler(>=6.4)
     @MainActor
-    func testVoiceOverReadsHelpAndEscapeReturnsFocusInEnglish() throws {
-        try checkVoiceOver(language: "en")
-    }
-
-    @MainActor
-    func testVoiceOverReadsHelpAndEscapeReturnsFocusInKorean() throws {
-        try checkVoiceOver(language: "ko")
+    func testVoiceOverReadsHelpAndEscapeReturnsFocusInBothLanguages() throws {
+        guard #available(iOS 27.0, *) else { throw XCTSkip("VoiceOver automation requires iOS 27") }
+        let voiceOver = XCUIDevice.shared.voiceOverService
+        // Keep one automation connection across app launches. Disabling and
+        // re-enabling in the same test runner can reuse a destroyed connection.
+        for language in ["en", "ko"] {
+            let labels = openHelp(language: language)
+            if language == "en" { try voiceOver.enable() }
+            try checkVoiceOver(language: language, labels: labels)
+            app.terminate()
+        }
     }
 
     /// VoiceOver reads the help's title, selected model and close button, never
@@ -193,11 +201,9 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     /// Control-Option-Right) and takes neither AXe's nor XCTest's double tap as
     /// an activation. Escape runs the same close as the button.
     @MainActor
-    private func checkVoiceOver(language: String) throws {
+    private func checkVoiceOver(language: String, labels: Labels) throws {
         guard #available(iOS 27.0, *) else { throw XCTSkip("VoiceOver automation requires iOS 27") }
         let voiceOver = XCUIDevice.shared.voiceOverService
-        let labels = openHelp(language: language)
-        try voiceOver.enable()
         // Enabling speaks nothing of its own; any current speech is an unrelated
         // system announcement (e.g. "Port on right"), and without one reading it
         // throws "No speech available". Start reading by moving instead.
@@ -259,7 +265,6 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         XCTAssertTrue(app.buttons["midi.help.open"].exists)
         XCTAssertEqual(try voiceOver.currentSpeech().utterance, returned)
         UITestSupport.attachScreenshot("voiceover-after-escape-\(language)", to: self)
-        try voiceOver.disable()
     }
     #endif
 }

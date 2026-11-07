@@ -108,7 +108,12 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
 - Help checks that need a real Escape key or VoiceOver run through
   `ci/host-keys.sh`, which the script uses. It presses keys through the
   simulator's HID input with a pinned, checksum-verified AXe release. VoiceOver
-  checks need Xcode 27 and iOS 27.
+  checks need Xcode 27 and iOS 27. The English and Korean help checks share
+  one VoiceOver session while relaunching the app in each language.
+  `host-keys.sh` saves the simulator's VoiceOver automation events in
+  `voiceover-automation.log` beside the result bundle (or beside derived data
+  when no bundle is specified), even when the tests fail. Collection errors
+  and the collection exit code are saved in `voiceover-automation-collection.log`.
 - The script leaves out, by name, the checks it cannot set up, and lists why in
   `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
   the notification permission round trip
