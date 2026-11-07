@@ -25,15 +25,24 @@ final class AutoPlayRunner {
     var playmode: Bool = true {
         didSet {
             guard playmode != oldValue else { return }
+            let now = clock()
             if playmode {
-                if let pausedAt { pendingPauseMs += clock() - pausedAt }
+                if let pausedAt { pendingPauseMs += now - pausedAt }
+                if var pending = pendingGuideResume {
+                    if let anchor = pending.resumedAtMs, let pausedAt {
+                        pending.resumedAtMs = anchor + now - pausedAt
+                    } else {
+                        pending.resumedAtMs = now
+                    }
+                    pendingGuideResume = pending
+                }
                 pausedAt = nil
                 resumeRequested = true
             } else {
                 // Preserve an app suspension even if its return notification arrives after this pause.
-                let skipped = suspendedTime.tick(at: clock()) + pendingSkipMs
+                let skipped = suspendedTime.tick(at: now) + pendingSkipMs
                 if waitingForChain < 0 { pendingPauseMs += skipped }
-                pausedAt = clock()
+                pausedAt = now
                 releaseHeldPads()
             }
             // The explicit pause already accounts for any app suspension inside it.
@@ -130,10 +139,16 @@ final class AutoPlayRunner {
     }
 
     private struct GuideEvent {
+        let index: Int
         let timeMs: Int64
         let x: Int
         let y: Int
         let chain: Int
+    }
+
+    private struct GuideState {
+        let targetTimeMs: Int64
+        let visibleUntilMs: Int64
     }
 
     private var guideTimeline: [GuideEvent] = []
@@ -143,15 +158,14 @@ final class AutoPlayRunner {
     private var pendingWaitReset = false
     private var resumeRequested = false
 
-    // key = x*256+y, value = targetWallTimeMs
     /// Guide pads currently lit, keyed by guideKey. Ticks and stop() run on the main actor.
-    private var activeGuides: [Int: Int64] = [:]
+    private var activeGuides: [Int: GuideState] = [:]
 
     /// The run that stop() cancelled last; launch() waits for it so two runs never overlap.
     private var previousRun: Task<Void, Never>?
 
     @discardableResult
-    private func withGuides<T>(_ body: (inout [Int: Int64]) -> T) -> T {
+    private func withGuides<T>(_ body: (inout [Int: GuideState]) -> T) -> T {
         return body(&activeGuides)
     }
 
@@ -170,6 +184,15 @@ final class AutoPlayRunner {
     private var _stepScanned = false
     private var _stepStartProgress: Int = 0
     private var _stepChainValue: Int = -1
+    private var stepScanOrigin: Int?
+    private var stepPlayedLines: Set<Int> = []
+
+    private struct PendingGuideResume {
+        let playedSongTime: Int64?
+        var resumedAtMs: Int64? = nil
+    }
+    private var pendingGuideResume: PendingGuideResume?
+    private var skippedGuideLines: Set<Int> = []
 
     private struct PendingAutoplayStep {
         let endProgress: Int
@@ -213,23 +236,26 @@ final class AutoPlayRunner {
     }
 
     /// Turns the lit guides off and shows them again from `elapsed` into the song on the next pass.
-    private func restartGuide(at elapsed: Int64) {
+    private func restartGuide(at elapsed: Int64, fromProgress progress: Int? = nil) {
         for key in drainGuides() {
             listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
         }
         listener?.onRemoveGuide()
-        guideIndex = guideTimeline.firstIndex { $0.timeMs >= elapsed } ?? guideTimeline.count
+        guideIndex = guideTimeline.firstIndex { event in
+            if let progress { return event.index >= progress }
+            return event.timeMs >= elapsed
+        } ?? guideTimeline.count
     }
 
     private func buildGuideTimeline(autoPlay: AutoPlay) -> [GuideEvent] {
         var events: [GuideEvent] = []
         var time: Int64 = 0
-        for element in autoPlay.elements {
+        for (index, element) in autoPlay.elements.enumerated() {
             switch element {
             case .delay(let delay):
                 time += Int64(delay)
             case .on(let x, let y, let currChain, _):
-                events.append(GuideEvent(timeMs: time, x: x, y: y, chain: currChain))
+                events.append(GuideEvent(index: index, timeMs: time, x: x, y: y, chain: currChain))
             default:
                 break
             }
@@ -318,11 +344,25 @@ final class AutoPlayRunner {
                     if self.practiceGuide { self.restartGuide(at: currTime - startTime) }
                 }
 
+                // Settle a prepared resume even if it was paused again before this pass.
+                // The cursor and consumed lines already belong to the next step scan.
+                if let pending = self.pendingGuideResume, let resumedAt = pending.resumedAtMs {
+                    finishChainWait(at: currTime)
+                    delayAccum = self.timeMs(at: self.progress, in: autoPlay)
+                    if let playedSongTime = pending.playedSongTime {
+                        startTime = resumedAt - playedSongTime
+                    }
+                    self.pendingGuideResume = nil
+                }
+
                 let resuming = self.playmode && self.resumeRequested
                 if resuming {
                     self.resumeRequested = false
                     finishChainWait(at: currTime)
-                    if self.practiceGuide { self.restartGuide(at: currTime - startTime) }
+                    if self.practiceGuide {
+                        // The cursor still owes an overdue note, even if its song time has passed.
+                        self.restartGuide(at: currTime - startTime, fromProgress: self.progress)
+                    }
                 }
 
                 if self.guideMoved || (resuming && rebaseSeekOnResume) {
@@ -375,6 +415,10 @@ final class AutoPlayRunner {
                             let elapsed = currTime - startTime
                             while self.guideIndex < self.guideTimeline.count {
                                 let event = self.guideTimeline[self.guideIndex]
+                                if self.skippedGuideLines.contains(event.index) {
+                                    self.guideIndex += 1
+                                    continue
+                                }
                                 guard event.timeMs <= elapsed + Self.guideLookaheadMs else { break }
 
                                 if event.chain != self.chain.value {
@@ -390,8 +434,20 @@ final class AutoPlayRunner {
 
                                 let targetWallTimeMs = startTime + event.timeMs
                                 let key = self.guideKey(x: event.x, y: event.y)
-                                self.withGuides { $0[key] = targetWallTimeMs }
+                                let needsVisiblePulse = targetWallTimeMs < currTime || (resuming && targetWallTimeMs == currTime)
+                                let visibleUntil = needsVisiblePulse ? currTime + Self.guideLedUpdateIntervalMs : targetWallTimeMs
+                                self.withGuides { guides in
+                                    // A following cue on the same pad cannot shorten a late cue's display.
+                                    let previousEnd = guides[key]?.visibleUntilMs ?? targetWallTimeMs
+                                    guides[key] = GuideState(targetTimeMs: targetWallTimeMs,
+                                                             visibleUntilMs: max(visibleUntil, previousEnd))
+                                }
                                 self.listener?.onGuidePadOn(x: event.x, y: event.y, targetWallTimeMs: targetWallTimeMs)
+                                if needsVisiblePulse {
+                                    // Do not wait for the brightness throttle: its next pass may be after
+                                    // this entire short display. Keep song time and later cues unchanged.
+                                    self.listener?.onGuideLedUpdate(x: event.x, y: event.y, velocity: Self.guideVelocities.last!)
+                                }
                                 self.guideIndex += 1
                             }
 
@@ -401,11 +457,11 @@ final class AutoPlayRunner {
                             var ledUpdates: [(key: Int, velocity: Int)] = []
                             self.withGuides { guides in
                                 guard !guides.isEmpty else { return }
-                                for (key, targetMs) in guides {
-                                    if currTime >= targetMs {
+                                for (key, guide) in guides {
+                                    if currTime >= guide.visibleUntilMs {
                                         expired.append(key)
                                     } else if throttle {
-                                        let remaining = targetMs - currTime
+                                        let remaining = guide.targetTimeMs - currTime
                                         let p = min(max(1.0 - Float(remaining) / Float(Self.guideLookaheadMs), 0), 1)
                                         let idx = min(Int(p * Float(Self.guideVelocities.count)), Self.guideVelocities.count - 1)
                                         ledUpdates.append((key: key, velocity: Self.guideVelocities[idx]))
@@ -479,6 +535,7 @@ final class AutoPlayRunner {
                         var rewindTo: Int? = nil
                         if chainChanged && self._stepScanned {
                             rewindTo = self._stepStartProgress
+                            self.stepPlayedLines = self.stepPlayedLines.filter { $0 < self._stepStartProgress }
                             self._stepPendingPads.removeAll()
                             self._stepScanned = false
                         }
@@ -504,6 +561,7 @@ final class AutoPlayRunner {
 
                         if needsScan {
                             self.listener?.onRemoveGuide()
+                            if self.stepScanOrigin == nil { self.stepScanOrigin = self.progress }
                             self._stepStartProgress = self.progress
                             self.stepScanNext(autoPlay: autoPlay)
                             self._stepScanned = !self._stepPendingPads.isEmpty || self.waitingForChain >= 0
@@ -516,7 +574,7 @@ final class AutoPlayRunner {
                 // A paused run still owns its remaining wait, even at the end of the table.
                 if self.progress >= autoPlay.elements.count && !self.awaitsLastStep {
                     let songTime = (self.pausedAt ?? currTime) - startTime
-                    if delayAccum <= songTime { break }
+                    if delayAccum <= songTime && (!self.practiceGuide || !self.playmode || self.activeGuides.isEmpty) { break }
                     if !self.playmode && self.stepMode && self.practiceGuide { break }
                 }
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
@@ -584,6 +642,8 @@ final class AutoPlayRunner {
     func progressOffset(_ offset: Int) {
         releaseHeldPads()
         pendingAutoplayStep = nil
+        pendingGuideResume = nil
+        skippedGuideLines.removeAll()
         let target = progress + offset
         let count = unipack.autoPlayTable?.elements.count ?? 0
         progress = max(0, min(target, count))
@@ -594,17 +654,35 @@ final class AutoPlayRunner {
         }
     }
 
-    /// Preserve only the step prepared for sounding autoplay; silent guidance keeps its old cursor.
+    /// Restore unplayed steps to the timed cursor. Displaying a step does not consume it;
+    /// an actually played step instead starts its following written interval at resume.
+    func prepareStepForGuide() {
+        guard practiceGuide, stepMode, let origin = stepScanOrigin,
+              let autoPlay = unipack.autoPlayTable else { return }
+        drainPressedKeys()
+        let nextProgress = firstPendingStep(in: autoPlay)
+            ?? (stepPlayedLines.isEmpty ? origin : _stepStartProgress)
+        let playedSongTime = stepPlayedLines.max().map { timeMs(at: $0, in: autoPlay) }
+        // A second pause can scan before the first resumed pass: restore now, not in that pass.
+        progress = nextProgress
+        skippedGuideLines.formUnion(stepPlayedLines)
+        pendingGuideResume = PendingGuideResume(playedSongTime: playedSongTime)
+    }
+
+    private func firstPendingStep(in autoPlay: AutoPlay) -> Int? {
+        (_stepStartProgress..<progress).first { index in
+            guard case .on(let x, let y, _, _) = autoPlay.elements[index] else { return false }
+            return _stepPendingPads.contains(guideKey(x: x, y: y))
+        }
+    }
+
+    /// Preserve the unplayed members of the step prepared for sounding autoplay.
     func prepareStepForAutoplay() {
         guard practiceGuide && stepMode else { return }
         drainPressedKeys()
         guard waitingForChain < 0, _stepScanned, !_stepPendingPads.isEmpty,
               let autoPlay = unipack.autoPlayTable else { return }
-        let firstPending = (_stepStartProgress..<progress).first { index in
-            guard case .on(let x, let y, _, _) = autoPlay.elements[index] else { return false }
-            return _stepPendingPads.contains(guideKey(x: x, y: y))
-        }
-        guard let firstPending else { return }
+        guard let firstPending = firstPendingStep(in: autoPlay) else { return }
         pendingAutoplayStep = PendingAutoplayStep(endProgress: progress, pads: _stepPendingPads)
         progress = firstPending
         // Reuse seeking's song-relative clock, including a pause before the next tick.
@@ -612,8 +690,14 @@ final class AutoPlayRunner {
         guideMoved = true
     }
 
-    func resetStepState(preservingPendingAutoplay: Bool = false) {
+    func resetStepState(preservingPendingAutoplay: Bool = false, preservingPendingGuide: Bool = false) {
         if !preservingPendingAutoplay { pendingAutoplayStep = nil }
+        if !preservingPendingGuide {
+            pendingGuideResume = nil
+            skippedGuideLines.removeAll()
+        }
+        stepScanOrigin = nil
+        stepPlayedLines.removeAll()
         _pressedKeysQueue.removeAll()
 
         _stepPendingPads.removeAll()
@@ -641,6 +725,13 @@ final class AutoPlayRunner {
             }
         }
 
+        if !removedKeys.isEmpty, let autoPlay = unipack.autoPlayTable {
+            for index in _stepStartProgress..<progress {
+                guard case .on(let x, let y, _, _) = autoPlay.elements[index],
+                      removedKeys.contains(guideKey(x: x, y: y)) else { continue }
+                stepPlayedLines.insert(index)
+            }
+        }
         for key in removedKeys { turnOffGuide(key) }
     }
 
@@ -651,6 +742,10 @@ final class AutoPlayRunner {
         var totalDelayMs: Int64 = 0
 
         scanLoop: while progress < autoPlay.elements.count {
+            if skippedGuideLines.contains(progress) {
+                progress += 1
+                continue
+            }
             let element = autoPlay.elements[progress]
             switch element {
             case .on(let x, let y, let currChain, _):
