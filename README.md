@@ -62,6 +62,12 @@ Debug on an iPhone simulator whose iOS version the selected Xcode supports
 (`ci/pick_simulator.py`), preferring iPhone 17 Pro like local checks, on the
 newest supported iOS that has it. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
+The unit test step uses `unipad-ci`, which runs the complete unit test target
+without attaching a debugger or building the UI test runner. The `unipad` scheme
+keeps interactive debugging and the existing unit and UI test plans.
+The selected simulator starts before dependency resolution and compilation; the
+unit step waits for its boot to finish before launching tests. Startup failures
+fail the job, and the helper never creates or chooses a different simulator.
 After the Release build it checks that the app's open source notices list
 exactly the Swift packages that build compiled (see below).
 The same checks also run after changes are merged into `main`.
