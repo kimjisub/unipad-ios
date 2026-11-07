@@ -1,4 +1,5 @@
 import XCTest
+import CoreFoundation
 
 /// Help checks that need a real hardware key press. On the iOS simulator
 /// XCTest's typeKey never sends Escape (the app receives no key event at all),
@@ -16,6 +17,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     private static let escapePresses = 3
     private var app: XCUIApplication!
     private var arrivalLog: String!
+    private var navigationNotification: String!
 
     private struct Labels {
         let title, model, close, reconnect, confirm: String
@@ -30,26 +32,49 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         }
     }
 
+    override class func setUp() {
+        super.setUp()
+        #if compiler(>=6.4)
+        if hostKeysDirectory != nil {
+            XCTAssertNoThrow(try disableVoiceOverIfEnabled())
+        }
+        #endif
+    }
+
+    override class func tearDown() {
+        #if compiler(>=6.4)
+        if hostKeysDirectory != nil {
+            XCTAssertNoThrow(try disableVoiceOverIfEnabled())
+        }
+        #endif
+        super.tearDown()
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
         guard Self.hostKeysDirectory != nil else {
             throw XCTSkip("Needs a real key press from the host: run ci/host-keys.sh")
         }
-        #if compiler(>=6.4)
-        if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
-            try XCUIDevice.shared.voiceOverService.disable()
-        }
-        #endif
         XCUIDevice.shared.orientation = .landscapeLeft
     }
 
     override func tearDownWithError() throws {
         #if compiler(>=6.4)
-        if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
-            try XCUIDevice.shared.voiceOverService.disable()
+        // Successful repetitions share the suite's session. A failed test
+        // still cleans up immediately, including an uncaught automation error.
+        if (testRun?.totalFailureCount ?? 0) > 0 {
+            try Self.disableVoiceOverIfEnabled()
         }
         #endif
     }
+
+    #if compiler(>=6.4)
+    private static func disableVoiceOverIfEnabled() throws {
+        if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
+            try XCUIDevice.shared.voiceOverService.disable()
+        }
+    }
+    #endif
 
     private static var hostKeysDirectory: String? {
         ProcessInfo.processInfo.environment["HOST_KEYS_DIR"]
@@ -127,16 +152,54 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         arrivalLog = "\(dir)/arrivals-\(UUID().uuidString)"
         app.launchEnvironment["DYLD_INSERT_LIBRARIES"] = "\(dir)/key-arrival-probe.dylib"
         app.launchEnvironment["UNIPAD_KEY_ARRIVAL_LOG"] = arrivalLog
+        navigationNotification = "unipad.ui-tests.navigation.\(UUID().uuidString)"
+        app.launchEnvironment["UNIPAD_VOICEOVER_NAVIGATION"] = navigationNotification
         app.launch()
         XCTAssertTrue(FileManager.default.fileExists(atPath: arrivalLog),
                       "the key arrival probe did not load into the app")
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        app.buttons["gearshape"].tap()
+        activate(app.buttons["gearshape"])
         XCTAssertTrue(app.buttons[labels.reconnect].waitForExistence(timeout: 10))
-        app.buttons[labels.reconnect].tap()
-        app.buttons["midi.help.open"].tap()
+        activate(app.buttons[labels.reconnect])
+        activate(app.buttons["midi.help.open"])
         XCTAssertTrue(app.buttons["midi.help.close"].waitForExistence(timeout: 5))
         return labels
+    }
+
+    private func activate(_ button: XCUIElement) {
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
+            // Simulator VoiceOver taps select instead of activating. A local
+            // notification asks the test-only probe to invoke this setup button's
+            // public accessibility action once. Avoid a host input round trip:
+            // MIDI selection automatically closes after five seconds.
+            // The probe permits only setup buttons and leaves Escape untouched.
+            let identifier = button.identifier
+            let label = button.label
+            let offset = arrivals.count
+            XCTAssertNoThrow(try JSONSerialization.data(withJSONObject: ["identifier": identifier, "label": label])
+                .write(to: URL(fileURLWithPath: arrivalLog + "-navigation.json"), options: .atomic))
+            CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName(rawValue: navigationNotification as CFString), nil, nil, true)
+            let completed = XCTNSPredicateExpectation(predicate: NSPredicate { [unowned self] _, _ in
+                (String(self.arrivals.dropFirst(offset)).contains("navigation activated=1\n")
+                    || String(self.arrivals.dropFirst(offset)).contains("navigation activated=0\n"))
+            }, object: nil)
+            let received = XCTWaiter().wait(for: [completed], timeout: 3) == .completed
+            let record = String(arrivals.dropFirst(offset))
+            let attachment = XCTAttachment(string: record)
+            attachment.name = "voiceover-navigation-\(identifier)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertTrue(received, "Navigation action did not complete: \(record)")
+            XCTAssertTrue(record.contains("navigation target \(identifier) | \(label) allowed=1"),
+                          "The probe resolved a different navigation target: \(record)")
+            XCTAssertTrue(record.contains("navigation activated=1"),
+                          "The requested navigation button did not activate: \(record)")
+            return
+        }
+        #endif
+        button.tap()
     }
 
     private static let ignoredEscape = "Escape reached the app but the help did not close"
@@ -186,7 +249,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         // re-enabling in the same test runner can reuse a destroyed connection.
         for language in ["en", "ko"] {
             let labels = openHelp(language: language)
-            if language == "en" { try voiceOver.enable() }
+            if language == "en", !voiceOver.isEnabled { try voiceOver.enable() }
             try checkVoiceOver(language: language, labels: labels)
             app.terminate()
         }
@@ -196,10 +259,8 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     /// leaves the help while moving through it, and after a real Escape on the
     /// close button its focus is back on the button that opened the help.
     ///
-    /// The close button is reached but not activated: on the simulator VoiceOver
-    /// receives none of its keyboard commands through the HID input (not even
-    /// Control-Option-Right) and takes neither AXe's nor XCTest's double tap as
-    /// an activation. Escape runs the same close as the button.
+    /// Leave focus on the close button and send a real Escape to check keyboard
+    /// dismissal and the return of VoiceOver focus to the help button.
     @MainActor
     private func checkVoiceOver(language: String, labels: Labels) throws {
         guard #available(iOS 27.0, *) else { throw XCTSkip("VoiceOver automation requires iOS 27") }

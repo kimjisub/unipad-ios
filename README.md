@@ -109,7 +109,13 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   `ci/host-keys.sh`, which the script uses. It presses keys through the
   simulator's HID input with a pinned, checksum-verified AXe release. VoiceOver
   checks need Xcode 27 and iOS 27. The English and Korean help checks share
-  one VoiceOver session while relaunching the app in each language.
+  one VoiceOver session while relaunching the app in each language, including
+  successful test repetitions. Failed tests and suite teardown clean up the
+  enabled service. The injected test probe accepts an opt-in local notification
+  to activate only the Settings, reconnect and help buttons through their public
+  accessibility actions. This keeps setup within MIDI selection's five-second
+  automatic confirmation window while VoiceOver stays on. Escape continues to
+  use the simulator's hardware input and the app's own event handling.
   `host-keys.sh` saves the simulator's VoiceOver automation events in
   `voiceover-automation.log` beside the result bundle (or beside derived data
   when no bundle is specified), even when the tests fail. Collection errors
