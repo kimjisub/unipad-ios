@@ -44,6 +44,7 @@ jobs:
           xcodebuild -version
           udid="$(python3 ci/pick_simulator.py --preferred "iPhone 17 Pro" --preferred "iPhone 17")"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          python3 ci/simulator_startup.py start "$udid"
 
       - name: Resolve pinned dependencies
         run: |
@@ -77,6 +78,7 @@ jobs:
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
+          python3 ci/simulator_startup.py wait "$SIMULATOR_UDID"
           xcodebuild test -quiet \
             -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
