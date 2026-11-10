@@ -60,7 +60,10 @@ jobs:
       - name: Boot the selected simulator
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
-        run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          xcrun simctl spawn "$SIMULATOR_UDID" log config --mode "level:off" || echo "log config exit $?"
+          xcrun simctl spawn "$SIMULATOR_UDID" log config --status || true
 
       - name: Resolve pinned dependencies
         run: |
