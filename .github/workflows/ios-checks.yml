@@ -45,6 +45,14 @@ jobs:
           udid="$(python3 ci/pick_simulator.py --preferred "iPhone 17 Pro" --preferred "iPhone 17")"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
+      # Unit tests on a simulator booted just before them ran 11.8 minutes instead of about 4.5.
+      # Booting it in the background instead made every xcodebuild started meanwhile wait minutes
+      # to begin, so the boot finishes here before anything else runs.
+      - name: Boot the selected simulator
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+
       - name: Resolve pinned dependencies
         run: |
           xcodebuild -resolvePackageDependencies \

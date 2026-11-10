@@ -65,9 +65,10 @@ committed `Package.resolved` versions.
 The unit test step uses `unipad-ci`, which runs the complete unit test target
 without attaching a debugger or building the UI test runner. The `unipad` scheme
 keeps interactive debugging and the existing unit and UI test plans.
-The unit test run boots the selected simulator itself. Nothing starts it
-earlier: a simulator booting in the background slowed dependency resolution and
-the Release build by more than the boot saved.
+The selected simulator boots, and the job waits for the boot to finish, before
+dependency resolution: unit tests on a simulator booted just before them run
+much slower, and a simulator still booting in the background makes every
+`xcodebuild` started meanwhile wait minutes to begin.
 After the Release build it checks that the app's open source notices list
 exactly the Swift packages that build compiled (see below).
 The same checks also run after changes are merged into `main`.
