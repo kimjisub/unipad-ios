@@ -20,7 +20,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
     private var navigationNotification: String!
 
     private struct Labels {
-        let title, model, close, reconnect, confirm: String
+        let title, model, close, reconnect, confirm, settings: String
 
         init(language: String) {
             let korean = language == "ko"
@@ -29,6 +29,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             close = korean ? "도움말 닫기" : "Close help"
             reconnect = korean ? "런치패드 다시 연결하기" : "Reconnect Launchpad"
             confirm = korean ? "확인" : "OK"
+            settings = korean ? "설정" : "Settings"
         }
     }
 
@@ -158,15 +159,19 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: arrivalLog),
                       "the key arrival probe did not load into the app")
         XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
-        activate(app.buttons["gearshape"])
+        activate(app.buttons["gearshape"], identifier: "gearshape", label: labels.settings)
         XCTAssertTrue(app.buttons[labels.reconnect].waitForExistence(timeout: 10))
-        activate(app.buttons[labels.reconnect])
-        activate(app.buttons["midi.help.open"])
+        activate(app.buttons[labels.reconnect], identifier: "", label: labels.reconnect)
+        activate(app.buttons["midi.help.open"], identifier: "midi.help.open", label: labels.title)
         XCTAssertTrue(app.buttons["midi.help.close"].waitForExistence(timeout: 5))
         return labels
     }
 
-    private func activate(_ button: XCUIElement) {
+    /// With VoiceOver on, the probe finds the button by the given identifier and
+    /// label inside the app. Reading them from `button` would add accessibility
+    /// snapshots that can take seconds under load, inside MIDI selection's
+    /// five-second automatic confirmation window.
+    private func activate(_ button: XCUIElement, identifier: String, label: String) {
         #if compiler(>=6.4)
         if #available(iOS 27.0, *), XCUIDevice.shared.voiceOverService.isEnabled {
             // Simulator VoiceOver taps select instead of activating. A local
@@ -174,8 +179,6 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
             // public accessibility action once. Avoid a host input round trip:
             // MIDI selection automatically closes after five seconds.
             // The probe permits only setup buttons and leaves Escape untouched.
-            let identifier = button.identifier
-            let label = button.label
             let offset = arrivals.count
             XCTAssertNoThrow(try JSONSerialization.data(withJSONObject: ["identifier": identifier, "label": label])
                 .write(to: URL(fileURLWithPath: arrivalLog + "-navigation.json"), options: .atomic))
