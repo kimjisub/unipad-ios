@@ -32,15 +32,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Sample machine load (temporary diagnostics)
-        run: |
-          nohup bash -c 'while true; do
-            echo "=== $(date -u +%H:%M:%S)"
-            ls -l /Library/Developer/CoreSimulator/Caches/dyld/*/ 2>&1 | head -20
-            top -l 2 -s 2 -o cpu -n 10 -stats pid,command,cpu,rsize,state | awk "/^Processes:/{n++} n==2"
-            sleep 10
-          done' > "$RUNNER_TEMP/load.log" 2>&1 &
-
       - name: Prepare fake test configuration
         run: |
           python3 -m unittest discover -s ci -v
@@ -54,19 +45,15 @@ jobs:
           udid="$(python3 ci/pick_simulator.py --preferred "iPhone 17 Pro" --preferred "iPhone 17")"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
-      # Unit tests on a simulator booted just before them ran 11.8 minutes instead of about 4.5.
-      # Booting it in the background instead made every xcodebuild started meanwhile wait minutes
-      # to begin, so the boot finishes here before anything else runs.
-      - name: Boot the selected simulator
-        env:
-          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
-        run: |
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          services="$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list | awk 'NR > 1 {print $3}' || true)"
-          echo "$services" | sort | tr '\n' ' ' 
-          for label in $(echo "$services" | grep -E 'chronod|apsd|amsengagementd|siriactionsd|intelligenceflow|BackgroundShortcut|STExtraction|duetexpertd|mobileassetd|diagnosticd|newsd|healthd|fitness|weatherd|maps'); do
-            xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" && echo "stopped $label" || echo "kept $label ($?)"
-          done
+      # Compilation results are kept between runs, so unchanged sources (most of them the Swift
+      # packages) are not compiled again. Results are looked up by their exact inputs, so a cached
+      # result is only reused for an identical compilation, warnings included.
+      - name: Restore compilation cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/CompilationCache.noindex
+          key: ios-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
+          restore-keys: ios-compilation-cache-${{ env.DEVELOPER_DIR }}-
 
       - name: Resolve pinned dependencies
         run: |
@@ -87,7 +74,7 @@ jobs:
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            UNIPAD_WARNINGS_AS_ERRORS=YES \
+            UNIPAD_WARNINGS_AS_ERRORS=YES COMPILATION_CACHE_ENABLE_CACHING=YES \
             2>&1 | tee "$RUNNER_TEMP/build.log"
 
       - name: Check open source notices against the build
@@ -109,8 +96,15 @@ jobs:
             -only-testing:unipadTests -parallel-testing-enabled NO \
             -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            UNIPAD_WARNINGS_AS_ERRORS=YES \
+            UNIPAD_WARNINGS_AS_ERRORS=YES COMPILATION_CACHE_ENABLE_CACHING=YES \
             2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
+
+      - name: Save compilation cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/CompilationCache.noindex
+          key: ios-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
 
       - name: Summarize unit test results
         if: always()
@@ -128,7 +122,6 @@ jobs:
           name: ios-check-results
           path: |
             ${{ runner.temp }}/build.log
-            ${{ runner.temp }}/load.log
             ${{ runner.temp }}/unit-tests.log
             ${{ runner.temp }}/test-summary.json
             ${{ runner.temp }}/UnitTests.xcresult
