@@ -23,8 +23,11 @@ extension PlayUsageRecordTests {
             }
         }
 
+        /// Autoplay that presses nothing during a test: its first press is a minute away.
+        private static let idleAutoPlay = "d 60000\no 3 3\n"
+
         private static func run(_ body: (PlayUsageScenario, HeldDelay) async throws -> Void) async throws {
-            try await PlayUsageScenario.run(keySound: keySound, grid: .init(chain: 3)) { s in
+            try await PlayUsageScenario.run(keySound: keySound, autoPlay: idleAutoPlay, grid: .init(chain: 3)) { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
                 let delay = HeldDelay()
@@ -80,6 +83,19 @@ extension PlayUsageRecordTests {
                 delay.end()
                 try await Self.settle()
                 #expect(s.vm.chain.value == 2, "the wormhole replaced the chain the player picked")
+            }
+        }
+
+        /// Only a chain the player picks or closing the screen cancels the move; pausing autoplay
+        /// does not. Turning it off is checked in `PlaybackOptionParityTests`.
+        @Test func pausingAutoplayDuringTheDelayKeepsTheMove() async throws {
+            try await Self.run { s, delay in
+                s.vm.switchPlayMode(.autoPlay)
+                try #require(s.vm.playMode == .autoPlay)
+                s.vm.autoPlayPause()
+                delay.end()
+                try await s.waitWhile(timeout: 2) { s.vm.chain.value == 0 }
+                #expect(s.vm.chain.value == 1, "pausing autoplay cancelled the wormhole")
             }
         }
 

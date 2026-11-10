@@ -138,7 +138,9 @@ extension PlayUsageRecordTests {
             }
         }
 
-        @Test func stoppingAutoplayCancelsPendingChainChanges() async throws {
+        /// Autoplay never queues a chain change, so turning it off leaves the player's pending
+        /// one alone; only a chain the player picks or closing the screen cancels it.
+        @Test func stoppingAutoplayKeepsThePlayersPendingChainChange() async throws {
             try await PlayUsageScenario.run(keySound: "1 1 1 a.wav 1 2\n", autoPlay: "d 1000\non 1 1\n",
                                             grid: .init(chain: 2)) { s in
                 try await s.loadReady()
@@ -151,8 +153,8 @@ extension PlayUsageRecordTests {
                 try #require(waiting != nil)
                 s.vm.switchPlayMode(.none)
                 waiting?.resume()
-                try await Task.sleep(for: .milliseconds(50))
-                #expect(s.vm.chain.value == 0)
+                try await s.waitWhile(timeout: 2) { s.vm.chain.value == 0 }
+                #expect(s.vm.chain.value == 1)
             }
         }
     }

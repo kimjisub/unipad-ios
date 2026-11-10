@@ -553,6 +553,69 @@ final class PlaybackStopTests: XCTestCase {
         try await checkAutoplayRelease(manualPad: (0, 0)) { $0.autoPlayPause() }
     }
 
+    func testTurningAutoplayOffKeepsTheEndlessLightOfAnotherHeldPad() async throws {
+        try await checkAutoplayStopKeepsPlayerLight(playerPad: (0, 1)) { $0.switchPlayMode(.none) }
+    }
+
+    func testTurningAutoplayOffKeepsTheEndlessLightOfAPlayerOnTheSamePad() async throws {
+        try await checkAutoplayStopKeepsPlayerLight(playerPad: (0, 0)) { $0.switchPlayMode(.none) }
+    }
+
+    func testPausingAutoplayKeepsTheEndlessLightOfAnotherHeldPad() async throws {
+        try await checkAutoplayStopKeepsPlayerLight(playerPad: (0, 1)) { $0.autoPlayPause() }
+    }
+
+    /// Autoplay holds pad (1,1) and a player holds `playerPad`, each with an endless light. Stopping
+    /// autoplay ends only the light autoplay started; the player's light stays until the player lets
+    /// go. On the same pad the player's press has already replaced autoplay's light with its own.
+    private func checkAutoplayStopKeepsPlayerLight(playerPad: (Int, Int), stop: (PlayViewModel) -> Void) async throws {
+        let root = try pack(loop: 0)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "1 1 1 a.wav 0\n1 1 2 a.wav 0\n".write(to: root.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+        try "on 1 1\ndelay 60000\noff 1 1\n".write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        let leds = root.appendingPathComponent("keyLed")
+        try FileManager.default.createDirectory(at: leds, withIntermediateDirectories: true)
+        // Pad (1,1) lights itself and (1,2); pad (1,2) lights (1,3).
+        try "on 1 1 a 5\non 1 2 a 5\ndelay 60000\n".write(to: leds.appendingPathComponent("1 1 1 0"), atomically: true, encoding: .utf8)
+        try "on 1 3 a 9\ndelay 60000\n".write(to: leds.appendingPathComponent("1 1 2 0"), atomically: true, encoding: .utf8)
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let runner = try XCTUnwrap(vm.ledRunner)
+        let lit = { (pad: (Int, Int)) in vm.channelManager?.get(x: pad.0, y: pad.1, channel: .led) != nil }
+        vm.switchPlayMode(.autoPlay)
+        try await wait(for: "autoplay press", until: { engine.playsStarted == 1 })
+        runner.loop()
+        XCTAssertTrue(runner.isEventExist(x: 0, y: 0), "autoplay's light did not start")
+
+        let finger = UUID()
+        let (x, y) = playerPad
+        let samePad = playerPad == (0, 0)
+        let playerLights = samePad ? [(0, 0), (0, 1)] : [(0, 2)]
+        vm.padTouch(x: x, y: y, isDown: true, trigger: .pad(.screen), inputID: finger)
+        runner.loop()
+        XCTAssertTrue(runner.isEventExist(x: x, y: y), "the player's light did not start")
+        try await wait(for: "the player's light", until: { playerLights.allSatisfy(lit) })
+
+        stop(vm)
+        runner.loop()
+        if !samePad {
+            XCTAssertFalse(runner.isEventExist(x: 0, y: 0), "autoplay's endless light kept running")
+            try await wait(for: "autoplay's light to go out", until: { !lit((0, 0)) && !lit((0, 1)) })
+        }
+        // Batches the light runner worked out before the stop reach the screen on later main-actor turns.
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(runner.isEventExist(x: x, y: y), "stopping autoplay ended the player's endless light")
+        for (lx, ly) in playerLights {
+            XCTAssertTrue(lit((lx, ly)), "stopping autoplay cleared (\(lx),\(ly)), which the player still holds")
+        }
+
+        vm.padTouch(x: x, y: y, isDown: false, trigger: .pad(.screen), inputID: finger)
+        runner.loop()
+        XCTAssertFalse(runner.isEventExist(x: x, y: y), "the player's release did not end its light")
+        try await wait(for: "the player's light to go out", until: { !playerLights.contains(where: lit) })
+    }
+
     func testSkippingAutoplayReleasesItsInfiniteSound() async throws {
         try await checkAutoplayRelease { $0.autoPlayNext() }
     }

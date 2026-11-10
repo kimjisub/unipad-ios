@@ -469,10 +469,39 @@ struct LedRunnerTests {
         h.press()
         for _ in 0..<50 { h.tick() }
         #expect(h.runner.isEventExist(x: 0, y: 0))
-        h.runner.eventOffAll(x: 0, y: 0)
+        _ = h.runner.eventOffAll()
         h.tick()
 
         #expect(h.recorder.outputs.last == "padOff 0 0")
+    }
+
+    /// Stopping autoplay ends every endless light except those the player still holds, and keeps
+    /// what those held lights show.
+    @Test func eventOffAllKeepsTheAnimationsOfHeldPresses() async throws {
+        let endless = { (x: Int, y: Int) in
+            LedAnimation(ledEvents: [.on(x: x, y: y, velocity: 5), .delay(delay: 60_000)], loop: 0, num: 0)
+        }
+        let h = try await start([0: endless(1, 1), 1: endless(0, 1)])
+        defer { h.runner.stop() }
+        let held = UUID(), other = UUID()
+        h.runner.eventOn(x: 0, y: 0, owner: held)
+        h.tick()
+        h.chain.setValue(1)
+        h.runner.eventOn(x: 0, y: 0, owner: other)
+        h.tick()
+        #expect(h.recorder.outputs == ["padOn 1 1", "padOn 0 1"])
+
+        let lights = h.runner.eventOffAll(keeping: [held])
+        h.tick()
+
+        #expect(lights.contains(x: 1, y: 1))
+        #expect(!lights.contains(x: 0, y: 1))
+        #expect(h.recorder.outputs == ["padOn 1 1", "padOn 0 1", "padOff 0 1"])
+        #expect(h.runner.isEventExist(x: 0, y: 0, chain: 0))
+        #expect(!h.runner.isEventExist(x: 0, y: 0, chain: 1))
+        h.runner.eventOff(x: 0, y: 0, owner: held)
+        h.tick()
+        #expect(h.recorder.outputs.last == "padOff 1 1")
     }
 
     @Test func strobeKeepsPlayingAcrossAChainSwitch() async throws {
