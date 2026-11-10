@@ -39,10 +39,9 @@ final class PlayInputEdgeUITests: XCTestCase {
         let idle = try settledPads()
         let held = (row: 2, col: 2)
         var heldBefore: [String] = [], heldAfter: [String] = []
-        try whileHolding(for: 8, { duration in pad(held.row, held.col).press(forDuration: duration) }, seenWhen: {
-            heldBefore = try self.litPads(comparedWith: idle, attachmentOnceLit: "before-rotation-while-held")
-            return !heldBefore.isEmpty
-        }, steps: [
+        try whileHolding(for: 8, { duration in pad(held.row, held.col).press(forDuration: duration) },
+                         seenWhen: anyPadLit(comparedWith: idle, keepingAs: "before-rotation-while-held") { heldBefore = $0 },
+                         steps: [
             Step(0.5, "rotate") { XCUIDevice.shared.orientation = .landscapeRight },
             Step(2.5, "picture after rotating") {
                 heldAfter = try self.litPads(comparedWith: idle, attachment: "after-rotation-while-held")
@@ -54,7 +53,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         XCTAssertEqual(heldAfter, [], "turning the screen did not release the held pad")
         UITestSupport.attachScreenshot("rotated-held-cancelled", to: self)
         try expectNoPadLit(comparedWith: idle, after: "lifting the pad held through the rotation")
-        try expectOnlyPadLitWhilePressed(5, 6, comparedWith: idle, after: "rotating")
+        try expectOnlyPadLitWhilePressed(5, 6, comparedWith: idle, "a new press after rotating")
     }
 
     @MainActor
@@ -62,12 +61,9 @@ final class PlayInputEdgeUITests: XCTestCase {
         try XCTSkipUnless(XCUIDevice.shared.supportsPointerInteraction, "only an iPad has a pointer")
         openPack("Input Edges")
         let idle = try settledPads()
-        var during: [String] = []
-        try whileHolding(for: 4, { duration in self.pad(4, 4).click(forDuration: duration, thenDragTo: self.pad(4, 4)) }, steps: [
-            Step(1.5, "picture") { during = try self.litPads(comparedWith: idle) },
-        ])
-        XCTAssertEqual(during, ["5,5"], "a held pointer press did not light its pad alone")
-        try expectNoPadLit(comparedWith: idle, after: "a pointer press")
+        try expectOnlyPadLitWhilePressed(4, 4, comparedWith: idle, "a held pointer press") { pad, duration in
+            pad.click(forDuration: duration, thenDragTo: pad)
+        }
         pad(3, 3).click(forDuration: 0.3, thenDragTo: pad(3, 6))
         try expectNoPadLit(comparedWith: idle, after: "a pointer drag across pads")
         pad(0, 0).click()
@@ -77,7 +73,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         chain2.click()
         XCTAssertTrue(waitForSelected(chain2), "a pointer click did not select chain 2")
         XCTAssertFalse(chain(1).isSelected)
-        try expectOnlyPadLitWhilePressed(2, 5, comparedWith: idle, after: "a pointer chain change")
+        try expectOnlyPadLitWhilePressed(2, 5, comparedWith: idle, "a new press after a pointer chain change")
     }
 
     /// `squareButton=false` packs are drawn and hit like `true` ones: PlayView sizes the grid from
@@ -103,14 +99,12 @@ final class PlayInputEdgeUITests: XCTestCase {
         openPack("Input Edges")
         let second = chain(2)
         XCTAssertTrue(second.waitForExistence(timeout: 5))
-        var selectedDuringHold = false
-        try whileHolding(for: 5, { duration in second.press(forDuration: duration) }, steps: [
-            Step(1.5, "chain selection before release") {
-                selectedDuringHold = second.isSelected
-                UITestSupport.attachScreenshot("chain-two-before-release", to: self)
-            },
-        ])
-        XCTAssertTrue(selectedDuringHold, "chain 2 must already be selected while its finger is down")
+        // The press shows as the selection, which must come before the earliest possible release.
+        try whileHolding(for: 5, { duration in second.press(forDuration: duration) }, seenWhen: {
+            guard second.isSelected else { return false }
+            UITestSupport.attachScreenshot("chain-two-before-release", to: self)
+            return true
+        }, steps: [])
         XCTAssertTrue(second.isSelected, "release must not undo the selection")
     }
 
@@ -234,11 +228,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         try whileHolding(for: duration, { _ in
             pad(row, columns[0]).press(forDuration: press, thenDragTo: pad(row, columns[columns.count - 1]),
                                        withVelocity: velocity, thenHoldForDuration: restAtTheEnd)
-        }, seenWhen: {
-            let lit = try self.litPads(comparedWith: idle)
-            if !lit.isEmpty { pictures.append(lit) }
-            return !lit.isEmpty
-        }, steps: steps)
+        }, seenWhen: anyPadLit(comparedWith: idle) { pictures.append($0) }, steps: steps)
 
         // A picture taken as the finger crosses a border can catch two pads, one of them fading.
         let litAlone = pictures.filter { $0.count == 1 }.map { $0[0] }
@@ -301,7 +291,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         var timings: [String: HeldInputTiming] = [:]
         var failures: [Error] = []
         var timers: [Timer] = []
-        var firstLook: TimeInterval?
+        var lookTimer: Timer?
         var looking = false
     }
 
@@ -353,20 +343,21 @@ final class PlayInputEdgeUITests: XCTestCase {
                     log.looking = true
                     defer { log.looking = false }
                     let started = now()
-                    if log.firstLook == nil { log.firstLook = started }
                     let seen: Bool
                     do { seen = try pressShows() } catch {
                         log.failures.append(error)
-                        log.timers.first?.invalidate()
+                        log.lookTimer?.invalidate()
                         return
                     }
                     guard seen else { return }
-                    log.timers.first?.invalidate()
-                    log.timings[seenName] = HeldInputTiming(started: log.firstLook ?? started, completed: now())
+                    log.lookTimer?.invalidate()
+                    log.timings[seenName] = HeldInputTiming(started: started, completed: now())
                     scheduleSteps()
                 }
             }
-            schedule(Timer(timeInterval: lookInterval, repeats: true) { _ in look.run() })
+            let lookTimer = Timer(timeInterval: lookInterval, repeats: true) { _ in look.run() }
+            log.lookTimer = lookTimer
+            schedule(lookTimer)
         } else {
             scheduleSteps()
         }
@@ -375,6 +366,8 @@ final class PlayInputEdgeUITests: XCTestCase {
         let returned = now()
         let names = (pressShows == nil ? [] : [seenName]) + steps.map(\.name)
         for name in names {
+            // A step that threw never records its timing; report its error, not a missing step.
+            if log.timings[name] == nil, let error = log.failures.first { throw error }
             let timing = try XCTUnwrap(log.timings[name], "step \(name) did not complete during the hold")
             let detail = "\(name): started=\(timing.started), completed=\(timing.completed), "
                 + "release deadline=\(duration - HeldInputTiming.releaseMargin), command returned=\(returned) s"
@@ -426,19 +419,35 @@ final class PlayInputEdgeUITests: XCTestCase {
     }
 
     /// Pads lit now, as "row,column" from 1. One picture, so a press is caught while it is held.
-    /// `attachmentOnceLit` keeps the picture only when a pad is lit, for a look repeated until one is.
     @MainActor
-    private func litPads(comparedWith idle: PadPixels, attachment name: String? = nil,
-                         attachmentOnceLit litName: String? = nil) throws -> [String] {
+    private func litPads(comparedWith idle: PadPixels, attachment name: String? = nil) throws -> [String] {
         let screenshot = grid.screenshot()
         let lit = try PadPixels(screenshot).changedPads(comparedWith: idle)
-        if let name = name ?? (lit.isEmpty ? nil : litName) {
-            let attachment = XCTAttachment(screenshot: screenshot)
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            add(attachment)
-        }
+        if let name { keep(screenshot, as: name) }
         return lit
+    }
+
+    /// A `seenWhen` look: the press shows once a pad is lit. Only that picture is passed to
+    /// `record` and kept as `name`, so the empty looks before the touch lands leave nothing behind.
+    @MainActor
+    private func anyPadLit(comparedWith idle: PadPixels, keepingAs name: String? = nil,
+                           _ record: @escaping @MainActor ([String]) -> Void) -> @MainActor () throws -> Bool {
+        { [self] in
+            let screenshot = grid.screenshot()
+            let lit = try PadPixels(screenshot).changedPads(comparedWith: idle)
+            guard !lit.isEmpty else { return false }
+            if let name { keep(screenshot, as: name) }
+            record(lit)
+            return true
+        }
+    }
+
+    @MainActor
+    private func keep(_ screenshot: XCUIScreenshot, as name: String) {
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     /// The pads' pixels once two consecutive shots agree, so a fading press is not compared.
@@ -454,15 +463,16 @@ final class PlayInputEdgeUITests: XCTestCase {
         XCTAssertEqual(changed, [], "pads (row, column from 1) still lit after \(gesture)")
     }
 
-    /// A new finger after `change` lights the pad under it and no other, and nothing stays lit.
+    /// A held `press` (a finger by default) lights the pad under it and no other, and nothing stays lit.
     @MainActor
-    private func expectOnlyPadLitWhilePressed(_ row: Int, _ col: Int, comparedWith idle: PadPixels, after change: String) throws {
+    private func expectOnlyPadLitWhilePressed(
+        _ row: Int, _ col: Int, comparedWith idle: PadPixels, _ press: String,
+        by gesture: @MainActor (XCUICoordinate, TimeInterval) -> Void = { $0.press(forDuration: $1) }
+    ) throws {
         var lit: [String] = []
-        try whileHolding(for: 4, { duration in self.pad(row, col).press(forDuration: duration) }, seenWhen: {
-            lit = try self.litPads(comparedWith: idle, attachmentOnceLit: "new-press-after-\(change)")
-            return !lit.isEmpty
-        }, steps: [])
-        XCTAssertEqual(lit, ["\(row + 1),\(col + 1)"], "a new press after \(change) lit other pads")
-        try expectNoPadLit(comparedWith: idle, after: "a new press after \(change)")
+        try whileHolding(for: 4, { duration in gesture(self.pad(row, col), duration) },
+                         seenWhen: anyPadLit(comparedWith: idle, keepingAs: press) { lit = $0 }, steps: [])
+        XCTAssertEqual(lit, ["\(row + 1),\(col + 1)"], "\(press) lit other pads")
+        try expectNoPadLit(comparedWith: idle, after: press)
     }
 }
