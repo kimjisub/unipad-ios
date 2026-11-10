@@ -32,6 +32,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Sample machine load (temporary diagnostics)
+        run: |
+          nohup bash -c 'while true; do
+            echo "=== $(date -u +%H:%M:%S)"
+            ls -l /Library/Developer/CoreSimulator/Caches/dyld/*/ 2>&1 | head -20
+            top -l 2 -s 2 -o cpu -n 10 -stats pid,command,cpu,rsize,state | awk "/^Processes:/{n++} n==2"
+            sleep 10
+          done' > "$RUNNER_TEMP/load.log" 2>&1 &
+
       - name: Prepare fake test configuration
         run: |
           python3 -m unittest discover -s ci -v
@@ -113,6 +122,7 @@ jobs:
           name: ios-check-results
           path: |
             ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/load.log
             ${{ runner.temp }}/unit-tests.log
             ${{ runner.temp }}/test-summary.json
             ${{ runner.temp }}/UnitTests.xcresult
