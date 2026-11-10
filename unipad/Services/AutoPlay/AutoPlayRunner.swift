@@ -388,8 +388,8 @@ final class AutoPlayRunner {
                     finishChainWait(at: currTime)
                     if self.practiceGuide {
                         self.guideTimeline = self.buildGuideTimeline(autoPlay: autoPlay)
-                        let elapsed = currTime - startTime
-                        let idx = self.guideTimeline.firstIndex { $0.timeMs > elapsed - Self.guideLookaheadMs }
+                        // Lines autoplay already played are not guided again.
+                        let idx = self.guideTimeline.firstIndex { $0.index >= self.progress }
                         self.guideIndex = idx ?? self.guideTimeline.count
                         self.withGuides { $0.removeAll() }
                     } else {
@@ -578,7 +578,9 @@ final class AutoPlayRunner {
                 if self.progress >= autoPlay.elements.count && !self.awaitsLastStep {
                     let songTime = (self.pausedAt ?? currTime) - startTime
                     if delayAccum <= songTime && (!self.practiceGuide || !self.playmode || self.activeGuides.isEmpty) { break }
-                    if !self.playmode && self.stepMode && self.practiceGuide { break }
+                    // Steps played by hand to the end finish the song. A guide paused in its final
+                    // wait had no step left to play and keeps the rest of that wait for Play.
+                    if self.isStepPractice && (self.stepScanOrigin ?? autoPlay.elements.count) < autoPlay.elements.count { break }
                 }
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
             }
@@ -620,7 +622,12 @@ final class AutoPlayRunner {
 
     /// The scan of the last step group reaches the end of the table before the user plays it.
     private var awaitsLastStep: Bool {
-        !playmode && stepMode && practiceGuide && !_stepPendingPads.isEmpty
+        isStepPractice && !_stepPendingPads.isEmpty
+    }
+
+    /// Step practice is waiting for the player rather than for song time.
+    private var isStepPractice: Bool {
+        !playmode && stepMode && practiceGuide
     }
 
     private func turnOffGuide(_ key: Int) {

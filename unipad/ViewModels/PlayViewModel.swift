@@ -598,24 +598,18 @@ final class PlayViewModel {
         padInit()
     }
 
-    /// Clear all LED runner states from channel manager
+    /// Clears the pack's lights and ends their endless animations, except those of pads a player
+    /// still holds: a player's light goes on until that player's own release, whatever autoplay does.
     func ledInit() {
         guard let unipack, let cm = channelManager else { return }
+        let held = ledRunner?.eventOffAll(keeping: playerHoldOwners) ?? LedRunner.Lights()
         for i in 0..<unipack.buttonX {
-            for j in 0..<unipack.buttonY {
-                // Any chain and without the `active` guard (the runner is stopped here): the
-                // infinite animations really end instead of replaying when LED is re-enabled.
-                if let ledRunner, ledRunner.isEventExist(x: i, y: j) {
-                    ledRunner.eventOffAll(x: i, y: j)
-                }
+            for j in 0..<unipack.buttonY where !held.contains(x: i, y: j) {
                 cm.remove(x: i, y: j, channel: .led)
                 refreshPadFromChannel(x: i, y: j)
             }
         }
-        for i in 0..<Self.functionKeyCount {
-            if let ledRunner, ledRunner.isEventExist(x: -1, y: i) {
-                ledRunner.eventOffAll(x: -1, y: i)
-            }
+        for i in 0..<Self.functionKeyCount where !held.contains(x: -1, y: i) {
             cm.remove(x: -1, y: i, channel: .led)
             if i < Self.circleArraySize {
                 refreshChainFromChannel(index: i)
@@ -643,6 +637,11 @@ final class PlayViewModel {
     /// Each input owns its sounds and lights across chains. Only press feedback waits for the
     /// last input; repeated presses by the same input keep one owner until its release.
     private var padHolds: [PadHold: [PadInput: UUID]] = [:]
+
+    /// The identities the player's held inputs own their sounds and lights by.
+    private var playerHoldOwners: Set<UUID> {
+        Set(padHolds.filter { !$0.key.byAutoPlay }.values.flatMap(\.values))
+    }
 
     private func isHeld(x: Int, y: Int) -> Bool {
         padHolds.keys.contains { $0.x == x && $0.y == y }
@@ -945,7 +944,6 @@ final class PlayViewModel {
         suspendedPlayMode = nil
 
         if mode == .none {
-            soundEngine?.cancelPendingWormholes()
             runner.practiceGuide = false
             runner.stepMode = false
             runner.resetStepState()
@@ -1050,13 +1048,15 @@ final class PlayViewModel {
 
     private func resumeAutoPlayWithSound(_ runner: AutoPlayRunner) {
         if let mode = suspendedPlayMode {
-            runner.resumeFromSuspension()
-            // Play is an explicit request to start, even if the user paused before leaving.
-            // Step practice instead resumes listening for a fresh pad in the same mode.
+            // Play is an explicit request to start, even if the user paused before leaving. A
+            // paused guide returns to timed guidance before the suspension ends, so its step
+            // guides are not shown again first. Step practice instead resumes listening for a
+            // fresh pad in the same mode.
             if userPausedTimedPlayback && mode == .stepPractice {
                 runner.prepareStepForGuide()
                 removeAllGuide()
             }
+            runner.resumeFromSuspension()
             runner.playmode = mode != .stepPractice || userPausedTimedPlayback
             userPausedTimedPlayback = false
             suspendedPlayMode = nil
