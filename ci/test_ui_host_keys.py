@@ -114,7 +114,10 @@ class UIHostKeysTests(unittest.TestCase):
             folder = Path(directory)
             fake = folder / "bin"
             fake.mkdir()
-            for name, content in {"xcodebuild": "#!/bin/sh\nexec sleep 30\n",
+            # Without axe on PATH the script downloads AXe before creating its
+            # folder, which on a fresh runner can outlast the wait below.
+            for name, content in {"axe": "#!/bin/sh\nexit 0\n",
+                                  "xcodebuild": "#!/bin/sh\nexec sleep 30\n",
                                   "xcrun": "#!/bin/sh\n" + probe_build + "exit 99\n", **(programs or {})}.items():
                 path = fake / name
                 path.write_text(content)
