@@ -62,8 +62,11 @@ jobs:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          xcrun simctl spawn "$SIMULATOR_UDID" log config --mode "level:off" || echo "log config exit $?"
-          xcrun simctl spawn "$SIMULATOR_UDID" log config --status || true
+          services="$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list | awk 'NR > 1 {print $3}' || true)"
+          echo "$services" | sort | tr '\n' ' ' 
+          for label in $(echo "$services" | grep -E 'chronod|apsd|amsengagementd|siriactionsd|intelligenceflow|BackgroundShortcut|STExtraction|duetexpertd|mobileassetd|diagnosticd|newsd|healthd|fitness|weatherd|maps'); do
+            xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" && echo "stopped $label" || echo "kept $label ($?)"
+          done
 
       - name: Resolve pinned dependencies
         run: |
