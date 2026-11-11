@@ -46,9 +46,14 @@ extension PlayUsageRecordTests {
         }
 
         /// Pausing during the song's final wait keeps what is left of it; the guide ends only after
-        /// that remainder has passed once Play is pressed again.
-        @Test func pausingTheLastWaitKeepsItsRemainder() async throws {
-            let text = "o 1 1\nf 1 1\nd 1000\n"
+        /// that remainder has passed once Play is pressed again. Most packs follow the final wait
+        /// with off lines, which the run has not read yet while it waits.
+        @Test(arguments: [
+            (text: "o 1 1\nf 1 1\nd 1000\n", progressInTheWait: 3),
+            (text: "o 1 1\nd 1000\nf 1 1\n", progressInTheWait: 2),
+            (text: "o 1 1\no 1 2\nd 1000\nf 1 1\nf 1 2\n", progressInTheWait: 3),
+        ])
+        func pausingTheLastWaitKeepsItsRemainder(text: String, progressInTheWait: Int) async throws {
             try await PlayUsageScenario.run(keySound: Self.keySound, autoPlay: text, grid: Self.grid) { s in
                 let screen = GatedScreen(s)
                 try await s.loadReady()
@@ -57,7 +62,7 @@ extension PlayUsageRecordTests {
                 let tick = try await Self.start(.guidePlay, on: screen)
                 let recorder = try #require(screen.outputs)
                 try await tick(400)
-                try #require(runner.progress == 3, "the final wait was not reached")
+                try #require(runner.progress == progressInTheWait, "the final wait was not reached")
                 s.vm.autoPlayPause()
                 try await tick(400)
                 let redraws = recorder.guideRemovals
