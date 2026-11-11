@@ -144,24 +144,23 @@ nonisolated class UniPackFolder: UniPack {
                 return
             }
 
+            // A key written twice keeps its last value, so only that value is read (I-11).
+            var values: [String: String] = [:]
             for rawLine in Self.lines(of: data) {
                 let s = rawLine.trimmingCharacters(in: Self.lineTrim)
                 // A line without "=" is skipped without a warning, as on the web (info.mdx).
                 guard let separator = s.firstIndex(of: "=") else { continue }
                 let key = s[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
-                let value = s[s.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
-
-                switch key {
-                case "title": title = value
-                case "producerName": producerName = value
-                case "buttonX": buttonX = gridSize(key, value); hasButtonX = true
-                case "buttonY": buttonY = gridSize(key, value); hasButtonY = true
-                case "chain": chain = Int(value) ?? 0
-                case "squareButton": squareButton = value == "true"
-                case "website": website = value
-                default: break
-                }
+                values[key] = s[s.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
             }
+
+            title = values["title"] ?? title
+            producerName = values["producerName"] ?? producerName
+            if let value = values["buttonX"] { buttonX = gridSize("buttonX", value); hasButtonX = true }
+            if let value = values["buttonY"] { buttonY = gridSize("buttonY", value); hasButtonY = true }
+            if let value = values["chain"] { chain = Int(value) ?? 0 }
+            if let value = values["squareButton"] { squareButton = value == "true" }
+            website = values["website"] ?? website
         }
 
         if title.isEmpty { addErr("info : title was missing") }

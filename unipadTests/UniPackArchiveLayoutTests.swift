@@ -161,13 +161,35 @@ struct UniPackArchiveLayoutTests {
         #expect(engine.playsStarted == 1)
     }
 
-    /// Two packs in one archive: nothing says which one the author meant, so the import still fails.
-    @Test func twoPacksInOneArchiveAreNotGuessed() async throws {
+    /// Two packs in one archive: nothing says which one the author meant, so the import fails and
+    /// says why, rather than reporting a missing info.
+    @Test(arguments: [("First/", "Second/"), ("Outer/First/", "Outer/Second/")])
+    func twoPacksInOneArchiveAreRefusedAsMultiplePacks(first: String, second: String) async throws {
         defer { cleanUp() }
-        let result = try await importArchive(Self.pack(in: "First/", title: "First") + Self.pack(in: "Second/", title: "Second"))
-        guard case .failure = result else {
+        let result = try await importArchive(Self.pack(in: first, title: "First") + Self.pack(in: second, title: "Second"))
+        guard case .failure(let error) = result else {
             Issue.record("an archive with two packs was installed as one")
             return
         }
+        #expect(error.localizedDescription.localizedCaseInsensitiveContains("multiple packs"), "\(error.localizedDescription)")
+        #expect(!error.localizedDescription.contains("info was missing"), "\(error.localizedDescription)")
+        #expect(UsageErrorType.classify(error) == .invalidPack)
+    }
+
+    /// A pack at the top of the archive is the pack, even with a backup copy inside it.
+    @Test func aPackAtTheTopWinsOverABackupInsideIt() async throws {
+        defer { cleanUp() }
+        try expectInstalledPack(try await importArchive(Self.pack(in: "") + Self.pack(in: "backup/", title: "Backup")))
+    }
+
+    /// Info-ZIP's `-fz` and streaming writers record sizes and offsets in ZIP64 fields only.
+    @Test func aZip64ArchiveIsImported() async throws {
+        defer { cleanUp() }
+        let source = root.appending(path: "pack64.zip")
+        try TestZip.storedZip64(Self.pack(in: "Pack/")).write(to: source)
+        let delegate = RecordingImportDelegate()
+        _ = try? await UniPackImporter().importPack(from: source, to: workspace, delegate: delegate)
+        #expect(delegate.error == nil, "\(String(describing: delegate.error))")
+        try expectInstalledPack(.success(try #require(delegate.completedFolder)))
     }
 }

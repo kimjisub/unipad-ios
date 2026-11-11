@@ -81,7 +81,7 @@ enum UsageErrorType: String {
         switch error {
         case let error as UniPackImporter.ImportError:
             switch error {
-            case .criticalError: return .invalidPack
+            case .criticalError, .multiplePacks: return .invalidPack
             case .emptyZip, .extractionFailed: return .corruptArchive
             }
         case let error as UniPackDownloader.DownloadError:

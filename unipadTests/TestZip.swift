@@ -41,6 +41,53 @@ enum TestZip {
         return le16(0x7075) + le16(UInt16(body.count)) + body
     }
 
+    /// A stored archive in ZIP64 form, as Info-ZIP writes with `-fz`: every size, offset and count
+    /// in the classic headers is the "see ZIP64" marker, and the real values are in ZIP64 fields.
+    static func storedZip64(_ files: [(name: String, data: Data)]) -> Data {
+        var archive = Data()
+        var centralDirectory = Data()
+        for file in files {
+            let name = Data(file.name.utf8)
+            let size = UInt64(file.data.count)
+            let localHeaderOffset = UInt64(archive.count)
+            let localExtra = le16(0x0001) + le16(16) + le64(size) + le64(size)
+            archive.append(le32(0x0403_4B50))
+            archive.append(le16(45)); archive.append(le16(0x0800)); archive.append(le16(0))
+            archive.append(le16(0)); archive.append(le16(0))
+            archive.append(le32(crc32(file.data))); archive.append(le32(.max)); archive.append(le32(.max))
+            archive.append(le16(UInt16(name.count))); archive.append(le16(UInt16(localExtra.count)))
+            archive.append(name)
+            archive.append(localExtra)
+            archive.append(file.data)
+
+            let extra = le16(0x0001) + le16(24) + le64(size) + le64(size) + le64(localHeaderOffset)
+            centralDirectory.append(le32(0x0201_4B50))
+            centralDirectory.append(le16(45)); centralDirectory.append(le16(45))
+            centralDirectory.append(le16(0x0800)); centralDirectory.append(le16(0))
+            centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
+            centralDirectory.append(le32(crc32(file.data))); centralDirectory.append(le32(.max)); centralDirectory.append(le32(.max))
+            centralDirectory.append(le16(UInt16(name.count))); centralDirectory.append(le16(UInt16(extra.count)))
+            centralDirectory.append(le16(0)); centralDirectory.append(le16(0)); centralDirectory.append(le16(0))
+            centralDirectory.append(le32(0)); centralDirectory.append(le32(.max))
+            centralDirectory.append(name)
+            centralDirectory.append(extra)
+        }
+        let centralDirectoryOffset = UInt64(archive.count)
+        archive.append(centralDirectory)
+        let zip64EndOffset = UInt64(archive.count)
+        archive.append(le32(0x0606_4B50)); archive.append(le64(44))
+        archive.append(le16(45)); archive.append(le16(45)); archive.append(le32(0)); archive.append(le32(0))
+        archive.append(le64(UInt64(files.count))); archive.append(le64(UInt64(files.count)))
+        archive.append(le64(UInt64(centralDirectory.count))); archive.append(le64(centralDirectoryOffset))
+        archive.append(le32(0x0706_4B50)); archive.append(le32(0)); archive.append(le64(zip64EndOffset)); archive.append(le32(1))
+        archive.append(le32(0x0605_4B50))
+        archive.append(le16(0)); archive.append(le16(0))
+        archive.append(le16(.max)); archive.append(le16(.max))
+        archive.append(le32(.max)); archive.append(le32(.max))
+        archive.append(le16(0))
+        return archive
+    }
+
     private struct Entry {
         let name: Data
         let extra: Data
@@ -159,6 +206,7 @@ enum TestZip {
 
     private static func le16(_ value: UInt16) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
     private static func le32(_ value: UInt32) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
+    private static func le64(_ value: UInt64) -> Data { withUnsafeBytes(of: value.littleEndian) { Data($0) } }
 
     private static func crc32(_ data: Data) -> UInt32 {
         var crc: UInt32 = 0xFFFF_FFFF

@@ -119,6 +119,26 @@ struct PackTextReadingTests {
         #expect(loaded.errors.first == "info : buttonX was missing")
     }
 
+    /// A key written twice keeps its last value, even when the earlier one is not a number.
+    @Test(arguments: ["buttonX", "buttonY"])
+    func aRepeatedGridSizeKeepsItsLastValue(key: String) throws {
+        let info = "title=Text\nproducerName=UniPad\nbuttonX=4\nbuttonY=4\nchain=2\n\(key)=abc\n\(key)=8\n"
+        let loaded = try load(info: Data(info.utf8))
+        defer { try? FileManager.default.removeItem(at: loaded.root) }
+        #expect(!loaded.pack.criticalError)
+        #expect((key == "buttonX" ? loaded.pack.buttonX : loaded.pack.buttonY) == 8)
+        #expect(loaded.errors.isEmpty)
+    }
+
+    @Test(arguments: ["buttonX", "buttonY"])
+    func aLastGridSizeThatIsNotANumberStillRefusesThePack(key: String) throws {
+        let info = "title=Text\nproducerName=UniPad\nbuttonX=4\nbuttonY=4\nchain=2\n\(key)=8\n\(key)=abc\n"
+        let loaded = try load(info: Data(info.utf8))
+        defer { try? FileManager.default.removeItem(at: loaded.root) }
+        #expect(loaded.pack.criticalError)
+        #expect(loaded.errors.first == "info : \(key) is not a number")
+    }
+
     // MARK: Line ends
 
     @Test(arguments: ["\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}"])

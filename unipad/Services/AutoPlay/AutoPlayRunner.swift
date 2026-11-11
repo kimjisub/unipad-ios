@@ -388,10 +388,8 @@ final class AutoPlayRunner {
                     finishChainWait(at: currTime)
                     if self.practiceGuide {
                         self.guideTimeline = self.buildGuideTimeline(autoPlay: autoPlay)
-                        let elapsed = currTime - startTime
-                        let idx = self.guideTimeline.firstIndex { $0.timeMs > elapsed - Self.guideLookaheadMs }
-                        self.guideIndex = idx ?? self.guideTimeline.count
-                        self.withGuides { $0.removeAll() }
+                        // Lines autoplay already played are not guided again.
+                        self.restartGuide(at: currTime - startTime, fromProgress: self.progress)
                     } else {
                         for key in self.drainGuides() {
                             self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
@@ -553,13 +551,8 @@ final class AutoPlayRunner {
                                 finishChainWait(at: currTime)
                                 needsScan = true
                             }
-                        } else {
-                            let scanned = self._stepScanned
-                            let isEmpty = self._stepPendingPads.isEmpty
-
-                            if !scanned || isEmpty {
-                                needsScan = true
-                            }
+                        } else if !self._stepScanned || self._stepPendingPads.isEmpty {
+                            needsScan = !self.stepScanReachedEnd(of: autoPlay)
                         }
 
                         if needsScan {
@@ -578,7 +571,9 @@ final class AutoPlayRunner {
                 if self.progress >= autoPlay.elements.count && !self.awaitsLastStep {
                     let songTime = (self.pausedAt ?? currTime) - startTime
                     if delayAccum <= songTime && (!self.practiceGuide || !self.playmode || self.activeGuides.isEmpty) { break }
-                    if !self.playmode && self.stepMode && self.practiceGuide { break }
+                    // Steps played by hand to the end finish the song. A guide paused in its final
+                    // wait had no step left to play and keeps the rest of that wait for Play.
+                    if self.isStepPractice && !self.stepPlayedLines.isEmpty { break }
                 }
                 try? await self.sleep(UInt64(self.loopDelay * 1_000_000_000))
             }
@@ -620,7 +615,19 @@ final class AutoPlayRunner {
 
     /// The scan of the last step group reaches the end of the table before the user plays it.
     private var awaitsLastStep: Bool {
-        !playmode && stepMode && practiceGuide && !_stepPendingPads.isEmpty
+        isStepPractice && !_stepPendingPads.isEmpty
+    }
+
+    /// Step practice is waiting for the player rather than for song time.
+    private var isStepPractice: Bool {
+        !playmode && stepMode && practiceGuide
+    }
+
+    /// A scan already ran to the end of the table, past any off or chain lines after the final
+    /// wait, so another one finds nothing. A paused guide in its final wait stays here until Play;
+    /// scanning again every pass would redraw the whole grid each millisecond.
+    private func stepScanReachedEnd(of autoPlay: AutoPlay) -> Bool {
+        stepScanOrigin != nil && progress >= autoPlay.elements.count
     }
 
     private func turnOffGuide(_ key: Int) {
