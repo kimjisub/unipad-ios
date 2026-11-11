@@ -22,6 +22,22 @@ class SimulatorBootWorkflowTests(unittest.TestCase):
         self.assertIsNone(BOOT.search(before_tests),
                           'a simulator starts while dependencies resolve or the app builds')
 
+    def test_both_builds_reuse_the_saved_compilation_cache(self):
+        cache = '${{ runner.temp }}/DerivedData/CompilationCache.noindex'
+        restore = self.workflow.index('uses: actions/cache/restore@')
+        save = self.workflow.index('uses: actions/cache/save@')
+        builds = [m.start() for m in re.finditer(r'xcodebuild (build|test) ', self.workflow)]
+        self.assertEqual(len(builds), 2)
+        self.assertLess(restore, builds[0])
+        self.assertLess(builds[1], save)
+        for start in (restore, save):
+            self.assertIn('path: ' + cache, self.workflow[start:start + 300])
+        for start in builds:
+            command = self.workflow[start:self.workflow.index('2>&1', start)]
+            self.assertIn('-derivedDataPath "$RUNNER_TEMP/DerivedData"', command)
+            self.assertIn('COMPILATION_CACHE_ENABLE_CACHING=YES', command)
+            self.assertIn('COMPILATION_CACHE_LIMIT_SIZE=', command)
+
     def test_unit_tests_run_on_the_selected_simulator(self):
         unit_step = self.workflow[self.workflow.index(UNIT_STEP):]
         self.assertIn('platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64', unit_step)

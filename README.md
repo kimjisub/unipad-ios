@@ -68,6 +68,9 @@ keeps interactive debugging and the existing unit and UI test plans.
 The unit test run boots the selected simulator itself. Nothing starts it
 earlier: a simulator booting in the background slowed dependency resolution and
 the Release build by more than the boot saved.
+Both builds keep their compilation results between runs in the GitHub Actions
+cache (`COMPILATION_CACHE_ENABLE_CACHING`), so sources whose inputs did not change,
+mostly the Swift packages, are not compiled again. The cache is capped at 1.5 GB.
 After the Release build it checks that the app's open source notices list
 exactly the Swift packages that build compiled (see below).
 The same checks also run after changes are merged into `main`.
