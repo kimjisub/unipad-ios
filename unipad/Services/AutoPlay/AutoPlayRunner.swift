@@ -389,9 +389,7 @@ final class AutoPlayRunner {
                     if self.practiceGuide {
                         self.guideTimeline = self.buildGuideTimeline(autoPlay: autoPlay)
                         // Lines autoplay already played are not guided again.
-                        let idx = self.guideTimeline.firstIndex { $0.index >= self.progress }
-                        self.guideIndex = idx ?? self.guideTimeline.count
-                        self.withGuides { $0.removeAll() }
+                        self.restartGuide(at: currTime - startTime, fromProgress: self.progress)
                     } else {
                         for key in self.drainGuides() {
                             self.listener?.onGuideLedUpdate(x: key / 256, y: key % 256, velocity: 0)
@@ -553,13 +551,8 @@ final class AutoPlayRunner {
                                 finishChainWait(at: currTime)
                                 needsScan = true
                             }
-                        } else {
-                            let scanned = self._stepScanned
-                            let isEmpty = self._stepPendingPads.isEmpty
-
-                            if !scanned || isEmpty {
-                                needsScan = true
-                            }
+                        } else if !self._stepScanned || self._stepPendingPads.isEmpty {
+                            needsScan = !self.stepScanReachedEnd(of: autoPlay)
                         }
 
                         if needsScan {
@@ -628,6 +621,13 @@ final class AutoPlayRunner {
     /// Step practice is waiting for the player rather than for song time.
     private var isStepPractice: Bool {
         !playmode && stepMode && practiceGuide
+    }
+
+    /// The last scan already started at the end of the table, so another one finds nothing.
+    /// A paused guide in its final wait stays here until Play; scanning again every pass would
+    /// redraw the whole grid each millisecond.
+    private func stepScanReachedEnd(of autoPlay: AutoPlay) -> Bool {
+        stepScanOrigin != nil && _stepStartProgress >= autoPlay.elements.count
     }
 
     private func turnOffGuide(_ key: Int) {

@@ -27,6 +27,7 @@ extension PlayUsageRecordTests {
             private(set) var inputs: [Note] = []
             private(set) var sounds: [Note] = []
             private(set) var ends = 0
+            private(set) var guideRemovals = 0
             var now: () -> Int64 = { 0 }
             private(set) var guides: [(pad: Pad, target: Int64, emitted: Int64)] = []
             private(set) var guideLeds: [(pad: Pad, velocity: Int, emitted: Int64)] = []
@@ -64,7 +65,7 @@ extension PlayUsageRecordTests {
                 screen.onGuideLedUpdate(x: x, y: y, velocity: velocity)
             }
             func onGuideChainOn(c: Int) { screen.onGuideChainOn(c: c) }
-            func onRemoveGuide() { screen.onRemoveGuide() }
+            func onRemoveGuide() { guideRemovals += 1; screen.onRemoveGuide() }
             func chainButsRefresh() { screen.chainButsRefresh() }
             func onProgressUpdate(progress: Int) { screen.onProgressUpdate(progress: progress) }
         }

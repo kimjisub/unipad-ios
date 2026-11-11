@@ -60,6 +60,9 @@ extension PlayUsageRecordTests {
                 try #require(runner.progress == 3, "the final wait was not reached")
                 s.vm.autoPlayPause()
                 try await tick(400)
+                let redraws = recorder.guideRemovals
+                for _ in 0..<50 { try await tick(400) }
+                #expect(recorder.guideRemovals == redraws, "the paused last wait redraws the guides on every pass")
                 try await tick(5000)
                 #expect(recorder.ends == 0, "pausing the last wait ended the guide")
                 #expect(runner.active)
@@ -108,8 +111,6 @@ extension PlayUsageRecordTests {
                 #expect(runner.playmode && runner.practiceGuide && !runner.stepMode)
                 for at: Int64 in [4000, 5000] { try await tick(at) }
                 let resumed = recorder.guides.dropFirst(before)
-                print("guide-return leave=\(leaveTheApp) mode=\(s.vm.playMode) "
-                      + "guides=\(resumed.map { "\($0.pad) target=\($0.target - origin) shown=\($0.emitted - origin)" })")
                 // The note paused before its time keeps its place: 500 ms after Play, then the next.
                 #expect(resumed.map(\.pad) == [Pad(x: 0, y: 0), Pad(x: 0, y: 1)])
                 #expect(resumed.map { $0.target - origin } == [4000, 5000])
