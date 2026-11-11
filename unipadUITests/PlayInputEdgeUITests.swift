@@ -290,6 +290,7 @@ final class PlayInputEdgeUITests: XCTestCase {
     private final class StepLog {
         var timings: [String: HeldInputTiming] = [:]
         var failures: [Error] = []
+        var lookFailure: Error?
         var timers: [Timer] = []
         var lookTimer: Timer?
         var looking = false
@@ -345,7 +346,7 @@ final class PlayInputEdgeUITests: XCTestCase {
                     let started = now()
                     let seen: Bool
                     do { seen = try pressShows() } catch {
-                        log.failures.append(error)
+                        log.lookFailure = error
                         log.lookTimer?.invalidate()
                         return
                     }
@@ -366,9 +367,12 @@ final class PlayInputEdgeUITests: XCTestCase {
         let returned = now()
         let names = (pressShows == nil ? [] : [seenName]) + steps.map(\.name)
         for name in names {
-            // A step that threw never records its timing; report its error, not a missing step.
-            if log.timings[name] == nil, let error = log.failures.first { throw error }
-            let timing = try XCTUnwrap(log.timings[name], "step \(name) did not complete during the hold")
+            // A look that threw stops looking, so the press is never recorded as seen: report its error.
+            if name == seenName, log.timings[name] == nil, let error = log.lookFailure { throw error }
+            let missing = name == seenName
+                ? "the press never showed on screen while the gesture was running"
+                : "step \(name) did not complete during the hold"
+            let timing = try XCTUnwrap(log.timings[name], missing)
             let detail = "\(name): started=\(timing.started), completed=\(timing.completed), "
                 + "release deadline=\(duration - HeldInputTiming.releaseMargin), command returned=\(returned) s"
             let attachment = XCTAttachment(string: detail)
@@ -463,16 +467,23 @@ final class PlayInputEdgeUITests: XCTestCase {
         XCTAssertEqual(changed, [], "pads (row, column from 1) still lit after \(gesture)")
     }
 
-    /// A held `press` (a finger by default) lights the pad under it and no other, and nothing stays lit.
+    /// A held `press` (a finger by default) lights the pad under it and no other, still so a second
+    /// after it shows, and nothing stays lit.
     @MainActor
     private func expectOnlyPadLitWhilePressed(
         _ row: Int, _ col: Int, comparedWith idle: PadPixels, _ press: String,
         by gesture: @MainActor (XCUICoordinate, TimeInterval) -> Void = { $0.press(forDuration: $1) }
     ) throws {
-        var lit: [String] = []
-        try whileHolding(for: 4, { duration in gesture(self.pad(row, col), duration) },
-                         seenWhen: anyPadLit(comparedWith: idle, keepingAs: press) { lit = $0 }, steps: [])
-        XCTAssertEqual(lit, ["\(row + 1),\(col + 1)"], "\(press) lit other pads")
+        var lit: [String] = [], stillLit: [String] = []
+        try whileHolding(for: 5, { duration in gesture(self.pad(row, col), duration) },
+                         seenWhen: anyPadLit(comparedWith: idle, keepingAs: press) { lit = $0 }, steps: [
+            Step(1, "picture while held") {
+                stillLit = try self.litPads(comparedWith: idle, attachment: "\(press)-while-held")
+            },
+        ])
+        let expected = ["\(row + 1),\(col + 1)"]
+        XCTAssertEqual(lit, expected, "\(press) lit other pads")
+        XCTAssertEqual(stillLit, expected, "\(press) did not keep only its pad lit while held")
         try expectNoPadLit(comparedWith: idle, after: press)
     }
 }
