@@ -65,6 +65,77 @@ class UIHostKeysTests(unittest.TestCase):
                                     cwd=root, env=env, capture_output=True, text=True, timeout=10)
             return result
 
+    def voiceover_record(self, test_exit=0, log_exit=0, status_write_fails=False):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
+            folder = Path(directory)
+            fake = folder / "bin"
+            fake.mkdir()
+            calls = folder / "log-arguments.json"
+            sabotage = ("p = pathlib.Path(" + repr(str(folder / "results" / "voiceover-automation-collection.log"))
+                        + "); p.unlink(); p.mkdir()\n") if status_write_fails else ""
+            programs = {
+                "axe": "#!/bin/sh\nexit 0\n",
+                "xcodebuild": f"#!/bin/sh\necho 'test output'\nexit {test_exit}\n",
+                "xcrun": "#!/bin/sh\n" + FAKE_PROBE_BUILD +
+                    "exec python3 - \"$@\" <<'PYTHON'\n" +
+                    "import json, pathlib, sys\n" +
+                    f"pathlib.Path({str(calls)!r}).write_text(json.dumps(sys.argv[1:]))\n" +
+                    "print('VoiceOver automation event')\n" +
+                    "print('collection detail', file=sys.stderr)\n" + sabotage +
+                    f"sys.exit({log_exit})\nPYTHON\n",
+            }
+            for name, content in programs.items():
+                path = fake / name
+                path.write_text(content)
+                path.chmod(0o755)
+            bundle = folder / "results" / "Tests.xcresult"
+            env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
+                       UNIPAD_TEST_TMPDIR=str(folder))
+            result = subprocess.run(["ci/host-keys.sh", "leased-device", str(folder / "DD"),
+                                     "test", "-resultBundlePath", str(bundle)],
+                                    cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
+            output = bundle.parent
+            record = output / "voiceover-automation.log"
+            details = output / "voiceover-automation-collection.log"
+            return (result, json.loads(calls.read_text()) if calls.exists() else [],
+                    record.read_text() if record.exists() else None,
+                    details.read_text() if details.is_file() else None)
+
+    def test_voiceover_events_are_saved_beside_the_result_bundle(self):
+        result, args, record, details = self.voiceover_record()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(record, "VoiceOver automation event\n")
+        self.assertEqual(args[:5], ["simctl", "spawn", "leased-device", "log", "show"])
+        self.assertIn("--start", args)
+        self.assertRegex(args[args.index("--start") + 1], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{4}$")
+        self.assertIn('--info', args)
+        self.assertIn('--debug', args)
+        self.assertEqual(args[args.index("--predicate") + 1],
+                         'subsystem == "com.apple.Accessibility" AND category == "AXVOAutomation"')
+        self.assertIn("exit=0", details)
+
+    def test_failed_test_still_saves_voiceover_events_and_keeps_its_exit(self):
+        result, _, record, _ = self.voiceover_record(test_exit=65)
+        self.assertEqual(result.returncode, 65)
+        self.assertEqual(record, "VoiceOver automation event\n")
+
+    def test_collection_failure_is_reported_without_hiding_the_test_result(self):
+        for test_exit in (0, 65):
+            with self.subTest(test_exit=test_exit):
+                result, _, _, details = self.voiceover_record(test_exit=test_exit, log_exit=7)
+                self.assertEqual(result.returncode, test_exit)
+                self.assertIsNotNone(details)
+                self.assertIn("exit=7", details)
+                self.assertIn("collection detail", details)
+                self.assertIn("VoiceOver automation log collection failed", result.stderr)
+
+    def test_collection_status_write_failure_keeps_the_test_exit(self):
+        for test_exit in (0, 65):
+            with self.subTest(test_exit=test_exit):
+                result, _, _, _ = self.voiceover_record(test_exit=test_exit, status_write_fails=True)
+                self.assertEqual(result.returncode, test_exit)
+                self.assertIn("Could not save VoiceOver log collection status", result.stderr)
+
     def test_failed_key_delivery_is_not_acknowledged_as_success(self):
         result = self.key_delivery(9)
         self.assertEqual(result.returncode, 0, result.stderr)
