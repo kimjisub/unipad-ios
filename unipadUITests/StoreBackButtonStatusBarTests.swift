@@ -160,19 +160,19 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
 
     private static let sortMethodNames = ["Title", "Producer", "Play Count", "Last Opened Date", "Download Date"]
 
-    func testHomeTopControlsRespondInFullUprightWindow() {
+    func testHomeTopControlsRespondInFullUprightWindow() throws {
         standUp()
-        touchHomeTopControls("home-upright")
+        try touchHomeTopControls("home-upright")
     }
 
-    func testHomeTopControlsRespondInFullUpsideDownWindow() {
+    func testHomeTopControlsRespondInFullUpsideDownWindow() throws {
         standUp(.portraitUpsideDown)
-        touchHomeTopControls("home-upside-down")
+        try touchHomeTopControls("home-upside-down")
     }
 
     /// Every control along the top of the home screen, each touched where a finger would and
     /// put back the way it was.
-    private func touchHomeTopControls(_ name: String) {
+    private func touchHomeTopControls(_ name: String) throws {
         let search = app.buttons["magnifyingglass"]
         let field = app.textFields.firstMatch
         touch(search, "\(name)-search-open", responds: { field.waitForExistence(timeout: 5) })
@@ -199,9 +199,14 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
         alert.buttons["Cancel"].tap()
         XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "the delete question did not close")
 
+        let title = app.staticTexts["Settings"].firstMatch
+        touch(home, "\(name)-settings", responds: { title.waitForExistence(timeout: 5) })
         let backButton = UITestSupport.backButton(in: app)
-        touch(home, "\(name)-settings", responds: { backButton.waitForExistence(timeout: 5) })
-        UITestSupport.tapBack(in: app)
+        XCTAssertTrue(backButton.waitForExistence(timeout: 5), "Settings has no back chevron")
+        let back = try UITestSupport.screenFrame(of: backButton, besides: title, in: app)
+        XCTContext.runActivity(named: "touch Settings' back chevron at \(back), reported at \(backButton.frame)") { _ in
+            UITestSupport.tapOnScreen(frame: back, in: app)
+        }
         XCTAssertTrue(home.waitForExistence(timeout: 5), "Settings' back chevron did not return home")
     }
 
