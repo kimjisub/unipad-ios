@@ -123,15 +123,55 @@ final class ExternalFileImportTests: XCTestCase {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
         defer { safari.terminate(); app.activate() }
-        // .invalid needs no live website. This checks the browser destination, not page loading.
-        let address = safari.descendants(matching: .any)
-            .matching(NSPredicate(format: "value CONTAINS[c] 'example.invalid' OR label CONTAINS[c] 'example.invalid'"))
-            .firstMatch
-        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        let addressDeadline = Date().addingTimeInterval(10)
+        // Activate the browser before sending address-editing events.
+        safari.activate()
+        // .invalid needs no live website. Read the active tab's editor: the collapsed
+        // address hides the scheme, and a browser-wide match can find another tab.
+        let expected = "https://example.invalid"
+        XCTAssertEqual(try currentSafariAddress(in: safari, deadline: addressDeadline), expected)
         let capture = XCTAttachment(screenshot: safari.screenshot())
         capture.name = "scheme-less-website-browser-destination"
         capture.lifetime = .keepAlways
         add(capture)
+
+        let selectedTab = safari.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@", "TabBarTab?isActive=true&"
+        )).element.identifier
+        // Keep the correct destination in its existing tab. Neither an old tab nor
+        // an address containing the expected host as a substring may satisfy the check.
+        let wrongHost = "https://example.invalid.wrong.invalid"
+        safari.open(try XCTUnwrap(URL(string: wrongHost)))
+        let shownWrongHost = try currentSafariAddress(in: safari)
+        XCTAssertEqual(shownWrongHost, wrongHost)
+        XCTAssertNotEqual(shownWrongHost, expected)
+        let previousTab = selectedTab.replacingOccurrences(of: "isActive=true", with: "isActive=false")
+        XCTAssertTrue(safari.buttons[previousTab].exists, "The previous destination must remain in an inactive tab")
+
+        let wrongPath = "https://example.invalid/wrong-path?source=other#wrong-fragment"
+        safari.open(try XCTUnwrap(URL(string: wrongPath)))
+        let shownWrongPath = try currentSafariAddress(in: safari)
+        XCTAssertEqual(shownWrongPath, wrongPath)
+        XCTAssertNotEqual(shownWrongPath, expected)
+    }
+
+    private func currentSafariAddress(
+        in safari: XCUIApplication, deadline: Date = Date().addingTimeInterval(10)
+    ) throws -> String {
+        // Both controls use what remains of the same address deadline.
+        let activeAddress = NSPredicate(format: "identifier BEGINSWITH %@", "SearchFieldItemView?isActive=true&")
+        let collapsed = safari.buttons.matching(activeAddress).element
+        XCTAssertTrue(collapsed.waitForExistence(timeout: max(0, deadline.timeIntervalSinceNow)))
+        XCTAssertTrue(collapsed.isSelected, "Only the selected tab's address may be edited")
+        collapsed.tap()
+        let editor = safari.textFields.matching(activeAddress).element
+        XCTAssertTrue(editor.waitForExistence(timeout: max(0, deadline.timeIntervalSinceNow)))
+        let address = try XCTUnwrap(editor.value as? String)
+        let diagnostic = XCTAttachment(string: "Current address: \(address)\nEditor: \(editor.identifier)")
+        diagnostic.name = "current-safari-address"
+        diagnostic.lifetime = .keepAlways
+        add(diagnostic)
+        return address
     }
 
     /// The pack folder sits next to a readme.txt at the top of the archive.
