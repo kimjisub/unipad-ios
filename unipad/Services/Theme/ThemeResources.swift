@@ -2,10 +2,20 @@ import SwiftUI
 
 // MARK: - Theme Metadata
 
+/// `theme.json`. `version` is optional and reads as "1.0" when absent, as on Android and the web.
 struct ThemeMetadata: Codable {
+    static let defaultVersion = "1.0"
+
     let name: String
     let author: String
-    var version: String = "1.0"
+    let version: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        author = try container.decode(String.self, forKey: .author)
+        version = try container.decodeIfPresent(String.self, forKey: .version) ?? Self.defaultVersion
+    }
 }
 
 struct ThemeColors: Codable {
