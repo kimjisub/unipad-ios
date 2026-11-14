@@ -2,15 +2,16 @@ import Foundation
 
 /// The public guide for making a theme, on unipad.io.
 ///
-/// The site picks Korean or English from the browser's language, which follows the
-/// device. Someone may set UniPad alone to Korean in Settings, so a Korean app opens
-/// the Korean page directly; any other app language leaves the choice to the site.
+/// The site has Korean and English pages and remembers the last language it was asked
+/// for in a cookie, so the link always names a language: Korean when UniPad runs in
+/// Korean, English otherwise. That keeps the guide in the app's language even after the
+/// user changes it, and when UniPad alone is set to a language other than the device's.
 enum ThemeGuideLink {
-    static let defaultURL = URL(string: "https://unipad.io/docs/theme")!
+    static let englishURL = URL(string: "https://unipad.io/en/docs/theme")!
     static let koreanURL = URL(string: "https://unipad.io/ko/docs/theme")!
 
     static func url(appLanguages: [String] = Bundle.main.preferredLocalizations) -> URL {
-        guard let language = appLanguages.first else { return defaultURL }
-        return Locale(identifier: language).language.languageCode == .korean ? koreanURL : defaultURL
+        guard let language = appLanguages.first else { return englishURL }
+        return Locale(identifier: language).language.languageCode == .korean ? koreanURL : englishURL
     }
 }

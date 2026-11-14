@@ -9,7 +9,7 @@ struct ThemeGuideLinkTests {
     }
 
     @Test(arguments: [["en"], ["ja", "ko"], ["zh-Hans"], []])
-    func otherAppLanguagesLeaveTheChoiceToTheSite(languages: [String]) {
-        #expect(ThemeGuideLink.url(appLanguages: languages) == URL(string: "https://unipad.io/docs/theme")!)
+    func otherAppLanguagesOpenEnglishGuide(languages: [String]) {
+        #expect(ThemeGuideLink.url(appLanguages: languages) == URL(string: "https://unipad.io/en/docs/theme")!)
     }
 }
