@@ -3,6 +3,7 @@ import Testing
 @testable import unipad
 
 /// `theme.json` reading: `version` is optional (as on Android and the web), `name` and `author` are not.
+@MainActor
 struct ThemeMetadataTests {
     private func themeFolder(json: String) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
