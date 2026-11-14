@@ -349,9 +349,7 @@ struct ThemeView: View {
                     title: String(localized: "theme_add_create"),
                     subtitle: String(localized: "theme_add_create_desc")
                 ) {
-                    if let url = URL(string: "https://github.com/kimjisub/unipad-android/blob/main/docs/THEME_CREATION_GUIDE.md") {
-                        PlatformHelpers.openURL(url)
-                    }
+                    PlatformHelpers.openURL(ThemeGuideLink.url())
                 }
 
                 HStack(alignment: .top, spacing: 10) {

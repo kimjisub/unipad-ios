@@ -406,7 +406,12 @@ physical USB, hardware latency, or models other than MK2.
 - `unipad/Services/MIDI`: CoreMIDI communication, device drivers and SysEx handling
 - `unipad/Services/Audio`: Sound playback engine and audio pool
 - `unipad/Services/LED`: LED frame runner and light mapping
-- `unipad/Services/Theme`: Theme loader and zip extraction
+- `unipad/Services/Theme`: Theme loader and zip extraction. The app's
+  "Create your own theme" button opens the public theme guide on unipad.io
+  (Korean and English). If you change which files a theme ZIP may contain or
+  how the app reads them, update that guide in the same week:
+  `content/docs/en/theme.mdx` and `content/docs/ko/theme.mdx` in
+  [kimjisub/unipad.io](https://github.com/kimjisub/unipad.io).
 - `unipad/Database`: SwiftData models for saved unipacks
 - `unipad/Views`: UI screens (grid player, store, settings, theme picker, midi picker)
 
