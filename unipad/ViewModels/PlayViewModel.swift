@@ -175,7 +175,12 @@ final class PlayViewModel {
     @ObservationIgnored var makePack: (URL) -> UniPack = { UniPackFolder(rootFolder: $0) }
     /// Builds the sound engine; a test swaps in one whose audio session it can refuse.
     @ObservationIgnored var makeSoundEngine: (UniPack, ChainObserver, SoundEngine.LoadingListener) -> SoundEngine = {
-        SoundEngine(unipack: $0, chain: $1, loadingListener: $2)
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        if let gate = ReleaseTestSupport.soundLoadGate {
+            return SoundEngine(unipack: $0, chain: $1, loadingListener: $2, observeLoading: gate.observe)
+        }
+#endif
+        return SoundEngine(unipack: $0, chain: $1, loadingListener: $2)
     }
     /// Builds the light runner; a test swaps in one on a clock it controls.
     @ObservationIgnored var makeLedRunner: (UniPack, LedRunner.Listener, ChainObserver) -> LedRunner = {
@@ -1353,6 +1358,9 @@ final class PlayViewModel {
         autoPlayRunner?.stop()
         ledRunner?.stop()
         soundEngine?.destroy()
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        ReleaseTestSupport.soundLoadGate?.cancel()
+#endif
         chain.clearObservers()
         // Last, so a crash in the teardown on this thread still reports the play window. The
         // sound engine stops on its worker, which nothing here waits for.
@@ -1383,6 +1391,9 @@ final class PlayViewModel {
         // The report can arrive after the screen closed, when the main screen has the launchpad again.
         guard enable else { return }
         soundLoadingActive = false
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        defer { ReleaseTestSupport.soundLoadGate?.completed(failed: soundLoadFailure != nil, covered: isCovered) }
+#endif
         if report.nothingPlays {
             soundLoadFailure = report
             usageSession.loadFailed(.soundEngine)

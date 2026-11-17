@@ -57,6 +57,9 @@ struct MidiSelectView: View {
                             helpButtonFocused = true
                         }
                     }
+#if DEBUG || UNIPAD_RELEASE_TESTS
+                    .onAppear { ReleaseTestSupport.soundLoadGate?.connectionHelpAppeared() }
+#endif
                 }
             }
         }
