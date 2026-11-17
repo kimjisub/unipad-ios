@@ -4,6 +4,13 @@ import Testing
 @testable import unipad
 
 struct ReleaseTestSoundLoadGateTests {
+    nonisolated private final class WorkerCompletion: @unchecked Sendable {
+        private let lock = NSLock()
+        private var returned = false
+        var hasReturned: Bool { lock.withLock { returned } }
+        func markReturned() { lock.withLock { returned = true } }
+    }
+
     @Test func onlyAnExplicitIsolatedSoundFailureLaunchCanHoldLoading() throws {
         let suite = UUID().uuidString
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -26,15 +33,15 @@ struct ReleaseTestSoundLoadGateTests {
     @Test func theWorkerWaitsForHelpAndOnlyACoveredFailureCompletesTheHandshake() async throws {
         let gate = ReleaseTestSoundLoadGate()
         defer { gate.cancel() }
-        let returned = DispatchSemaphore(value: 0)
+        let completion = WorkerCompletion()
         let worker = Task.detached {
             gate.observe(.loadStarted)
-            returned.signal()
+            completion.markReturned()
         }
         defer { gate.connectionHelpAppeared() }
         try await PlayUsageScenario.waitWhile(timeout: 5) { gate.status != "holding" }
         try #require(gate.status == "holding")
-        #expect(returned.wait(timeout: .now()) == .timedOut, "the worker read before help opened")
+        #expect(!completion.hasReturned, "the worker read before help opened")
         gate.connectionHelpAppeared()
         await worker.value
         #expect(gate.status == "released-under-help")
