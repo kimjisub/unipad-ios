@@ -63,6 +63,10 @@ notice, input times, selected process, recorder result, and numeric verdict.
 The suite also preserves build/test logs, the result bundle, app and recorder
 hashes, source commit and diff hash, environment, and staged pack hashes. Callback
 padding remains in the original; analysis is restricted to the first four seconds.
+The app identity hashes a versioned manifest of every installed bundle file,
+including `unipad.debug.dylib` and resources. Hashing only the small Debug launcher
+would not identify changes to the app's actual code. The full manifest is kept
+with each recording; receipts without that identity cannot validate a new trial.
 Existing output folders are refused. Archive each round before another round.
 Missing callback frames or an overflowing packet log also make a capture
 incomplete. Such a recording is preserved and rejected before judging playback.

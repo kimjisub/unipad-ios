@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,20 @@ import audio_output_check as check
 
 
 class AudioOutputCheckTests(unittest.TestCase):
+    def test_app_identity_includes_debug_code_with_an_unchanged_launcher(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            app = Path(scratch) / "unipad.app"
+            app.mkdir()
+            (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "unipad"}))
+            (app / "unipad").write_bytes(b"unchanged debug launcher")
+            code = app / "unipad.debug.dylib"
+            code.write_bytes(b"first audio implementation")
+            before = check.app_identity(app)
+            code.write_bytes(b"different audio implementation")
+            after = check.app_identity(app)
+            self.assertNotEqual(before["sha256"], after["sha256"],
+                                "the same launcher must not identify different app code")
+
     def test_every_round_includes_all_controls_with_distinct_paths(self):
         cases = check.make_cases(3)
         self.assertEqual(len(cases), 27)

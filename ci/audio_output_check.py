@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import signal
 import subprocess
@@ -44,6 +45,27 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def app_identity(bundle):
+    bundle = Path(bundle).resolve()
+    info = plistlib.loads((bundle / "Info.plist").read_bytes())
+    executable = info.get("CFBundleExecutable")
+    if (not isinstance(executable, str) or Path(executable).name != executable
+            or not (bundle / executable).is_file()):
+        raise ValueError("the installed app has no valid executable")
+    files = {}
+    for path in sorted(bundle.rglob("*")):
+        relative = path.relative_to(bundle).as_posix()
+        if path.is_symlink():
+            if not path.resolve().is_relative_to(bundle):
+                raise ValueError("an installed app symlink escapes its bundle")
+            files[relative] = {"symlink": os.readlink(path)}
+        elif path.is_file():
+            files[relative] = {"sha256": digest(path)}
+    manifest = {"version": 1, "files": files}
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    return manifest | {"sha256": hashlib.sha256(canonical).hexdigest()}
+
+
 def stage_fixture(destination, blocked):
     source = ROOT / "test-fixtures/AudioOutput"
     shutil.copytree(source, destination)  # refuses to replace any earlier evidence
@@ -75,6 +97,7 @@ class Run:
                        "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                        "source_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)).hexdigest(),
                        "recorder_sha256": digest(args.recorder_binary), "app_sha256": None,
+                       "app_identity": None,
                        "cases": self.results, "commands": self.commands}
 
     def start(self, command, log, env=None):
@@ -164,7 +187,8 @@ class Run:
                 if self.report["app_sha256"] is None:
                     container = self.command(["xcrun", "simctl", "get_app_container", args.simulator,
                                               "kim.jisub.unipad", "app"]).strip()
-                    self.report["app_sha256"] = digest(Path(container) / "unipad")
+                    identity = app_identity(Path(container))
+                    self.report.update(app_sha256=identity["sha256"], app_identity=identity)
                 self.record(case, step, pid, ui)
             ui.wait(timeout=120)
             self.report["ui_exit"] = ui.returncode
@@ -174,7 +198,8 @@ class Run:
                             for r in self.results)
         if args.verified_capture:
             previous = json.loads(args.verified_capture.read_text())
-            keys = ["device", "app_sha256", "recorder_sha256", "source_commit", "source_diff_sha256"]
+            keys = ["device", "app_sha256", "app_identity", "recorder_sha256",
+                    "source_commit", "source_diff_sha256"]
             if previous.get("status") != "pass" or any(previous.get(k) != self.report.get(k) for k in keys):
                 raise RuntimeError("positive recording-path receipt does not match this app, device and recorder")
             path_verified = True
