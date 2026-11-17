@@ -39,12 +39,11 @@ final class PlayInputEdgeUITests: XCTestCase {
         let idle = try settledPads()
         let held = (row: 2, col: 2)
         var heldBefore: [String] = [], heldAfter: [String] = []
-        try whileHolding(for: 5, { duration in pad(held.row, held.col).press(forDuration: duration) }, steps: [
-            Step(1.0, "picture before rotating") {
-                heldBefore = try self.litPads(comparedWith: idle, attachment: "before-rotation-while-held")
-            },
-            Step(1.5, "rotate") { XCUIDevice.shared.orientation = .landscapeRight },
-            Step(3.5, "picture after rotating") {
+        try whileHolding(for: 8, { duration in pad(held.row, held.col).press(forDuration: duration) },
+                         seenWhen: anyPadLit(comparedWith: idle, keepingAs: "before-rotation-while-held") { heldBefore = $0 },
+                         steps: [
+            Step(0.5, "rotate") { XCUIDevice.shared.orientation = .landscapeRight },
+            Step(2.5, "picture after rotating") {
                 heldAfter = try self.litPads(comparedWith: idle, attachment: "after-rotation-while-held")
             },
         ])
@@ -54,7 +53,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         XCTAssertEqual(heldAfter, [], "turning the screen did not release the held pad")
         UITestSupport.attachScreenshot("rotated-held-cancelled", to: self)
         try expectNoPadLit(comparedWith: idle, after: "lifting the pad held through the rotation")
-        try expectOnlyPadLitWhilePressed(5, 6, comparedWith: idle, after: "rotating")
+        try expectOnlyPadLitWhilePressed(5, 6, comparedWith: idle, "a new press after rotating")
     }
 
     @MainActor
@@ -62,12 +61,9 @@ final class PlayInputEdgeUITests: XCTestCase {
         try XCTSkipUnless(XCUIDevice.shared.supportsPointerInteraction, "only an iPad has a pointer")
         openPack("Input Edges")
         let idle = try settledPads()
-        var during: [String] = []
-        try whileHolding(for: 4, { duration in self.pad(4, 4).click(forDuration: duration, thenDragTo: self.pad(4, 4)) }, steps: [
-            Step(1.5, "picture") { during = try self.litPads(comparedWith: idle) },
-        ])
-        XCTAssertEqual(during, ["5,5"], "a held pointer press did not light its pad alone")
-        try expectNoPadLit(comparedWith: idle, after: "a pointer press")
+        try expectOnlyPadLitWhilePressed(4, 4, comparedWith: idle, "a held pointer press") { pad, duration in
+            pad.click(forDuration: duration, thenDragTo: pad)
+        }
         pad(3, 3).click(forDuration: 0.3, thenDragTo: pad(3, 6))
         try expectNoPadLit(comparedWith: idle, after: "a pointer drag across pads")
         pad(0, 0).click()
@@ -77,7 +73,7 @@ final class PlayInputEdgeUITests: XCTestCase {
         chain2.click()
         XCTAssertTrue(waitForSelected(chain2), "a pointer click did not select chain 2")
         XCTAssertFalse(chain(1).isSelected)
-        try expectOnlyPadLitWhilePressed(2, 5, comparedWith: idle, after: "a pointer chain change")
+        try expectOnlyPadLitWhilePressed(2, 5, comparedWith: idle, "a new press after a pointer chain change")
     }
 
     /// `squareButton=false` packs are drawn and hit like `true` ones: PlayView sizes the grid from
@@ -103,14 +99,12 @@ final class PlayInputEdgeUITests: XCTestCase {
         openPack("Input Edges")
         let second = chain(2)
         XCTAssertTrue(second.waitForExistence(timeout: 5))
-        var selectedDuringHold = false
-        try whileHolding(for: 5, { duration in second.press(forDuration: duration) }, steps: [
-            Step(1.5, "chain selection before release") {
-                selectedDuringHold = second.isSelected
-                UITestSupport.attachScreenshot("chain-two-before-release", to: self)
-            },
-        ])
-        XCTAssertTrue(selectedDuringHold, "chain 2 must already be selected while its finger is down")
+        // The press shows as the selection, which must come before the earliest possible release.
+        try whileHolding(for: 5, { duration in second.press(forDuration: duration) }, seenWhen: {
+            guard second.isSelected else { return false }
+            UITestSupport.attachScreenshot("chain-two-before-release", to: self)
+            return true
+        }, steps: [])
         XCTAssertTrue(second.isSelected, "release must not undo the selection")
     }
 
@@ -222,17 +216,19 @@ final class PlayInputEdgeUITests: XCTestCase {
         let idle = try settledPads()
 
         let row = 2, columns = Array(2...5)
-        let press: TimeInterval = 0.5, secondsPerPad: TimeInterval = 2, restAtTheEnd: TimeInterval = 2
-        let duration = press + secondsPerPad * Double(columns.count - 1) + restAtTheEnd
+        // The rest at the end leaves room for a touch that lands seconds after the command started.
+        let press: TimeInterval = 0.5, secondsPerPad: TimeInterval = 2, restAtTheEnd: TimeInterval = 5
+        let drag = press + secondsPerPad * Double(columns.count - 1)
+        let duration = drag + restAtTheEnd
         let velocity = XCUIGestureVelocity(rawValue: grid.frame.width / 8 / secondsPerPad)
         var pictures: [[String]] = []
-        let steps = stride(from: 0.5, to: duration - 1, by: 0.5).map { at in
+        let steps = stride(from: 0.5, through: drag + 1, by: 0.5).map { at in
             Step(at, "picture at \(at) s") { pictures.append(try self.litPads(comparedWith: idle)) }
         }
         try whileHolding(for: duration, { _ in
             pad(row, columns[0]).press(forDuration: press, thenDragTo: pad(row, columns[columns.count - 1]),
                                        withVelocity: velocity, thenHoldForDuration: restAtTheEnd)
-        }, steps: steps)
+        }, seenWhen: anyPadLit(comparedWith: idle) { pictures.append($0) }, steps: steps)
 
         // A picture taken as the finger crosses a border can catch two pads, one of them fading.
         let litAlone = pictures.filter { $0.count == 1 }.map { $0[0] }
@@ -278,7 +274,7 @@ final class PlayInputEdgeUITests: XCTestCase {
 
     // MARK: - Steps
 
-    /// Something done at `at` seconds after a held input started.
+    /// Something done at `at` seconds after a held input started, or after it was first seen.
     struct Step {
         let at: TimeInterval
         let name: String
@@ -294,6 +290,10 @@ final class PlayInputEdgeUITests: XCTestCase {
     private final class StepLog {
         var timings: [String: HeldInputTiming] = [:]
         var failures: [Error] = []
+        var lookFailure: Error?
+        var timers: [Timer] = []
+        var lookTimer: Timer?
+        var looking = false
     }
 
     /// Carries a main-thread step into a timer.
@@ -305,34 +305,78 @@ final class PlayInputEdgeUITests: XCTestCase {
     /// Uses the requested duration, not the gesture command's return time, to bound observations.
     /// Invocation is earlier than the synthesized touch-down, so this deadline is conservative.
     /// If rotation or capture runs late, fail rather than claiming it occurred under a held input.
+    ///
+    /// After "Synthesize event" XCUITest finds the element again before it sends the touch, and runs
+    /// this run loop while it waits, so a timer can fire before the touch is down: on a busy Mac the
+    /// touch landed seconds after invocation, after pictures and even a rotation meant to happen
+    /// during the hold. With `seenWhen`, which looks at the screen every `lookInterval` s until it
+    /// returns true, steps are timed from the moment the press is seen, not from invocation.
     @MainActor
     private func whileHolding(for duration: TimeInterval,
                               _ hold: @MainActor (TimeInterval) -> Void,
+                              seenWhen pressShows: (@MainActor () throws -> Bool)? = nil,
                               steps: [Step]) throws {
+        let lookInterval: TimeInterval = 0.25
         let start = ProcessInfo.processInfo.systemUptime
         let log = StepLog()
-        let timers = steps.map { step in
-            let fire = Fire {
+        func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime - start }
+        func schedule(_ timer: Timer) {
+            RunLoop.main.add(timer, forMode: .common)
+            log.timers.append(timer)
+        }
+        func scheduleSteps() {
+            for step in steps {
+                let fire = Fire {
+                    MainActor.assumeIsolated {
+                        let started = now()
+                        do { try step.run() } catch { log.failures.append(error) }
+                        log.timings[step.name] = HeldInputTiming(started: started, completed: now())
+                    }
+                }
+                schedule(Timer(timeInterval: step.at, repeats: false) { _ in fire.run() })
+            }
+        }
+        let seenName = "press seen"
+        if let pressShows {
+            let look = Fire {
                 MainActor.assumeIsolated {
-                    let started = ProcessInfo.processInfo.systemUptime - start
-                    do { try step.run() } catch { log.failures.append(error) }
-                    log.timings[step.name] = HeldInputTiming(
-                        started: started, completed: ProcessInfo.processInfo.systemUptime - start)
+                    guard !log.looking, log.timings[seenName] == nil else { return }
+                    log.looking = true
+                    defer { log.looking = false }
+                    let started = now()
+                    let seen: Bool
+                    do { seen = try pressShows() } catch {
+                        log.lookFailure = error
+                        log.lookTimer?.invalidate()
+                        return
+                    }
+                    guard seen else { return }
+                    log.lookTimer?.invalidate()
+                    log.timings[seenName] = HeldInputTiming(started: started, completed: now())
+                    scheduleSteps()
                 }
             }
-            let timer = Timer(timeInterval: step.at, repeats: false) { _ in fire.run() }
-            RunLoop.main.add(timer, forMode: .common)
-            return timer
+            let lookTimer = Timer(timeInterval: lookInterval, repeats: true) { _ in look.run() }
+            log.lookTimer = lookTimer
+            schedule(lookTimer)
+        } else {
+            scheduleSteps()
         }
-        defer { timers.forEach { $0.invalidate() } }
+        defer { log.timers.forEach { $0.invalidate() } }
         hold(duration)
-        let returned = ProcessInfo.processInfo.systemUptime - start
-        for step in steps {
-            let timing = try XCTUnwrap(log.timings[step.name], "step \(step.name) did not complete during the hold")
-            let detail = "\(step.name): started=\(timing.started), completed=\(timing.completed), "
+        let returned = now()
+        let names = (pressShows == nil ? [] : [seenName]) + steps.map(\.name)
+        for name in names {
+            // A look that threw stops looking, so the press is never recorded as seen: report its error.
+            if name == seenName, log.timings[name] == nil, let error = log.lookFailure { throw error }
+            let missing = name == seenName
+                ? "the press never showed on screen while the gesture was running"
+                : "step \(name) did not complete during the hold"
+            let timing = try XCTUnwrap(log.timings[name], missing)
+            let detail = "\(name): started=\(timing.started), completed=\(timing.completed), "
                 + "release deadline=\(duration - HeldInputTiming.releaseMargin), command returned=\(returned) s"
             let attachment = XCTAttachment(string: detail)
-            attachment.name = "held-input-timing-\(step.name)"
+            attachment.name = "held-input-timing-\(name)"
             attachment.lifetime = .keepAlways
             add(attachment)
             XCTAssertTrue(timing.finishedWhileHeld(duration: duration, commandReturned: returned),
@@ -382,13 +426,32 @@ final class PlayInputEdgeUITests: XCTestCase {
     @MainActor
     private func litPads(comparedWith idle: PadPixels, attachment name: String? = nil) throws -> [String] {
         let screenshot = grid.screenshot()
-        if let name {
-            let attachment = XCTAttachment(screenshot: screenshot)
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            add(attachment)
+        let lit = try PadPixels(screenshot).changedPads(comparedWith: idle)
+        if let name { keep(screenshot, as: name) }
+        return lit
+    }
+
+    /// A `seenWhen` look: the press shows once a pad is lit. Only that picture is passed to
+    /// `record` and kept as `name`, so the empty looks before the touch lands leave nothing behind.
+    @MainActor
+    private func anyPadLit(comparedWith idle: PadPixels, keepingAs name: String? = nil,
+                           _ record: @escaping @MainActor ([String]) -> Void) -> @MainActor () throws -> Bool {
+        { [self] in
+            let screenshot = grid.screenshot()
+            let lit = try PadPixels(screenshot).changedPads(comparedWith: idle)
+            guard !lit.isEmpty else { return false }
+            if let name { keep(screenshot, as: name) }
+            record(lit)
+            return true
         }
-        return try PadPixels(screenshot).changedPads(comparedWith: idle)
+    }
+
+    @MainActor
+    private func keep(_ screenshot: XCUIScreenshot, as name: String) {
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     /// The pads' pixels once two consecutive shots agree, so a fading press is not compared.
@@ -404,14 +467,23 @@ final class PlayInputEdgeUITests: XCTestCase {
         XCTAssertEqual(changed, [], "pads (row, column from 1) still lit after \(gesture)")
     }
 
-    /// A new finger after `change` lights the pad under it and no other, and nothing stays lit.
+    /// A held `press` (a finger by default) lights the pad under it and no other, still so a second
+    /// after it shows, and nothing stays lit.
     @MainActor
-    private func expectOnlyPadLitWhilePressed(_ row: Int, _ col: Int, comparedWith idle: PadPixels, after change: String) throws {
-        var lit: [String] = []
-        try whileHolding(for: 2.5, { duration in self.pad(row, col).press(forDuration: duration) }, steps: [
-            Step(1.2, "picture of the new press") { lit = try self.litPads(comparedWith: idle) },
+    private func expectOnlyPadLitWhilePressed(
+        _ row: Int, _ col: Int, comparedWith idle: PadPixels, _ press: String,
+        by gesture: @MainActor (XCUICoordinate, TimeInterval) -> Void = { $0.press(forDuration: $1) }
+    ) throws {
+        var lit: [String] = [], stillLit: [String] = []
+        try whileHolding(for: 5, { duration in gesture(self.pad(row, col), duration) },
+                         seenWhen: anyPadLit(comparedWith: idle, keepingAs: press) { lit = $0 }, steps: [
+            Step(1, "picture while held") {
+                stillLit = try self.litPads(comparedWith: idle, attachment: "\(press)-while-held")
+            },
         ])
-        XCTAssertEqual(lit, ["\(row + 1),\(col + 1)"], "a new press after \(change) lit other pads")
-        try expectNoPadLit(comparedWith: idle, after: "a new press after \(change)")
+        let expected = ["\(row + 1),\(col + 1)"]
+        XCTAssertEqual(lit, expected, "\(press) lit other pads")
+        XCTAssertEqual(stillLit, expected, "\(press) did not keep only its pad lit while held")
+        try expectNoPadLit(comparedWith: idle, after: press)
     }
 }

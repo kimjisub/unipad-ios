@@ -10,6 +10,7 @@ final class AudioLifecycleUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
         app.launchArguments += UITestSupport.englishLaunchArguments(library: "chain-layout")
+        app.launchArguments += ["-UniPadReleaseObserveActivation", "YES"]
         app.launch()
         UITestSupport.dismissSystemAlerts()
         let list = app.scrollViews["main.packList"]
@@ -34,7 +35,7 @@ final class AudioLifecycleUITests: XCTestCase {
         waitForBackground(app)
         UITestSupport.attachScreenshot("audio-04-home", to: self)
         app.activate()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        waitForActiveInput(app)
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         grid.coordinate(withNormalizedOffset: CGVector(dx: 0.0625, dy: 0.0625)).press(forDuration: 0.4)
         UITestSupport.attachScreenshot("audio-05-pad-after-return", to: self)
@@ -48,7 +49,7 @@ final class AudioLifecycleUITests: XCTestCase {
         waitForBackground(app)
         UITestSupport.attachScreenshot("audio-07-autoplay-home", to: self)
         app.activate()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        waitForActiveInput(app)
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         UITestSupport.attachScreenshot("audio-08-autoplay-return", to: self)
         let resume = app.buttons["play.fill"]
@@ -62,7 +63,7 @@ final class AudioLifecycleUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         waitForBackground(app)
         app.activate()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        waitForActiveInput(app)
         XCTAssertTrue(resume.waitForExistence(timeout: 5))
         resume.tap()
         UITestSupport.attachScreenshot("audio-paused-return-one-play", to: self)
@@ -76,6 +77,16 @@ final class AudioLifecycleUITests: XCTestCase {
         XCTAssertTrue(list.waitForExistence(timeout: 10))
         UITestSupport.attachScreenshot("audio-09-exit", to: self)
         app.terminate()
+    }
+
+    @MainActor
+    private func waitForActiveInput(_ app: XCUIApplication) {
+        let readiness = app.otherElements["test.appInputReadiness"]
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.state == .runningForeground && readiness.exists && readiness.value as? String == "active"
+        }, object: app)
+        XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 10), .completed,
+                       "the app and its scene must be active before sending input")
     }
 
     @MainActor

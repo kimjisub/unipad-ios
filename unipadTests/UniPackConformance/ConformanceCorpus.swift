@@ -47,6 +47,23 @@ struct ConformanceCorpus {
 
     static let platform = "ios"
 
+    /// Each case reloads the file and checks its digest, but parsing the whole corpus per case
+    /// makes a growing corpus quadratic. Retain only the last successfully parsed version.
+    private final class ParsedCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var last: (digest: String, source: String, corpus: ConformanceCorpus)?
+
+        func load(_ data: Data, digest: String, source: String) throws -> ConformanceCorpus {
+            lock.lock()
+            defer { lock.unlock() }
+            if let last, last.digest == digest, last.source == source { return last.corpus }
+            let corpus = try ConformanceCorpus.parse(data, source: source)
+            last = (digest, source, corpus)
+            return corpus
+        }
+    }
+    private static let parsedCache = ParsedCache()
+
     enum LoadError: Error, CustomStringConvertible {
         case missing
         case invalid(String)
@@ -91,8 +108,8 @@ struct ConformanceCorpus {
         }
         let data = try Data(contentsOf: url)
         let digestFile = try? String(contentsOf: url.deletingLastPathComponent().appendingPathComponent(name + ".sha256"), encoding: .utf8)
-        _ = try verifyDigest(of: data, digestFile: digestFile)
-        return try parse(data, source: source)
+        let digest = try verifyDigest(of: data, digestFile: digestFile)
+        return try parsedCache.load(data, digest: digest, source: source)
     }
 
     /// The sha256 of the corpus.json bytes, after checking it against the corpus.sha256 that unipad.io's

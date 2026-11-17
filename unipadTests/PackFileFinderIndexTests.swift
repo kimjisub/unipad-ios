@@ -13,13 +13,17 @@ struct PackFileFinderIndexTests {
         #expect(index.match("fx") == nil)
     }
 
-    @Test func canonicalAndCaseCandidatesShareTheSameUTF16Order() {
+    /// Each fallback compares whole original names; of several candidates at one step the first in
+    /// UTF-16 order is taken.
+    @Test func eachFallbackTakesItsFirstCandidateInUTF16Order() {
         let index = PackFileFinder.Index(entries: [
             .init(name: "A\u{E9}.wav", stored: "first.wav"),
             .init(name: "ae\u{301}.wav", stored: "second.wav")
         ])
-        #expect(index.match("a\u{E9}.wav") == "first.wav")
         #expect(index.match("ae\u{301}.wav") == "second.wav")
+        #expect(index.match("a\u{E9}.wav") == "second.wav")
+        #expect(index.match("Ae\u{301}.wav") == "first.wav")
+        #expect(index.match("a\u{E9}.WAV") == "first.wav")
     }
 
     @Test func anExactSpellingWinsOverACanonicallyEquivalentOne() {
@@ -28,6 +32,17 @@ struct PackFileFinderIndexTests {
         let index = PackFileFinder.Index(paths: [composed, decomposed])
         #expect(index.match(decomposed).map { Array($0.unicodeScalars) } == Array(decomposed.unicodeScalars))
         #expect(index.match(composed).map { Array($0.unicodeScalars) } == Array(composed.unicodeScalars))
+    }
+
+    /// A name equal to a stored one up to Unicode composition is found before one that also differs
+    /// in letter case, even when the other comes first in UTF-16 order.
+    @Test func aCanonicalMatchWinsOverACaseFoldedOne() {
+        let upperDecomposed = "E\u{301}.wav"
+        let lowerComposed = "\u{E9}.wav"
+        let index = PackFileFinder.Index(paths: [upperDecomposed, lowerComposed])
+        #expect(index.match("e\u{301}.wav").map { Array($0.unicodeScalars) } == Array(lowerComposed.unicodeScalars))
+        #expect(index.match("\u{C9}.wav").map { Array($0.unicodeScalars) } == Array(upperDecomposed.unicodeScalars))
+        #expect(index.match("fx/E\u{301}.wav") == nil)
     }
 
     @Test func aStoredPathFromMetadataCannotLeaveTheSoundFolder() throws {

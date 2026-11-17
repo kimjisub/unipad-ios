@@ -48,7 +48,7 @@ struct SoundPathLookupTests {
     }
 
     @Test func aNameNeverLeavesTheSoundsFolder() throws {
-        let (pack, root) = try Self.load(keySound: "1 1 1 ../bgm.wav\n1 2 1 ../info\n1 3 1 fx/../a.wav\n1 4 1 a.wav\n",
+        let (pack, root) = try Self.load(keySound: "1 1 1 ../bgm.wav\n1 2 1 ../info\n1 3 1 fx/../../bgm.wav\n1 4 1 a.wav\n",
                                          sounds: ["a.wav", "fx/s.wav"], rootFiles: ["bgm.wav"])
         defer { try? FileManager.default.removeItem(at: root) }
         #expect(Self.soundPath(pack, root: root, x: 0) == nil)
@@ -58,7 +58,23 @@ struct SoundPathLookupTests {
         #expect(pack.errorDetail == """
             keySound : [1 1 1 ../bgm.wav] sound was not found
             keySound : [1 2 1 ../info] sound was not found
-            keySound : [1 3 1 fx/../a.wav] sound was not found
+            keySound : [1 3 1 fx/../../bgm.wav] sound was not found
+            """)
+    }
+
+    /// `..` steps back one folder as written, so the author's file is found while it stays inside
+    /// `sounds/`; a name that steps above it names no sound, even when a file of that name exists.
+    @Test func aParentStepInsideTheSoundsFolderFindsTheFile() throws {
+        let (pack, root) = try Self.load(keySound: "1 1 1 fx/../kick.wav\n1 2 1 fx\\..\\fx\\s.wav\n1 3 1 fx/../../kick.wav\n1 4 1 fx/..\n",
+                                         sounds: ["kick.wav", "fx/s.wav"], rootFiles: ["kick.wav"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(Self.soundPath(pack, root: root, x: 0) == "kick.wav")
+        #expect(Self.soundPath(pack, root: root, x: 1) == "fx/s.wav")
+        #expect(Self.soundPath(pack, root: root, x: 2) == nil)
+        #expect(Self.soundPath(pack, root: root, x: 3) == nil)
+        #expect(pack.errorDetail == """
+            keySound : [1 3 1 fx/../../kick.wav] sound was not found
+            keySound : [1 4 1 fx/..] sound was not found
             """)
     }
 

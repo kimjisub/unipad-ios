@@ -340,16 +340,45 @@ nonisolated final class LedRunner: @unchecked Sendable {
         }
     }
 
-    /// Shuts down every infinite animation on the pad, on any chain, and without the `active`
-    /// guard: ledInit calls this after stop(), where eventOff returned early and the stale
-    /// animations resumed in a burst when LED was re-enabled (Android LedRunner.eventOffAll).
-    func eventOffAll(x: Int, y: Int) {
+    /// Pads, and round buttons as `x == -1`, whose current light an animation kept by
+    /// `eventOffAll(keeping:)` drew.
+    struct Lights {
+        private struct Light: Hashable {
+            let x: Int
+            let y: Int
+        }
+        private var lit: Set<Light> = []
+
+        func contains(x: Int, y: Int) -> Bool { lit.contains(Light(x: x, y: y)) }
+        fileprivate mutating func insert(x: Int, y: Int) { lit.insert(Light(x: x, y: y)) }
+    }
+
+    /// Shuts down every infinite animation, on any chain and without the `active` guard, except the
+    /// animations the `kept` presses started and still hold. ledInit calls this after stop() too,
+    /// where eventOff returned early and the stale animations resumed in a burst when LED was
+    /// re-enabled (Android LedRunner.eventOffAll). Returns the lights the kept animations show.
+    func eventOffAll(keeping kept: Set<UUID> = []) -> Lights {
         lock.lockWithDeadlockDetection()
         defer { lock.unlock() }
 
-        for state in ledAnimationStates + ledAnimationStatesAdd where state.buttonX == x && state.buttonY == y {
-            if state.ledAnimation?.loop == 0 { state.shutDownAt(.min, order: 0) }
+        var keptStates: [LedAnimationState] = []
+        for state in ledAnimationStates + ledAnimationStatesAdd {
+            if let owner = state.owner, kept.contains(owner), !state.remove, !state.isShuttingDown {
+                keptStates.append(state)
+            } else if state.ledAnimation?.loop == 0 {
+                state.shutDownAt(.min, order: 0)
+            }
         }
+        var lights = Lights()
+        func drawnByKept(_ led: Led?) -> Bool {
+            guard let led else { return false }
+            return keptStates.contains { led.isEqual(bx: $0.buttonX, by: $0.buttonY, chain: $0.chainAtCreation) }
+        }
+        for x in btnLed.indices {
+            for y in btnLed[x].indices where drawnByKept(btnLed[x][y]) { lights.insert(x: x, y: y) }
+        }
+        for y in cirLed.indices where drawnByKept(cirLed[y]) { lights.insert(x: -1, y: y) }
+        return lights
     }
 
     // MARK: - Helper Types
@@ -449,6 +478,9 @@ nonisolated final class LedRunner: @unchecked Sendable {
             unipack.ledPush(c: chain, x: buttonX, y: buttonY)
             if ledAnimation?.ledEvents.isEmpty != false { isPlaying = false }
         }
+
+        /// A release, a newer press of the pad or `eventOffAll` has ended it.
+        var isShuttingDown: Bool { shutdownAt != nil }
 
         func shutDownAt(_ at: Int64, order: Int64) {
             if let shutdownAt, at >= shutdownAt { return }

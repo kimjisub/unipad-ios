@@ -140,6 +140,16 @@ struct unipadApp: App {
             .environment(router)
             .environment(modelStoreStatus)
             .publishingWindowFillsScreen()
+#if (DEBUG || UNIPAD_RELEASE_TESTS) && canImport(UIKit)
+            .background(alignment: .topLeading) {
+                if ReleaseTestSupport.root != nil,
+                   UserDefaults.standard.bool(forKey: "UniPadReleaseObserveActivation") {
+                    ReleaseTestActivationView()
+                        .frame(width: 1, height: 1)
+                        .allowsHitTesting(false)
+                }
+            }
+#endif
             .preferredColorScheme(.dark)
             .overlay(alignment: .top) {
                 if midiBanner.isVisible {

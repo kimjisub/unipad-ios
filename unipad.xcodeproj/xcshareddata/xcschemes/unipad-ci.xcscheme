@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme version="1.7">
+   <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES">
+      <BuildActionEntries>
+         <BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">
+            <BuildableReference
+               BuildableIdentifier="primary"
+               BlueprintIdentifier="16CE2B8F2F5E6CE100402705"
+               BuildableName="unipad.app"
+               BlueprintName="unipad"
+               ReferencedContainer="container:unipad.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <!-- Automated checks do not need a debugger. Keep interactive testing on the unipad scheme. -->
+   <TestAction
+      buildConfiguration="Debug"
+      selectedDebuggerIdentifier=""
+      selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.PosixSpawn"
+      codeCoverageEnabled="YES"
+      preferredScreenCaptureFormat="screenshots"
+      shouldUseLaunchSchemeArgsEnv="YES">
+      <Testables>
+         <TestableReference skipped="NO" parallelizable="NO">
+            <BuildableReference
+               BuildableIdentifier="primary"
+               BlueprintIdentifier="16CE2B9E2F5E6CE300402705"
+               BuildableName="unipadTests.xctest"
+               BlueprintName="unipadTests"
+               ReferencedContainer="container:unipad.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+</Scheme>

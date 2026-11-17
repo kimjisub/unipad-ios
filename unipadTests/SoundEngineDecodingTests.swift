@@ -171,6 +171,13 @@ struct SoundEngineDecodingTests {
         #expect(engine.playsStarted == 1)
     }
 
+    @Test(arguments: ["libopus-48000-1", "libopus-48000-6"])
+    func opusInMp4RendersThroughTheRealMixer(_ name: String) async throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appending(path: "Fixtures/AudioSafety/\(name).m4a")
+        try await expectPlays(url, recordMix: true)
+    }
+
     private func expectPlays(
         _ file: URL, requiresSignal: Bool = true, recordMix: Bool = false,
         openAudioFile: @escaping (URL) throws -> AVAudioFile = { try AVAudioFile(forReading: $0) }

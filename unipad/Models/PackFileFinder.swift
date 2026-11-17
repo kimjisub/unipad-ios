@@ -3,14 +3,15 @@ import Foundation
 /// Finds a file a pack names by path below one of its folders, as Android and the web find it.
 ///
 /// The name is relative to that folder: `\` separates folders as `/` does (Windows authors write
-/// `fx\sweep.wav`), leading slashes, `.` and repeated slashes are dropped, and a name with `..` is
-/// never looked up, so it cannot reach a file outside the folder.
+/// `fx\sweep.wav`), leading slashes, `.` and repeated slashes are dropped, and `..` steps back one
+/// folder as written (`fx/../kick.wav` is `kick.wav`). A name that steps above the folder names
+/// nothing there, so it cannot reach a file outside it.
 ///
-/// The exact original path wins; otherwise NFC paths are compared without letter case. Packs are
-/// written on Windows and macOS disks, which ignore case, so a keySound line may
-/// name `End.wav` for a file stored as `END.wav`; an iPhone's disk tells them apart. Whole paths are
-/// compared, and of several candidates the first in UTF-16 order is taken. The folder is listed once
-/// per finder.
+/// The exact path wins, then a path that differs only in Unicode composition (NFC), then NFC paths
+/// compared without letter case. Packs are written on Windows and macOS disks, which ignore case, so
+/// a keySound line may name `End.wav` for a file stored as `END.wav`; an iPhone's disk tells them
+/// apart. Whole paths are compared, and of several candidates the first in UTF-16 order is taken.
+/// The folder is listed once per finder.
 nonisolated final class PackFileFinder {
     private let fileManager: FileManager
     /// Folder path -> its files' paths below it.
@@ -28,23 +29,34 @@ nonisolated final class PackFileFinder {
 
     /// `name` as a path below the folder, or nil when it names nothing there.
     static func normalizedPath(_ name: String) -> String? {
-        pathComponents(name)?.joined(separator: "/")
-    }
-
-    /// Shared by archive extraction and sound lookup so both interpret paths identically.
-    static func pathComponents(_ name: String) -> [String]? {
         var components: [String] = []
-        for component in name.replacingOccurrences(of: "\\", with: "/").split(separator: "/") where component != "." {
-            if component == ".." { return nil }
-            components.append(String(component))
+        for component in segments(name) {
+            if component == ".." {
+                guard components.popLast() != nil else { return nil }
+            } else {
+                components.append(component)
+            }
         }
-        return components.isEmpty ? nil : components
+        return components.isEmpty ? nil : components.joined(separator: "/")
     }
 
-    /// Stored paths keyed by their exact and composed lower-cased spelling. Swift compares
+    /// An archive entry's folders and name. An entry with a `..` folder names nothing, so archive
+    /// extraction never writes outside its destination.
+    static func pathComponents(_ name: String) -> [String]? {
+        let components = segments(name)
+        return components.isEmpty || components.contains("..") ? nil : components
+    }
+
+    private static func segments(_ name: String) -> [String] {
+        name.replacingOccurrences(of: "\\", with: "/").split(separator: "/")
+            .filter { $0 != "." }.map(String.init)
+    }
+
+    /// Stored paths keyed by their exact, composed and composed lower-cased spelling. Swift compares
     /// and hashes strings by canonical equivalence, so the keys are UTF-8 bytes.
     struct Index {
         private var exact: [[UInt8]: String] = [:]
+        private var composed: [[UInt8]: String] = [:]
         private var folded: [[UInt8]: String] = [:]
 
         init(paths: [String]) {
@@ -53,16 +65,19 @@ nonisolated final class PackFileFinder {
 
         init(entries: [ImportedSoundPaths.Entry]) {
             for entry in entries.sorted(by: { $0.name.utf16.lexicographicallyPrecedes($1.name.utf16) }) {
-                let path = entry.name
-                let nfc = path.precomposedStringWithCanonicalMapping
-                exact[Array(path.utf8)] = exact[Array(path.utf8)] ?? entry.stored
-                folded[Array(nfc.lowercased().utf8)] = folded[Array(nfc.lowercased().utf8)] ?? entry.stored
+                func keepFirst(_ key: String, in paths: inout [[UInt8]: String]) {
+                    paths[Array(key.utf8)] = paths[Array(key.utf8)] ?? entry.stored
+                }
+                let nfc = entry.name.precomposedStringWithCanonicalMapping
+                keepFirst(entry.name, in: &exact)
+                keepFirst(nfc, in: &composed)
+                keepFirst(nfc.lowercased(), in: &folded)
             }
         }
 
         func match(_ path: String) -> String? {
             let nfc = path.precomposedStringWithCanonicalMapping
-            return exact[Array(path.utf8)] ?? folded[Array(nfc.lowercased().utf8)]
+            return exact[Array(path.utf8)] ?? composed[Array(nfc.utf8)] ?? folded[Array(nfc.lowercased().utf8)]
         }
     }
 

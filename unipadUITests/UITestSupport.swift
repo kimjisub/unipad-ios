@@ -312,10 +312,45 @@ enum UITestSupport {
     /// touches anywhere inside it (x = 2 to 46) go back home, so the tap is sent to
     /// a screen point instead.
     static func tapOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
-        let visible = element.frame.intersection(app.windows.firstMatch.frame)
+        tapOnScreen(frame: element.frame, in: app)
+    }
+
+    /// Taps the middle of the part of the screen-space `frame` that lies in the app's window.
+    static func tapOnScreen(frame: CGRect, in app: XCUIApplication) {
+        let visible = frame.intersection(app.windows.firstMatch.frame)
         app.coordinate(withNormalizedOffset: .zero)
             .withOffset(CGVector(dx: visible.midX, dy: visible.midY))
             .tap()
+    }
+
+    /// Where `element` is on screen.
+    ///
+    /// Accessibility reports an element reaching outside its window in the window's own
+    /// coordinates instead, as it does for Settings' back chevron, whose tap area starts left of
+    /// a window that fills an upright iPad. The app keeps its landscape layout there, so those
+    /// coordinates are a quarter turn from the screen's, either way round. `reference`, an
+    /// element inside the window, shows which: its snapshot frame is in the window's coordinates
+    /// and its `frame` on screen.
+    static func screenFrame(of element: XCUIElement, besides reference: XCUIElement, in app: XCUIApplication) throws -> CGRect {
+        let window = app.windows.firstMatch.frame
+        let reported = element.frame
+        guard !window.contains(reported) else { return reported }
+        let referenceInWindow = try reference.snapshot().frame
+        let referenceOnScreen = reference.frame
+        let turns: [(CGPoint) -> CGPoint] = [
+            { CGPoint(x: window.minX + $0.x, y: window.minY + $0.y) },
+            { CGPoint(x: window.maxX - $0.y, y: window.minY + $0.x) },
+            { CGPoint(x: window.minX + $0.y, y: window.maxY - $0.x) },
+        ]
+        func miss(_ turn: (CGPoint) -> CGPoint) -> CGFloat {
+            let point = turn(CGPoint(x: referenceInWindow.midX, y: referenceInWindow.midY))
+            return hypot(point.x - referenceOnScreen.midX, point.y - referenceOnScreen.midY)
+        }
+        let turn = turns.min { miss($0) < miss($1) }!
+        let corner = turn(reported.origin)
+        let opposite = turn(CGPoint(x: reported.maxX, y: reported.maxY))
+        return CGRect(x: min(corner.x, opposite.x), y: min(corner.y, opposite.y),
+                      width: abs(opposite.x - corner.x), height: abs(opposite.y - corner.y))
     }
 
     static func tapBack(in app: XCUIApplication) {

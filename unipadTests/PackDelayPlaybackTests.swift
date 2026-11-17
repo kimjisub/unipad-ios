@@ -102,7 +102,11 @@ struct PackDelayPlaybackTests {
         try await wait { recorder.ended }
         #expect(recorder.presses == (guide ? [] : toggleGuide ? [0] : [0, 1]))
         #expect(!runner.active)
-        if guide || toggleGuide {
+        if toggleGuide {
+            // Pad 0 already played before the guide was turned on; only the next line is guided.
+            #expect(recorder.guides.map(\.pad) == [1])
+            #expect(recorder.guides.map(\.target) == [start + total + 100])
+        } else if guide {
             #expect(recorder.guides.map(\.pad) == [0, 1])
             #expect(recorder.guides.map(\.target) == [start + total, start + total + 100])
         }

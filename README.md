@@ -26,7 +26,8 @@ UniPad is a performance-based rhythm game that enables connection with a launchp
 
 Ogg sounds can contain either Vorbis or Opus audio. Both are decoded locally,
 including on iOS versions without native Ogg support. WAV, MP3 and AAC sounds
-continue to use the system decoder.
+continue to use the system decoder. M4A files containing Opus use the built-in
+Opus decoder when the system cannot read their audio packets.
 
 ## Getting Started
 
@@ -61,6 +62,15 @@ Debug on an iPhone simulator whose iOS version the selected Xcode supports
 (`ci/pick_simulator.py`), preferring iPhone 17 Pro like local checks, on the
 newest supported iOS that has it. UI tests are excluded. Dependencies use the
 committed `Package.resolved` versions.
+The unit test step uses `unipad-ci`, which runs the complete unit test target
+without attaching a debugger or building the UI test runner. The `unipad` scheme
+keeps interactive debugging and the existing unit and UI test plans.
+The unit test run boots the selected simulator itself. Nothing starts it
+earlier: a simulator booting in the background slowed dependency resolution and
+the Release build by more than the boot saved.
+Both builds keep their compilation results between runs in the GitHub Actions
+cache (`COMPILATION_CACHE_ENABLE_CACHING`), so sources whose inputs did not change,
+mostly the Swift packages, are not compiled again. The cache is capped at 1.5 GB.
 After the Release build it checks that the app's open source notices list
 exactly the Swift packages that build compiled (see below).
 The same checks also run after changes are merged into `main`.
@@ -98,7 +108,18 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
 - Help checks that need a real Escape key or VoiceOver run through
   `ci/host-keys.sh`, which the script uses. It presses keys through the
   simulator's HID input with a pinned, checksum-verified AXe release. VoiceOver
-  checks need Xcode 27 and iOS 27.
+  checks need Xcode 27 and iOS 27. The English and Korean help checks share
+  one VoiceOver session while relaunching the app in each language, including
+  successful test repetitions. Failed tests and suite teardown clean up the
+  enabled service. The injected test probe accepts an opt-in local notification
+  to activate only the Settings, reconnect and help buttons through their public
+  accessibility actions. This keeps setup within MIDI selection's five-second
+  automatic confirmation window while VoiceOver stays on. Escape continues to
+  use the simulator's hardware input and the app's own event handling.
+  `host-keys.sh` saves the simulator's VoiceOver automation events in
+  `voiceover-automation.log` beside the result bundle (or beside derived data
+  when no bundle is specified), even when the tests fail. Collection errors
+  and the collection exit code are saved in `voiceover-automation-collection.log`.
 - The script leaves out, by name, the checks it cannot set up, and lists why in
   `ci/ui-tests.sh`: the virtual MIDI round trip (`ci/virtual_launchpad_roundtrip.py`),
   the notification permission round trip
@@ -385,7 +406,12 @@ physical USB, hardware latency, or models other than MK2.
 - `unipad/Services/MIDI`: CoreMIDI communication, device drivers and SysEx handling
 - `unipad/Services/Audio`: Sound playback engine and audio pool
 - `unipad/Services/LED`: LED frame runner and light mapping
-- `unipad/Services/Theme`: Theme loader and zip extraction
+- `unipad/Services/Theme`: Theme loader and zip extraction. The app's
+  "Create your own theme" button opens the public theme guide on unipad.io
+  (Korean and English). If you change which files a theme ZIP may contain or
+  how the app reads them, update that guide in the same week:
+  `content/docs/en/theme.mdx` and `content/docs/ko/theme.mdx` in
+  [kimjisub/unipad.io](https://github.com/kimjisub/unipad.io).
 - `unipad/Database`: SwiftData models for saved unipacks
 - `unipad/Views`: UI screens (grid player, store, settings, theme picker, midi picker)
 

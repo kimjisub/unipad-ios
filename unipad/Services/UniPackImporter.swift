@@ -7,10 +7,13 @@ actor UniPackImporter {
         case emptyZip
         case criticalError(String)
         case extractionFailed(String)
+        /// More than one folder in the archive holds an `info`; nothing says which the author meant.
+        case multiplePacks
 
         var errorDescription: String? {
             switch self {
             case .emptyZip: return "ZIP file is empty"
+            case .multiplePacks: return "Invalid UniPack: archive contains multiple packs"
             case .criticalError(let msg): return "Critical error: \(msg)"
             case .extractionFailed(let msg): return "Extraction failed: \(msg)"
             }
@@ -188,6 +191,12 @@ nonisolated extension FileManager {
             throw UniPackImporter.ImportError.extractionFailed("EOCD not found")
         }
 
+        func readUInt64LE(at offset: Int) -> Int? {
+            guard let low = readUInt32LE(at: offset), let high = readUInt32LE(at: offset + 4),
+                  UInt64(high) << 32 < Self.maxZip64Value else { return nil }
+            return Int(high) << 32 | Int(low)
+        }
+
         guard
             let totalEntriesU16 = readUInt16LE(at: eocdOffset + 10),
             let centralDirSizeU32 = readUInt32LE(at: eocdOffset + 12),
@@ -196,10 +205,26 @@ nonisolated extension FileManager {
             throw UniPackImporter.ImportError.extractionFailed("Invalid EOCD")
         }
 
-        let totalEntries = Int(totalEntriesU16)
-        let centralDirSize = Int(centralDirSizeU32)
-        let centralDirOffset = Int(centralDirOffsetU32)
-        guard centralDirOffset >= 0, centralDirSize >= 0, centralDirOffset + centralDirSize <= data.count else {
+        var totalEntries = Int(totalEntriesU16)
+        var centralDirSize = Int(centralDirSizeU32)
+        var centralDirOffset = Int(centralDirOffsetU32)
+        // A ZIP64 archive (Info-ZIP `-fz`, streaming writers, archives past 4 GB or 65,535 entries)
+        // marks these fields as "see the ZIP64 end record", which its locator points to.
+        if totalEntriesU16 == .max || centralDirSizeU32 == .max || centralDirOffsetU32 == .max {
+            guard readUInt32LE(at: eocdOffset - 20) == 0x0706_4B50,
+                  let zip64End = readUInt64LE(at: eocdOffset - 12),
+                  readUInt32LE(at: zip64End) == 0x0606_4B50,
+                  let entries = readUInt64LE(at: zip64End + 32),
+                  let size = readUInt64LE(at: zip64End + 40),
+                  let offset = readUInt64LE(at: zip64End + 48)
+            else {
+                throw UniPackImporter.ImportError.extractionFailed("Invalid ZIP64 end record")
+            }
+            totalEntries = entries
+            centralDirSize = size
+            centralDirOffset = offset
+        }
+        guard centralDirOffset >= 0, centralDirSize >= 0, centralDirOffset <= data.count - centralDirSize else {
             throw UniPackImporter.ImportError.extractionFailed("Invalid central directory range")
         }
 
@@ -235,7 +260,6 @@ nonisolated extension FileManager {
             let fileNameLength = Int(fileNameLengthU16)
             let extraLength = Int(extraLengthU16)
             let commentLength = Int(commentLengthU16)
-            let localHeaderOffset = Int(localHeaderOffsetU32)
             let fileNameStart = cursor + 46
             let fileNameEnd = fileNameStart + fileNameLength
             guard fileNameEnd <= data.count else {
@@ -243,15 +267,21 @@ nonisolated extension FileManager {
             }
 
             let rawName = data[fileNameStart..<fileNameEnd]
-            let extra = data[fileNameEnd..<min(fileNameEnd + extraLength, data.count)]
-            let fileName = Self.decodeEntryName(Data(rawName), extra: Data(extra))
+            let extra = Data(data[fileNameEnd..<min(fileNameEnd + extraLength, data.count)])
+            let fileName = Self.decodeEntryName(Data(rawName), extra: extra)
+            guard let sizes = Self.entrySizes(
+                compressed: compressedSizeU32, uncompressed: uncompressedSizeU32,
+                localHeaderOffset: localHeaderOffsetU32, extra: extra
+            ) else {
+                throw UniPackImporter.ImportError.extractionFailed("Invalid ZIP64 sizes for \(fileName)")
+            }
             if !fileName.isEmpty {
                 entries.append(Entry(
                     fileName: fileName,
                     compressionMethod: compressionMethod,
-                    compressedSize: Int(compressedSizeU32),
-                    uncompressedSize: Int(uncompressedSizeU32),
-                    localHeaderOffset: localHeaderOffset
+                    compressedSize: sizes.compressed,
+                    uncompressedSize: sizes.uncompressed,
+                    localHeaderOffset: sizes.localHeaderOffset
                 ))
             }
 
@@ -316,6 +346,38 @@ nonisolated extension FileManager {
     static func entryPath(_ name: String) -> (components: [String], isDirectory: Bool)? {
         guard let components = PackFileFinder.pathComponents(name) else { return nil }
         return (components, name.hasSuffix("/") || name.hasSuffix("\\"))
+    }
+
+    /// Far beyond any archive this reads; keeps sums of ZIP64 offsets and sizes from overflowing.
+    private static let maxZip64Value: UInt64 = 1 << 48
+
+    /// An entry's sizes and local header offset. A field holding 0xFFFFFFFF is in the ZIP64 extra
+    /// field (0x0001), which lists only those fields, in this order; nil when that field is missing.
+    private static func entrySizes(compressed: UInt32, uncompressed: UInt32, localHeaderOffset: UInt32,
+                                   extra: Data) -> (compressed: Int, uncompressed: Int, localHeaderOffset: Int)? {
+        let wide = [uncompressed, compressed, localHeaderOffset].map { $0 == .max }
+        var values = [Int(uncompressed), Int(compressed), Int(localHeaderOffset)]
+        if wide.contains(true) {
+            let bytes = [UInt8](extra)
+            func uint16(_ at: Int) -> Int { Int(bytes[at]) | Int(bytes[at + 1]) << 8 }
+            var offset = 0
+            var field: ArraySlice<UInt8>?
+            while offset + 4 <= bytes.count {
+                let end = offset + 4 + uint16(offset + 2)
+                guard end <= bytes.count else { break }
+                if uint16(offset) == 0x0001 { field = bytes[(offset + 4)..<end]; break }
+                offset = end
+            }
+            guard var cursor = field?.startIndex, let field else { return nil }
+            for index in values.indices where wide[index] {
+                guard cursor + 8 <= field.endIndex else { return nil }
+                let value = field[cursor..<(cursor + 8)].reversed().reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+                guard value < maxZip64Value else { return nil }
+                values[index] = Int(value)
+                cursor += 8
+            }
+        }
+        return (compressed: values[1], uncompressed: values[0], localHeaderOffset: values[2])
     }
 
     /// The Info-ZIP Unicode Path field (0x7075) when it belongs to this name (its CRC-32 matches the

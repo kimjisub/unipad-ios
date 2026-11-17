@@ -4,7 +4,8 @@
 //
 //  With an iPad held upright, the full-size window's top safe area is shorter than
 //  the status bar, and the status bar takes every touch inside its band. The store's
-//  back chevron has to stay below that band whichever way the iPad is turned.
+//  back chevron has to stay below that band whichever way the iPad is turned, and so
+//  do the home screen's top controls.
 //
 //  The touch goes to a screen point, because only a touch placed on the screen is
 //  taken by the status bar; a tap on the element can miss the problem.
@@ -153,5 +154,102 @@ final class StoreBackButtonStatusBarTests: XCTestCase {
         XCTAssertEqual(UITestSupport.backButton(in: app).frame, landscapeFrame,
                        "the store kept the upright window's clearance after turning back")
         touchBackButton("turned-landscape")
+    }
+
+    // MARK: - Home screen
+
+    private static let sortMethodNames = ["Title", "Producer", "Play Count", "Last Opened Date", "Download Date"]
+
+    func testHomeTopControlsRespondInFullUprightWindow() throws {
+        standUp()
+        try touchHomeTopControls("home-upright")
+    }
+
+    func testHomeTopControlsRespondInFullUpsideDownWindow() throws {
+        standUp(.portraitUpsideDown)
+        try touchHomeTopControls("home-upside-down")
+    }
+
+    /// Every control along the top of the home screen, each touched where a finger would and
+    /// put back the way it was.
+    private func touchHomeTopControls(_ name: String) throws {
+        let search = app.buttons["magnifyingglass"]
+        let field = app.textFields.firstMatch
+        touch(search, "\(name)-search-open", responds: { field.waitForExistence(timeout: 5) })
+        touch(search, "\(name)-search-close", responds: { field.waitForNonExistence(timeout: 5) })
+
+        let order = sortOrderButton
+        let orderIdentifier = order.identifier
+        let flipped = app.buttons[orderIdentifier == "chevron.down" ? "chevron.up" : "chevron.down"]
+        touch(order, "\(name)-sort-order", responds: { flipped.waitForExistence(timeout: 5) })
+        touch(flipped, "\(name)-sort-order-back", responds: { self.app.buttons[orderIdentifier].waitForExistence(timeout: 5) })
+
+        touchSortMenu(name)
+
+        let row = app.scrollViews["main.packList"].staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", " - ")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the fixture library has no pack")
+        row.tap()
+        let bookmark = app.buttons["bookmark"]
+        let bookmarked = app.buttons["bookmark.fill"]
+        touch(bookmark, "\(name)-bookmark", responds: { bookmarked.waitForExistence(timeout: 5) })
+        touch(bookmarked, "\(name)-bookmark-back", responds: { bookmark.waitForExistence(timeout: 5) })
+
+        let alert = app.alerts.firstMatch
+        touch(app.buttons["trash"], "\(name)-delete", responds: { alert.waitForExistence(timeout: 5) })
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "the delete question did not close")
+
+        let title = app.staticTexts["Settings"].firstMatch
+        touch(home, "\(name)-settings", responds: { title.waitForExistence(timeout: 5) })
+        let backButton = UITestSupport.backButton(in: app)
+        XCTAssertTrue(backButton.waitForExistence(timeout: 5), "Settings has no back chevron")
+        let back = try UITestSupport.screenFrame(of: backButton, besides: title, in: app)
+        XCTContext.runActivity(named: "touch Settings' back chevron at \(back), reported at \(backButton.frame)") { _ in
+            UITestSupport.tapOnScreen(frame: back, in: app)
+        }
+        XCTAssertTrue(home.waitForExistence(timeout: 5), "Settings' back chevron did not return home")
+    }
+
+    private var sortOrderButton: XCUIElement {
+        let down = app.buttons["chevron.down"]
+        return down.waitForExistence(timeout: 5) ? down : app.buttons["chevron.up"]
+    }
+
+    /// Opens the sort menu and picks the method already in use. Picking it resets the order to
+    /// that method's default, so the order the test found is put back afterwards.
+    private func touchSortMenu(_ name: String) {
+        let orderIdentifier = sortOrderButton.identifier
+        let names = app.buttons.matching(NSPredicate(format: "label IN %@", Self.sortMethodNames))
+        let menu = names.firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5), "the sort menu is not on the home screen")
+        let menuFrame = menu.frame
+        let current = menu.label
+        touch(menu, "\(name)-sort-menu", responds: { names.element(boundBy: 1).waitForExistence(timeout: 5) })
+        let item = app.buttons.matching(NSPredicate(format: "label == %@", current)).allElementsBoundByIndex
+            .first { $0.frame != menuFrame }
+        XCTAssertNotNil(item, "the sort menu lists no \(current)")
+        item?.tap()
+        XCTAssertTrue(names.element(boundBy: 1).waitForNonExistence(timeout: 5), "the sort menu did not close")
+        if sortOrderButton.identifier != orderIdentifier {
+            UITestSupport.tapOnScreen(sortOrderButton, in: app)
+            XCTAssertTrue(app.buttons[orderIdentifier].waitForExistence(timeout: 5), "the sort order was not put back")
+        }
+    }
+
+    /// How far below the window's top `element` starts. The app keeps its landscape layout on an
+    /// upright iPad, so its top is the screen's left or right edge, whichever is nearer.
+    private func depthBelowWindowTop(_ element: XCUIElement) -> CGFloat {
+        min(window.frame.maxX - element.frame.maxX, element.frame.minX - window.frame.minX)
+    }
+
+    private func touch(_ element: XCUIElement, _ name: String, responds: () -> Bool) {
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "\(name): the control is not on screen")
+        UITestSupport.attachScreenshot("\(name)-before", to: self)
+        XCTContext.runActivity(named: "touch \(name) at \(element.frame), \(depthBelowWindowTop(element))pt below the window's top") { _ in
+            UITestSupport.tapOnScreen(element, in: app)
+        }
+        let responded = responds()
+        UITestSupport.attachScreenshot("\(name)-after", to: self)
+        XCTAssertTrue(responded, "\(name): the control did not respond to a touch")
     }
 }
