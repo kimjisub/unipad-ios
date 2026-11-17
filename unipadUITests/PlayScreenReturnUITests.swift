@@ -122,7 +122,7 @@ final class PlayScreenReturnUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
         app.launchArguments += UITestSupport.englishLaunchArguments(library: "sound-failure")
-        app.launchArguments += ["-UniPadReleaseMidiBanner", "YES"]
+        app.launchArguments += ["-UniPadReleaseMidiBanner", "YES", "-UniPadReleaseHoldSoundLoad", "YES"]
         app.launch()
         defer { app.terminate() }
         UITestSupport.dismissSystemAlerts()
@@ -132,12 +132,27 @@ final class PlayScreenReturnUITests: XCTestCase {
         title.tap()
         let play = app.buttons["Play"].firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 5))
+        let started = ProcessInfo.processInfo.systemUptime
+        func record(_ step: String) {
+            let seconds = ProcessInfo.processInfo.systemUptime - started
+            let note = XCTAttachment(string: "\(step): \(String(format: "%.3f", seconds))s after Play")
+            note.name = step
+            note.lifetime = .keepAlways
+            add(note)
+        }
+        record("play-tap-start")
         play.tap()
 
         // The sound count appears once the engine reads the sounds; opening the device screen
         // before that would only restart the load when the play screen is shown again.
         let soundProgress = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", ".*\\(\\d+/\\d+\\)")).firstMatch
         XCTAssertTrue(soundProgress.waitForExistence(timeout: 30), "the sounds never started loading")
+        record("sound-progress-visible")
+        let loadState = app.otherElements["test.soundLoadState"]
+        let holding = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "holding"), object: loadState)
+        XCTAssertEqual(XCTWaiter.wait(for: [holding], timeout: 5), .completed, "the loader must wait for connection help")
+        XCTAssertFalse(app.staticTexts["Can't open this pack's sounds"].exists, "failure arrived before the screen was covered")
+        UITestSupport.attachScreenshot("failure-00-loading-held", to: self)
         XCTAssertFalse(app.alerts.firstMatch.exists, "the pack warned on opening, so more than its sounds failed")
         let open = app.buttons["Open"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 5), "the connection banner is not shown")
@@ -148,20 +163,32 @@ final class PlayScreenReturnUITests: XCTestCase {
         app.buttons["midi.help.open"].tap()
         let closeHelp = app.buttons["midi.help.close"]
         XCTAssertTrue(closeHelp.waitForExistence(timeout: 5), "the connection help did not open")
+        record("connection-help-visible")
+        // Observe the actual failure applied to the covered play screen before returning. A delay
+        // cannot establish this, and an already-failed pack never reaches the required held state.
+        let failedUnderCover = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "failed-under-cover"), object: loadState)
+        XCTAssertEqual(XCTWaiter.wait(for: [failedUnderCover], timeout: 30), .completed,
+                       "the sounds must fail while the device screen covers Play: \(loadState.label)")
+        record("failure-applied-under-cover")
+        let timeline = XCTAttachment(string: loadState.label)
+        timeline.name = "sound-load-order"
+        timeline.lifetime = .keepAlways
+        add(timeline)
         closeHelp.tap()
         let helpClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: closeHelp)
         XCTAssertEqual(XCTWaiter.wait(for: [helpClosed], timeout: 5), .completed, "the connection help did not close")
         UITestSupport.attachScreenshot("failure-01-device-screen", to: self)
 
-        // Long enough for every sound to fail under load; the failure must not close the device screen.
-        let closedByItself = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: ok)
-        let outcome = XCTWaiter.wait(for: [closedByItself], timeout: 30)
+        // The real failure has completed; it must leave the device screen in place.
+        XCTAssertTrue(ok.exists, "the failed load closed the device screen instead of the play screen")
         UITestSupport.attachScreenshot("failure-02-after-the-load", to: self)
-        XCTAssertEqual(outcome, .timedOut, "the failed load closed the device screen instead of the play screen")
+        record("device-confirm-tap")
         ok.tap()
 
         let failure = app.staticTexts["Can't open this pack's sounds"]
         XCTAssertTrue(failure.waitForExistence(timeout: 15), "the play screen did not say its sounds failed")
+        record("failure-visible-after-return")
         UITestSupport.attachScreenshot("failure-03-after-the-return", to: self)
         XCTAssertFalse(soundProgress.exists, "the sounds were still loading when the device screen closed; nothing was checked")
         app.buttons["soundLoadPackListButton"].tap()

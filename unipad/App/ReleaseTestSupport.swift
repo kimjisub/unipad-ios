@@ -133,19 +133,15 @@ nonisolated enum ReleaseTestSupport {
                 try makePack(at: library.appendingPathComponent("Faded"), title: "Alan Walker - Faded",
                              producer: "Otarygen, 김지섭, K1A2", chains: 6)
             case "sound-failure":
-                // No sound can be read, so nothing plays, but only after a few seconds of reading
-                // files; the device screen can be opened over the play screen meanwhile.
+                // One unreadable file is enough. The UI test explicitly holds reading until the
+                // device screen is open instead of depending on thousands of files taking seconds.
                 let pack = library.appendingPathComponent("SoundFailure")
                 try makePack(at: pack, title: "Sound Failure Fixture", chains: 1)
                 // The default autoplay names chain 2, which a one-chain pack warns about on opening.
                 try removeLightsAndAutoPlay(from: pack)
                 try fm.removeItem(at: pack.appendingPathComponent("sounds/silence.wav"))
-                var keySound = ""
-                for i in 0..<3_000 {
-                    try Data("not audio".utf8).write(to: pack.appendingPathComponent("sounds/\(i).wav"))
-                    keySound += "1 \(i % 8 + 1) \(i / 8 % 8 + 1) \(i).wav\n"
-                }
-                try keySound.write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+                try Data("not audio".utf8).write(to: pack.appendingPathComponent("sounds/broken.wav"))
+                try "1 1 1 broken.wav\n".write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
             case "play-return":
                 // Autoplay sweeps the top row every second and each pad lights briefly, so the lights
                 // keep moving while it plays. The bottom-right pad lights for 5 s when pressed.

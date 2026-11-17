@@ -142,6 +142,11 @@ struct unipadApp: App {
             .publishingWindowFillsScreen()
 #if (DEBUG || UNIPAD_RELEASE_TESTS) && canImport(UIKit)
             .background(alignment: .topLeading) {
+                if let gate = ReleaseTestSupport.soundLoadGate {
+                    ReleaseTestSoundLoadStatusView(gate: gate)
+                        .frame(width: 1, height: 1)
+                        .allowsHitTesting(false)
+                }
                 if ReleaseTestSupport.root != nil,
                    UserDefaults.standard.bool(forKey: "UniPadReleaseObserveActivation") {
                     ReleaseTestActivationView()
