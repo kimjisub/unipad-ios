@@ -5,6 +5,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import audio_output_check as check
 
@@ -62,6 +63,38 @@ class AudioOutputCheckTests(unittest.TestCase):
                 if child.poll() is None:
                     child.kill()
                     child.wait(timeout=5)
+
+    def test_incomplete_capture_is_preserved_without_assessing_the_app(self):
+        for code, detail in [(5, {"complete": False}),
+                             (0, {"complete": True, "discontinuities": [{"missing_frames": 512}]}),
+                             (0, {"complete": True, "packet_log_overflow": True})]:
+            with self.subTest(code=code, detail=detail), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                runner = check.Run.__new__(check.Run)
+                runner.args = SimpleNamespace(device_tools=root, simulator="owned-device")
+                runner.output = root
+                runner.children, runner.commands, runner.results = [], [], []
+                runner.report = {"cases": runner.results}
+                step = root / "normal-a"
+                step.mkdir()
+                summary = {"pid": 123, **detail}
+
+                def start(command, log):
+                    log.write(json.dumps(summary) + "\n")
+                    log.flush()
+                    return SimpleNamespace(returncode=code, wait=lambda timeout: None)
+
+                runner.start = start
+                runner.wait = lambda *args: {"ready": True}
+                case = {"name": "normal-a", "kind": "normal-a", "expected": ((440,), (880,))}
+                with patch.object(check, "assess", return_value={"status": "pass", "reason": "synthetic"}) as assess:
+                    with self.assertRaisesRegex(RuntimeError, "recording incomplete"):
+                        runner.record(case, step, 123, None)
+                    assess.assert_not_called()
+                saved = json.loads((root / "summary.json").read_text())
+                self.assertEqual(saved["cases"][0]["capture"], summary)
+                self.assertEqual(saved["cases"][0]["recorder_exit"], code)
+                self.assertEqual(saved["cases"][0]["verdict"]["status"], "environment_unverified")
 
     def test_capture_peer_receives_target_ready_before_recorder_starts(self):
         """The UI peer must know when discovery and app hashing have ended."""

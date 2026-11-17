@@ -206,8 +206,13 @@ class Run:
                     summary = value
             except ValueError:
                 pass
-        if recorder.returncode not in (0, 6) or not summary or not summary.get("complete"):
-            raise RuntimeError(f"recording incomplete or unavailable: exit {recorder.returncode}")
+        if (recorder.returncode not in (0, 6) or not summary or not summary.get("complete")
+                or summary.get("discontinuities") or summary.get("packet_log_overflow")):
+            reason = f"recording incomplete or unavailable: exit {recorder.returncode}"
+            self.results.append({"case": case, "capture": summary, "recorder_exit": recorder.returncode,
+                                 "verdict": {"status": "environment_unverified", "reason": reason}})
+            self.save()
+            raise RuntimeError(reason)
         gesture = self.wait(step / "input.json", ui, 2)
         verdict = assess(step / "output.wav", ready, gesture, case["expected"],
                          mixed=case["kind"] == "mixed", stopped=case["kind"] == "loop-stop")
