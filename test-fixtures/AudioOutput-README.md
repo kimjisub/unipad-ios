@@ -21,6 +21,11 @@ All pads use chain 1, row 1:
 Columns 1 and 2 can overlap to check mixed output. There are no LEDs or autoplay
 instructions that could start a sample before a screen press. Never substitute
 playing these WAVs in the recorder for pressing the actual app's pads.
+The mixed case crosses these adjacent pads with one fast screen gesture and
+enables sliding through a launch-only preference override. Separate XCUITest
+taps wait for UI idleness between inputs and can let the first sample finish
+before the second starts, especially on iPad. This checks overlapping output
+from the real pad input path; it does not establish simultaneous fingers.
 
 Generate a new copy without overwriting an existing reference or result:
 
@@ -59,6 +64,8 @@ The suite also preserves build/test logs, the result bundle, app and recorder
 hashes, source commit and diff hash, environment, and staged pack hashes. Callback
 padding remains in the original; analysis is restricted to the first four seconds.
 Existing output folders are refused. Archive each round before another round.
+Missing callback frames or an overflowing packet log also make a capture
+incomplete. Such a recording is preserved and rejected before judging playback.
 
 The versioned thresholds in `ci/audio_output.py` require -50 dBFS RMS and 20 dB
 over a nonzero baseline, with a quiet baseline/tail below -65 dBFS. Phase-neutral

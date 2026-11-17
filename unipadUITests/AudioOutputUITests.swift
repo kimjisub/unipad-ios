@@ -24,7 +24,8 @@ final class AudioOutputUITests: XCTestCase {
             from: Data(contentsOf: directory.appendingPathComponent("cases.json")))
         let app = XCUIApplication()
         app.launchArguments = ["-UniPadFirebaseLocalOnly", "YES", "-UniPadReleaseTest", token,
-                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                               "-SlideEnabled", "YES"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         defer { app.terminate() }
@@ -37,6 +38,10 @@ final class AudioOutputUITests: XCTestCase {
         XCTAssertTrue(grid.waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 30), "waiting for audio loading")
         UITestSupport.attachScreenshot("audio-output-reference-grid", to: self)
+        let pad: (Int) -> XCUICoordinate = { column in
+            grid.coordinate(withNormalizedOffset:
+                CGVector(dx: (Double(column) - 0.5) / 8, dy: 0.5 / 8))
+        }
 
         for scenario in scenarios {
             let step = directory.appendingPathComponent(scenario.name)
@@ -54,11 +59,18 @@ final class AudioOutputUITests: XCTestCase {
             // Do not spend this quiet baseline in an app gesture or screenshot operation.
             Thread.sleep(forTimeInterval: 0.5)
             let invoked = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
-            for column in scenario.columns {
-                let pad = grid.coordinate(withNormalizedOffset:
-                    CGVector(dx: (Double(column) - 0.5) / 8, dy: 0.5 / 8))
-                if scenario.hold > 0 { pad.press(forDuration: scenario.hold) }
-                else { pad.tap() }
+            if scenario.columns == [1, 2] {
+                // Two separate taps each wait for UI idleness; on iPad the
+                // first one-second sample can end before the second starts.
+                // Cross adjacent pads in one public gesture so their one-shot
+                // sounds overlap. This checks mixing, not two-finger input.
+                pad(1).press(forDuration: 0.05, thenDragTo: pad(2),
+                             withVelocity: .fast, thenHoldForDuration: 0.05)
+            } else {
+                for column in scenario.columns {
+                    if scenario.hold > 0 { pad(column).press(forDuration: scenario.hold) }
+                    else { pad(column).tap() }
+                }
             }
             let completed = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             let input: [String: Any] = ["invoked_ns": invoked, "completed_ns": completed]
