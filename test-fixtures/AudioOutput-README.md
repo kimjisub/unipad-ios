@@ -85,9 +85,12 @@ output and the final 0.5 s of quiet after gesture completion. A one-shot reserve
 another full second of playback and that quiet tail.
 
 To validate the checker, repeat with a new output directory and
-`--block-playback --verified-capture /path/to/positive/summary.json`. The blocked
+`--block-playback --reuse-build --verified-capture /path/to/positive/summary.json`. The blocked
 trial maps every sound to the owned silent file; it must exit **1**. Run the
-normal configuration again afterwards; it must exit **0**. The positive receipt
+normal configuration again afterwards with `--reuse-build` and the same
+`--verified-capture`; it must exit **0**. Reusing the test build prevents another
+link step from changing the app between controls. Keep its derived data unchanged
+until all three trials finish. The positive receipt
 only establishes the recording environment and must match the app, recorder,
 source and device. It never replaces a new recording or makes a silent recording
 pass. Missing permission, packets, timestamps, ownership or the timing budget is

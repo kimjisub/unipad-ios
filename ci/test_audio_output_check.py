@@ -6,12 +6,33 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import audio_output_check as check
 
 
 class AudioOutputCheckTests(unittest.TestCase):
+    def test_control_reuses_the_verified_test_build_without_relinking_the_app(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            recorder = root / "recorder"
+            recorder.write_bytes(b"owned recorder")
+            args = SimpleNamespace(output=root / "round", recorder_binary=recorder,
+                                   simulator="owned", generation="current", device_tools=root,
+                                   derived_data=root / "dd", block_playback=True, repeats=1,
+                                   reuse_build=True, verified_capture=root / "positive.json")
+            runner = check.Run(args)
+            runner.device = Mock(return_value=json.dumps(
+                {"platform": "ios", "device": "owned", "generation": "current"}))
+            runner.command = Mock(side_effect=lambda command, **_: json.dumps({"devices": {}})
+                                  if command[:4] == ["xcrun", "simctl", "list", "devices"] else "")
+            runner.start = Mock(side_effect=RuntimeError("test command captured"))
+            with self.assertRaisesRegex(RuntimeError, "test command captured"):
+                runner.run()
+            self.assertFalse(any("build" in call.args[0] for call in runner.command.call_args_list),
+                             "a control must not relink the previously verified app")
+            self.assertEqual(runner.start.call_args.args[0][4], "test-without-building")
+
     def test_app_identity_includes_debug_code_with_an_unchanged_launcher(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch) / "unipad.app"

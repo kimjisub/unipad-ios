@@ -151,7 +151,8 @@ class Run:
                  "-configuration", "Debug", "-destination", f"platform=iOS Simulator,id={args.simulator},arch=arm64",
                  "-derivedDataPath", str(args.derived_data), "-onlyUsePackageVersionsFromResolvedFile",
                  "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "UNIPAD_WARNINGS_AS_ERRORS=YES"]
-        self.command(build, timeout=900)
+        if not args.reuse_build:
+            self.command(build, timeout=900)
         app = args.derived_data / "Build/Products/Debug-iphonesimulator/unipad.app"
         prefix = ["ui", args.simulator, "--generation", args.generation, "--"]
         self.device(*prefix, "install", str(app))
@@ -168,7 +169,8 @@ class Run:
         env = os.environ | {"TEST_RUNNER_UNIPAD_AUDIO_OUTPUT_DIR": str(self.output),
                             "TEST_RUNNER_UNIPAD_AUDIO_OUTPUT_TOKEN": token}
         command = [sys.executable, str(args.device_tools / "ios_tests.py"), args.simulator,
-                   str(self.output / "ui"), "test", "-project", "unipad.xcodeproj", "-scheme", "unipad",
+                   str(self.output / "ui"), "test-without-building" if args.reuse_build else "test",
+                   "-project", "unipad.xcodeproj", "-scheme", "unipad",
                    "-configuration", "Debug", "-derivedDataPath", str(args.derived_data),
                    "-only-testing:unipadUITests/AudioOutputUITests", "-onlyUsePackageVersionsFromResolvedFile",
                    "-resultBundlePath", str(self.output / "UI.xcresult"),
@@ -284,7 +286,11 @@ def main():
     parser.add_argument("--repeats", type=int, choices=range(1, 6), default=3)
     parser.add_argument("--block-playback", action="store_true")
     parser.add_argument("--verified-capture", type=Path)
+    parser.add_argument("--reuse-build", action="store_true",
+                        help="reuse the positive trial's app and test build without relinking")
     args = parser.parse_args()
+    if args.reuse_build and not args.verified_capture:
+        parser.error("--reuse-build requires --verified-capture")
     args.derived_data = args.derived_data.resolve()
     args.device_tools = args.device_tools.resolve()
     runner = Run(args)
