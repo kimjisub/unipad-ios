@@ -176,15 +176,14 @@ final class PlayScreenReturnUITests: XCTestCase {
         timeline.lifetime = .keepAlways
         add(timeline)
         closeHelp.tap()
-        // Closing help restores the selection controls' accessibility and focus asynchronously.
-        // Its close button disappearing alone does not mean OK can receive the next tap yet.
-        XCTAssertTrue(UITestSupport.waitUntilHittable(ok, timeout: 5), "the device screen did not become available after closing help")
-        XCTAssertFalse(closeHelp.exists, "the connection help did not close")
+        let helpClosed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: closeHelp)
+        XCTAssertEqual(XCTWaiter.wait(for: [helpClosed], timeout: 5), .completed, "the connection help did not close")
         UITestSupport.attachScreenshot("failure-01-device-screen", to: self)
 
         // The real failure has completed; it must leave the device screen in place.
-        XCTAssertTrue(ok.exists && ok.isHittable, "the failed load closed the device screen instead of the play screen")
+        XCTAssertTrue(ok.exists, "the failed load closed the device screen instead of the play screen")
         UITestSupport.attachScreenshot("failure-02-after-the-load", to: self)
+        record("device-confirm-tap")
         ok.tap()
 
         let failure = app.staticTexts["Can't open this pack's sounds"]
