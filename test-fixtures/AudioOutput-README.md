@@ -49,6 +49,10 @@ installation, file staging, process selection, and `record --pid --ready`) and
 script neither grants permission nor changes the Mac's output device. Return
 the simulator through its device tool as soon as device work ends.
 
+Before requesting any recording, XCUITest opens the staged pack through the
+shared isolated-library helpers and waits up to 30 seconds for the loading
+overlay's text to disappear. A timeout ends as environment unverified without
+judging playback; the menu and pad grid alone do not establish audio readiness.
 Each XCUITest input follows recorder readiness and a 0.5-second quiet baseline.
 The host signals `target-ready` after selecting the owned process and hashing
 the installed app. This is a preparation boundary, not evidence of audio packets.
@@ -68,6 +72,10 @@ including `unipad.debug.dylib` and resources. Hashing only the small Debug launc
 would not identify changes to the app's actual code. The full manifest is kept
 with each recording; receipts without that identity cannot validate a new trial.
 Existing output folders are refused. Archive each round before another round.
+Preparation and unexpected errors exit 2 and preserve an error in `summary.json`.
+When the requested output already exists, its evidence is left intact and the
+error summary is written to a new sibling `<output>-error-*` directory, printed
+on stderr. An unwritable evidence location is reported on stderr and also exits 2.
 Missing callback frames or an overflowing packet log also make a capture
 incomplete. Such a recording is preserved and rejected before judging playback.
 

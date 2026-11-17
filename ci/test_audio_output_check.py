@@ -12,6 +12,49 @@ import audio_output_check as check
 
 
 class AudioOutputCheckTests(unittest.TestCase):
+    def test_preparation_errors_exit_unverified_and_preserve_evidence(self):
+        for existing in (True, False):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                output = root / "round"
+                recorder = root / "recorder"
+                if existing:
+                    output.mkdir()
+                    (output / "summary.json").write_text("previous evidence")
+                    recorder.write_bytes(b"recorder")
+                command = [sys.executable, str(check.ROOT / "ci/audio_output_check.py"),
+                           "--simulator", "unused", "--generation", "unused",
+                           "--device-tools", str(root), "--recorder-binary", str(recorder),
+                           "--derived-data", str(root / "dd"), "--output", str(output)]
+                result = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                if existing:
+                    self.assertEqual((output / "summary.json").read_text(), "previous evidence")
+                reports = [json.loads(path.read_text()) for path in root.glob("*/summary.json")
+                           if path.parent != output or not existing]
+                self.assertEqual(len(reports), 1)
+                self.assertEqual(reports[0]["status"], "environment_unverified")
+                self.assertIn("error", reports[0])
+                self.assertEqual(reports[0]["cases"], [])
+
+    def test_unexpected_errors_cannot_look_like_an_output_mismatch(self):
+        for error in (KeyError("missing field"), TypeError("wrong field"),
+                      subprocess.CalledProcessError(1, ["probe"])):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as scratch:
+                output = Path(scratch) / "round"
+                recorder = Path(scratch) / "recorder"
+                recorder.write_bytes(b"recorder")
+                args = ["check", "--simulator", "unused", "--generation", "unused",
+                        "--device-tools", scratch, "--recorder-binary", str(recorder),
+                        "--derived-data", scratch, "--output", str(output)]
+                with patch.object(sys, "argv", args), patch.object(check.Run, "run", side_effect=error):
+                    self.assertEqual(check.main(), 2)
+                reports = list(Path(scratch).glob("*/summary.json"))
+                self.assertEqual(len(reports), 1)
+                report = json.loads(reports[0].read_text())
+                self.assertEqual(report["status"], "environment_unverified")
+                self.assertIn(str(error), report["error"])
+
     def test_control_reuses_the_verified_test_build_without_relinking_the_app(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)

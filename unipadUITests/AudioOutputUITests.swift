@@ -23,20 +23,22 @@ final class AudioOutputUITests: XCTestCase {
         let scenarios = try JSONDecoder().decode([Scenario].self,
             from: Data(contentsOf: directory.appendingPathComponent("cases.json")))
         let app = XCUIApplication()
-        app.launchArguments = ["-UniPadFirebaseLocalOnly", "YES", "-UniPadReleaseTest", token,
-                               "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-SlideEnabled", "YES"]
+        app.launchArguments = UITestSupport.englishLaunchArguments(library: "empty", token: token)
+            + ["-SlideEnabled", "YES"]
         XCUIDevice.shared.orientation = .landscapeLeft
         app.launch()
         defer { app.terminate() }
-        let title = app.staticTexts["Audio Output Fixture"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 30), "waiting for the isolated reference pack")
-        title.tap()
-        let play = app.buttons["Play"].firstMatch
-        if play.waitForExistence(timeout: 3) { play.tap() }
+        UITestSupport.openPack(titled: "Audio Output Fixture", in: app,
+                               missingMessage: "the isolated reference pack was not prepared")
         let grid = app.otherElements["playPadGrid"]
-        XCTAssertTrue(grid.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.buttons["line.3.horizontal"].waitForExistence(timeout: 30), "waiting for audio loading")
+        // The menu and grid exist below the loading overlay. Wait for its
+        // actual text to disappear before asking the host to record any input.
+        let loading = app.staticTexts.matching(NSPredicate(
+            format: "label == %@ OR label BEGINSWITH %@", "Loading", "Loading audio")).firstMatch
+        guard loading.waitForNonExistence(timeout: 30) else {
+            throw NSError(domain: "AudioOutputCheck", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "audio loading did not finish before recording"])
+        }
         UITestSupport.attachScreenshot("audio-output-reference-grid", to: self)
         let pad: (Int) -> XCUICoordinate = { column in
             grid.coordinate(withNormalizedOffset:

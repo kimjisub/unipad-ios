@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -87,17 +88,14 @@ def validate_lease(lease, device, generation):
 class Run:
     def __init__(self, args):
         self.args = args
-        self.output = args.output.resolve()
-        self.output.mkdir(parents=True, exist_ok=False)
+        self.output = args.output
+        self.output_owned = False
         self.children = []
         self.commands = []
         self.results = []
         self.report = {"status": "environment_unverified", "device": args.simulator,
                        "generation": args.generation, "command": sys.argv,
-                       "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-                       "source_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)).hexdigest(),
-                       "recorder_sha256": digest(args.recorder_binary), "app_sha256": None,
-                       "app_identity": None,
+                       "app_sha256": None, "app_identity": None,
                        "cases": self.results, "commands": self.commands}
 
     def start(self, command, log, env=None):
@@ -139,6 +137,13 @@ class Run:
 
     def run(self):
         args = self.args
+        self.output = self.output.resolve()
+        self.output.mkdir(parents=True, exist_ok=False)
+        self.output_owned = True
+        self.report.update(
+            source_commit=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+            source_diff_sha256=hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)).hexdigest(),
+            recorder_sha256=digest(args.recorder_binary))
         lease = json.loads(self.device("lease", args.simulator))
         validate_lease(lease, args.simulator, args.generation)
         self.report["xcode"] = self.command(["xcodebuild", "-version"])
@@ -258,7 +263,20 @@ class Run:
             raise RuntimeError(verdict["reason"])
 
     def close(self):
-        (self.output / "abort").touch()
+        # Never put an error report or abort marker into an earlier trial.
+        if not getattr(self, "output_owned", True):
+            self.report["requested_output"] = str(self.output)
+            self.output.parent.mkdir(parents=True, exist_ok=True)
+            self.output = Path(tempfile.mkdtemp(prefix=self.output.name + "-error-", dir=self.output.parent))
+            self.output_owned = True
+            print(f"Preparation error summary: {self.output / 'summary.json'}", file=sys.stderr)
+        try:
+            (self.output / "abort").touch()
+        finally:
+            self.close_children()
+        self.save()
+
+    def close_children(self):
         for child in reversed(self.children):
             if child.poll() is None:
                 child.terminate()
@@ -267,7 +285,6 @@ class Run:
                 except subprocess.TimeoutExpired:
                     child.kill()
                     child.wait(timeout=10)
-        self.save()
 
 
 def tempfile_log(path):
@@ -291,21 +308,34 @@ def main():
     args = parser.parse_args()
     if args.reuse_build and not args.verified_capture:
         parser.error("--reuse-build requires --verified-capture")
-    args.derived_data = args.derived_data.resolve()
-    args.device_tools = args.device_tools.resolve()
-    runner = Run(args)
+    runner = None
     def stop(*_):
         raise RuntimeError("check interrupted")
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(sig, stop)
     try:
-        return runner.run()
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
-        runner.report.update(status="environment_unverified", error=str(error))
+        runner = Run(args)
+        args.derived_data = args.derived_data.resolve()
+        args.device_tools = args.device_tools.resolve()
+        result = runner.run()
+    except Exception as error:
+        if runner is not None:
+            runner.report.update(status="environment_unverified", error=str(error), error_type=type(error).__name__)
         print(error, file=sys.stderr)
-        return 2
+        result = 2
     finally:
-        runner.close()
+        if runner is not None:
+            try:
+                runner.close()
+            except Exception as error:
+                runner.report.update(status="environment_unverified", cleanup_error=str(error))
+                print(f"Could not finish evidence cleanup: {error}", file=sys.stderr)
+                try:
+                    runner.save()
+                except Exception as save_error:
+                    print(f"Could not save summary: {save_error}", file=sys.stderr)
+                result = 2
+    return result
 
 
 if __name__ == "__main__":
