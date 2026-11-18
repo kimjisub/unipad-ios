@@ -54,6 +54,11 @@ watcher=$!
 keys=$(mktemp -d "$temp/unipad-host-keys.$$.XXXXXX")
 responder=
 trap 'kill $watcher $responder 2>/dev/null; rm -rf $keys' EXIT
+# A stop sent to this script's process group reaches xcodebuild too; once it ends,
+# exit through the EXIT trap instead of being killed without it.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 deliver() {
   local state

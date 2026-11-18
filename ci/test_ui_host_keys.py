@@ -180,6 +180,41 @@ class UIHostKeysTests(unittest.TestCase):
         self.kill_runner(probe_build=FAKE_PROBE_BUILD,
                          programs={"mktemp": '#!/bin/sh\n/usr/bin/mktemp "$@"\nexec sleep 30\n'})
 
+    def test_a_stop_sent_to_the_runner_group_ends_xcodebuild_and_runs_the_cleanup(self):
+        # A release check stops a stage by signalling its process group, which xcodebuild is in.
+        root = Path(__file__).resolve().parents[1]
+        for sig, code in [(signal.SIGTERM, 143), (signal.SIGHUP, 129), (signal.SIGINT, 130)]:
+            with self.subTest(signal=sig.name), \
+                    tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:
+                folder = Path(directory)
+                fake = folder / "bin"
+                fake.mkdir()
+                for name, content in {"axe": "#!/bin/sh\nexit 0\n",
+                                      "xcodebuild": f"#!/bin/sh\ntouch {folder}/xcodebuild-started\nexec sleep 30\n",
+                                      "xcrun": "#!/bin/sh\n" + FAKE_PROBE_BUILD + "exit 99\n"}.items():
+                    path = fake / name
+                    path.write_text(content)
+                    path.chmod(0o755)
+                env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"],
+                           UNIPAD_TEST_TMPDIR=str(folder))
+                runner = subprocess.Popen(["ci/host-keys.sh", "leased-device", str(folder / "DD"), "test"],
+                                          cwd=root, env=env, start_new_session=True,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    deadline = time.monotonic() + 10
+                    while not (folder / "xcodebuild-started").exists():
+                        self.assertLess(time.monotonic(), deadline, "xcodebuild never started")
+                        self.assertIsNone(runner.poll())
+                        time.sleep(0.05)
+                    os.killpg(runner.pid, sig)
+                    self.assertEqual(runner.wait(timeout=10), code)
+                    self.assertEqual(list(folder.glob("unipad-host-keys.*")), [])
+                finally:
+                    try:
+                        os.killpg(runner.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
     def kill_runner(self, probe_build, programs=None):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as directory:

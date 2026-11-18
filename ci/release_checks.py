@@ -120,18 +120,39 @@ class ReleaseChecks:
                            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                        "result": "incomplete"}
         self.child = None
+        self.starting = False
+        self.pending_stop = None
         self.stop_signal = None
         self.stop_requested = None
 
     def request_stop(self, sig):
-        """Signal handler. Only forwards the stop; waiting and cleanup stay in the main flow."""
-        if self.stop_signal is None:
-            self.stop_signal, self.stop_requested = sig, time.monotonic()
-        child = self.child
-        if child is None:
+        """Signal handler. Only forwards the stop; waiting and cleanup stay in the main flow.
+
+        Only the first stop is forwarded: a later one would reach the stage's cleanup commands
+        and cut them off. A stage that does not stop is still ended after the grace period.
+        """
+        if self.stop_signal is not None:
+            return
+        self.stop_signal, self.stop_requested = sig, time.monotonic()
+        if self.child is not None:
+            self.signal_stage(sig)
+        elif self.starting:
+            # stage() forwards it as soon as it holds the new process.
+            self.pending_stop = sig
+        else:
             raise InterruptedError(f"interrupted by signal {sig}")
-        # Forward to the foreground script so it can stop its owned MIDI tools.
-        child.send_signal(sig)
+
+    def signal_stage(self, sig):
+        """Signal the stage's whole process group.
+
+        A stage script waits for its foreground command (e.g. xcodebuild) before running
+        its own traps, so the command must get the stop too; the script then cleans up.
+        """
+        try:
+            os.killpg(self.child.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            # The group is gone, or only exited processes are left in it.
+            pass
 
     def wait_for_child(self):
         while True:
@@ -139,7 +160,7 @@ class ReleaseChecks:
                 return self.child.wait(timeout=1)
             except subprocess.TimeoutExpired:
                 if self.stop_requested is not None and time.monotonic() - self.stop_requested > STOP_GRACE_SECONDS:
-                    self.child.kill()
+                    self.signal_stage(signal.SIGKILL)
                     return self.child.wait()
 
     def save(self):
@@ -152,17 +173,29 @@ class ReleaseChecks:
         started = time.monotonic()
         print(f"Release checks: {name}", flush=True)
         with (self.output / f"{name}.log").open("w") as log:
-            self.child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
+            self.starting = True
             try:
+                # Its own process group, so a stop reaches the tools under the stage script too. Out of
+                # the terminal's foreground group, reading the terminal would suspend it, so no input.
+                self.child = subprocess.Popen(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                                              stderr=subprocess.STDOUT, process_group=0)
+            finally:
+                self.starting = False
+            try:
+                pending, self.pending_stop = self.pending_stop, None
+                if pending is not None:
+                    self.signal_stage(pending)
                 code = self.wait_for_child()
             finally:
                 if self.child.poll() is None:
-                    self.child.terminate()
+                    self.signal_stage(signal.SIGTERM)
                     try:
                         self.child.wait(timeout=30)
                     except subprocess.TimeoutExpired:
-                        self.child.kill()
-                        self.child.wait()
+                        pass
+                # Nothing the stage started may outlive it.
+                self.signal_stage(signal.SIGKILL)
+                self.child.wait()
                 record.update(exit_code=self.child.returncode, seconds=time.monotonic() - started)
                 self.child = None
                 self.save()

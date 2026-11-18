@@ -197,8 +197,11 @@ only that part's result; skipped, missing or empty parts do not verify the stage
 A whole iPhone screen stage and the `unit` stage check each unit suite the plan
 names by name, so a suite that drops out of the run fails the command.
 
-Stopping a command (Ctrl-C, `SIGTERM`, `SIGHUP`) is passed to the running stage,
-which gets 45 seconds to stop its own tools before it is killed. `result.json`
+Stopping a command (Ctrl-C, `SIGTERM`, `SIGHUP`) is passed to the running stage
+and every process it started, `xcodebuild` under the stage scripts included. The
+scripts then run their cleanup. Only the first stop is passed on, so stopping
+again does not cut that cleanup off; whatever has not stopped 45 seconds later is
+killed, and nothing a stage started is left running after it ends. `result.json`
 then says `interrupted`, and the command exits with 128 plus the signal number.
 
 The iPhone command runs `ReleaseFeatures.xctestplan`, then builds the Debug
