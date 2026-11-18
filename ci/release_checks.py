@@ -21,6 +21,16 @@ from check_ui_results import check_summary
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def screen_part(value):
+    try:
+        index, count = map(int, value.split("/"))
+        if not 1 <= index <= count:
+            raise ValueError()
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("screen part must be INDEX/COUNT with 1 <= INDEX <= COUNT") from error
+    return index, count
+
+
 def required_ui_tests(plan):
     targets = json.loads((ROOT / f"{plan}.xctestplan").read_text())["testTargets"]
     ui = next(entry for entry in targets if entry["target"]["name"] == "unipadUITests")
@@ -84,6 +94,7 @@ class ReleaseChecks:
         self.report = {"device": args.device, "simulator": args.simulator, "stages": [],
                        "requested_stage": getattr(args, "stage", "all"),
                        "screen_group": getattr(args, "screen_group", "all"),
+                       "screen_part": getattr(args, "screen_part", None),
                        "command": sys.argv, "commit": subprocess.check_output(
                            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                        "result": "incomplete"}
@@ -127,6 +138,7 @@ class ReleaseChecks:
         plan = "IPadReleaseFeatures" if self.args.device == "ipad" else "ReleaseFeatures"
         stage = getattr(self.args, "stage", "all")
         group = getattr(self.args, "screen_group", "all")
+        part = getattr(self.args, "screen_part", None)
         if stage in {"all", "screen"}:
             required = required_ui_tests(plan)
             selection = []
@@ -135,6 +147,12 @@ class ReleaseChecks:
                 required = [name for name in required if (name in shared) == (group == "shared")]
                 if not required:
                     raise ValueError(f"empty screen group: {group}")
+            if part:
+                index, count = part
+                if count > len(required):
+                    raise ValueError("screen parts must not contain empty runs")
+                required = required[index - 1::count]
+            if group != "all" or part:
                 selection = ["-only-testing:unipadUITests/" + name.split("(", 1)[0] for name in required]
             screen = self.output / "screen"
             env = dict(os.environ, UNIPAD_UI_TEST_CONFIGURATION="Release", UNIPAD_UI_TEST_DEVICE=self.args.device,
@@ -176,11 +194,15 @@ def main():
                         help="run every stage, or one stage with its own complete result checks")
     parser.add_argument("--screen-group", choices=["all", "shared", "ipad"], default="all",
                         help="split iPad screens into shared release screens and iPad-only additions")
+    parser.add_argument("--screen-part", type=screen_part,
+                        help="run INDEX/COUNT of a screen stage; every part is required for complete coverage")
     args = parser.parse_args()
     if args.device == "ipad" and args.stage not in {"all", "screen"}:
         parser.error("iPad checks have only the screen stage")
     if args.screen_group != "all" and (args.device != "ipad" or args.stage not in {"all", "screen"}):
         parser.error("--screen-group is only available for iPad screen checks")
+    if args.screen_part and args.stage != "screen":
+        parser.error("--screen-part requires --stage screen")
     devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"], text=True))
     device = next((d for group in devices["devices"].values() for d in group if d["udid"] == args.simulator), None)
     if not device or device.get("state") != "Booted" or args.device not in device["deviceTypeIdentifier"].lower():

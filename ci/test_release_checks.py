@@ -4,17 +4,34 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from release_checks import ReleaseChecks, required_midi_tests, required_ui_tests, verify_results
+from release_checks import ReleaseChecks, required_midi_tests, required_ui_tests, screen_part, verify_results
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ResultTests(unittest.TestCase):
+    def test_screen_part_requires_a_valid_one_based_index_and_count(self):
+        self.assertEqual(screen_part("1/3"), (1, 3))
+        self.assertEqual(screen_part("1/1"), (1, 1))
+        for value in ["0/3", "4/3", "1/0", "-1/3", "1", "a/b", "1/2/3"]:
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                screen_part(value)
+
+    def test_screen_part_cannot_run_other_stages(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+            command = [sys.executable, str(ROOT / "ci/release_checks.py"), "--device", "iphone",
+                       "--stage", "midi", "--screen-part", "1/3", "--simulator", "not-acquired",
+                       "--output", folder + "/results", "--derived-data", folder + "/dd"]
+            result = subprocess.run(command, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--screen-part requires --stage screen", result.stderr)
+
     def test_requires_each_selected_test_even_when_the_summary_is_green(self):
         summary = dict(totalTestCount=1, passedTests=1, failedTests=0, skippedTests=0)
         tree = {"testNodes": [{"nodeType": "Test Case", "nodeIdentifier": "Suite/testOne()", "result": "Passed"}]}
@@ -66,8 +83,10 @@ class ReleaseRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
             args = argparse.Namespace(simulator="leased-device", device=family,
                                       output=Path(folder) / "results", derived_data=Path(folder) / "dd",
-                                      stage=options.get("stage", "all"), screen_group=options.get("screen_group", "all"))
+                                      stage=options.get("stage", "all"), screen_group=options.get("screen_group", "all"),
+                                      screen_part=options.get("screen_part"))
             run = ReleaseChecks(args)
+            self.report = run.report
             calls = []
 
             def stage(name, command, **kwargs):
@@ -124,6 +143,29 @@ class ReleaseRunnerTests(unittest.TestCase):
             observed.append(selected)
         self.assertFalse(observed[0] & observed[1])
         self.assertEqual(observed[0] | observed[1], {x.split("(", 1)[0] for x in required})
+
+    def test_screen_parts_cover_each_group_once_and_verify_the_selected_tests(self):
+        for family, group, plan in [("iphone", "all", "ReleaseFeatures"),
+                                    ("ipad", "shared", "ReleaseFeatures"),
+                                    ("ipad", "ipad", "IPadReleaseFeatures")]:
+            required = set(required_ui_tests(plan))
+            if group == "ipad":
+                required -= set(required_ui_tests("ReleaseFeatures"))
+            observed = set()
+            for index in range(1, 4):
+                calls = self.exercise(family, stage="screen", screen_group=group, screen_part=(index, 3))
+                selected = {x.removeprefix("-only-testing:unipadUITests/") for x in calls[0][1]
+                            if x.startswith("-only-testing:unipadUITests/")}
+                self.assertTrue(selected)
+                self.assertEqual(self.report["screen_part"], (index, 3))
+                self.assertFalse(observed & selected)
+                self.assertEqual(selected, {x.split("(", 1)[0] for x in self.checked_bundles[0].args[1]})
+                observed |= selected
+            self.assertEqual(observed, {x.split("(", 1)[0] for x in required})
+
+    def test_screen_parts_cannot_create_empty_successful_runs(self):
+        with self.assertRaises(ValueError):
+            self.exercise("ipad", stage="screen", screen_group="ipad", screen_part=(1, 24))
 
 
 if __name__ == "__main__":
