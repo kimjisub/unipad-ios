@@ -16,6 +16,64 @@ extension PlayUsageRecordTests {
             case appAway, covered, audioInterruption, routeLoss, mediaReset
         }
 
+        @Test(arguments: [PlayMode.autoPlay, .guidePlay, .stepPractice], [false, true])
+        func manualPadsSoundWhileAutoplayWaitsForResume(mode: PlayMode, controller: Bool) async throws {
+            try await PlayUsageScenario.run(
+                keySound: "1 1 1 a.wav 0\n1 1 2 a.wav 0\n",
+                autoPlay: "on 1 1\ndelay 1000\noff 1 1\non 1 2\ndelay 1000\n",
+                keyLed: ["1 1 1 0": "on 1 1 a 5\ndelay 1000\n"]
+            ) { s in
+                let screen = StepReturnAutoplayTests.GatedScreen(s)
+                defer { screen.stop() }
+                try await s.loadReady()
+                let runner = try #require(s.vm.autoPlayRunner)
+                let engine = try #require(s.vm.soundEngine)
+                let lights = try #require(s.vm.channelManager)
+                s.vm.switchPlayMode(mode)
+                try await s.waitWhile { runner.progress == 0 }
+                try #require(runner.progress > 0)
+                s.vm.onPause()
+                s.vm.onResume()
+                try await waitForRecovery(s, engine)
+                try #require(!engine.isPlaybackSuppressed)
+                try #require(runner.isSuspended)
+                let progress = runner.progress
+                let starts = engine.playsStarted
+                s.vm.scbFeedbackLight.forceSetChecked(true)
+
+                if controller { s.vm.controllerPadTouch(x: 0, y: 0, isDown: true) }
+                else { s.press() }
+                #expect(engine.playsStarted == starts + 1)
+                #expect(engine.activePlayIDs.count == 1)
+                #expect(lights.get(x: 0, y: 0, channel: .pressed) != nil)
+                #expect(s.vm.ledRunner?.isEventExist(x: 0, y: 0) == true)
+                try await s.waitWhile { lights.get(x: 0, y: 0, channel: .led) == nil }
+                #expect(lights.get(x: 0, y: 0, channel: .led) != nil)
+                try await screen.tick(at: 2000)
+                #expect(!s.vm.isAutoPlayPlaying)
+                #expect(runner.isSuspended)
+                #expect(runner.progress == progress)
+                #expect(s.vm.playMode == mode)
+                for y in 0..<2 { #expect(lights.get(x: 0, y: y, channel: .guide) == nil) }
+
+                if controller { s.vm.controllerPadTouch(x: 0, y: 0, isDown: false) }
+                else { s.release() }
+                #expect(engine.activePlayIDs.isEmpty)
+                #expect(lights.get(x: 0, y: 0, channel: .pressed) == nil)
+                s.vm.autoPlayResume()
+                #expect(!runner.isSuspended)
+                if mode == .stepPractice {
+                    // A suspended press must not be queued and consume this group on resume.
+                    try await screen.tick()
+                    #expect(runner.progress == progress)
+                    #expect(lights.get(x: 0, y: 0, channel: .guide) != nil)
+                    s.press(); s.release()
+                    try await screen.tick()
+                    #expect(runner.progress > progress)
+                }
+            }
+        }
+
         /// One real second outlasts the time limits this path can meet (a gap over 100 ms counts as
         /// a suspension; pads and finished light scenes wait 1 s). Longer stays add no limit, and run
         /// on a virtual clock in `AutoPlayRunnerTests` and `LedRunnerTests.discardedScenesNeverReturn`.

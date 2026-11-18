@@ -99,9 +99,12 @@ final class MultiTouchPlayTests: XCTestCase {
 
     /// Objects are created and released inside the async test body: releasing app classes from a
     /// synchronous test crashes the XCTest host on iOS 26.0–26.3 simulators (not the app).
-    private func withScreen(sliding: Bool? = nil, _ body: (PlayScreen) async throws -> Void) async throws {
+    private func withScreen(sliding: Bool? = nil, autoPlay: String? = nil, _ body: (PlayScreen) async throws -> Void) async throws {
         let root = try loopingPack()
         defer { try? FileManager.default.removeItem(at: root) }
+        if let autoPlay {
+            try autoPlay.write(to: root.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+        }
         let pack = StartsPack(rootFolder: root)
         let vm = PlayViewModel()
         vm.makePack = { _ in pack }
@@ -206,17 +209,52 @@ final class MultiTouchPlayTests: XCTestCase {
         }
     }
 
-    func testCoverInvalidationDoesNotReviveHeldFingers() async throws {
-        try await withScreen(sliding: true) { screen in
-            screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(Pad(2, 2))) }
-            screen.vm.toggleOptionWindow(true)
-            screen.input { screen.pads.inputResetVersion = screen.vm.inputResetVersion }
-            XCTAssertEqual(screen.sounding, [])
-            screen.vm.toggleOptionWindow(false)
-            XCTAssertEqual(screen.input {
-                screen.pads.fingerMoved(1, to: PlayScreen.center(Pad(2, 3)))
-            }, [])
-            screen.input { screen.pads.fingerUp(1) }
+    func testOpeningOptionsReleasesFingersUntilLiftedAndKeepsAutoplayRunning() async throws {
+        for sliding in [false, true] {
+            try await withScreen(sliding: sliding, autoPlay: "on 1 1\ndelay 1000\noff 1 1\non 1 2\ndelay 1000\n") { screen in
+                let runner = try XCTUnwrap(screen.vm.autoPlayRunner)
+                let clock = TestManualClock()
+                runner.clock = { clock.read() }
+                screen.vm.switchPlayMode(.autoPlay)
+                try await PlayUsageScenario.waitWhile { runner.progress < 2 }
+                XCTAssertEqual(runner.progress, 2)
+                var autoplaySounds = screen.engine.activePlayIDs
+                XCTAssertEqual(autoplaySounds.count, 1)
+                let reset = screen.vm.inputResetVersion
+                screen.input { screen.pads.fingerDown(1, at: PlayScreen.center(Pad(2, 2))) }
+                XCTAssertEqual(screen.engine.activePlayIDs.count, 2)
+                screen.vm.toggleOptionWindow(true)
+                XCTAssertGreaterThan(screen.vm.inputResetVersion, reset)
+                // PadGridView forwards this observed value in updateUIView.
+                screen.input { screen.pads.inputResetVersion = screen.vm.inputResetVersion }
+                XCTAssertEqual(screen.engine.activePlayIDs, autoplaySounds)
+                XCTAssertEqual(screen.lit, [Pad(0, 0)])
+                XCTAssertTrue(screen.vm.isAutoPlayPlaying)
+                XCTAssertFalse(runner.isSuspended)
+                XCTAssertEqual(screen.input {
+                    screen.pads.fingerMoved(1, to: PlayScreen.center(Pad(2, 3)))
+                }, [])
+                clock.advance(1000)
+                try await PlayUsageScenario.waitWhile { runner.progress < 5 }
+                XCTAssertEqual(runner.progress, 5)
+                XCTAssertEqual(screen.lit, [Pad(0, 1)])
+                autoplaySounds = screen.engine.activePlayIDs
+                XCTAssertEqual(autoplaySounds.count, 1)
+                screen.vm.toggleOptionWindow(false)
+                XCTAssertEqual(screen.input {
+                    screen.pads.fingerMoved(1, to: PlayScreen.center(Pad(2, 4)))
+                }, [])
+                XCTAssertEqual(screen.engine.activePlayIDs, autoplaySounds)
+                screen.input { screen.pads.fingerUp(1) }
+                XCTAssertEqual(screen.input {
+                    screen.pads.fingerDown(1, at: PlayScreen.center(Pad(2, 4)))
+                }, [Pad(2, 4)])
+                screen.input { screen.pads.fingerUp(1) }
+                XCTAssertEqual(screen.engine.activePlayIDs, autoplaySounds)
+                XCTAssertEqual(runner.progress, 5)
+                XCTAssertEqual(screen.lit, [Pad(0, 1)])
+                XCTAssertTrue(screen.vm.isAutoPlayPlaying)
+            }
         }
     }
 
