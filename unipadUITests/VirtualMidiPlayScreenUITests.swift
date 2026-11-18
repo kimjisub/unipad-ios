@@ -51,6 +51,7 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
             try expectReply("90 51 03", after: before)
             try device.run("close")
             XCTAssertThrowsError(try device.send(0x90, 81, 0), "input must be unavailable after endpoint removal")
+            waitForConnectionBannerToGo("MIDI disconnected: Launchpad MK2")
             XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "unplug-\(cycle)-disconnected"), [])
             let reconnectStart = try received().count
             try device.run("open Launchpad MK2")
@@ -61,6 +62,7 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 0.05)
             }
             XCTAssertGreaterThan(try received().count, reconnectStart, "the app never initialized the recreated endpoint")
+            waitForConnectionBannerToGo("MIDI connected: Launchpad MK2")
             XCTAssertTrue(grid.exists)
             XCTAssertFalse(app.buttons["gearshape"].exists, "the app left play during reconnect")
             let beforePress = try received().count
@@ -72,6 +74,15 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
             XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "unplug-\(cycle)-reconnected-released"), [])
             try expectReply("90 52 00", after: beforeRelease)
         }
+    }
+
+    @MainActor
+    private func waitForConnectionBannerToGo(_ message: String) {
+        // The connection banner covers the top row. Its dark overlay is not a
+        // pad light, so compare the unobscured grid without sending a note-off.
+        let banner = app.staticTexts[message]
+        XCTAssertTrue(banner.waitForExistence(timeout: 5), "the connection banner did not appear")
+        XCTAssertTrue(banner.waitForNonExistence(timeout: 10), "the connection banner still covers the pads")
     }
 
     @MainActor
