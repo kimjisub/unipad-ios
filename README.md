@@ -176,12 +176,16 @@ python3 ci/release_checks.py --device ipad --stage screen --screen-group ipad --
 
 When a screen stage is still too long for one device session, replace that
 stage with three parts. Run each command below separately for **every** index
-`1`, `2` and `3`, on the indicated acquired device. Keep the MIDI, round-trip
-and iPad-additions commands above. All parts must use the same commit:
+`1`, `2` and `3`, on the indicated acquired device. Parts select UI tests only,
+so the iPhone parts also need the `unit` stage, which runs the release plan's
+unit suites in the same Release build. Keep the MIDI, round-trip and
+iPad-additions commands above. All parts must use the same commit:
 
 ```sh
 python3 ci/release_checks.py --device iphone --stage screen --screen-part <index>/3 \
   --simulator <iphone-udid> --output <scratch>/iphone-screen-<index> --derived-data <scratch>/dd
+python3 ci/release_checks.py --device iphone --stage unit \
+  --simulator <iphone-udid> --output <scratch>/iphone-unit --derived-data <scratch>/dd
 python3 ci/release_checks.py --device ipad --stage screen --screen-group shared --screen-part <index>/3 \
   --simulator <ipad-udid> --output <scratch>/ipad-shared-<index> --derived-data <scratch>/dd
 ```
@@ -190,6 +194,12 @@ Parts select disjoint tests from the plan in a stable order and together cover
 the entire requested group. Each part verifies all its selected tests and
 records its index, part count and commit in `result.json`. A passing part is
 only that part's result; skipped, missing or empty parts do not verify the stage.
+A whole iPhone screen stage and the `unit` stage check each unit suite the plan
+names by name, so a suite that drops out of the run fails the command.
+
+Stopping a command (Ctrl-C, `SIGTERM`, `SIGHUP`) is passed to the running stage,
+which gets 45 seconds to stop its own tools before it is killed. `result.json`
+then says `interrupted`, and the command exits with 128 plus the signal number.
 
 The iPhone command runs `ReleaseFeatures.xctestplan`, then builds the Debug
 virtual-MIDI host and runs `MidiInputPathTests`, `MidiDeviceSelectionTests` and

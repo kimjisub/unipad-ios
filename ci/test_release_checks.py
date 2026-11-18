@@ -3,13 +3,16 @@ import argparse
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
-from release_checks import ReleaseChecks, required_midi_tests, required_ui_tests, screen_part, verify_results
+from release_checks import (ReleaseChecks, required_midi_tests, required_ui_tests, required_unit_suites, screen_part,
+                            verify_results)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +63,32 @@ class ResultTests(unittest.TestCase):
         self.assertIn("PlayUsageRecordTests/MidiDeviceSelectionTests/firstConnectionPrefersLaunchpadRegardlessOfSourceOrder", required)
         self.assertIn("PlayUsageRecordTests/MidiInputPathTests/virtualDeviceReportsAFailedCommand", required)
         self.assertIn("VirtualMidiPlayScreenUITests/testLaunchpadInputAndLightsReturnAfterUnpluggingDuringPlay", required)
+
+    def test_requires_each_unit_suite_by_name(self):
+        summary = dict(totalTestCount=2, passedTests=2, failedTests=0, skippedTests=0)
+        case = {"nodeType": "Test Case", "nodeIdentifier": "LedRunnerTests/one()", "result": "Passed"}
+        tree = {"testNodes": [{"nodeType": "Unit test bundle", "name": "unipadTests", "children": [
+            {"nodeType": "Test Suite", "name": "LedRunnerTests", "result": "Passed", "children": [case]},
+            {"nodeType": "Test Suite", "name": "PlayLayoutTests", "result": "Passed", "children": []}]}]}
+        verify_results(summary, tree, [], ["LedRunnerTests"])
+        for suites in [["PlayLayoutTests"], ["MainListReadTests"]]:
+            with self.subTest(suites=suites), self.assertRaises(ValueError):
+                verify_results(summary, tree, [], suites)
+
+    def test_unit_suites_come_from_the_iphone_release_plan(self):
+        suites = required_unit_suites("ReleaseFeatures")
+        for suite in ["MainListReadTests", "LedRunnerTests", "PlayUsageRecordTests", "MultiTouchPlayTests"]:
+            self.assertIn(suite, suites)
+        self.assertEqual(required_unit_suites("IPadReleaseFeatures"), [])
+
+    def test_unit_stage_is_iphone_only(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+            command = [sys.executable, str(ROOT / "ci/release_checks.py"), "--device", "ipad",
+                       "--stage", "unit", "--simulator", "not-acquired",
+                       "--output", folder + "/results", "--derived-data", folder + "/dd"]
+            result = subprocess.run(command, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("iPad checks have only the screen stage", result.stderr)
 
     def test_a_failed_parameter_or_repetition_is_not_hidden_by_a_pass(self):
         summary = dict(totalTestCount=1, passedTests=1, failedTests=0, skippedTests=0)
@@ -163,9 +192,87 @@ class ReleaseRunnerTests(unittest.TestCase):
                 observed |= selected
             self.assertEqual(observed, {x.split("(", 1)[0] for x in required})
 
+    def test_full_screen_stage_verifies_the_unit_suites_but_parts_leave_them_to_the_unit_stage(self):
+        suites = required_unit_suites("ReleaseFeatures")
+        self.exercise("iphone", stage="screen")
+        self.assertEqual(self.checked_bundles[0].args[2], suites)
+        for index in range(1, 4):
+            calls = self.exercise("iphone", stage="screen", screen_part=(index, 3))
+            self.assertFalse([x for x in calls[0][1] if x.startswith("-only-testing:unipadTests")])
+            self.assertEqual(self.checked_bundles[0].args[2], [])
+        calls = self.exercise("iphone", stage="unit")
+        self.assertEqual([x[0] for x in calls], ["unit"])
+        self.assertEqual(calls[0][1][-3:], ["-testPlan", "ReleaseFeatures", "-only-testing:unipadTests"])
+        self.assertEqual(calls[0][2]["env"]["UNIPAD_UI_TEST_CONFIGURATION"], "Release")
+        self.assertEqual(self.checked_bundles[0].args[1:], ([], suites))
+
     def test_screen_parts_cannot_create_empty_successful_runs(self):
         with self.assertRaises(ValueError):
             self.exercise("ipad", stage="screen", screen_group="ipad", screen_part=(1, 24))
+
+
+STOP_DRIVER = """
+import argparse, json, signal, subprocess, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import release_checks
+release_checks.STOP_GRACE_SECONDS = float(sys.argv[3])
+folder = Path(sys.argv[2])
+args = argparse.Namespace(simulator="none", device="iphone", output=folder / "results", derived_data=folder / "dd")
+run = release_checks.ReleaseChecks(args)
+release_checks.install_stop_handlers(run)
+try:
+    run.stage("child", [sys.executable, "-c", sys.argv[4], str(folder / "started")])
+    print("finished")
+except Exception as error:
+    print(type(error).__name__, error)
+"""
+
+# Starts, then on SIGINT (when it honours it) cleans up for a moment and exits 0.
+STOP_CHILD = """
+import signal, sys, time
+from pathlib import Path
+if "{mode}" == "honour":
+    signal.signal(signal.SIGINT, lambda *_: (time.sleep(0.5), sys.exit(0)))
+else:
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+Path(sys.argv[1]).touch()
+time.sleep(60)
+"""
+
+
+class StopRequestTests(unittest.TestCase):
+    def interrupt(self, mode, grace):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+            driver = subprocess.Popen([sys.executable, "-c", STOP_DRIVER, str(ROOT / "ci"), folder, str(grace),
+                                       STOP_CHILD.replace("{mode}", mode)], text=True, stdout=subprocess.PIPE)
+            started = Path(folder) / "started"
+            for _ in range(200):
+                if started.exists() or driver.poll() is not None:
+                    break
+                time.sleep(0.05)
+            self.assertTrue(started.exists())
+            began = time.monotonic()
+            driver.send_signal(signal.SIGINT)
+            try:
+                output, _ = driver.communicate(timeout=15)
+            finally:
+                if driver.poll() is None:
+                    driver.kill()
+            stage = json.loads((Path(folder) / "results/result.json").read_text())["stages"][0]
+            return output, stage, time.monotonic() - began
+
+    def test_a_stop_reaches_the_stage_and_is_reported_as_an_interruption(self):
+        output, stage, seconds = self.interrupt("honour", grace=45)
+        self.assertIn("InterruptedError interrupted by signal 2", output)
+        self.assertEqual(stage["exit_code"], 0)
+        self.assertLess(seconds, 10)
+
+    def test_a_stage_ignoring_the_stop_is_ended_after_the_grace_period(self):
+        output, stage, seconds = self.interrupt("ignore", grace=1)
+        self.assertIn("InterruptedError interrupted by signal 2", output)
+        self.assertEqual(stage["exit_code"], -signal.SIGKILL)
+        self.assertLess(seconds, 10)
 
 
 if __name__ == "__main__":

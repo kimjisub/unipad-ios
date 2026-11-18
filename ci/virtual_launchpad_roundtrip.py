@@ -320,9 +320,12 @@ class Run:
                 self.stop(helper)
             if test.returncode:
                 raise RuntimeError(f'{order} UI failed ({test.returncode}); {self.report.get("waiting_for", "connection wait")}; see ui.log')
-            summary = self.command(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary',
-                                    '--path', str(directory / 'UI.xcresult'), '--compact'], f'{order}/summary.json')
-            check_summary(json.loads(summary))
+            # Keep xcresulttool notices out of the JSON it prints.
+            summary = subprocess.run(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary',
+                                      '--path', str(directory / 'UI.xcresult'), '--compact'],
+                                     text=True, capture_output=True, timeout=180, check=True)
+            (directory / 'summary.json').write_text(summary.stdout)
+            check_summary(json.loads(summary.stdout))
             if not (directory / 'ui-complete').exists():
                 raise ValueError(f'{order}: UI completion marker missing')
             own_log, _ = scoped_log(self.read(log), self.bundle)
