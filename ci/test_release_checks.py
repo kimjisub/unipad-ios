@@ -222,7 +222,7 @@ args = argparse.Namespace(simulator="none", device="iphone", output=folder / "re
 run = release_checks.ReleaseChecks(args)
 release_checks.install_stop_handlers(run)
 try:
-    run.stage("child", [sys.executable, "-c", sys.argv[4], str(folder / "started")])
+    run.stage("child", json.loads(sys.argv[4]))
     print("finished")
 except Exception as error:
     print(type(error).__name__, error)
@@ -240,27 +240,66 @@ Path(sys.argv[1]).touch()
 time.sleep(60)
 """
 
+# Like ci/ui-tests.sh: stop traps that exit, an EXIT cleanup, and a script run in the foreground.
+STOP_OUTER_SCRIPT = """
+folder=$1
+trap "touch $folder/outer-cleaned" EXIT
+trap 'exit 130' INT TERM HUP
+/bin/zsh -c "$2" inner $folder
+"""
+
+# Like ci/host-keys.sh and ci/midi-input-tests.sh: a background helper (here one that ignores
+# stops) and the test tool (xcodebuild) in the foreground, which zsh waits for before its traps.
+STOP_INNER_SCRIPT = """
+folder=$1
+trap "touch $folder/inner-cleaned" EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+/bin/sh -c 'trap "" INT TERM HUP; echo $$ > "$1/helper.pid"; exec sleep 60' helper $folder &
+/bin/sh -c 'while [ ! -s "$1/helper.pid" ]; do sleep 0.05; done
+echo $$ > "$1/tool.pid"; touch "$1/started"; exec sleep 60' tool $folder
+"""
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # A process that has ended but is not yet reaped by its new parent still answers.
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], text=True, capture_output=True).stdout
+    return bool(state.strip()) and not state.strip().startswith("Z")
+
 
 class StopRequestTests(unittest.TestCase):
-    def interrupt(self, mode, grace):
-        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
-            driver = subprocess.Popen([sys.executable, "-c", STOP_DRIVER, str(ROOT / "ci"), folder, str(grace),
-                                       STOP_CHILD.replace("{mode}", mode)], text=True, stdout=subprocess.PIPE)
-            started = Path(folder) / "started"
+    def interrupt(self, mode, grace, sig=signal.SIGINT):
+        return self.interrupt_command(lambda folder: [sys.executable, "-c", STOP_CHILD.replace("{mode}", mode),
+                                                      str(folder / "started")], grace, sig)
+
+    def interrupt_command(self, command, grace, sig, inspect=None):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as name:
+            folder = Path(name)
+            driver = subprocess.Popen([sys.executable, "-c", STOP_DRIVER, str(ROOT / "ci"), name, str(grace),
+                                       json.dumps(command(folder))], text=True, stdout=subprocess.PIPE)
+            started = folder / "started"
             for _ in range(200):
                 if started.exists() or driver.poll() is not None:
                     break
                 time.sleep(0.05)
             self.assertTrue(started.exists())
             began = time.monotonic()
-            driver.send_signal(signal.SIGINT)
+            driver.send_signal(sig)
             try:
-                output, _ = driver.communicate(timeout=15)
+                output, _ = driver.communicate(timeout=grace + 15)
             finally:
                 if driver.poll() is None:
                     driver.kill()
-            stage = json.loads((Path(folder) / "results/result.json").read_text())["stages"][0]
-            return output, stage, time.monotonic() - began
+            seconds = time.monotonic() - began
+            stage = json.loads((folder / "results/result.json").read_text())["stages"][0]
+            if inspect:
+                inspect(folder)
+            return output, stage, seconds
 
     def test_a_stop_reaches_the_stage_and_is_reported_as_an_interruption(self):
         output, stage, seconds = self.interrupt("honour", grace=45)
@@ -273,6 +312,61 @@ class StopRequestTests(unittest.TestCase):
         self.assertIn("InterruptedError interrupted by signal 2", output)
         self.assertEqual(stage["exit_code"], -signal.SIGKILL)
         self.assertLess(seconds, 10)
+
+
+    def test_a_stop_reaches_the_tool_under_the_stage_script_and_lets_both_scripts_clean_up(self):
+        for sig in [signal.SIGTERM, signal.SIGHUP]:
+            with self.subTest(signal=sig.name):
+                seen = {}
+
+                def inspect(folder):
+                    pids = {name: int((folder / f"{name}.pid").read_text()) for name in ["tool", "helper"]}
+                    try:
+                        deadline = time.monotonic() + 5
+                        while any(alive(pid) for pid in pids.values()) and time.monotonic() < deadline:
+                            time.sleep(0.1)
+                        seen["alive"] = [name for name, pid in pids.items() if alive(pid)]
+                        seen["cleaned"] = sorted(path.name for path in folder.glob("*-cleaned"))
+                    finally:
+                        for pid in pids.values():
+                            try:
+                                os.kill(pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+
+                output, stage, seconds = self.interrupt_command(
+                    lambda folder: ["/bin/zsh", "-c", STOP_OUTER_SCRIPT, "outer", str(folder), STOP_INNER_SCRIPT],
+                    grace=10, sig=sig, inspect=inspect)
+                self.assertIn(f"InterruptedError interrupted by signal {int(sig)}", output)
+                self.assertEqual(seen["alive"], [])
+                self.assertEqual(seen["cleaned"], ["inner-cleaned", "outer-cleaned"])
+                # The outer script ended through its own trap, not the kill after the grace period.
+                self.assertEqual(stage["exit_code"], 130)
+                self.assertLess(seconds, 10)
+
+    def test_a_stop_while_the_stage_starts_still_stops_it(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+            run = ReleaseChecks(argparse.Namespace(simulator="none", device="iphone", output=Path(folder) / "results",
+                                                   derived_data=Path(folder) / "dd"))
+            started = []
+            real_popen = subprocess.Popen
+
+            def popen(*args, **kwargs):
+                started.append(real_popen(*args, **kwargs))
+                # The signal arrives after the stage's process exists but before the runner keeps it.
+                run.request_stop(signal.SIGTERM)
+                return started[-1]
+
+            try:
+                with patch("release_checks.subprocess.Popen", popen), self.assertRaises(InterruptedError):
+                    run.stage("child", [sys.executable, "-c", "import time; time.sleep(60)"])
+                self.assertIsNotNone(started[0].poll())
+                self.assertEqual(run.report["stages"][0]["exit_code"], -signal.SIGTERM)
+            finally:
+                for child in started:
+                    if child.poll() is None:
+                        child.kill()
+                        child.wait()
 
 
 if __name__ == "__main__":
