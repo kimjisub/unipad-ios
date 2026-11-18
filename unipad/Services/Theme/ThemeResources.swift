@@ -55,7 +55,8 @@ protocol ThemeResourcesProtocol {
     var checkboxColor: Color { get }
     var traceLogColor: Color { get }
     var optionWindowColor: Color { get }
-    var optionWindowCheckboxColor: Color { get }
+    /// Nil when the theme does not explicitly provide a valid option-panel accent.
+    var optionWindowCheckboxColor: Color? { get }
 }
 
 // MARK: - Default Theme
@@ -84,7 +85,7 @@ struct DefaultThemeResources: ThemeResourcesProtocol {
     let checkboxColor: Color = AppColors.checkbox
     let traceLogColor: Color = AppColors.traceLog
     let optionWindowColor: Color = AppColors.optionWindow
-    let optionWindowCheckboxColor: Color = AppColors.optionWindowCheckbox
+    let optionWindowCheckboxColor: Color? = nil
 }
 
 // MARK: - ZIP/Folder Theme
@@ -110,7 +111,7 @@ struct FolderThemeResources: ThemeResourcesProtocol {
     let checkboxColor: Color
     let traceLogColor: Color
     let optionWindowColor: Color
-    let optionWindowCheckboxColor: Color
+    let optionWindowCheckboxColor: Color?
 
     init(themeDir: URL, fullLoad: Bool = false) throws {
         guard let themeJsonURL = Self.findFile(in: themeDir, stem: "theme", ext: "json") else {
@@ -162,7 +163,7 @@ struct FolderThemeResources: ThemeResourcesProtocol {
             checkboxColor = Self.parseColor(colors?.checkbox) ?? defaults.checkboxColor
             traceLogColor = Self.parseColor(colors?.traceLog) ?? defaults.traceLogColor
             optionWindowColor = Self.parseColor(colors?.optionWindow) ?? defaults.optionWindowColor
-            optionWindowCheckboxColor = Self.parseColor(colors?.optionWindowCheckbox) ?? defaults.optionWindowCheckboxColor
+            optionWindowCheckboxColor = Self.parseColor(colors?.optionWindowCheckbox)
         } else {
             playbg = nil
             customLogo = nil
@@ -178,7 +179,7 @@ struct FolderThemeResources: ThemeResourcesProtocol {
             checkboxColor = AppColors.checkbox
             traceLogColor = AppColors.traceLog
             optionWindowColor = AppColors.optionWindow
-            optionWindowCheckboxColor = AppColors.optionWindowCheckbox
+            optionWindowCheckboxColor = nil
         }
     }
 
