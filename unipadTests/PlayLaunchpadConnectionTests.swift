@@ -109,9 +109,29 @@ extension PlayUsageRecordTests {
                 try await s.loadReady()
                 try await withLaunchpad { _, controller in
                     try await holdPadOnTheController(s, controller)
-                    s.vm.toggleOptionWindow(true)
+                    controller.onFunctionKeyTouch(f: 3, upDown: true)
+                    try await s.waitWhile { !s.vm.isOptionWindowVisible }
+                    try #require(s.vm.isOptionWindowVisible)
+                    #expect(try await soundsAndLightsStopped(s), "opening options must release the pad before its button lifts")
                     controller.onPadTouch(x: 0, y: 0, upDown: false, velocity: 0)
                     #expect(try await soundsAndLightsStopped(s), "the endless sound or light went on after the release")
+                }
+            }
+        }
+
+        @Test func chainPressesWithTheOptionWindowOpenAreIgnored() async throws {
+            try await PlayUsageScenario.run(grid: .init(chain: 2)) { s in
+                try await s.loadReady()
+                try await withLaunchpad { _, controller in
+                    s.vm.toggleOptionWindow(true)
+                    controller.onChainTouch(c: 1, upDown: true)
+                    controller.onChainTouch(c: 1, upDown: false)
+                    try await settle()
+                    #expect(s.vm.chain.value == 0)
+                    s.vm.toggleOptionWindow(false)
+                    controller.onChainTouch(c: 1, upDown: true)
+                    try await s.waitWhile { s.vm.chain.value != 1 }
+                    #expect(s.vm.chain.value == 1)
                 }
             }
         }
