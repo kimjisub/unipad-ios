@@ -26,6 +26,8 @@ selection=("$@")
 # Checks this script cannot set up. They are left out by name, not skipped, so any
 # skip that remains still fails the run. Run them as their notes say.
 not_run=(
+  # Needs the managed external recorder: run ci/audio_output_check.py separately.
+  -skip-testing:unipadUITests/AudioOutputUITests
   # Needs the virtual MIDI device: run ci/virtual_launchpad_roundtrip.py.
   -skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests
   # Needs virtual MIDI devices: run ci/midi-input-tests.sh with unipadUITests/VirtualMidiPlayScreenUITests.
