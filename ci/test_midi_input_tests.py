@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MidiInputRunnerTests(unittest.TestCase):
-    def run_suites(self, selections=(), exit_code=0):
+    def run_suites(self, selections=(), exit_code=0, summary=None):
         with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as directory:
             folder = Path(directory)
             fake = folder / 'bin'
@@ -20,6 +20,8 @@ class MidiInputRunnerTests(unittest.TestCase):
 import os, pathlib, sys, time
 if sys.argv[1] == '--sdk':
     pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).touch()
+elif sys.argv[1:5] == ['xcresulttool', 'get', 'test-results', 'summary']:
+    print(os.environ['SUMMARY'])
 else:
     with open(os.environ['SPAWNS'], 'a') as f: f.write('spawn\\n')
     print('ready: pid=%d' % os.getpid(), flush=True)
@@ -38,7 +40,9 @@ sys.exit(int(os.environ['BUILD_EXIT']))
                 path.write_text(content)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ['PATH'],
-                       SPAWNS=str(folder / 'spawns'), ARGS=str(folder / 'args'), BUILD_EXIT=str(exit_code))
+                       SPAWNS=str(folder / 'spawns'), ARGS=str(folder / 'args'), BUILD_EXIT=str(exit_code),
+                       SUMMARY=json.dumps(summary if summary is not None else
+                                          dict(totalTestCount=3, passedTests=3, failedTests=0, skippedTests=0)))
             result = subprocess.run(['zsh', 'ci/midi-input-tests.sh', 'leased-device',
                                      str(folder / 'dd'), str(folder / 'results'), *selections],
                                     cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
@@ -67,3 +71,10 @@ sys.exit(int(os.environ['BUILD_EXIT']))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len([arg for arg in args if arg.startswith('-only-testing:')]), 2)
         self.assertEqual(spawns, ['spawn'])
+
+    def test_skip_empty_or_incomplete_result_fails_even_when_xcode_succeeds(self):
+        for summary in [dict(totalTestCount=3, passedTests=2, failedTests=0, skippedTests=1),
+                        dict(totalTestCount=0, passedTests=0, failedTests=0, skippedTests=0), {}]:
+            with self.subTest(summary=summary):
+                result, _, _ = self.run_suites(summary=summary)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)

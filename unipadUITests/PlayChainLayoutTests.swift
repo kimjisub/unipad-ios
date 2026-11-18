@@ -56,6 +56,8 @@ final class PlayChainLayoutTests: XCTestCase {
         // iPad Pro 11-inch (M5) on iOS 27.0, measured in a separate full-screen landscape UIKit app
         // with the status bar hidden and the home indicator set to auto-hide.
         case "1210x834": return window.divided(atDistance: window.height - 20, from: .minYEdge).slice
+        // Same independent iPad Pro 13-inch (M5) measurement used by PlayThemeLayoutTests.
+        case "1376x1032": return window.divided(atDistance: window.height - 20, from: .minYEdge).slice
         default: throw XCTSkip("no independent safe-area reference for \(window)")
         }
     }

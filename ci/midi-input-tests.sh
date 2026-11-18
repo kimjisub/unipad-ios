@@ -86,6 +86,11 @@ TEST_RUNNER_UNIPAD_VIRTUAL_MIDI_DIR=$device xcodebuild test-without-building \
   -resultBundlePath $results/MidiInput.xcresult > $results/midi-input-tests.log 2>&1
 code=$?
 set -e
+if ! xcrun xcresulttool get test-results summary --path $results/MidiInput.xcresult --compact \
+    >$results/summary.json 2>>$results/midi-input-tests.log \
+    || ! python3 ci/check_ui_results.py $results/summary.json; then
+  (( code != 0 )) || code=1
+fi
 grep -E '^(✔|✘|􁁛)? ?(Test|Suite) .*(passed|failed|skipped)' $results/midi-input-tests.log | tail -40 || true
 print "MIDI input tests: exit $code"
 exit $code

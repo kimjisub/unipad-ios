@@ -42,14 +42,18 @@ not_run=(
   -skip-testing:unipadUITests/LedAutoplayUITests
   # Downloads from the real store over the network; this script answers from fixtures.
   -skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt
-  # Pointer input exists only on iPad; this script runs on an iPhone.
-  -skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain
-  # Only an upright iPad window has a safe area shorter than the status bar; this script runs on an iPhone.
-  -skip-testing:unipadUITests/StoreBackButtonStatusBarTests
-  # Only an iPad window can be resized; this script runs on an iPhone. On an iPad simulator:
-  # xcodebuild test -project unipad.xcodeproj -scheme unipad -destination 'platform=iOS Simulator,id=<udid>' -only-testing:unipadUITests/WindowControlsBackButtonTests
-  -skip-testing:unipadUITests/WindowControlsBackButtonTests
 )
+# The iPad release command runs the same screens plus the window/pointer checks.
+if [[ ${UNIPAD_UI_TEST_DEVICE:-iphone} != ipad ]]; then
+  not_run+=(
+  # Pointer input exists only on iPad; use ci/release_checks.py --device ipad.
+  -skip-testing:unipadUITests/PlayInputEdgeUITests/testPointerClicksDragsAndChangesChain
+  # Only an upright iPad window has a safe area shorter than the status bar; use the iPad release command.
+  -skip-testing:unipadUITests/StoreBackButtonStatusBarTests
+  # Only an iPad window can be resized; use the iPad release command.
+  -skip-testing:unipadUITests/WindowControlsBackButtonTests
+  )
+fi
 
 configuration=${UNIPAD_UI_TEST_CONFIGURATION:-Debug}
 fixture_settings=()
@@ -59,6 +63,7 @@ cd ${0:A:h:h}
 output=${UNIPAD_UI_TEST_OUTPUT:-build/ui-tests}
 mkdir -p $output
 output=${output:A}
+derived=${UNIPAD_UI_TEST_DERIVED_DATA:-$output/DerivedData}
 rm -rf $output/UITests.xcresult $output/summary.json
 
 # Each test launch gets its own library and generated packs (see ReleaseTestSupport).
@@ -79,7 +84,7 @@ trap "ci/same-name-folder.sh remove $udid" EXIT
 trap 'exit 130' INT TERM HUP
 
 export TEST_RUNNER_UNIPAD_RELEASE_SUITE=1
-ci/host-keys.sh $udid $output/DerivedData test \
+ci/host-keys.sh $udid $derived test \
   -project unipad.xcodeproj -scheme unipad -configuration $configuration \
   -onlyUsePackageVersionsFromResolvedFile \
   $selection $not_run \

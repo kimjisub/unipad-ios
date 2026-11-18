@@ -125,16 +125,9 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
   the notification permission round trip
   ([Notification simulator check](#notification-simulator-check)),
   the real-pack LED capture (`UNIPAD_LED_TIMING_VISUAL_PACK`), the real store
-  download, iPad pointer input, and the store back button on an upright iPad. Run
-  those separately when a change touches them. For the last one, pass an iPad
-  simulator:
-
-  ```bash
-  xcodebuild test -project unipad.xcodeproj -scheme unipad -configuration Debug \
-    -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
-    -only-testing:unipadUITests/StoreBackButtonStatusBarTests \
-    -parallel-testing-enabled NO -collect-test-diagnostics never
-  ```
+  download, iPad pointer input, and iPad window/status-bar checks. The release
+  commands below include the virtual MIDI and iPad checks with their setup.
+  The notification, live-store and real-pack checks still need separate setup.
 
 - A full run takes about 80–90 minutes. To split it, pass test classes; the
   parts together must name every class:
@@ -145,25 +138,100 @@ log, `UITests.xcresult` and `summary.json` are kept in `build/ui-tests` (set
 
 ## Release feature checks
 
-`ReleaseFeatures.xctestplan` selects the unit and UI tests that cover the app's
-basic features, so a release candidate can be checked in one run without the
-whole UI target. A plan entry selects a suite by its outermost name, so suites
-nested in `PlayUsageRecordTests` run through that one entry. Run it against a
-Release build on an iPhone simulator:
+Run both commands below on simulators acquired through your device harness. Use
+an iPhone 17 Pro, release it when its command finishes, then acquire an iPad Pro
+13-inch (M5). The iPad model is explicit because the layout checks use safe areas
+measured independently on that screen. The commands never acquire, create or
+release devices themselves. Use a new output folder for each attempt and keep
+derived data outside it so both commands can reuse the build:
 
 ```bash
-UNIPAD_UI_TEST_CONFIGURATION=Release ci/ui-tests.sh <simulator-udid> -testPlan ReleaseFeatures
+python3 ci/release_checks.py --device iphone --simulator <iphone-udid> \
+  --output <scratch>/release-iphone --derived-data <scratch>/dd
+# Release the iPhone, then acquire an iPad Pro 13-inch (M5).
+python3 ci/release_checks.py --device ipad --simulator <ipad-udid> \
+  --output <scratch>/release-ipad --derived-data <scratch>/dd
 ```
 
-With `UNIPAD_UI_TEST_CONFIGURATION=Release` the script builds the Release
-configuration with `UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS`, which compiles in
-only the generated libraries and fixture network answers, and
-`ENABLE_TESTABILITY=YES` for the unit tests. A store build never sets either.
-The result line counts unit and UI tests together, and any skip fails the run.
-`python3 -m unittest ci.test_release_features_plan` checks that every test the
-plan names still exists, that the UI script does not leave any of them out, and
-that nothing in the app, test fixtures included, names the retired share-code
-service.
+For shorter runs, replace the two commands above with **all five** commands
+below, using an acquired simulator of the indicated family. Each stage checks
+its own complete results; a successful stage alone does not verify a release.
+Keep every output folder. The shared iPad group contains the iPhone plan's UI
+checks, and the iPad group contains the additional window, status-bar, pointer
+and pad-layout checks. Together they cover the entire iPad plan without overlap.
+
+```sh
+python3 ci/release_checks.py --device iphone --stage screen --simulator <iphone-udid> \
+  --output <scratch>/iphone-screen --derived-data <scratch>/dd
+python3 ci/release_checks.py --device iphone --stage midi --simulator <iphone-udid> \
+  --output <scratch>/iphone-midi --derived-data <scratch>/dd
+python3 ci/release_checks.py --device iphone --stage roundtrip --simulator <iphone-udid> \
+  --output <scratch>/iphone-roundtrip --derived-data <scratch>/dd
+# Release the iPhone, then acquire an iPad Pro 13-inch (M5).
+python3 ci/release_checks.py --device ipad --stage screen --screen-group shared --simulator <ipad-udid> \
+  --output <scratch>/ipad-shared --derived-data <scratch>/dd
+python3 ci/release_checks.py --device ipad --stage screen --screen-group ipad --simulator <ipad-udid> \
+  --output <scratch>/ipad-additions --derived-data <scratch>/dd
+```
+
+When a screen stage is still too long for one device session, replace that
+stage with three parts. Run each command below separately for **every** index
+`1`, `2` and `3`, on the indicated acquired device. Parts select UI tests only,
+so the iPhone parts also need the `unit` stage, which runs the release plan's
+unit suites in the same Release build. Keep the MIDI, round-trip and
+iPad-additions commands above. All parts must use the same commit:
+
+```sh
+python3 ci/release_checks.py --device iphone --stage screen --screen-part <index>/3 \
+  --simulator <iphone-udid> --output <scratch>/iphone-screen-<index> --derived-data <scratch>/dd
+python3 ci/release_checks.py --device iphone --stage unit \
+  --simulator <iphone-udid> --output <scratch>/iphone-unit --derived-data <scratch>/dd
+python3 ci/release_checks.py --device ipad --stage screen --screen-group shared --screen-part <index>/3 \
+  --simulator <ipad-udid> --output <scratch>/ipad-shared-<index> --derived-data <scratch>/dd
+```
+
+Parts select disjoint tests from the plan in a stable order and together cover
+the entire requested group. Each part verifies all its selected tests and
+records its index, part count and commit in `result.json`. A passing part is
+only that part's result; skipped, missing or empty parts do not verify the stage.
+A whole iPhone screen stage and the `unit` stage check each unit suite the plan
+names by name, so a suite that drops out of the run fails the command.
+
+Stopping a command (Ctrl-C, `SIGTERM`, `SIGHUP`) is passed to the running stage,
+which gets 45 seconds to stop its own tools before it is killed. `result.json`
+then says `interrupted`, and the command exits with 128 plus the signal number.
+
+The iPhone command runs `ReleaseFeatures.xctestplan`, then builds the Debug
+virtual-MIDI host and runs `MidiInputPathTests`, `MidiDeviceSelectionTests` and
+`VirtualMidiPlayScreenUITests` in one virtual-device session. It also runs both
+input orders of `VirtualLaunchpadRoundTripUITests`. The play-screen checks remove
+and recreate a virtual Launchpad MK2 twice while play stays open, including a pad
+held when unplugged, and require fresh input and returning press/release lights.
+
+The iPad command runs `IPadReleaseFeatures.xctestplan`: every UI test selected by
+`ReleaseFeatures`, all `WindowControlsBackButtonTests` and
+`StoreBackButtonStatusBarTests`, the pointer click/drag/chain check and
+`PlayPadLayoutTests`. It checks the pad grid's centre, space for chains and the
+menu, and reachable controls at iPad size. The iPhone-only exclusion list is not
+applied to these iPad checks.
+
+Both screen runs use Release with `UNIPAD_TEST_CONDITIONS=UNIPAD_RELEASE_TESTS`
+and `ENABLE_TESTABILITY=YES`; a store build sets neither. The virtual MIDI runs
+use Debug fixtures and do not establish store-build or physical USB behaviour.
+A failed command, skipped test, empty/incomplete result, missing expected UI test,
+or unreadable result bundle fails the release command. `result.json` records the
+commit and stage commands; logs, raw summaries, test trees and result bundles
+remain beside it. A rerun never overwrites an earlier output directory.
+
+To run just the iPhone screen plan while diagnosing a failure:
+
+```bash
+UNIPAD_UI_TEST_CONFIGURATION=Release ci/ui-tests.sh <iphone-udid> -testPlan ReleaseFeatures
+```
+
+`python3 -m unittest discover -s ci -v` checks the commands' failure handling and
+keeps both plans pointing at existing tests. It also prevents the iPad plan from
+losing a screen selected by the iPhone plan.
 
 In these builds the store list and pack downloads come from the fixture
 answers, which fail every request they do not know instead of reaching a
@@ -176,13 +244,13 @@ servers: features marked "fixture" below are checked against them by hand.
 | Import from a file, the result, opening the pack; share codes are retired, and an old share-code link leaves home as it is without a request | `ExternalFileImportTests`, `ImportResultDialogFlowTests`, `FirstPackGuideTests`, `RetiredShareLinkTests`, `AppRouterDeepLinkTests`, importer unit tests | Another app opening a `unipad://` link |
 | Pad sound requests, `keyLed` lights, chain changes, several fingers | `MultiTouchPlayTests`, `MultiTouchPlayUITests`, `PlayChainLayoutTests`, `ChainReleaseTests`, `ChainReleaseUITests`, `LedRunnerTests`, `PlaybackStopTests` | Audible sound and touch latency; several real fingers on screen (synthetic input only) |
 | Autoplay start, pause, resume and stop; practice modes | `ReleaseFeatureUITests`, `AutoPlayRelaunchUITests`, `PlaybackStopUITests`, `AutoPlayRunnerTests`, `AutoPlayRelaunchTests`, `StepReturnAutoplayTests` | |
-| Launchpad and MIDI: discovery, input, LED output | `LaunchpadCoreCFWDriverTests`, `LaunchpadProCFWDriverTests`, `PlayViewModelLoadTests`, `MidiConnectionHelpTests`; the virtual MK2 round trip below | A physical Launchpad over USB, models other than MK2, unplugging and replugging |
+| Launchpad and MIDI: discovery, input, LED output | `LaunchpadCoreCFWDriverTests`, `LaunchpadProCFWDriverTests`, `PlayViewModelLoadTests`, `MidiConnectionHelpTests`; the virtual MK2 round trip below | A physical Launchpad over USB and physical unplugging/replugging |
 | Store download (fixture), pack deletion with play history and bookmarks | `StoreDownloadTests`, `StoreDownloadFailureUITests`, `ReleaseFeatureUITests` (download then open), `PackDeletionUITests`, `UniPackDownloaderTests`, `PackDeletionTests` | The live store and download servers |
 | Language, theme, rotation, notch and home indicator | `AppLanguageTests`, `LocalizationBundleTests`, `PlayThemeLayoutTests`, `HomeGuidingCardsTests`, `PlayChainLayoutTests`, `PlayLayoutTests` | Language follows the system setting; the app has no language switch of its own |
 | Leaving for Home or locking the screen during play, then returning | `AudioLifecycleUITests`, `ReleaseFeatureUITests` (lock), `PlayInterruptionTests`, `SoundEngineInterruptionTests`, `AudioSessionGateTests`, `AutoPlayInterruptionPolicyTests`, `SystemTerminationReporterTests` | Locking a real device with a passcode; phone calls and other apps taking the audio |
 
-The virtual Launchpad round trip needs a virtual MIDI device on the Mac, so it
-runs on its own after the plan:
+For a standalone diagnosis of the virtual Launchpad round trip (already included
+in the iPhone release command):
 
 ```bash
 python3 ci/virtual_launchpad_roundtrip.py --simulator <simulator-udid> --output build/virtual-launchpad --derived-data build/virtual-launchpad/DerivedData

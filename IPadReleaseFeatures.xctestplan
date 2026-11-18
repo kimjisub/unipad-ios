@@ -1,0 +1,116 @@
+{
+  "configurations": [
+    {
+      "id": "CD9BB6E2-7AAC-4D23-8ECB-7A65AFD98567",
+      "name": "iPad release screens",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false,
+    "preferredScreenCaptureFormat": "screenshots",
+    "environmentVariableEntries": [
+      {
+        "key": "UNIPAD_RELEASE_SUITE",
+        "value": "1"
+      }
+    ]
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:unipad.xcodeproj",
+        "identifier": "16CE2BA82F5E6CE300402705",
+        "name": "unipadUITests"
+      },
+      "parallelizable": false,
+      "selectedTests": {
+        "xctestClasses": [
+          {
+            "name": "AppLanguageTests"
+          },
+          {
+            "name": "AudioLifecycleUITests"
+          },
+          {
+            "name": "AutoPlayRelaunchUITests"
+          },
+          {
+            "name": "ChainReleaseUITests"
+          },
+          {
+            "name": "ExternalFileImportTests"
+          },
+          {
+            "name": "FirstPackGuideTests"
+          },
+          {
+            "name": "HomeCardVisibilityTests"
+          },
+          {
+            "name": "HomeGuidingCardsTests",
+            "xctestMethods": [
+              "testCardsSurviveRotation()"
+            ]
+          },
+          {
+            "name": "HomeSettingsEntryTests"
+          },
+          {
+            "name": "ImportResultDialogFlowTests"
+          },
+          {
+            "name": "MultiTouchPlayUITests"
+          },
+          {
+            "name": "PackDeletionUITests"
+          },
+          {
+            "name": "PlayChainLayoutTests"
+          },
+          {
+            "name": "PlayThemeLayoutTests"
+          },
+          {
+            "name": "PlaybackStopUITests"
+          },
+          {
+            "name": "ReleaseFeatureUITests"
+          },
+          {
+            "name": "RetiredShareLinkTests"
+          },
+          {
+            "name": "SettingsBackNavigationTests"
+          },
+          {
+            "name": "StoreDownloadFailureUITests"
+          },
+          {
+            "name": "StoreDownloadTests",
+            "xctestMethods": [
+              "testDownloadContinuesDuringBriefHomeVisit()",
+              "testInterruptedDownloadRecovers()"
+            ]
+          },
+          {
+            "name": "WindowControlsBackButtonTests"
+          },
+          {
+            "name": "StoreBackButtonStatusBarTests"
+          },
+          {
+            "name": "PlayInputEdgeUITests",
+            "xctestMethods": [
+              "testPointerClicksDragsAndChangesChain()"
+            ]
+          },
+          {
+            "name": "PlayPadLayoutTests"
+          }
+        ]
+      }
+    }
+  ],
+  "version": 2
+}

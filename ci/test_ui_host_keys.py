@@ -331,6 +331,19 @@ class UIHostKeysTests(unittest.TestCase):
         self.assertIn("ENABLE_TESTABILITY=YES", args)
         self.assertEqual(probe["fixtures"], "1")
 
+    def test_ipad_release_run_keeps_pointer_and_window_checks(self):
+        result, probe = self.run_script(args=["-testPlan", "IPadReleaseFeatures"],
+                                        environment={"UNIPAD_UI_TEST_DEVICE": "ipad"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skipped = [arg for arg in probe["args"] if arg.startswith("-skip-testing:")]
+        self.assertEqual(skipped, NOT_RUN[:-3])
+
+    def test_caller_can_reuse_one_derived_data_folder(self):
+        result, probe = self.run_script(environment={"UNIPAD_UI_TEST_DERIVED_DATA": "/caller/derived-data"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = probe["args"]
+        self.assertEqual(args[args.index("-derivedDataPath") + 1], "/caller/derived-data")
+
     def test_skipped_test_fails_the_run_even_when_xcodebuild_succeeds(self):
         result, _ = self.run_script(summary=dict(totalTestCount=3, passedTests=2, failedTests=0, skippedTests=1))
         self.assertEqual(result.returncode, 1)

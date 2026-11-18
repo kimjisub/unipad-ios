@@ -28,6 +28,64 @@ final class VirtualMidiPlayScreenUITests: XCTestCase {
     }
 
     @MainActor
+    func testLaunchpadInputAndLightsReturnAfterUnpluggingDuringPlay() throws {
+        continueAfterFailure = false
+        let idle = try openPlayScreen(device: "Launchpad MK2", connectedAs: "Launchpad MK2", picture: "unplug")
+        let arrivals = device.folder.appendingPathComponent("arrivals")
+        func received() throws -> [String] {
+            try String(contentsOf: arrivals, encoding: .utf8).split(separator: "\n").map(String.init)
+        }
+        func expectReply(_ reply: String, after count: Int) throws {
+            let deadline = Date().addingTimeInterval(5)
+            while !(try received().dropFirst(count).contains(reply)) && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            XCTAssertTrue(try received().dropFirst(count).contains(reply), "the recreated Launchpad did not receive \(reply)")
+        }
+        // Leave a real input held at each removal. A disconnect must release it
+        // before another device exists; a later note-off cannot hide a stuck pad.
+        for cycle in 1...2 {
+            let before = try received().count
+            try device.send(0x90, 81, 100)
+            XCTAssertEqual(try waitForLitPads(["1,1"], comparedWith: idle, picture: "unplug-\(cycle)-held"), ["1,1"])
+            try expectReply("90 51 03", after: before)
+            try device.run("close")
+            XCTAssertThrowsError(try device.send(0x90, 81, 0), "input must be unavailable after endpoint removal")
+            waitForConnectionBannerToGo("MIDI disconnected: Launchpad MK2")
+            XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "unplug-\(cycle)-disconnected"), [])
+            let reconnectStart = try received().count
+            try device.run("open Launchpad MK2")
+            // New initialization messages prove the app found the new destination.
+            // Do not leave play, rescan manually, or relaunch to make it recover.
+            let deadline = Date().addingTimeInterval(10)
+            while try received().count == reconnectStart && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            XCTAssertGreaterThan(try received().count, reconnectStart, "the app never initialized the recreated endpoint")
+            waitForConnectionBannerToGo("MIDI connected: Launchpad MK2")
+            XCTAssertTrue(grid.exists)
+            XCTAssertFalse(app.buttons["gearshape"].exists, "the app left play during reconnect")
+            let beforePress = try received().count
+            try device.send(0x90, 82, 100)
+            XCTAssertEqual(try waitForLitPads(["1,2"], comparedWith: idle, picture: "unplug-\(cycle)-reconnected-pressed"), ["1,2"])
+            try expectReply("90 52 03", after: beforePress)
+            let beforeRelease = try received().count
+            try device.send(0x90, 82, 0)
+            XCTAssertEqual(try waitForLitPads([], comparedWith: idle, picture: "unplug-\(cycle)-reconnected-released"), [])
+            try expectReply("90 52 00", after: beforeRelease)
+        }
+    }
+
+    @MainActor
+    private func waitForConnectionBannerToGo(_ message: String) {
+        // The connection banner covers the top row. Its dark overlay is not a
+        // pad light, so compare the unobscured grid without sending a note-off.
+        let banner = app.staticTexts[message]
+        XCTAssertTrue(banner.waitForExistence(timeout: 5), "the connection banner did not appear")
+        XCTAssertTrue(banner.waitForNonExistence(timeout: 10), "the connection banner still covers the pads")
+    }
+
+    @MainActor
     func testLaunchpadInputAndLightsReturnAfterHome() throws {
         let idle = try openPlayScreen(device: "Launchpad MK2", connectedAs: "Launchpad MK2", picture: "home-return")
         for (step, note) in [UInt32(81), 82, 83].enumerated() {

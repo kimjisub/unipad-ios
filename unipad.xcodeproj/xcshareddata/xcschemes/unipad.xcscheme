@@ -38,6 +38,9 @@
          <TestPlanReference
             reference = "container:ReleaseFeatures.xctestplan">
          </TestPlanReference>
+         <TestPlanReference
+            reference = "container:IPadReleaseFeatures.xctestplan">
+         </TestPlanReference>
       </TestPlans>
    </TestAction>
    <LaunchAction

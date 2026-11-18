@@ -35,8 +35,9 @@ nonisolated struct MidiTestDeviceError: Error, CustomStringConvertible {
 /// Connection redraws have their own tests; they must not be counted as an out-of-grid pad's output.
 private final class InputOnlyMidiController: MidiController {
     let target: MidiController
+    private(set) var attached = false
     init(target: MidiController) { self.target = target }
-    func onAttach() {}
+    func onAttach() { attached = true }
     func onDetach() { target.onDetach() }
     func onPadTouch(x: Int, y: Int, upDown: Bool, velocity: Int) {
         target.onPadTouch(x: x, y: y, upDown: upDown, velocity: velocity)
@@ -293,6 +294,12 @@ extension PlayUsageRecordTests {
                     if manager.controller === inputOnly { manager.controller = controller }
                 }
                 try await withDevice(kind, "LPProMK3 MIDI", port: 1, driver: { LaunchpadProMK3Driver() }) { device in
+                    if kind == .coreMIDI {
+                        // Pro initialization waits for its mode change before
+                        // attaching. Keep its redraw suppressed until then.
+                        try await PlayUsageScenario.waitWhile { !inputOnly.attached }
+                        try #require(inputOnly.attached, "the virtual device never finished attaching")
+                    }
                     // Suppress only the fixture's attach redraw; pad output belongs to the real screen.
                     manager.controller = controller
                     s.press(8, 0)
