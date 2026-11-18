@@ -4,12 +4,22 @@ struct PlayOptionPanel: View {
     let vm: PlayViewModel
     let theme: ThemeResourcesProtocol
     let onQuit: () -> Void
+    private let colors: PlayOptionColors
 
     @State private var infoExpanded: Bool = false
     @State private var confirmingAutoMapping = false
     @State private var confirmingRestore = false
     @AppStorage(PreferenceManager.Keys.slideEnabled) private var slideEnabled = false
     @AppStorage(PreferenceManager.Keys.traceLogClassic) private var traceLogClassic = true
+
+    init(vm: PlayViewModel, theme: ThemeResourcesProtocol, onQuit: @escaping () -> Void) {
+        self.vm = vm
+        self.theme = theme
+        self.onQuit = onQuit
+        colors = PlayOptionColors(theme: theme)
+    }
+
+    var accentColor: Color { colors.accent }
 
     var body: some View {
         ScrollView {
@@ -146,12 +156,12 @@ struct PlayOptionPanel: View {
         } label: {
             Text(label)
                 .font(.system(size: 12, weight: isActive ? .bold : .regular))
-                .foregroundStyle(isActive ? Color.black : .white)
+                .foregroundStyle(isActive ? colors.selectionText : .white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(isActive ? color : Color.clear)
+                .background(isActive ? (colors.usesThemeAccent ? accentColor : color) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
@@ -179,7 +189,7 @@ struct PlayOptionPanel: View {
                         ? Double(vm.autoMappingProgress) / Double(vm.autoMappingMax)
                         : 0
                 )
-                .tint(AppColors.playAccent)
+                .tint(accentColor)
                 .background(Color.white.opacity(0.15))
             }
             .padding(.horizontal, 24)
@@ -189,11 +199,11 @@ struct PlayOptionPanel: View {
                 HStack {
                     Text(String(localized: "autoMapping"))
                         .font(.system(size: 13))
-                        .foregroundStyle(AppColors.playAccent)
+                        .foregroundStyle(colors.text)
                     Spacer()
                     Image(systemName: "wand.and.stars")
                         .font(.system(size: 14))
-                        .foregroundStyle(AppColors.playAccent.opacity(0.7))
+                        .foregroundStyle(colors.icon)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)
@@ -218,7 +228,7 @@ struct PlayOptionPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "autoPlayRestore"))
                         .font(.system(size: 13))
-                        .foregroundStyle(AppColors.playAccent.opacity(rowOpacity))
+                        .foregroundStyle(colors.text.opacity(rowOpacity))
                     if !vm.autoPlayBackupExists {
                         Text(String(localized: "autoPlayNoBackup"))
                             .font(.system(size: 11))
@@ -228,7 +238,7 @@ struct PlayOptionPanel: View {
                 Spacer()
                 Image(systemName: "arrow.uturn.backward")
                     .font(.system(size: 14))
-                    .foregroundStyle(AppColors.playAccent.opacity(0.7 * rowOpacity))
+                    .foregroundStyle(colors.icon.opacity(rowOpacity))
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 8)
@@ -250,13 +260,13 @@ struct PlayOptionPanel: View {
     private var performanceSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionTitle(String(localized: "play_section_performance"))
-            OptionSwitch(state: vm.scbFeedbackLight, label: String(localized: "feedbackLight"), tintColor: AppColors.playAccent)
-            OptionSwitch(state: vm.scbLed, label: String(localized: "led"), tintColor: AppColors.playAccent)
+            OptionSwitch(state: vm.scbFeedbackLight, label: String(localized: "feedbackLight"), tintColor: accentColor)
+            OptionSwitch(state: vm.scbLed, label: String(localized: "led"), tintColor: accentColor)
             Toggle(String(localized: "slide_title"), isOn: $slideEnabled)
                 .accessibilityIdentifier("SlideEnabled")
                 .font(.system(size: 14))
                 .foregroundStyle(.white)
-                .tint(AppColors.playAccent)
+                .tint(accentColor)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 10)
                 .accessibilityHint(Text(String(localized: "slide_desc")))
@@ -268,16 +278,16 @@ struct PlayOptionPanel: View {
     private var displaySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionTitle(String(localized: "play_section_display"))
-            OptionSwitch(state: vm.scbHideUI, label: String(localized: "hideUI"), tintColor: AppColors.playAccent)
-            OptionSwitch(state: vm.scbWatermark, label: String(localized: "watermark"), tintColor: AppColors.playAccent)
-            OptionSwitch(state: vm.scbProLightMode, label: String(localized: "proLightMode"), tintColor: AppColors.playAccent)
+            OptionSwitch(state: vm.scbHideUI, label: String(localized: "hideUI"), tintColor: accentColor)
+            OptionSwitch(state: vm.scbWatermark, label: String(localized: "watermark"), tintColor: accentColor)
+            OptionSwitch(state: vm.scbProLightMode, label: String(localized: "proLightMode"), tintColor: accentColor)
         }
     }
 
     private var toolsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionTitle(String(localized: "play_section_tools"))
-            OptionSwitch(state: vm.scbTraceLog, label: String(localized: "traceLog"), tintColor: AppColors.playAccent, identifier: "Trace Log") {
+            OptionSwitch(state: vm.scbTraceLog, label: String(localized: "traceLog"), tintColor: accentColor, identifier: "Trace Log") {
                 vm.clearTraceLog()
             }
             if vm.scbTraceLog.visible {
@@ -292,14 +302,14 @@ struct PlayOptionPanel: View {
                     .pickerStyle(.segmented)
                     Button(String(localized: "trace_clear_all")) { vm.clearTraceLog() }
                         .accessibilityIdentifier("clearTraceLog")
-                        .foregroundStyle(AppColors.playAccent)
+                        .foregroundStyle(colors.text)
                         .font(.system(size: 14))
                         .padding(.vertical, 8)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 10)
             }
-            OptionSwitch(state: vm.scbRecord, label: String(localized: "record"), tintColor: AppColors.playAccent)
+            OptionSwitch(state: vm.scbRecord, label: String(localized: "record"), tintColor: accentColor)
         }
     }
 
@@ -319,7 +329,7 @@ struct PlayOptionPanel: View {
 private struct OptionSwitch: View {
     let state: PlayViewModel.CheckBoxState
     let label: String
-    var tintColor: Color = AppColors.playAccent
+    let tintColor: Color
     var identifier: String? = nil
     var onLongPress: (() -> Void)? = nil
 

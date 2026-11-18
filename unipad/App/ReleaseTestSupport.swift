@@ -37,6 +37,14 @@ nonisolated enum ReleaseTestSupport {
             return
         }
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        if let encoded = UserDefaults.standard.string(forKey: "UniPadReleaseThemeColors"),
+           let colors = Data(base64Encoded: encoded) {
+            let theme = root.appendingPathComponent("Theme")
+            try fm.createDirectory(at: theme, withIntermediateDirectories: true)
+            try Data(#"{"name":"Option colors","author":"Tests"}"#.utf8)
+                .write(to: theme.appendingPathComponent("theme.json"))
+            try colors.write(to: theme.appendingPathComponent("colors.json"))
+        }
         let library = root.appendingPathComponent("UniPack")
         try fm.createDirectory(at: library, withIntermediateDirectories: true)
         if let jump = UserDefaults.standard.string(forKey: "UniPadReleaseWormhole"),
