@@ -153,6 +153,27 @@ python3 ci/release_checks.py --device ipad --simulator <ipad-udid> \
   --output <scratch>/release-ipad --derived-data <scratch>/dd
 ```
 
+For shorter runs, replace the two commands above with **all five** commands
+below, using an acquired simulator of the indicated family. Each stage checks
+its own complete results; a successful stage alone does not verify a release.
+Keep every output folder. The shared iPad group contains the iPhone plan's UI
+checks, and the iPad group contains the additional window, status-bar, pointer
+and pad-layout checks. Together they cover the entire iPad plan without overlap.
+
+```sh
+python3 ci/release_checks.py --device iphone --stage screen --simulator <iphone-udid> \
+  --output <scratch>/iphone-screen --derived-data <scratch>/dd
+python3 ci/release_checks.py --device iphone --stage midi --simulator <iphone-udid> \
+  --output <scratch>/iphone-midi --derived-data <scratch>/dd
+python3 ci/release_checks.py --device iphone --stage roundtrip --simulator <iphone-udid> \
+  --output <scratch>/iphone-roundtrip --derived-data <scratch>/dd
+# Release the iPhone, then acquire an iPad Pro 13-inch (M5).
+python3 ci/release_checks.py --device ipad --stage screen --screen-group shared --simulator <ipad-udid> \
+  --output <scratch>/ipad-shared --derived-data <scratch>/dd
+python3 ci/release_checks.py --device ipad --stage screen --screen-group ipad --simulator <ipad-udid> \
+  --output <scratch>/ipad-additions --derived-data <scratch>/dd
+```
+
 The iPhone command runs `ReleaseFeatures.xctestplan`, then builds the Debug
 virtual-MIDI host and runs `MidiInputPathTests`, `MidiDeviceSelectionTests` and
 `VirtualMidiPlayScreenUITests` in one virtual-device session. It also runs both

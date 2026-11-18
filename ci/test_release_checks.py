@@ -62,10 +62,11 @@ class ResultTests(unittest.TestCase):
 
 
 class ReleaseRunnerTests(unittest.TestCase):
-    def exercise(self, family, failed_stage=None):
+    def exercise(self, family, failed_stage=None, **options):
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
             args = argparse.Namespace(simulator="leased-device", device=family,
-                                      output=Path(folder) / "results", derived_data=Path(folder) / "dd")
+                                      output=Path(folder) / "results", derived_data=Path(folder) / "dd",
+                                      stage=options.get("stage", "all"), screen_group=options.get("screen_group", "all"))
             run = ReleaseChecks(args)
             calls = []
 
@@ -74,12 +75,13 @@ class ReleaseRunnerTests(unittest.TestCase):
                 if name == failed_stage:
                     raise subprocess.CalledProcessError(65, command)
 
-            with patch.object(run, "stage", side_effect=stage), patch.object(run, "check_bundle"):
+            with patch.object(run, "stage", side_effect=stage), patch.object(run, "check_bundle") as checked:
                 if failed_stage:
                     with self.assertRaises(subprocess.CalledProcessError):
                         run.execute()
                 else:
                     run.execute()
+                self.checked_bundles = checked.call_args_list
             return calls
 
     def test_phone_runs_release_screens_midi_selection_screen_and_roundtrip(self):
@@ -101,6 +103,27 @@ class ReleaseRunnerTests(unittest.TestCase):
         for stage in ["screen", "midi-build", "midi", "roundtrip"]:
             calls = self.exercise("iphone", stage)
             self.assertEqual(calls[-1][0], stage)
+
+    def test_stages_can_run_separately_without_repeating_other_stages(self):
+        for stage, expected in [("screen", ["screen"]), ("midi", ["midi-build", "midi"]),
+                                ("roundtrip", ["roundtrip"])]:
+            with self.subTest(stage=stage):
+                calls = self.exercise("iphone", stage=stage)
+                self.assertEqual([x[0] for x in calls], expected)
+
+    def test_ipad_groups_cover_every_screen_once(self):
+        required = set(required_ui_tests("IPadReleaseFeatures"))
+        shared = set(required_ui_tests("ReleaseFeatures"))
+        observed = []
+        for group, expected in [("shared", shared), ("ipad", required - shared)]:
+            calls = self.exercise("ipad", screen_group=group)
+            selected = {x.removeprefix("-only-testing:unipadUITests/") for x in calls[0][1]
+                        if x.startswith("-only-testing:unipadUITests/")}
+            self.assertEqual(selected, {x.split("(", 1)[0] for x in expected})
+            self.assertEqual(set(self.checked_bundles[0].args[1]), expected)
+            observed.append(selected)
+        self.assertFalse(observed[0] & observed[1])
+        self.assertEqual(observed[0] | observed[1], {x.split("(", 1)[0] for x in required})
 
 
 if __name__ == "__main__":

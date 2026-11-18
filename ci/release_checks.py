@@ -82,6 +82,8 @@ class ReleaseChecks:
         self.output.mkdir(parents=True, exist_ok=False)
         self.derived = args.derived_data.resolve()
         self.report = {"device": args.device, "simulator": args.simulator, "stages": [],
+                       "requested_stage": getattr(args, "stage", "all"),
+                       "screen_group": getattr(args, "screen_group", "all"),
                        "command": sys.argv, "commit": subprocess.check_output(
                            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                        "result": "incomplete"}
@@ -123,32 +125,45 @@ class ReleaseChecks:
 
     def execute(self):
         plan = "IPadReleaseFeatures" if self.args.device == "ipad" else "ReleaseFeatures"
-        screen = self.output / "screen"
-        env = dict(os.environ, UNIPAD_UI_TEST_CONFIGURATION="Release", UNIPAD_UI_TEST_DEVICE=self.args.device,
-                   UNIPAD_UI_TEST_OUTPUT=str(screen), UNIPAD_UI_TEST_DERIVED_DATA=str(self.derived))
-        self.stage("screen", ["ci/ui-tests.sh", self.args.simulator, "-testPlan", plan], env=env)
-        self.check_bundle(screen / "UITests.xcresult", required_ui_tests(plan))
-        if self.args.device == "ipad":
+        stage = getattr(self.args, "stage", "all")
+        group = getattr(self.args, "screen_group", "all")
+        if stage in {"all", "screen"}:
+            required = required_ui_tests(plan)
+            selection = []
+            if group != "all":
+                shared = set(required_ui_tests("ReleaseFeatures"))
+                required = [name for name in required if (name in shared) == (group == "shared")]
+                if not required:
+                    raise ValueError(f"empty screen group: {group}")
+                selection = ["-only-testing:unipadUITests/" + name.split("(", 1)[0] for name in required]
+            screen = self.output / "screen"
+            env = dict(os.environ, UNIPAD_UI_TEST_CONFIGURATION="Release", UNIPAD_UI_TEST_DEVICE=self.args.device,
+                       UNIPAD_UI_TEST_OUTPUT=str(screen), UNIPAD_UI_TEST_DERIVED_DATA=str(self.derived))
+            self.stage("screen", ["ci/ui-tests.sh", self.args.simulator, "-testPlan", plan, *selection], env=env)
+            self.check_bundle(screen / "UITests.xcresult", required)
+        if self.args.device == "ipad" or stage == "screen":
             return
         # These suites need one shared live CoreMIDI client. Build the Debug fixture
         # host once, then run all three against the same virtual-device session.
         suites = ["unipadTests/PlayUsageRecordTests/MidiInputPathTests",
                   "unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
                   "unipadUITests/VirtualMidiPlayScreenUITests"]
-        self.stage("midi-build", ["xcodebuild", "build-for-testing", "-project", "unipad.xcodeproj",
+        if stage in {"all", "midi"}:
+            self.stage("midi-build", ["xcodebuild", "build-for-testing", "-project", "unipad.xcodeproj",
                                  "-scheme", "unipad", "-configuration", "Debug", "-testPlan", "AllTests",
                                  "-destination", f"platform=iOS Simulator,id={self.args.simulator},arch=arm64",
                                  "-derivedDataPath", str(self.derived), "-onlyUsePackageVersionsFromResolvedFile",
                                  "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "UNIPAD_WARNINGS_AS_ERRORS=YES",
                                  *["-only-testing:" + suite for suite in suites]])
-        midi = self.output / "midi"
-        self.stage("midi", ["ci/midi-input-tests.sh", self.args.simulator, str(self.derived), str(midi), *suites])
-        self.check_bundle(midi / "MidiInput.xcresult", required_midi_tests())
-        self.stage("roundtrip", [sys.executable, "ci/virtual_launchpad_roundtrip.py", "--simulator", self.args.simulator,
+            midi = self.output / "midi"
+            self.stage("midi", ["ci/midi-input-tests.sh", self.args.simulator, str(self.derived), str(midi), *suites])
+            self.check_bundle(midi / "MidiInput.xcresult", required_midi_tests())
+        if stage in {"all", "roundtrip"}:
+            self.stage("roundtrip", [sys.executable, "ci/virtual_launchpad_roundtrip.py", "--simulator", self.args.simulator,
                                  "--output", str(self.output / "roundtrip"), "--derived-data", str(self.derived)])
-        for order in ["midi", "screen"]:
-            self.check_bundle(self.output / "roundtrip" / order / "UI.xcresult",
-                              ["VirtualLaunchpadRoundTripUITests/testRoundTrip()"])
+            for order in ["midi", "screen"]:
+                self.check_bundle(self.output / "roundtrip" / order / "UI.xcresult",
+                                  ["VirtualLaunchpadRoundTripUITests/testRoundTrip()"])
 
 
 def main():
@@ -157,7 +172,15 @@ def main():
     parser.add_argument("--device", choices=["iphone", "ipad"], required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--derived-data", type=Path, required=True)
+    parser.add_argument("--stage", choices=["all", "screen", "midi", "roundtrip"], default="all",
+                        help="run every stage, or one stage with its own complete result checks")
+    parser.add_argument("--screen-group", choices=["all", "shared", "ipad"], default="all",
+                        help="split iPad screens into shared release screens and iPad-only additions")
     args = parser.parse_args()
+    if args.device == "ipad" and args.stage not in {"all", "screen"}:
+        parser.error("iPad checks have only the screen stage")
+    if args.screen_group != "all" and (args.device != "ipad" or args.stage not in {"all", "screen"}):
+        parser.error("--screen-group is only available for iPad screen checks")
     devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"], text=True))
     device = next((d for group in devices["devices"].values() for d in group if d["udid"] == args.simulator), None)
     if not device or device.get("state") != "Booted" or args.device not in device["deviceTypeIdentifier"].lower():
