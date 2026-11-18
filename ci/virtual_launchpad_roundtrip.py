@@ -25,6 +25,7 @@ import subprocess
 import time
 import uuid
 import wave
+from check_ui_results import check_summary
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -252,7 +253,6 @@ class Run:
         base = ['xcodebuild', '-project', 'unipad.xcodeproj', '-scheme', 'unipad',
                 '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={self.args.simulator},arch=arm64',
                 '-derivedDataPath', str(self.args.derived_data.resolve()),
-                '-clonedSourcePackagesDirPath', str(self.args.derived_data.resolve().parent / 'packages'),
                 '-onlyUsePackageVersionsFromResolvedFile', '-parallel-testing-enabled', 'NO',
                 'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO', 'UNIPAD_WARNINGS_AS_ERRORS=YES',
                 f'PRODUCT_BUNDLE_IDENTIFIER={self.bundle}']
@@ -320,6 +320,9 @@ class Run:
                 self.stop(helper)
             if test.returncode:
                 raise RuntimeError(f'{order} UI failed ({test.returncode}); {self.report.get("waiting_for", "connection wait")}; see ui.log')
+            summary = self.command(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary',
+                                    '--path', str(directory / 'UI.xcresult'), '--compact'], f'{order}/summary.json')
+            check_summary(json.loads(summary))
             if not (directory / 'ui-complete').exists():
                 raise ValueError(f'{order}: UI completion marker missing')
             own_log, _ = scoped_log(self.read(log), self.bundle)
