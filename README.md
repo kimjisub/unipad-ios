@@ -199,7 +199,8 @@ names by name, so a suite that drops out of the run fails the command.
 
 Stopping a command (Ctrl-C, `SIGTERM`, `SIGHUP`) is passed to the running stage
 and every process it started, `xcodebuild` under the stage scripts included. The
-scripts then run their cleanup; whatever has not stopped 45 seconds later is
+scripts then run their cleanup. Only the first stop is passed on, so stopping
+again does not cut that cleanup off; whatever has not stopped 45 seconds later is
 killed, and nothing a stage started is left running after it ends. `result.json`
 then says `interrupted`, and the command exits with 128 plus the signal number.
 

@@ -126,9 +126,14 @@ class ReleaseChecks:
         self.stop_requested = None
 
     def request_stop(self, sig):
-        """Signal handler. Only forwards the stop; waiting and cleanup stay in the main flow."""
-        if self.stop_signal is None:
-            self.stop_signal, self.stop_requested = sig, time.monotonic()
+        """Signal handler. Only forwards the stop; waiting and cleanup stay in the main flow.
+
+        Only the first stop is forwarded: a later one would reach the stage's cleanup commands
+        and cut them off. A stage that does not stop is still ended after the grace period.
+        """
+        if self.stop_signal is not None:
+            return
+        self.stop_signal, self.stop_requested = sig, time.monotonic()
         if self.child is not None:
             self.signal_stage(sig)
         elif self.starting:
@@ -170,8 +175,10 @@ class ReleaseChecks:
         with (self.output / f"{name}.log").open("w") as log:
             self.starting = True
             try:
-                self.child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
-                                              process_group=0)
+                # Its own process group, so a stop reaches the tools under the stage script too. Out of
+                # the terminal's foreground group, reading the terminal would suspend it, so no input.
+                self.child = subprocess.Popen(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                                              stderr=subprocess.STDOUT, process_group=0)
             finally:
                 self.starting = False
             try:
@@ -185,10 +192,10 @@ class ReleaseChecks:
                     try:
                         self.child.wait(timeout=30)
                     except subprocess.TimeoutExpired:
-                        self.signal_stage(signal.SIGKILL)
-                        self.child.wait()
+                        pass
                 # Nothing the stage started may outlive it.
                 self.signal_stage(signal.SIGKILL)
+                self.child.wait()
                 record.update(exit_code=self.child.returncode, seconds=time.monotonic() - started)
                 self.child = None
                 self.save()

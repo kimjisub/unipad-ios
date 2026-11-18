@@ -261,6 +261,14 @@ trap 'exit 129' HUP
 echo $$ > "$1/tool.pid"; touch "$1/started"; exec sleep 60' tool $folder
 """
 
+# Like ci/ui-tests.sh, whose EXIT cleanup (same-name-folder.sh remove) takes a moment to run.
+STOP_SLOW_CLEANUP_SCRIPT = """
+folder=$1
+trap "sleep 1.5 && touch $folder/cleaned" EXIT
+trap 'exit 130' INT TERM HUP
+/bin/sh -c 'touch "$1/started"; exec sleep 60' tool $folder
+"""
+
 
 def alive(pid):
     try:
@@ -277,7 +285,7 @@ class StopRequestTests(unittest.TestCase):
         return self.interrupt_command(lambda folder: [sys.executable, "-c", STOP_CHILD.replace("{mode}", mode),
                                                       str(folder / "started")], grace, sig)
 
-    def interrupt_command(self, command, grace, sig, inspect=None):
+    def interrupt_command(self, command, grace, sig, inspect=None, then=()):
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as name:
             folder = Path(name)
             driver = subprocess.Popen([sys.executable, "-c", STOP_DRIVER, str(ROOT / "ci"), name, str(grace),
@@ -290,6 +298,9 @@ class StopRequestTests(unittest.TestCase):
             self.assertTrue(started.exists())
             began = time.monotonic()
             driver.send_signal(sig)
+            for later in then:
+                time.sleep(0.5)
+                driver.send_signal(later)
             try:
                 output, _ = driver.communicate(timeout=grace + 15)
             finally:
@@ -341,6 +352,19 @@ class StopRequestTests(unittest.TestCase):
                 self.assertEqual(seen["alive"], [])
                 self.assertEqual(seen["cleaned"], ["inner-cleaned", "outer-cleaned"])
                 # The outer script ended through its own trap, not the kill after the grace period.
+                self.assertEqual(stage["exit_code"], 130)
+                self.assertLess(seconds, 10)
+
+    def test_a_second_stop_does_not_cut_off_the_stage_cleanup(self):
+        for second in [signal.SIGHUP, signal.SIGTERM]:
+            with self.subTest(second=second.name):
+                seen = {}
+                output, stage, seconds = self.interrupt_command(
+                    lambda folder: ["/bin/zsh", "-c", STOP_SLOW_CLEANUP_SCRIPT, "stage", str(folder)],
+                    grace=10, sig=signal.SIGTERM, then=[second],
+                    inspect=lambda folder: seen.update(cleaned=(folder / "cleaned").exists()))
+                self.assertIn(f"InterruptedError interrupted by signal {int(signal.SIGTERM)}", output)
+                self.assertTrue(seen["cleaned"])
                 self.assertEqual(stage["exit_code"], 130)
                 self.assertLess(seconds, 10)
 
