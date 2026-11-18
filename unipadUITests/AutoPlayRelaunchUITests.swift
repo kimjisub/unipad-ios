@@ -41,7 +41,8 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         UITestSupport.attachScreenshot("autoplay-04-restarted-autoplay", to: self)
         waitForSongEnd(app)
         UITestSupport.attachScreenshot("autoplay-05-second-end", to: self)
-        menu.tap()
+        openOptions(in: app)
+        UITestSupport.attachScreenshot("autoplay-06-options-after-end", to: self)
         app.buttons["rectangle.portrait.and.arrow.right"].tap()
         XCTAssertTrue(list.waitForExistence(timeout: 10))
         app.terminate()
@@ -234,10 +235,26 @@ final class AutoPlayRelaunchUITests: XCTestCase {
 
     @MainActor
     private func choose(_ mode: String, app: XCUIApplication) {
-        app.buttons["line.3.horizontal"].tap()
+        openOptions(in: app)
         let button = app.buttons[mode].firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 5))
         button.tap()
+    }
+
+    /// Song completion removes the transport and moves the menu within its centered column.
+    /// Its accessibility element can exist before the animation reaches the tap position.
+    @MainActor
+    private func openOptions(in app: XCUIApplication) {
+        let menu = app.buttons["line.3.horizontal"]
+        XCTAssertTrue(UITestSupport.waitForSettledFrame(timeout: 5,
+            waitForArrival: { menu.waitForExistence(timeout: $0) },
+            frame: {
+                guard menu.isHittable else { return nil }
+                return UITestSupport.currentFrame(of: menu)
+            }), "The menu must stop moving before it is tapped")
+        menu.tap()
+        XCTAssertTrue(app.buttons["rectangle.portrait.and.arrow.right"].waitForExistence(timeout: 5),
+                      "Tapping the settled menu must open the options panel")
     }
 
     @MainActor

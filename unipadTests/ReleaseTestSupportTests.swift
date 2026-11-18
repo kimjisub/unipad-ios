@@ -319,6 +319,26 @@ final class ReleaseTestSupportTests: XCTestCase {
         }
     }
 
+    func testTimedStepResumeLibraryLoadsWithoutWarnings() throws {
+        let defaults = UserDefaults.standard
+        let keys = ["UniPadReleaseTest", "UniPadReleaseEmpty", "UniPadUITestLibrary"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { defaults.set(value, forKey: key) } }
+        defaults.set(UUID().uuidString, forKey: keys[0])
+        defaults.set(false, forKey: keys[1])
+        defaults.set("timed-step-resume", forKey: keys[2])
+        let root = try XCTUnwrap(ReleaseTestSupport.root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try ReleaseTestSupport.prepare()
+        let pack = UniPackFolder(rootFolder: root.appendingPathComponent("UniPack/TimedStepResume"))
+        pack.load()
+        pack.loadDetail()
+        XCTAssertFalse(pack.criticalError, pack.errorDetail ?? "")
+        XCTAssertNil(pack.errorDetail, "A warning alert would cover the menu during the guide check")
+        XCTAssertEqual(pack.chain, 1)
+        XCTAssertEqual(pack.soundCount, 2)
+    }
+
     func testGeneratedPackLoadsWithExpectedGridAndChains() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
