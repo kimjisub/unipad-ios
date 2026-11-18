@@ -99,6 +99,8 @@ nonisolated enum ReleaseTestSupport {
             case "timed-step-resume":
                 let pack = library.appendingPathComponent("TimedStepResume")
                 try makePack(at: pack, title: "Timed Step Resume Fixture", chains: 1)
+                try "1 1 1 silence.wav\n1 1 2 silence.wav\n"
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
                 try "d 60000\no 1 1\nf 1 1\nd 60000\no 1 2\nf 1 2\nd 60000\no 2 1\nf 2 1\nd 60000\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
