@@ -5,24 +5,24 @@ Most of the time these tests take is waiting: the picker probes replay UI-test w
 time and use almost no CPU. Run one after another they took about 160 s of the iOS check;
 run side by side, the whole set takes about as long as its slowest file.
 
-Each file runs exactly as `python3 -m unittest discover -s ci -p FILE` would run it, so the same
-tests run with the same imports. Files that compile Swift start first because they are the
-slowest. The run fails when any file fails, when a file runs no tests, or when the number of
-tests run differs from the number unittest discovers in the folder.
+Each file uses the same discovery and imports as `python3 -m unittest discover -s ci -p FILE`.
+Counts are written to separate result files, never parsed from diagnostic output. Files that
+compile Swift start first because they are the slowest. The run fails when any file fails,
+when a file runs no tests, or when the number of tests run differs from the number unittest
+discovers in the folder.
 """
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import re
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 CI = Path(__file__).resolve().parent
-RAN = re.compile(r'^Ran (\d+) tests? in ', re.M)
 
 
 @dataclass
@@ -42,19 +42,43 @@ def test_files(folder: Path) -> list[Path]:
 def discovered_count(folder: Path, python: str) -> int:
     # Discovered in a separate process: importing the test files here would leave them in
     # this process's module table under names another folder's files may reuse.
-    script = 'import sys, unittest; print(unittest.defaultTestLoader.discover(sys.argv[1]).countTestCases())'
-    return int(subprocess.run([python, '-c', script, str(folder)], check=True,
-                              stdout=subprocess.PIPE, text=True).stdout)
+    script = '''
+import sys, unittest
+from pathlib import Path
+suite = unittest.defaultTestLoader.discover(sys.argv[1])
+Path(sys.argv[2]).write_text(str(suite.countTestCases()))
+'''
+    # Imports may print diagnostics too; neither count is parsed from normal output.
+    with tempfile.TemporaryDirectory() as directory:
+        count_path = Path(directory) / 'count'
+        subprocess.run([python, '-c', script, str(folder), str(count_path)], check=True,
+                       stdout=subprocess.PIPE, text=True)
+        return int(count_path.read_text())
 
 
 def run_file(path: Path, python: str) -> FileResult:
     started = time.monotonic()
-    result = subprocess.run(
-        [python, '-m', 'unittest', 'discover', '-s', str(path.parent), '-p', path.name, '-v'],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    ran = RAN.findall(result.stdout)
-    return FileResult(path.name, result.returncode, int(ran[-1]) if ran else 0,
-                      time.monotonic() - started, result.stdout)
+    script = '''
+import sys, unittest
+from pathlib import Path
+suite = unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[2])
+result = unittest.TextTestRunner(verbosity=2).run(suite)
+Path(sys.argv[3]).write_text(str(result.testsRun))
+sys.exit(0 if result.wasSuccessful() else 1)
+'''
+    with tempfile.TemporaryDirectory() as directory:
+        count_path = Path(directory) / 'count'
+        result = subprocess.run(
+            [python, '-c', script, str(path.parent), path.name, str(count_path)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            tests = int(count_path.read_text())
+        except (OSError, ValueError) as error:
+            return FileResult(path.name, result.returncode or 1, 0,
+                              time.monotonic() - started,
+                              result.stdout + f'\nCould not read unittest test count: {error}\n')
+        return FileResult(path.name, result.returncode, tests,
+                          time.monotonic() - started, result.stdout)
 
 
 def run_all(folder: Path, workers: int, python: str = sys.executable) -> tuple[list[FileResult], int]:

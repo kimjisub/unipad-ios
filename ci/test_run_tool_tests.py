@@ -66,6 +66,45 @@ class RunToolTestsTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn('FAILED: test_b.py ran no tests', output)
 
+    def test_test_output_cannot_replace_the_test_count(self):
+        noisy = '''
+import unittest
+class Noisy(unittest.TestCase):
+    def test_prints_a_nested_summary(self):
+        print("Ran 12 tests in 0.004s")
+        self.assertTrue(True)
+'''
+        code, results, expected, output = self.run_folder({'test_probe.py': noisy})
+        self.assertEqual(code, 0, output)
+        self.assertEqual(expected, 1)
+        self.assertEqual(results[0].tests, 1)
+        self.assertIn('Ran 12 tests in 0.004s', output)
+
+    def test_import_output_cannot_replace_the_discovered_count(self):
+        code, results, expected, output = self.run_folder(
+            {'test_probe.py': 'print("diagnostic from test import")\n' + PASSING})
+        self.assertEqual(code, 0, output)
+        self.assertEqual(expected, 2)
+        self.assertEqual(results[0].tests, 2)
+        self.assertIn('diagnostic from test import', output)
+
+    def test_a_child_that_exits_without_a_result_fails_the_run(self):
+        exits = '''
+import os, unittest
+class Exits(unittest.TestCase):
+    def test_exits_early(self): os._exit(0)
+'''
+        code, results, _, output = self.run_folder({'test_probe.py': exits})
+        self.assertEqual(code, 1, output)
+        self.assertEqual(results[0].tests, 0)
+
+    def test_a_missing_test_fails_even_when_the_file_succeeds(self):
+        result = run_tool_tests.FileResult('test_probe.py', 0, 1, 0, '')
+        with redirect_stdout(io.StringIO()) as output:
+            code = run_tool_tests.report([result], expected=2)
+        self.assertEqual(code, 1, output.getvalue())
+        self.assertIn('1 tests ran but 2 were discovered', output.getvalue())
+
     def test_files_run_side_by_side(self):
         started = time.monotonic()
         code, _, _, output = self.run_folder({f'test_{n}.py': SLOW for n in 'abcd'}, workers=4)
