@@ -13,12 +13,13 @@
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
-   <!-- Automated checks do not need a debugger. Keep interactive testing on the unipad scheme. -->
+   <!-- Automated checks need neither a debugger nor code coverage, which nothing reads and which
+        slows their build. Keep interactive testing on the unipad scheme. -->
    <TestAction
       buildConfiguration="Debug"
       selectedDebuggerIdentifier=""
       selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.PosixSpawn"
-      codeCoverageEnabled="YES"
+      codeCoverageEnabled="NO"
       preferredScreenCaptureFormat="screenshots"
       shouldUseLaunchSchemeArgsEnv="YES">
       <Testables>
