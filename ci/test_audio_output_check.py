@@ -191,16 +191,25 @@ class AudioOutputCheckTests(unittest.TestCase):
                 "invoked_ns": 1_600_000_000, "completed_ns": 1_700_000_000}))
             reference = check.ROOT / "test-fixtures/AudioOutput/sounds/pad-a.wav"
             # This peer produces a synthetic receipt, never real device evidence.
-            (root / "devices.py").write_text('''import json, sys, wave
+            # Like the real recorder, it publishes its readiness record whole under the final name,
+            # and pauses mid-write so a reader of the unfinished record fails every time.
+            (root / "devices.py").write_text('''import json, sys, time, wave
 from pathlib import Path
 output = Path(sys.argv[3])
 step = output.parent
 if not (step / "target-ready").exists():
     sys.exit("UI peer cannot start its readiness deadline before host preparation ends")
 ready = Path(sys.argv[sys.argv.index("--ready") + 1])
-ready.write_text(json.dumps({"ready": True, "clock": "CLOCK_UPTIME_RAW",
+record = json.dumps({"ready": True, "clock": "CLOCK_UPTIME_RAW",
     "first_frame_monotonic_ns": 1000000000, "notified_monotonic_ns": 1000000000,
-    "initial_discard_seconds": 0.1}))
+    "initial_discard_seconds": 0.1})
+unfinished = ready.with_name(ready.name + ".partial")
+with unfinished.open("w") as file:
+    file.write(record[:len(record) // 2])
+    file.flush()
+    time.sleep(0.2)
+    file.write(record[len(record) // 2:])
+unfinished.replace(ready)
 with wave.open(''' + repr(str(reference)) + ''', "rb") as source:
     samples = source.readframes(source.getnframes())
 with wave.open(str(output), "wb") as target:
