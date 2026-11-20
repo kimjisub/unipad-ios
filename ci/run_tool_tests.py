@@ -1,28 +1,39 @@
 #!/usr/bin/env python3
-"""Run every ci/test_*.py file at once, each in its own unittest process, and report them together.
+"""Run all ci/test_*.py files, preserving counts, live progress and cancellation output.
 
-Most of the time these tests take is waiting: the picker probes replay UI-test waits in real
-time and use almost no CPU. Run one after another they took about 160 s of the iOS check;
-run side by side, the whole set takes about as long as its slowest file.
-
-Each file uses the same discovery and imports as `python3 -m unittest discover -s ci -p FILE`.
-Counts are written to separate result files, never parsed from diagnostic output. Files that
-compile Swift start first because they are the slowest. The run fails when any file fails,
-when a file runs no tests, or when the number of tests run differs from the number unittest
-discovers in the folder.
+Each file uses unittest discovery in its own process. Counts travel in separate files,
+so diagnostic output cannot change them. At most two files that compile Swift run
+at once; other files may fill the remaining worker slots. Every started process group is owned until it
+finishes or cancellation terminates it. Final counts must match complete discovery.
 """
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
+import os
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 CI = Path(__file__).resolve().parent
+DISCOVER = '''
+import sys, unittest
+from pathlib import Path
+suite = unittest.defaultTestLoader.discover(sys.argv[1])
+Path(sys.argv[2]).write_text(str(suite.countTestCases()))
+'''
+RUN_FILE = '''
+import sys, unittest
+from pathlib import Path
+suite = unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[2])
+result = unittest.TextTestRunner(verbosity=2).run(suite)
+Path(sys.argv[3]).write_text(str(result.testsRun))
+sys.exit(0 if result.wasSuccessful() else 1)
+'''
 
 
 @dataclass
@@ -34,66 +45,164 @@ class FileResult:
     output: str
 
 
+@dataclass
+class Child:
+    name: str
+    process: subprocess.Popen
+    started: float
+    log: Path
+    count: Path
+    swift: bool = False
+
+
+class DiscoveryCancelled(Exception):
+    pass
+
+
 def test_files(folder: Path) -> list[Path]:
-    files = sorted(folder.glob('test_*.py'))
-    return sorted(files, key=lambda path: 'swiftc' not in path.read_text())
+    return sorted(sorted(folder.glob('test_*.py')),
+                  key=lambda path: 'swiftc' not in path.read_text())
 
 
-def discovered_count(folder: Path, python: str) -> int:
-    # Discovered in a separate process: importing the test files here would leave them in
-    # this process's module table under names another folder's files may reuse.
-    script = '''
-import sys, unittest
-from pathlib import Path
-suite = unittest.defaultTestLoader.discover(sys.argv[1])
-Path(sys.argv[2]).write_text(str(suite.countTestCases()))
-'''
-    # Imports may print diagnostics too; neither count is parsed from normal output.
+def start_child(name: str, folder: Path, python: str, script: str,
+                args: list[str], swift: bool = False) -> Child:
+    folder.mkdir()
+    log, count = folder / 'output.log', folder / 'count'
+    started = time.monotonic()
+    with log.open('w') as output:
+        process = subprocess.Popen([python, '-u', '-c', script, *args, str(count)],
+                                   stdout=output, stderr=subprocess.STDOUT,
+                                   stdin=subprocess.DEVNULL, start_new_session=True)
+    return Child(name, process, started, log, count, swift)
+
+
+def terminate(children: list[Child]) -> None:
+    # Groups belong to the processes started above; include their compiler/probe children.
+    for child in children:
+        try:
+            os.killpg(child.process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 2
+    while any(child.process.poll() is None for child in children) and time.monotonic() < deadline:
+        time.sleep(.02)
+    for child in children:
+        try:
+            os.killpg(child.process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.process.wait()
+
+
+def finish(child: Child) -> FileResult:
+    code = child.process.wait()
+    output = child.log.read_text(errors='replace')
+    try:
+        count = int(child.count.read_text())
+    except (OSError, ValueError) as error:
+        count, code = 0, code or 1
+        output += f'\nCould not read unittest test count: {error}\n'
+    return FileResult(child.name, code, count, time.monotonic() - child.started, output)
+
+
+def discovered_count(folder: Path, python: str,
+                     cancelled: Callable[[], bool] = lambda: False) -> int:
     with tempfile.TemporaryDirectory() as directory:
-        count_path = Path(directory) / 'count'
-        subprocess.run([python, '-c', script, str(folder), str(count_path)], check=True,
-                       stdout=subprocess.PIPE, text=True)
-        return int(count_path.read_text())
+        child = start_child('discovery', Path(directory) / 'discovery', python,
+                            DISCOVER, [str(folder)])
+        try:
+            while child.process.poll() is None:
+                if cancelled():
+                    terminate([child])
+                    raise DiscoveryCancelled(child.log.read_text(errors='replace'))
+                time.sleep(.02)
+            if child.process.returncode:
+                raise RuntimeError(child.log.read_text(errors='replace'))
+            return int(child.count.read_text())
+        finally:
+            if child.process.poll() is None:
+                terminate([child])
 
 
 def run_file(path: Path, python: str) -> FileResult:
-    started = time.monotonic()
-    script = '''
-import sys, unittest
-from pathlib import Path
-suite = unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[2])
-result = unittest.TextTestRunner(verbosity=2).run(suite)
-Path(sys.argv[3]).write_text(str(result.testsRun))
-sys.exit(0 if result.wasSuccessful() else 1)
-'''
     with tempfile.TemporaryDirectory() as directory:
-        count_path = Path(directory) / 'count'
-        result = subprocess.run(
-            [python, '-c', script, str(path.parent), path.name, str(count_path)],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        child = start_child(path.name, Path(directory) / path.name, python,
+                            RUN_FILE, [str(path.parent), path.name])
         try:
-            tests = int(count_path.read_text())
-        except (OSError, ValueError) as error:
-            return FileResult(path.name, result.returncode or 1, 0,
-                              time.monotonic() - started,
-                              result.stdout + f'\nCould not read unittest test count: {error}\n')
-        return FileResult(path.name, result.returncode, tests,
-                          time.monotonic() - started, result.stdout)
+            child.process.wait()
+            return finish(child)
+        finally:
+            if child.process.poll() is None:
+                terminate([child])
 
 
-def run_all(folder: Path, workers: int, python: str = sys.executable) -> tuple[list[FileResult], int]:
-    files = test_files(folder)
-    expected = discovered_count(folder, python)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda path: run_file(path, python), files))
+def run_all(folder: Path, workers: int, python: str = sys.executable, *,
+            on_start=None, on_result=None, on_cancel=None,
+            cancelled: Callable[[], bool] = lambda: False,
+            swift_workers: int = 2) -> tuple[list[FileResult], int]:
+    if workers < 1 or (swift_workers is not None and swift_workers < 1):
+        raise ValueError('worker counts must be positive')
+    pending = test_files(folder)
+    expected = discovered_count(folder, python, cancelled)
+    results: list[FileResult] = []
+    active: list[Child] = []
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            while pending or active:
+                if cancelled():
+                    if on_cancel:
+                        on_cancel([child.name for child in active] + [p.name for p in pending])
+                    terminate(active)
+                    for child in active:
+                        result = finish(child)
+                        results.append(result)
+                        if on_result:
+                            on_result(result)
+                    for path in pending:
+                        result = FileResult(path.name, 1, 0, 0, 'Not started: cancelled\n')
+                        results.append(result)
+                        if on_result:
+                            on_result(result)
+                    active.clear()
+                    break
+                while len(active) < workers:
+                    swift_active = sum(child.swift for child in active)
+                    eligible = next((p for p in pending if swift_workers is None or
+                                     'swiftc' not in p.read_text() or swift_active < swift_workers), None)
+                    if eligible is None:
+                        break
+                    pending.remove(eligible)
+                    if on_start:
+                        on_start(eligible.name)
+                    child = start_child(eligible.name, Path(directory) / eligible.name, python,
+                                        RUN_FILE, [str(eligible.parent), eligible.name],
+                                        'swiftc' in eligible.read_text())
+                    active.append(child)
+                for child in active[:]:
+                    if child.process.poll() is not None:
+                        result = finish(child)
+                        results.append(result)
+                        active.remove(child)
+                        if on_result:
+                            on_result(result)
+                if active:
+                    time.sleep(.02)
+        finally:
+            if active:
+                terminate(active)
     return results, expected
 
 
-def report(results: list[FileResult], expected: int) -> int:
+def print_result(result: FileResult) -> None:
+    print(f'===== {result.name} ({result.seconds:.1f} s, {result.tests} tests, exit {result.returncode})', flush=True)
+    print(result.output, end='' if result.output.endswith('\n') else '\n', flush=True)
+
+
+def report(results: list[FileResult], expected: int, *, show_output: bool = True) -> int:
     failures = []
     for result in results:
-        print(f'===== {result.name} ({result.seconds:.1f} s, {result.tests} tests, exit {result.returncode})')
-        print(result.output, end='' if result.output.endswith('\n') else '\n')
+        if show_output:
+            print_result(result)
         if result.tests == 0:
             failures.append(f'{result.name} ran no tests')
         elif result.returncode != 0:
@@ -115,8 +224,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--folder', type=Path, default=CI)
     parser.add_argument('--workers', type=int, default=8)
     args = parser.parse_args(argv)
-    results, expected = run_all(args.folder, args.workers)
-    return report(results, expected)
+    if args.workers < 1:
+        parser.error('worker counts must be positive')
+    received = []
+    def handle(signum, _frame):
+        received.append(signum)
+    def cancelled():
+        return bool(received)
+    def announce_cancel(names):
+        print(f'CANCELLED {signal.Signals(received[0]).name}; unfinished: {", ".join(names)}', flush=True)
+    old = {signum: signal.signal(signum, handle) for signum in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        print('Discovering test counts', flush=True)
+        try:
+            results, expected = run_all(args.folder, args.workers,
+                on_start=lambda name: print(f'START {name}', flush=True),
+                on_result=print_result, on_cancel=announce_cancel,
+                cancelled=cancelled)
+        except DiscoveryCancelled as error:
+            announce_cancel([p.name for p in test_files(args.folder)])
+            print(str(error), flush=True)
+            return 128 + received[0]
+        code = report(results, expected, show_output=False)
+        return 128 + received[0] if received else code
+    finally:
+        for signum, handler in old.items():
+            signal.signal(signum, handler)
 
 
 if __name__ == '__main__':

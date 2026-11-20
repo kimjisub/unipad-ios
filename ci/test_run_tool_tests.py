@@ -1,5 +1,10 @@
 """The side-by-side tool test runner fails exactly when running the files one by one would."""
 import io
+import os
+import selectors
+import signal
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -120,12 +125,141 @@ class Exits(unittest.TestCase):
             self.assertEqual([path.name for path in run_tool_tests.test_files(folder)],
                              ['test_z.py', 'test_a.py'])
 
+            # The compiler limit leaves other worker slots available for Python-only tests.
+            for path in folder.glob('test_*.py'):
+                path.unlink()
+            for n in range(4):
+                (folder / f'test_swift_{n}.py').write_text(SLOW + '\n# ' + 'swift' + 'c\n')
+            (folder / 'test_plain.py').write_text(PASSING)
+            active = set()
+            maximum = 0
+            plain_started_while_compilers_ran = False
+
+            def started(name):
+                nonlocal maximum, plain_started_while_compilers_ran
+                if name == 'test_plain.py':
+                    plain_started_while_compilers_ran = len(active) == 2
+                else:
+                    active.add(name)
+                    maximum = max(maximum, len(active))
+
+            results, expected = run_tool_tests.run_all(folder, 4,
+                on_start=started, on_result=lambda result: active.discard(result.name))
+            self.assertEqual(maximum, 2)
+            self.assertTrue(plain_started_while_compilers_ran)
+            self.assertEqual(sum(result.tests for result in results), expected)
+            self.assertTrue(all(result.returncode == 0 for result in results))
+
 
 class WorkflowTests(unittest.TestCase):
     def test_the_ios_check_runs_every_tool_test_through_the_runner(self):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/ios-checks.yml').read_text()
         self.assertIn('python3 ci/run_tool_tests.py', workflow)
         self.assertNotIn('unittest discover', workflow)
+
+
+class LiveOutputTests(unittest.TestCase):
+    runner = Path(__file__).with_name('run_tool_tests.py')
+
+    def launch(self, folder):
+        return subprocess.Popen([sys.executable, '-u', str(self.runner), '--folder', str(folder),
+                                 '--workers', '2'], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+
+    def stop(self, process, child_file=None):
+        if child_file is not None and child_file.exists():
+            try:
+                os.kill(int(child_file.read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        process.communicate(timeout=5)
+
+    def test_finished_failure_is_visible_before_the_slow_file_finishes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            release = folder / 'release'
+            (folder / 'test_a_fail.py').write_text(
+                'import unittest\nclass Fast(unittest.TestCase):\n'
+                ' def test_failure(self): self.assertTrue(False, "FAST-FAILURE")\n')
+            (folder / 'test_z_slow.py').write_text(
+                'import unittest, time\nfrom pathlib import Path\n'
+                'class Slow(unittest.TestCase):\n'
+                ' def test_wait(self):\n'
+                f'  while not Path({str(release)!r}).exists(): time.sleep(.01)\n')
+            process = self.launch(folder)
+            output = bytearray()
+            visible = False
+            try:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(process.stdout, selectors.EVENT_READ)
+                    deadline = time.monotonic() + 10
+                    while time.monotonic() < deadline:
+                        for key, _ in selector.select(.1):
+                            chunk = os.read(key.fd, 65536)
+                            if not chunk:
+                                break
+                            output.extend(chunk)
+                        if b'===== test_a_fail.py' in output and b'FAST-FAILURE' in output:
+                            visible = True
+                            break
+                        if process.poll() is not None:
+                            break
+                # This barrier, rather than an elapsed-time comparison, defines the ordering.
+                self.assertFalse(release.exists())
+            finally:
+                release.touch()
+                try:
+                    tail, _ = process.communicate(timeout=5)
+                    output.extend(tail)
+                finally:
+                    self.stop(process)
+            self.assertEqual(process.returncode, 1, output.decode(errors='replace'))
+            self.assertTrue(visible, 'finished failure was hidden until the slow file ended:\n' +
+                            output.decode(errors='replace'))
+
+    def test_cancellation_preserves_unfinished_file_and_partial_output(self):
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            for during_import in (False, True):
+                with self.subTest(signal=signum, during_import=during_import), tempfile.TemporaryDirectory() as directory:
+                    folder = Path(directory)
+                    started = folder / 'started'
+                    body = ('print("HANGING-MARKER", flush=True)\n'
+                            f'Path({str(started) + ".tmp"!r}).write_text(str(os.getpid()))\n'
+                            f'Path({str(started) + ".tmp"!r}).replace(Path({str(started)!r}))\n'
+                            'while True: time.sleep(.05)\n')
+                    source = 'import os, time, unittest\nfrom pathlib import Path\n'
+                    if during_import:
+                        source += body
+                    else:
+                        source += 'class Hang(unittest.TestCase):\n def test_hangs(self):\n'
+                        source += ''.join('  ' + line + '\n' for line in body.splitlines())
+                    (folder / 'test_hang.py').write_text(source)
+                    process = self.launch(folder)
+                    output = b''
+                    timed_out = False
+                    try:
+                        deadline = time.monotonic() + 10
+                        while not started.exists() and time.monotonic() < deadline:
+                            time.sleep(.01)
+                        self.assertTrue(started.exists(), 'the owned test process never started')
+                        os.kill(process.pid, signum)
+                        try:
+                            output, _ = process.communicate(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            timed_out = True
+                        if not timed_out:
+                            with self.assertRaises(ProcessLookupError, msg='cancelled child was not reaped'):
+                                os.kill(int(started.read_text()), 0)
+                    finally:
+                        self.stop(process, started)
+                    self.assertFalse(timed_out, 'cancellation did not finish')
+                    self.assertNotEqual(process.returncode, 0)
+                    text = output.decode(errors='replace')
+                    self.assertIn('unfinished', text)
+                    self.assertIn('test_hang.py', text)
+                    self.assertIn('HANGING-MARKER', text)
 
 
 if __name__ == '__main__':
