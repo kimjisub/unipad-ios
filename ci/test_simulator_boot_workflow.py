@@ -39,10 +39,18 @@ class SimulatorBootWorkflowTests(unittest.TestCase):
         settle = self.step(SETTLE_STEP)
         self.assertIn('python3 ci/simulator_settle.py "$SIMULATOR_UDID"', settle)
         self.assertNotIn('continue-on-error', settle)
+        self.assertIn('--job-started "$JOB_STARTED_AT" --job-limit 660', settle)
         unit = self.step(UNIT_STEP)
         self.assertIn('xcodebuild test-without-building ', unit)
         self.assertNotIn('xcodebuild test ', unit)
         self.assertIn('-only-testing:unipadTests', unit)
+
+    def test_the_job_start_is_recorded_before_anything_else_runs(self):
+        unit, _ = self.jobs()
+        steps = unit.split('\n    steps:\n', 1)[1]
+        start = steps.index('- name: ')
+        first = steps[start:steps.index('\n      - name: ', start)]
+        self.assertIn('echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"', first)
 
     def jobs(self):
         unit, release = self.workflow.split('\n  release-build-and-tool-tests:\n')

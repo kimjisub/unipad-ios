@@ -4,23 +4,25 @@ import unittest
 from unittest import mock
 
 import simulator_settle
-from simulator_settle import CpuWindow, Sample, Settle, cpu_seconds, wait_until_settled
+from simulator_settle import CpuWindow, Sample, Settle, bounded, cpu_seconds, wait_until_settled
 
 
 class FakeMachine:
     """A clock that advances only when the waiter sleeps, and scripted measurements.
 
-    `poster` and `load` are lists of (until, value): poster values are CPU seconds the poster
-    processes use per second until that time, or None when the simulator is not found.
+    `rates` is a list of (until, {name: CPU seconds per second}) for the simulator's
+    processes, or (until, None) when the simulator is not found; `load` is a list of
+    (until, load average). `gaps` adds extra seconds to a sleep that starts at a given time,
+    like a starved sampler.
     """
 
-    def __init__(self, poster, load=((10_000, 2.0),), gaps=None):
-        self.poster = poster
+    def __init__(self, rates, load=((10_000, 2.0),), gaps=None):
+        self.rates = rates
         self.load = load
         self.gaps = gaps or {}
         self.time = 0.0
-        self.used = 0.0
         self.last = 0.0
+        self.used = {}
 
     @staticmethod
     def at(script, time):
@@ -36,71 +38,98 @@ class FakeMachine:
         self.time += seconds + self.gaps.get(self.time, 0)
 
     def read(self):
-        rate = self.at(self.poster, self.last)
-        if rate is not None:
-            self.used += rate * (self.time - self.last)
+        rates = self.at(self.rates, self.last)
+        if rates is not None:
+            for name, rate in rates.items():
+                self.used[name] = self.used.get(name, 0.0) + rate * (self.time - self.last)
         self.last = self.time
-        processes = None if rate is None else {'101': self.used}
-        return Sample(processes, None if rate is None else {'100': 1.0, **processes},
-                      self.at(self.load, self.time))
+        if rates is None:
+            return Sample(None, {}, self.at(self.load, self.time))
+        pids = {name: str(100 + i) for i, name in enumerate(sorted(self.used))}
+        return Sample({pids[n]: cpu for n, cpu in self.used.items()},
+                      {pid: n for n, pid in pids.items()}, self.at(self.load, self.time))
 
 
-def wait(poster, load=((10_000, 2.0),), quiet=3.0, busy=15.0, limit=360, gaps=None):
-    machine = FakeMachine(poster, load, gaps)
+def wait(rates, load=((10_000, 2.0),), quiet=40.0, hold=30.0, limit=360, gaps=None,
+         reason='6 min wait limit'):
+    machine = FakeMachine(rates, load, gaps)
     trace = io.StringIO()
     result = wait_until_settled(
-        Settle(quiet=quiet, busy=busy, limit=limit, interval=5),
+        Settle(quiet=quiet, hold=hold, limit=limit, interval=5, limit_reason=reason),
         read=machine.read, now=machine.now, sleep=machine.sleep, trace=trace,
     )
     return result, trace.getvalue()
 
 
-class PosterRuleTests(unittest.TestCase):
-    def test_settles_once_the_busy_poster_processes_go_quiet(self):
-        # Quiet for 2 minutes, a full core for 2 minutes, then nearly idle.
-        result, _ = wait([(120, 0.0), (240, 1.0), (10_000, 0.01)])
-        self.assertEqual((result.reason, result.rule), ('settled', 'poster'))
-        self.assertEqual(result.waited, 270)
-        self.assertEqual(result.poster_peak, 30.0)
+BUSY = {'PosterBoard': 1.5, 'SpringBoard': 1.0}
+CALM = {'PosterBoard': 0.0, 'SpringBoard': 0.5}
 
-    def test_a_quiet_start_is_not_settled(self):
-        result, _ = wait([(10_000, 0.0)], limit=200)
-        self.assertEqual((result.reason, result.waited), ('limit', 200))
 
-    def test_activity_below_busy_does_not_arm_the_rule(self):
-        result, _ = wait([(100, 0.0), (130, 0.4), (10_000, 0.0)], limit=300)
-        self.assertEqual((result.reason, result.waited), ('limit', 300))
+class SimulatorRuleTests(unittest.TestCase):
+    def test_settles_once_the_simulator_stays_quiet_for_the_hold(self):
+        # 2.5 cores for 2 minutes (75 CPU s per 30 s), then half a core (15 per 30 s).
+        result, _ = wait([(120, BUSY), (10_000, CALM)])
+        self.assertEqual((result.reason, result.rule), ('settled', 'simulator'))
+        # The window at 140 s holds 10 busy and 20 calm seconds, 35 CPU s: quiet from then,
+        # held until 170 s.
+        self.assertEqual(result.waited, 170)
+        self.assertAlmostEqual(result.simulator, 15.0)
 
-    def test_settles_thirty_seconds_after_the_busy_processes_go_idle(self):
-        result, _ = wait([(60, 1.0), (10_000, 0.0)])
-        self.assertEqual(result.reason, 'settled')
-        self.assertEqual(result.waited, 90)
+    def test_a_quiet_start_settles_without_seeing_busy_first(self):
+        result, _ = wait([(10_000, CALM)])
+        self.assertEqual((result.reason, result.waited), ('settled', 60))
 
-    def test_stops_at_the_limit_without_failing_while_still_busy(self):
-        result, _ = wait([(10_000, 1.0)], limit=360)
-        self.assertEqual((result.reason, result.waited), ('limit', 360))
-
-    def test_a_late_sample_spreads_its_usage_over_the_gap(self):
-        # The runner stalls the sampler for 60 s; the busy minute still arms the rule
-        # and the quiet window after it settles.
-        result, _ = wait([(60, 1.0), (10_000, 0.0)], gaps={20.0: 55})
+    def test_the_threshold_itself_counts_as_quiet(self):
+        result, _ = wait([(10_000, {'SpringBoard': 40 / 30})])
         self.assertEqual(result.reason, 'settled')
 
-    def test_summary_names_the_wait_the_reason_and_both_measures(self):
-        result, _ = wait([(10_000, 1.0)], limit=30)
+    def test_a_short_quiet_spell_restarts_the_hold(self):
+        # At 3 cores busy and half a core calm, a window is quiet with at most 10 busy
+        # seconds in it: quiet 80-100 s only (20 s), then again from 170 s.
+        busy = {'SpringBoard': 3.0}
+        result, _ = wait([(60, busy), (90, CALM), (150, busy), (10_000, CALM)])
+        self.assertEqual(result.reason, 'settled')
+        self.assertEqual(result.waited, 200)
+
+    def test_stops_at_the_limit_without_failing_and_names_it(self):
+        result, _ = wait([(10_000, BUSY)], limit=200, reason='11 min after job start')
+        self.assertEqual((result.reason, result.waited),
+                         ('limit (11 min after job start)', 200))
+
+    def test_a_zero_limit_ends_at_the_first_sample(self):
+        result, _ = wait([(10_000, BUSY)], limit=0, reason='11 min after job start')
+        self.assertEqual((result.reason, result.waited), ('limit (11 min after job start)', 0))
+
+    def test_holds_by_real_time_when_samples_are_far_apart(self):
+        # The sampler stalls for 90 s right after the simulator calms down: the next sample,
+        # still quiet, is 90 real seconds later and ends the hold.
+        result, _ = wait([(60, BUSY), (10_000, CALM)], gaps={95.0: 85})
+        self.assertEqual(result.reason, 'settled')
+        self.assertEqual(result.waited, 185)
+
+    def test_records_the_busiest_processes_at_the_end(self):
+        result, trace = wait([(10_000, BUSY)], limit=60)
+        self.assertEqual([name for name, _ in result.busiest], ['PosterBoard', 'SpringBoard'])
+        self.assertAlmostEqual(result.busiest[0][1], 45.0)
+        self.assertIn('# busiest: PosterBoard 45.0, SpringBoard 30.0', trace)
+        self.assertEqual(result.busiest_line(), 'Busiest simulator processes at the end '
+                         '(CPU s per 30 s): PosterBoard 45.0, SpringBoard 30.0')
+
+    def test_summary_names_the_wait_the_reason_and_every_measure(self):
+        result, _ = wait([(10_000, BUSY)], limit=30)
         self.assertEqual(
-            result.summary(Settle(quiet=3.0, busy=15.0, limit=30, interval=5)),
-            'Simulator settle wait: 30 s, ended: limit (poster processes 30.0 CPU s in the '
-            'last 30 s, peak 30.0; settled means at least 15.0 seen, then at most 3.0; '
-            '1-minute load average 2.00; limit 30 s)',
+            result.summary(Settle(quiet=40, hold=30, limit=30, interval=5)),
+            'Simulator settle wait: 30 s, ended: limit (6 min wait limit) (simulator processes '
+            '75.0 CPU s in the last 30 s, settled means at most 40 for 30 s; poster processes '
+            '45.0; 1-minute load average 2.00)',
         )
 
     def test_every_sample_is_traced(self):
-        _, trace = wait([(10_000, 0.0)], limit=10)
-        self.assertEqual(trace.splitlines(), [
-            '0 poster=- poster_processes=1 simulator=- load=2.00',
-            '5 poster=- poster_processes=1 simulator=- load=2.00',
-            '10 poster=- poster_processes=1 simulator=- load=2.00',
+        _, trace = wait([(10_000, CALM)], limit=10)
+        self.assertEqual(trace.splitlines()[:3], [
+            '0 simulator=- poster=- simulator_processes=2 load=2.00',
+            '5 simulator=- poster=- simulator_processes=2 load=2.00',
+            '10 simulator=- poster=- simulator_processes=2 load=2.00',
         ])
 
 
@@ -113,18 +142,31 @@ class LoadFallbackTests(unittest.TestCase):
 
     def test_fallback_is_named_in_the_summary(self):
         result, _ = wait([(10_000, None)], load=[(10_000, 50.0)], limit=20)
-        self.assertEqual(result.reason, 'limit')
+        self.assertEqual(result.reason, 'limit (6 min wait limit)')
         self.assertIn('simulator processes not found', result.summary(
-            Settle(quiet=3.0, busy=15.0, limit=20, interval=5)))
+            Settle(quiet=40, hold=30, limit=20, interval=5)))
+        self.assertIn('not measured', result.busiest_line())
+
+
+class LimitTests(unittest.TestCase):
+    def test_the_wait_limit_applies_when_the_job_deadline_is_further(self):
+        self.assertEqual(bounded(360, 1000, 660, 1100), (360, '6 min wait limit'))
+
+    def test_the_job_deadline_applies_when_it_comes_first(self):
+        self.assertEqual(bounded(360, 1000, 660, 1500), (160, '11 min after job start'))
+
+    def test_a_passed_job_deadline_leaves_no_wait(self):
+        self.assertEqual(bounded(360, 1000, 660, 2000), (0, '11 min after job start'))
+
+    def test_without_a_job_start_only_the_wait_limit_applies(self):
+        self.assertEqual(bounded(360, None, 660, 2000), (360, '6 min wait limit'))
+
+    def test_the_limit_stays_within_six_minutes(self):
+        with self.assertRaises(ValueError):
+            Settle(quiet=40, hold=30, limit=361, interval=5)
 
 
 class MeasurementTests(unittest.TestCase):
-    def test_exited_processes_add_nothing_to_the_window(self):
-        window = CpuWindow()
-        window.add(0, {'1': 50.0})
-        window.add(30, {})
-        self.assertEqual(window.last(), 0.0)
-
     def test_reads_ps_cpu_times(self):
         self.assertEqual(cpu_seconds('0:01.23'), 1.23)
         self.assertEqual(cpu_seconds('12:34.50'), 754.5)
@@ -139,8 +181,14 @@ class MeasurementTests(unittest.TestCase):
         window.add(40, {'1': 6.0})
         self.assertAlmostEqual(window.last(), 4.5)
 
-    def test_only_the_selected_simulators_poster_processes_are_read(self):
-        runtime = '/Library/Developer/CoreSimulator/Volumes/iOS/RuntimeRoot'
+    def test_exited_processes_add_nothing_to_the_window(self):
+        window = CpuWindow()
+        window.add(0, {'1': 50.0})
+        window.add(30, {})
+        self.assertEqual(window.last(), 0.0)
+
+    def test_only_the_selected_simulators_processes_are_read(self):
+        runtime = '/Library/Developer/CoreSimulator/Volumes/iOS/Runtimes/iOS 27.0.simruntime/RuntimeRoot'
         listing = '\n'.join([
             '  10     1   0:01.00 launchd_sim /Users/r/Library/Developer/CoreSimulator/Devices/'
             'AAA/data/var/run/launchd_bootstrap.plist',
@@ -155,15 +203,13 @@ class MeasurementTests(unittest.TestCase):
         ])
         with mock.patch.object(simulator_settle.subprocess, 'run',
                                return_value=mock.Mock(stdout=listing)):
-            poster, simulator = simulator_settle.read_processes('AAA')
+            cpu, names = simulator_settle.read_processes('AAA')
             missing = simulator_settle.read_processes('CCC')
-        self.assertEqual(poster, {'11': 12.5, '12': 60.0})
-        self.assertEqual(simulator, {'11': 12.5, '12': 60.0, '13': 3.0})
-        self.assertEqual(missing, (None, None))
-
-    def test_the_limit_stays_within_six_minutes(self):
-        with self.assertRaises(ValueError):
-            Settle(quiet=3.0, busy=15.0, limit=361, interval=5)
+        self.assertEqual(cpu, {'11': 12.5, '12': 60.0, '13': 3.0})
+        self.assertEqual(names, {'11': 'PosterBoard', '12': 'PhotosPosterProvider',
+                                 '13': 'SpringBoard'})
+        self.assertEqual(Sample(cpu, names, 1.0).poster(), {'11': 12.5, '12': 60.0})
+        self.assertEqual(missing, (None, {}))
 
 
 if __name__ == '__main__':

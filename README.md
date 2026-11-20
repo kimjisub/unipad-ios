@@ -77,18 +77,21 @@ use the committed `Package.resolved` versions.
 The unit tests are built first (`build-for-testing`), and only then does
 `ci/simulator_settle.py` boot the selected simulator: a simulator booting in the
 background slowed dependency resolution and the builds by more than the boot
-saved. Minutes after its first boot reports done, PosterBoard and its wallpaper
-extensions start for the first time and keep the runner saturated, and tests
+saved. After its first boot, the simulator's system services (PosterBoard and its
+wallpaper extensions among them) keep the runner saturated for minutes, and tests
 with time limits that run then fail on time alone. The script reads the CPU time
-of the simulator's processes with `ps` and waits until the poster processes
-have been busy (at least 15 CPU seconds in 30 seconds) and then quiet (at most 3
-CPU seconds in the last 30 seconds), at most 6 minutes; then the tests run
-without building again (`test-without-building`). If the simulator's processes
-cannot be found, it waits instead for the runner's load average to stay 20%
-below its peak for 30 seconds. Reaching the limit does not fail the job. The
-step's last line says how long it waited, whether the simulator settled or the
-limit ended the wait, and the runner's load average; `settle.log` in the job's
-results holds every sample.
+of the simulator's processes with `ps` and waits until all of them together have
+used at most 40 CPU seconds in the last 30 seconds, held for 30 seconds of real
+time. The wait ends after at most 6 minutes, or 11 minutes after the job
+started, whichever comes first, so that even a build from an empty cache leaves
+the tests enough of the job's 30 minutes. Then the tests run without building
+again (`test-without-building`). If the simulator's processes cannot be found,
+it waits instead for the runner's load average to stay 20% below its peak for 30
+seconds. Reaching either limit does not fail the job. The step's first line says
+how long it waited and why it ended (settled, or which limit), with the poster
+processes' CPU and the runner's load average for comparison. Its second line
+names the five busiest simulator processes at that moment. `settle.log` in the
+job's results holds every sample.
 
 Each job keeps its build's compilation results between runs in the GitHub Actions
 cache (`COMPILATION_CACHE_ENABLE_CACHING`) under its own key, so sources whose

@@ -27,6 +27,11 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
     steps:
+      # The simulator wait ends 11 minutes after this at the latest, so that even a run that
+      # compiles everything from scratch finishes within the job's 30 minutes.
+      - name: Record when the job started
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,7 +88,9 @@ jobs:
       - name: Boot the simulator and wait for it to settle
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
-        run: python3 ci/simulator_settle.py "$SIMULATOR_UDID" --trace "$RUNNER_TEMP/settle.log"
+        run: |
+          python3 ci/simulator_settle.py "$SIMULATOR_UDID" --trace "$RUNNER_TEMP/settle.log" \
+            --job-started "$JOB_STARTED_AT" --job-limit 660
 
       - name: Run unit tests without UI tests
         env:
