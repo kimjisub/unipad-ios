@@ -53,42 +53,58 @@ open unipad.xcodeproj
 
 ## Pull request checks
 
-Every pull request runs one **iOS checks / Build and unit tests** job on a
+Every pull request runs two independent jobs in **iOS checks**, each on a
 GitHub-hosted `xcode-27` runner with Xcode 27.1, the same Xcode used for local
 checks and release builds; an older Xcode accepts and rejects different
-concurrency code, so a check that passes locally could fail here. It builds
-Release for iOS Simulator without signing and runs the `unipadTests` target in
-Debug on an iPhone simulator whose iOS version the selected Xcode supports
-(`ci/pick_simulator.py`), preferring iPhone 17 Pro like local checks, on the
-newest supported iOS that has it. UI tests are excluded. Dependencies use the
-committed `Package.resolved` versions.
-The unit test step uses `unipad-ci`, which runs the complete unit test target
-without attaching a debugger or building the UI test runner. The `unipad` scheme
-keeps interactive debugging and the existing unit and UI test plans.
+concurrency code, so a check that passes locally could fail here.
+
+- **Build and unit tests** runs the `unipadTests` target in Debug on an iPhone
+  simulator whose iOS version the selected Xcode supports
+  (`ci/pick_simulator.py`), preferring iPhone 17 Pro like local checks, on the
+  newest supported iOS that has it. UI tests are excluded. It uses `unipad-ci`,
+  which runs the complete unit test target without attaching a debugger or
+  building the UI test runner. The `unipad` scheme keeps interactive debugging
+  and the existing unit and UI test plans.
+- **Release build and tool tests** runs the tests of the scripts in `ci/`,
+  builds Release for iOS Simulator without signing, and checks that the app's
+  open source notices list exactly the Swift packages that build compiled (see
+  below). None of this needs a simulator, so it does not spend the unit test
+  job's time.
+
+Both jobs have a 30-minute limit and neither waits for the other. Dependencies
+use the committed `Package.resolved` versions.
+
 The unit tests are built first (`build-for-testing`), and only then does
 `ci/simulator_settle.py` boot the selected simulator: a simulator booting in the
-background slowed dependency resolution and the Release build by more than the
-boot saved. Its first boot keeps the runner busy for several more minutes, and
-tests with time limits that run then fail on time alone, so the script waits
-until the runner's 1-minute load average has stayed at or below its CPU core
-count for 60 seconds, at most 8 minutes, and then the tests run without building
-again (`test-without-building`). Reaching the limit does not fail the job. The
-step's last line says how long it waited and whether the runner settled or the
-limit ended the wait; `settle.log` in the job's results holds every sample.
-Both builds keep their compilation results between runs in the GitHub Actions
-cache (`COMPILATION_CACHE_ENABLE_CACHING`), so sources whose inputs did not change,
-mostly the Swift packages, are not compiled again. The cache is capped at 1.5 GB.
-After the Release build it checks that the app's open source notices list
-exactly the Swift packages that build compiled (see below).
-The same checks also run after changes are merged into `main`.
+background slowed dependency resolution and the builds by more than the boot
+saved. Minutes after its first boot reports done, PosterBoard and its wallpaper
+extensions start for the first time and keep the runner saturated, and tests
+with time limits that run then fail on time alone. The script reads the CPU time
+of the simulator's processes with `ps` and waits until the poster processes
+have been busy (at least 15 CPU seconds in 30 seconds) and then quiet (at most 3
+CPU seconds in the last 30 seconds), at most 6 minutes; then the tests run
+without building again (`test-without-building`). If the simulator's processes
+cannot be found, it waits instead for the runner's load average to stay 20%
+below its peak for 30 seconds. Reaching the limit does not fail the job. The
+step's last line says how long it waited, whether the simulator settled or the
+limit ended the wait, and the runner's load average; `settle.log` in the job's
+results holds every sample.
 
-The job needs no repository secrets or signing credentials. It replaces the
+Each job keeps its build's compilation results between runs in the GitHub Actions
+cache (`COMPILATION_CACHE_ENABLE_CACHING`) under its own key, so sources whose
+inputs did not change, mostly the Swift packages, are not compiled again. Each
+cache is capped at 1.5 GB. The same checks also run after changes are merged
+into `main`.
+
+The jobs need no repository secrets or signing credentials. Each replaces the
 Firebase plist only in its disposable checkout with clearly fake values from
 `ci/firebase_fixture.py`; the existing unit-test runtime uses local Firebase
 stubs. App configuration, version, and behavior in normal builds are unchanged.
-Build logs and the test result bundle are available in the run's
-`ios-check-results` artifact for seven days. This workflow does not upload to
-a store or change required checks.
+Logs and the test result bundle are available for seven days in the run's
+`ios-check-results` (unit tests) and `ios-release-build-results` (Release build)
+artifacts. This workflow does not upload to a store. Branch protection requires
+named checks: add **Release build and tool tests** next to **Build and unit
+tests** so the Release build stays required.
 
 ## UI tests
 

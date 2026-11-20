@@ -4,7 +4,8 @@ A simulator booting in the background slows every xcodebuild started meanwhile:
 dependency resolution waited minutes for its first output and the Release build
 took up to three times longer. So the simulator boots only after the unit tests
 are built, and the tests start, without building again, once its first-boot work
-has settled.
+has settled. The Release build and the tool tests need no simulator and run in
+their own job, so they do not spend the unit test job's time.
 """
 from pathlib import Path
 import re
@@ -43,21 +44,46 @@ class SimulatorBootWorkflowTests(unittest.TestCase):
         self.assertNotIn('xcodebuild test ', unit)
         self.assertIn('-only-testing:unipadTests', unit)
 
-    def test_both_builds_reuse_the_saved_compilation_cache(self):
+    def jobs(self):
+        unit, release = self.workflow.split('\n  release-build-and-tool-tests:\n')
+        return unit, release
+
+    def test_each_job_reuses_its_own_saved_compilation_cache(self):
         cache = '${{ runner.temp }}/DerivedData/CompilationCache.noindex'
-        restore = self.workflow.index('uses: actions/cache/restore@')
-        save = self.workflow.index('uses: actions/cache/save@')
-        builds = [m.start() for m in re.finditer(r'xcodebuild (build|build-for-testing) ', self.workflow)]
-        self.assertEqual(len(builds), 2)
-        self.assertLess(restore, builds[0])
-        self.assertLess(builds[1], save)
-        for start in (restore, save):
-            self.assertIn('path: ' + cache, self.workflow[start:start + 300])
-        for start in builds:
-            command = self.workflow[start:self.workflow.index('2>&1', start)]
+        for job, key in zip(self.jobs(), ('ios-test-compilation-cache-',
+                                          'ios-release-compilation-cache-')):
+            restore = job.index('uses: actions/cache/restore@')
+            save = job.index('uses: actions/cache/save@')
+            builds = [m.start() for m in re.finditer(r'xcodebuild (build|build-for-testing) ', job)]
+            self.assertEqual(len(builds), 1)
+            self.assertLess(restore, builds[0])
+            self.assertLess(builds[0], save)
+            for start in (restore, save):
+                self.assertIn('path: ' + cache, job[start:start + 300])
+            self.assertEqual(job.count('key: ' + key), 2)
+            self.assertIn('restore-keys: ' + key, job)
+            command = job[builds[0]:job.index('2>&1', builds[0])]
             self.assertIn('-derivedDataPath "$RUNNER_TEMP/DerivedData"', command)
             self.assertIn('COMPILATION_CACHE_ENABLE_CACHING=YES', command)
             self.assertIn('COMPILATION_CACHE_LIMIT_SIZE=', command)
+
+    def test_release_build_and_tool_tests_run_beside_the_unit_tests(self):
+        unit, release = self.jobs()
+        self.assertNotIn('needs:', self.workflow)
+        self.assertEqual(self.workflow.count('timeout-minutes: 30'), 2)
+        self.assertNotIn('xcodebuild build ', unit)
+        self.assertNotIn('unittest discover', unit)
+        self.assertNotIn('open_source_licenses.py', unit)
+        self.assertIn('python3 -m unittest discover -s ci -v', release)
+        self.assertIn('xcodebuild build ', release)
+        self.assertIn('-configuration Release', release)
+        self.assertIn('python3 ci/open_source_licenses.py check', release)
+        self.assertNotIn('SIMULATOR_UDID', release)
+        for job, artifact in zip((unit, release),
+                                 ('ios-check-results', 'ios-release-build-results')):
+            self.assertIn('python3 ci/firebase_fixture.py', job)
+            self.assertIn('UNIPAD_WARNINGS_AS_ERRORS=YES', job)
+            self.assertIn('name: ' + artifact, job)
 
     def test_unit_tests_build_and_run_for_the_selected_simulator(self):
         for name in (BUILD_STEP, UNIT_STEP):
