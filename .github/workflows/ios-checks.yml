@@ -85,21 +85,40 @@ jobs:
             --derived-data "$RUNNER_TEMP/DerivedData" \
             --source-packages "$RUNNER_TEMP/SourcePackages"
 
-      - name: Run unit tests without UI tests
+      # The unit tests are built before the simulator boots: a booting simulator slows any build
+      # running beside it. They then wait for the simulator's first-boot work to settle, because
+      # tests with time limits that run during it fail on time alone, and run without building.
+      - name: Build unit tests
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
-          xcodebuild test -quiet \
+          xcodebuild build-for-testing -quiet \
             -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             -disableAutomaticPackageResolution \
-            -only-testing:unipadTests -parallel-testing-enabled NO \
-            -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
+            -only-testing:unipadTests \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             UNIPAD_WARNINGS_AS_ERRORS=YES \
             COMPILATION_CACHE_ENABLE_CACHING=YES COMPILATION_CACHE_LIMIT_SIZE=1500M \
+            2>&1 | tee "$RUNNER_TEMP/unit-tests-build.log"
+
+      - name: Boot the simulator and wait for it to settle
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: python3 ci/simulator_settle.py "$SIMULATOR_UDID" --trace "$RUNNER_TEMP/settle.log"
+
+      - name: Run unit tests without UI tests
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcodebuild test-without-building -quiet \
+            -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -only-testing:unipadTests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
             2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
 
       - name: Save compilation cache
@@ -125,6 +144,8 @@ jobs:
           name: ios-check-results
           path: |
             ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/unit-tests-build.log
+            ${{ runner.temp }}/settle.log
             ${{ runner.temp }}/unit-tests.log
             ${{ runner.temp }}/test-summary.json
             ${{ runner.temp }}/UnitTests.xcresult

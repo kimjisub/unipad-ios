@@ -65,9 +65,16 @@ committed `Package.resolved` versions.
 The unit test step uses `unipad-ci`, which runs the complete unit test target
 without attaching a debugger or building the UI test runner. The `unipad` scheme
 keeps interactive debugging and the existing unit and UI test plans.
-The unit test run boots the selected simulator itself. Nothing starts it
-earlier: a simulator booting in the background slowed dependency resolution and
-the Release build by more than the boot saved.
+The unit tests are built first (`build-for-testing`), and only then does
+`ci/simulator_settle.py` boot the selected simulator: a simulator booting in the
+background slowed dependency resolution and the Release build by more than the
+boot saved. Its first boot keeps the runner busy for several more minutes, and
+tests with time limits that run then fail on time alone, so the script waits
+until the runner's 1-minute load average has stayed at or below its CPU core
+count for 60 seconds, at most 8 minutes, and then the tests run without building
+again (`test-without-building`). Reaching the limit does not fail the job. The
+step's last line says how long it waited and whether the runner settled or the
+limit ended the wait; `settle.log` in the job's results holds every sample.
 Both builds keep their compilation results between runs in the GitHub Actions
 cache (`COMPILATION_CACHE_ENABLE_CACHING`), so sources whose inputs did not change,
 mostly the Swift packages, are not compiled again. The cache is capped at 1.5 GB.
