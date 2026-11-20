@@ -101,11 +101,26 @@ struct PlayUsageRecordTests {
 
     @Test func autoplayChosenBeforeReadyDoesNotCountAsHuman() async throws {
         try await PlayUsageScenario.run { s in
+            // Hold loading so selecting autoplay is unambiguously before readiness.
+            let setupGate = DispatchSemaphore(value: 0)
+            defer { setupGate.signal() }
+            s.vm.makeSoundEngine = { pack, chain, listener in
+                SoundEngine(unipack: pack, chain: chain, loadingListener: listener,
+                            observeLoading: { if $0 == .setupStarted { setupGate.wait() } })
+            }
             try await s.load()
             try #require(!s.vm.startReady, "before-ready condition was not reached")
+            // Real time can finish the short song while loading. Keep later notes pending
+            // until ready instead, without changing the loading or completion deadlines.
+            let clock = try s.useManualSongClock()
             s.vm.switchPlayMode(.autoPlay)
+            try await s.waitWhile { !clock.wasRead }
+            try #require(clock.wasRead, "autoplay never sampled its song clock")
+            #expect(!s.vm.startReady)
+            #expect(s.starts.isEmpty)
+            setupGate.signal()
             try await s.ready()
-            try await s.autoplayEnded()
+            try await s.autoplayEnded(advancing: clock)
             #expect(s.starts == ["autoplay"])
             #expect(s.firstInputs.isEmpty)
         }
