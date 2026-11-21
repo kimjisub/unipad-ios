@@ -101,6 +101,15 @@ class SimulatorBootWorkflowTests(unittest.TestCase):
         for name in (BUILD_STEP, SETTLE_STEP, UNIT_STEP):
             self.assertIn('SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}', self.step(name))
 
+    def test_unit_tests_reuse_resolved_packages(self):
+        # Even test-without-building resolves packages unless given the build's package
+        # directory. Resolving them again would add work just after the simulator settles.
+        for name in (BUILD_STEP, UNIT_STEP):
+            for option in ('-clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"',
+                           '-disableAutomaticPackageResolution'):
+                with self.subTest(step=name, option=option):
+                    self.assertIn(option, self.step(name))
+
 
 if __name__ == '__main__':
     unittest.main()
