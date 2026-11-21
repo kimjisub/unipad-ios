@@ -27,15 +27,18 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
     steps:
+      # The simulator wait ends 11 minutes after this at the latest, so that even a run that
+      # compiles everything from scratch finishes within the job's 30 minutes.
+      - name: Record when the job started
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Prepare fake test configuration
-        run: |
-          python3 -m unittest discover -s ci -v
-          python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
+        run: python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
 
       # iPhone 17 Pro is the model local verification uses; iPhone 17 covers images without it.
       - name: Select an available iPhone simulator
@@ -47,14 +50,120 @@ jobs:
 
       # Compilation results are kept between runs, so unchanged sources (most of them the Swift
       # packages) are not compiled again. Results are looked up by their exact inputs, so a cached
-      # result is only reused for an identical compilation, warnings included. Both builds cap the
-      # cache at 1.5 GB (a full build stores about 0.8 GB), so the saved cache cannot keep growing.
+      # result is only reused for an identical compilation, warnings included. Each job keeps its own
+      # cache, capped at 1.5 GB (a full build stores about 0.8 GB), so it cannot keep growing.
       - name: Restore compilation cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/DerivedData/CompilationCache.noindex
-          key: ios-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
-          restore-keys: ios-compilation-cache-${{ env.DEVELOPER_DIR }}-
+          key: ios-test-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
+          restore-keys: ios-test-compilation-cache-${{ env.DEVELOPER_DIR }}-
+
+      - name: Resolve pinned dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project unipad.xcodeproj -scheme unipad \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile
+
+      # The unit tests are built before the simulator boots: a booting simulator slows any build
+      # running beside it. They then wait for the simulator's first-boot work to settle, because
+      # tests with time limits that run during it fail on time alone, and run without building.
+      - name: Build unit tests
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcodebuild build-for-testing -quiet \
+            -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -disableAutomaticPackageResolution \
+            -only-testing:unipadTests \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            UNIPAD_WARNINGS_AS_ERRORS=YES \
+            COMPILATION_CACHE_ENABLE_CACHING=YES COMPILATION_CACHE_LIMIT_SIZE=1500M \
+            2>&1 | tee "$RUNNER_TEMP/unit-tests-build.log"
+
+      - name: Boot the simulator and wait for it to settle
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          python3 ci/simulator_settle.py "$SIMULATOR_UDID" --trace "$RUNNER_TEMP/settle.log" \
+            --job-started "$JOB_STARTED_AT" --job-limit 660
+
+      - name: Run unit tests without UI tests
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          xcodebuild test-without-building -quiet \
+            -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -disableAutomaticPackageResolution \
+            -only-testing:unipadTests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
+            2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
+
+      - name: Save compilation cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/CompilationCache.noindex
+          key: ios-test-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
+
+      - name: Summarize unit test results
+        if: always()
+        run: |
+          if [[ -d "$RUNNER_TEMP/UnitTests.xcresult" ]]; then
+            xcrun xcresulttool get test-results summary \
+              --path "$RUNNER_TEMP/UnitTests.xcresult" --compact \
+              | tee "$RUNNER_TEMP/test-summary.json"
+          fi
+
+      - name: Save build and test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-check-results
+          path: |
+            ${{ runner.temp }}/unit-tests-build.log
+            ${{ runner.temp }}/settle.log
+            ${{ runner.temp }}/unit-tests.log
+            ${{ runner.temp }}/test-summary.json
+            ${{ runner.temp }}/UnitTests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
+
+  release-build-and-tool-tests:
+    name: Release build and tool tests
+    runs-on: xcode-27
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # These checks need no simulator, so they run beside the unit tests instead of
+      # spending the unit test job's time.
+      - name: Run tool tests and prepare fake test configuration
+        run: |
+          python3 -m unittest discover -s ci -v
+          python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
+
+      - name: Restore compilation cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/CompilationCache.noindex
+          key: ios-release-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
+          restore-keys: ios-release-compilation-cache-${{ env.DEVELOPER_DIR }}-
 
       - name: Resolve pinned dependencies
         run: |
@@ -85,48 +194,18 @@ jobs:
             --derived-data "$RUNNER_TEMP/DerivedData" \
             --source-packages "$RUNNER_TEMP/SourcePackages"
 
-      - name: Run unit tests without UI tests
-        env:
-          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
-        run: |
-          xcodebuild test -quiet \
-            -project unipad.xcodeproj -scheme unipad-ci -configuration Debug \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID,arch=arm64" \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
-            -disableAutomaticPackageResolution \
-            -only-testing:unipadTests -parallel-testing-enabled NO \
-            -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            UNIPAD_WARNINGS_AS_ERRORS=YES \
-            COMPILATION_CACHE_ENABLE_CACHING=YES COMPILATION_CACHE_LIMIT_SIZE=1500M \
-            2>&1 | tee "$RUNNER_TEMP/unit-tests.log"
-
       - name: Save compilation cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/DerivedData/CompilationCache.noindex
-          key: ios-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
+          key: ios-release-compilation-cache-${{ env.DEVELOPER_DIR }}-${{ github.sha }}
 
-      - name: Summarize unit test results
-        if: always()
-        run: |
-          if [[ -d "$RUNNER_TEMP/UnitTests.xcresult" ]]; then
-            xcrun xcresulttool get test-results summary \
-              --path "$RUNNER_TEMP/UnitTests.xcresult" --compact \
-              | tee "$RUNNER_TEMP/test-summary.json"
-          fi
-
-      - name: Save build and test evidence
+      - name: Save Release build evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ios-check-results
-          path: |
-            ${{ runner.temp }}/build.log
-            ${{ runner.temp }}/unit-tests.log
-            ${{ runner.temp }}/test-summary.json
-            ${{ runner.temp }}/UnitTests.xcresult
+          name: ios-release-build-results
+          path: ${{ runner.temp }}/build.log
           retention-days: 7
           if-no-files-found: ignore
