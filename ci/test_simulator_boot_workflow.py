@@ -82,7 +82,7 @@ class SimulatorBootWorkflowTests(unittest.TestCase):
         self.assertNotIn('xcodebuild build ', unit)
         self.assertNotIn('unittest discover', unit)
         self.assertNotIn('open_source_licenses.py', unit)
-        self.assertIn('python3 -m unittest discover -s ci -v', release)
+        self.assertIn('python3 ci/run_tool_tests.py', release)
         self.assertIn('xcodebuild build ', release)
         self.assertIn('-configuration Release', release)
         self.assertIn('python3 ci/open_source_licenses.py check', release)

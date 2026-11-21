@@ -155,7 +155,7 @@ jobs:
       # spending the unit test job's time.
       - name: Run tool tests and prepare fake test configuration
         run: |
-          python3 -m unittest discover -s ci -v
+          python3 ci/run_tool_tests.py
           python3 ci/firebase_fixture.py unipad/GoogleService-Info.plist
 
       - name: Restore compilation cache
