@@ -121,7 +121,6 @@
 
 /* Launchpad */
 "launchpadConnecting" = "Connecting launchpad…";
-"midiDevicesNotDetected" = "MIDI Devices Not Detected";
 "midi_open_panel" = "Open";
 "midi_connected_banner %@" = "MIDI connected: %@";
 "midi_disconnected_banner %@" = "MIDI disconnected: %@";
@@ -221,7 +220,7 @@
 "midi_lp_s" = "Launchpad S";
 "midi_lp_mk2" = "Launchpad MK2";
 "midi_lp_pro" = "Launchpad Pro";
-"midi_lp_pro_cfw" = "Launchpad Pro (mat1jaczyyy CFW)";
+"midi_lp_pro_cfw" = "Launchpad Pro (Launchpad Open)";
 "midi_lp_core_cfw" = "Launchpad (CoreFW)";
 "midi_lp_x" = "Launchpad X";
 "midi_lp_mini_mk3" = "Launchpad Mini MK3";
@@ -290,21 +289,56 @@
 "temporary_store_notice_dismiss" = "Dismiss";
 
 // Device connection help
-"midi_help_title" = "Connection and light help";
-"midi_help_selected_model" = "Selected model: %@";
-"midi_help_common" = "The selected model does not confirm the actual device. Lights being off alone do not tell you whether the connection succeeded or failed.";
-"midi_help_not_listed_title" = "My device is not listed";
-"midi_help_not_listed_body" = "Check the cable and connection. Compare the name on your device with the selected model.";
-"midi_help_no_lights_title" = "Connected, but no lights";
-"midi_help_no_lights_body" = "Check whether the on-screen pads and sound respond, and whether the pack contains light data. You can use a pack you already have.";
-"midi_help_crash_title" = "The app closes unexpectedly";
-"midi_help_crash_body" = "Disconnect the device and note the app version, phone or computer model, operating system, and the step where it closed. You do not need to repeat the crash.";
-"midi_help_mini_mk3" = "In Programmer mode, the lights may initially be off. Check with a pack that includes lights.";
-"midi_help_pro" = "Launchpad Pro and Launchpad Pro MK3 are different models.";
-"midi_help_other" = "If the same model is not listed, do not choose a different model as a substitute. This guide does not confirm compatibility with new models.";
-"midi_help_manufacturer" = "Read the manufacturer's guide";
-"midi_help_link_failed" = "Could not open the manufacturer's guide. You can continue reading this help.";
+"midi_help_title" = "Not connecting?";
 "midi_help_close" = "Close help";
+"midi_help_now" = "Now: %@";
+"midi_help_selected_model" = "Selected model: %@";
+"midi_help_status_none_title" = "No Launchpad found";
+"midi_help_status_none_next" = "Check the cable, adapter and power, then plug it in again.";
+"midi_help_status_openfail_title" = "Couldn't open the device";
+"midi_help_status_openfail_next" = "%@ · Unplug it and plug it in again.";
+"midi_help_status_connected_title" = "Connected: %@";
+"midi_help_status_unknown_next" = "UniPad didn't recognise the model, so it connected it as a keyboard. If it's a Launchpad, tap “Not connecting?”.";
+"midi_help_status_wait_next" = "Press any pad. You'll see it here when a signal arrives.";
+"midi_help_status_wait_long_next" = "No pad signal yet. If pressing doesn't change this, tap “Not connecting?”.";
+"midi_help_status_input_next" = "Pad signal received.";
+"midi_help_status_disc_title" = "Disconnected";
+"midi_help_status_disc_next" = "Plug it in again and UniPad will try to reconnect.";
+"midi_help_tag_model_unknown" = "Model unknown";
+"midi_help_tag_custom_firmware" = "Custom firmware: %@";
+"midi_help_source_auto" = "Recognised automatically";
+"midi_help_source_manual" = "Chosen by you · resets when you plug in again";
+"midi_help_web" = "Read the full guide on the web";
+"midi_help_cfw_link" = "Read about custom firmware";
+"midi_help_link_failed" = "Couldn't open the web guide. You can keep reading this help.";
+"midi_help_q1_title" = "The app can't find the Launchpad";
+"midi_help_q1_1" = "• Push the cable all the way in and use an adapter that fits your phone. Try another cable too.";
+"midi_help_q1_2" = "• The Launchpad is powered over USB. If it doesn't light up or only blinks, check the power first.";
+"midi_help_q1_3" = "• For a Lightning iPhone or iPad, use Apple's Lightning to USB Camera Adapter. Novation says Launchpad MK2, Mini MK3 and X need a powered USB hub to connect to an iPad, and Launchpad S must be started in low power mode.";
+"midi_help_q2_title" = "Connected, but pressing pads does nothing";
+"midi_help_q2_1" = "1. Press any pad and watch whether the status changes to “Pad signal received.”";
+"midi_help_q2_2" = "2. Check that the device in the status is your Launchpad. If the model is wrong, choose the right one in the model list. If your model isn't listed, don't pick another model in its place.";
+"midi_help_q2_2_ios" = "Tap OK to apply your choice.";
+"midi_help_q2_3" = "3. If you changed the Launchpad's mode after connecting, unplug it and plug it in again. If you use custom firmware, see the guidance below.";
+"midi_help_q3_title" = "Sound plays, but no lights";
+"midi_help_q3_1" = "• Some packs have no light data. Check with a pack that has lights.";
+"midi_help_q3_2" = "• Launchpad X and Mini MK3 may start with the lights off.";
+"midi_help_q3_3" = "• Lights being off alone doesn't mean the connection failed.";
+"midi_help_q4_title" = "The wrong pad responds";
+"midi_help_q4_1" = "• If the chosen model differs from your Launchpad, pads land in the wrong place. Compare the device in the status with the chosen model.";
+"midi_help_q4_2" = "• The Launchpad may have switched to another mode (for example Live mode). Unplug it and plug it in again.";
+"midi_help_q4_3" = "• If you use custom firmware, see “I use custom firmware” below.";
+"midi_help_q5_title" = "Right-side buttons don't change chains";
+"midi_help_q5_intro" = "Check in this order.";
+"midi_help_q5_1" = "1. While the option window is open on the play screen, the right-side buttons change the volume. Close the option window. The 4th button from the left on the top row opens and closes it.";
+"midi_help_q5_2" = "2. The 8 right-side buttons are chains 1–8 from the top. Buttons below the pack's number of chains do nothing.";
+"midi_help_q5_3" = "3. If it still doesn't work, unplug the Launchpad and plug it in again.";
+"midi_help_q6_title" = "I use custom firmware";
+"midi_help_q6_1" = "• UniPad recognises “Launchpad Open” for the Launchpad Pro (first model) and CoreFW. When it does, the status shows “Custom firmware”.";
+"midi_help_q6_2" = "• Only if you know the installed firmware is CoreFW or Launchpad Open, choose “Launchpad (CoreFW)” or “Launchpad Pro (Launchpad Open)” in the model list yourself. Choosing it does not confirm the firmware.";
+"midi_help_q6_3" = "• UniPad doesn't promise that every feature works with custom firmware, and it doesn't install or change firmware.";
+"midi_help_q7_title" = "The app closes unexpectedly";
+"midi_help_q7_1" = "Disconnect the device and note the app version, phone or tablet model, operating system, and the step where it closed. You do not need to repeat the crash.";
 
 /* Performance input and trace controls */
 "slide_title" = "Slide between pads";

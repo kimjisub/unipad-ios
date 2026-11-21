@@ -3,34 +3,51 @@ import SwiftUI
 /// Pending UI state only. Persisting and sending MIDI remain in applySelection().
 struct MidiSelectState {
     private(set) var selectedIndex = 0
-    private(set) var isExplicitSelection = false
-    private(set) var isDetectedSelection = false
+    /// Where the selected model came from; nil while no device is connected or its model is unknown.
+    private(set) var modelSource: MidiModelSource?
     private(set) var remainingSeconds: Int?
     private(set) var hasStartedAutorun = false
     var isHelpPresented = false
 
+    /// No device is connected: show the saved model without a source.
     mutating func restoreModel(_ index: Int) {
         selectedIndex = index
-        isExplicitSelection = false
-        isDetectedSelection = false
+        modelSource = nil
     }
 
     mutating func detectedModel(_ index: Int?) {
         if let index { selectedIndex = index }
-        isExplicitSelection = false
-        isDetectedSelection = true
+        modelSource = .automatic
+    }
+
+    /// The device connected, but no model matched it.
+    mutating func unrecognisedModel(_ index: Int?) {
+        if let index { selectedIndex = index }
+        modelSource = nil
+    }
+
+    /// The connected device runs on a model chosen before this screen opened.
+    mutating func earlierChoice(_ index: Int) {
+        selectedIndex = index
+        modelSource = .manual
     }
 
     mutating func selectModel(_ index: Int) {
         cancelAutorun()
         selectedIndex = index
-        isExplicitSelection = true
-        isDetectedSelection = false
+        modelSource = .manual
     }
 
-    mutating func startAutorun() -> Bool {
+    mutating func deviceLeft() {
+        modelSource = nil
+    }
+
+    /// Starts the existing five-second confirmation once per screen, and only for a connected device
+    /// whose model was recognised automatically.
+    mutating func startAutorun(for status: MidiConnectionStatus) -> Bool {
         guard !hasStartedAutorun else { return false }
         hasStartedAutorun = true
+        guard status.allowsAutomaticConfirmation, modelSource == .automatic else { return false }
         remainingSeconds = 5
         return true
     }
@@ -42,6 +59,10 @@ struct MidiSelectState {
         return remainingSeconds == 0
     }
 
+    mutating func statusChanged(to status: MidiConnectionStatus) {
+        if !status.allowsAutomaticConfirmation || modelSource != .automatic { cancelAutorun() }
+    }
+
     mutating func cancelAutorun() {
         remainingSeconds = nil
     }
@@ -50,25 +71,11 @@ struct MidiSelectState {
         cancelAutorun()
         isHelpPresented = true
     }
-
-    var helpSupplement: MidiHelpSupplement {
-        guard !isDetectedSelection else { return .none }
-        switch selectedIndex {
-        case 4: return isExplicitSelection ? .miniMK3 : .none
-        case 2, 5: return .pro
-        case 0, 1, 3: return .none
-        default: return .other
-        }
-    }
 }
 
-nonisolated enum MidiHelpSupplement: Equatable {
-    case none, miniMK3, pro, other
-}
-
-/// The approved help is translated in English and Korean. Missing translations
+/// The device help and status texts are translated in English and Korean. Missing translations
 /// fall back per key to the English table without adding other language files.
-enum MidiHelpText {
+nonisolated enum MidiHelpText {
     static func text(_ key: String, bundle: Bundle = .main) -> String {
         let english = Bundle.main.url(forResource: "en", withExtension: "lproj")
             .flatMap { Bundle(url: $0) }?
@@ -79,15 +86,27 @@ enum MidiHelpText {
 
 struct MidiConnectionHelpView: View {
     @Environment(\.openURL) private var openURL
+    let statusTitle: String
     let modelName: String
-    let supplement: MidiHelpSupplement
+    let modelSource: MidiModelSource?
     let onClose: () -> Void
-    @State private var linkOpenFailed = false
+    @State private var expanded: Set<MidiHelpQuestion>
+    @State private var failedLink: URL?
     @AccessibilityFocusState private var titleFocused: Bool
 
-    private static let manufacturerGuide = URL(string:
-        "https://userguides.novationmusic.com/hc/en-gb/articles/23731330721682-Launchpad-Mini-MK3-s-Settings-menu"
-    )!
+    init(statusTitle: String, modelName: String, modelSource: MidiModelSource?,
+         firstQuestion: MidiHelpQuestion, onClose: @escaping () -> Void) {
+        self.statusTitle = statusTitle
+        self.modelName = modelName
+        self.modelSource = modelSource
+        self.onClose = onClose
+        _expanded = State(initialValue: [firstQuestion])
+    }
+
+    private var selectedModelLine: String {
+        let model = [modelName, modelSource?.text].compactMap { $0 }.joined(separator: " · ")
+        return String(format: MidiHelpText.text("midi_help_selected_model"), model)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -109,7 +128,11 @@ struct MidiConnectionHelpView: View {
                             .keyboardShortcut(.cancelAction)
                             .accessibilityIdentifier("midi.help.close")
                     }
-                    Text(String(format: MidiHelpText.text("midi_help_selected_model"), modelName))
+                    Text(String(format: MidiHelpText.text("midi_help_now"), statusTitle))
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("midi.help.status")
+                    Text(selectedModelLine)
                         .font(.subheadline)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("midi.help.model")
@@ -120,30 +143,14 @@ struct MidiConnectionHelpView: View {
                 .padding(16)
                 Divider()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text(MidiHelpText.text("midi_help_common"))
-                        section("midi_help_not_listed_title", "midi_help_not_listed_body")
-                        section("midi_help_no_lights_title", "midi_help_no_lights_body")
-                        section("midi_help_crash_title", "midi_help_crash_body")
-                        switch supplement {
-                        case .miniMK3:
-                            Text(MidiHelpText.text("midi_help_mini_mk3"))
-                            Button(MidiHelpText.text("midi_help_manufacturer")) {
-                                manufacturerGuideOpener(Self.manufacturerGuide) { accepted in
-                                    linkOpenFailed = !accepted
-                                }
-                            }
-                            .frame(minHeight: 44)
-                            if linkOpenFailed {
-                                Text(MidiHelpText.text("midi_help_link_failed"))
-                                    .accessibilityIdentifier("midi.help.linkFailed")
-                            }
-                        case .pro:
-                            Text(MidiHelpText.text("midi_help_pro"))
-                        case .other:
-                            Text(MidiHelpText.text("midi_help_other"))
-                        case .none:
-                            EmptyView()
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(MidiHelpQuestion.allCases) { question in
+                            questionRow(question)
+                            Divider()
+                        }
+                        if MidiHelpLinks.isEnabled {
+                            link("midi_help_web", to: MidiHelpLinks.guide, identifier: "midi.help.web")
+                                .padding(.top, 12)
                         }
                     }
                     .font(.body)
@@ -160,11 +167,58 @@ struct MidiConnectionHelpView: View {
             .accessibilityAddTraits(.isModal)
             .accessibilityAction(.escape, closeHelp)
             .onAppear { titleFocused = true }
-            .onChange(of: supplement) { _, _ in linkOpenFailed = false }
         }
     }
 
-    private var manufacturerGuideOpener: OpenURLAction {
+    private func questionRow(_ question: MidiHelpQuestion) -> some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { expanded.contains(question) },
+            set: { open in
+                if open { expanded.insert(question) } else { expanded.remove(question) }
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(question.lines, id: \.key) { line in
+                    Text(MidiHelpText.text(line.key))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, line.continuation ? 20 : 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if question == .customFirmware, MidiHelpLinks.isEnabled {
+                    link("midi_help_cfw_link", to: MidiHelpLinks.customFirmware, identifier: "midi.help.cfwLink")
+                }
+            }
+            .padding(.bottom, 12)
+        } label: {
+            Text(MidiHelpText.text(question.titleKey))
+                .font(.headline)
+                .foregroundStyle(expanded.contains(question) ? AppColors.orange : AppColors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }
+        .tint(AppColors.textPrimary)
+        .accessibilityIdentifier("midi.help.q\(question.rawValue)")
+    }
+
+    private func link(_ key: String, to url: URL, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button(MidiHelpText.text(key)) {
+                failedLink = nil
+                externalOpener(url) { accepted in
+                    if !accepted { failedLink = url }
+                }
+            }
+            .frame(minHeight: 44)
+            .accessibilityIdentifier(identifier)
+            if failedLink == url {
+                Text(MidiHelpText.text("midi_help_link_failed"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("midi.help.linkFailed")
+            }
+        }
+    }
+
+    private var externalOpener: OpenURLAction {
         #if DEBUG || UNIPAD_RELEASE_TESTS
         // Exercise SwiftUI's rejected-open completion in local and release-check
         // UI tests only. Store builds always use the system opener; a failed web
@@ -180,14 +234,5 @@ struct MidiConnectionHelpView: View {
     private func closeHelp() {
         titleFocused = false
         onClose()
-    }
-
-    private func section(_ title: String, _ body: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(MidiHelpText.text(title))
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-            Text(MidiHelpText.text(body))
-        }
     }
 }

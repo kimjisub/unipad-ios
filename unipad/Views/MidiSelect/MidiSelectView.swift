@@ -7,12 +7,15 @@ enum DeviceIcon {
 
 struct MidiSelectView: View {
     @Environment(AppRouter.self) private var router
+    @ObservedObject private var midiManager = MidiManager.shared
     @State private var selection = MidiSelectState()
     @AccessibilityFocusState private var helpButtonFocused: Bool
+    /// Advanced when the quiet period after a connection ends, so the status can say so.
+    @State private var now = Date()
 
     private var selectedIndex: Int { selection.selectedIndex }
     private var remainingSeconds: Int? { selection.remainingSeconds }
-    @State private var isConnected = false
+    private var status: MidiConnectionStatus { MidiConnectionStatus(midiManager.connectionReport, now: now) }
     @State private var midiListener = MidiSelectListener()
 
     private let midiDevices: [MidiDevice] = [
@@ -47,8 +50,10 @@ struct MidiSelectView: View {
                     Color.black.opacity(0.55)
                         .ignoresSafeArea()
                     MidiConnectionHelpView(
+                        statusTitle: status.title,
                         modelName: midiDevices.first(where: { $0.id == selectedIndex })?.name ?? "",
-                        supplement: selection.helpSupplement
+                        modelSource: selection.modelSource,
+                        firstQuestion: status.firstHelpQuestion(customFirmware: midiManager.connectionReport.customFirmware)
                     ) {
                         selection.isHelpPresented = false
                         // Restore focus after the selection controls are visible
@@ -67,15 +72,28 @@ struct MidiSelectView: View {
         .platformNavigationBarHidden(true)
         .onAppear {
             if !selection.hasStartedAutorun {
-                if let activeDevice = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: MidiManager.shared.driver) }) {
-                    selection.detectedModel(activeDevice.id)
+                if MidiManager.shared.isConnected {
+                    showModel(of: MidiManager.shared.driver)
                 } else {
                     selection.restoreModel(min(max(PreferenceManager.shared.launchpadConnectMethod, 0), midiDevices.count - 1))
                 }
             }
             bindMidiListener()
-            isConnected = MidiManager.shared.isConnected
             startAutorunTimer()
+        }
+        .onChange(of: status) { _, newStatus in
+            selection.statusChanged(to: newStatus)
+            if let announcement = newStatus.announcement {
+                AccessibilityNotification.Announcement(announcement).post()
+            }
+        }
+        .task(id: midiManager.connectionReport) {
+            now = Date()
+            guard case .waiting(_, longWait: false) = status,
+                  let connectedAt = midiManager.connectionReport.connectedAt else { return }
+            let remaining = MidiConnectionStatus.quietPeriod - now.timeIntervalSince(connectedAt)
+            try? await Task.sleep(for: .seconds(max(remaining, 0)))
+            if !Task.isCancelled { now = Date() }
         }
         .onDisappear {
             cancelAutorun()
@@ -90,7 +108,10 @@ struct MidiSelectView: View {
     private var leftPanel: some View {
         VStack(spacing: 0) {
             ScrollView {
-                devicePreview
+                VStack(spacing: 0) {
+                    statusBox
+                    devicePreview
+                }
             }
             .frame(maxHeight: .infinity)
 
@@ -100,7 +121,8 @@ struct MidiSelectView: View {
                     selection.openHelp()
                 } label: {
                     Text(MidiHelpText.text("midi_help_title"))
-                        .font(.body)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppColors.orange)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 44)
@@ -135,17 +157,56 @@ struct MidiSelectView: View {
         }
     }
 
+    private var statusBox: some View {
+        let status = status
+        let dotColor: Color = switch status.tone {
+        case .problem: AppColors.red
+        case .attention: AppColors.orange
+        case .neutral: AppColors.textSecondary
+        case .received: AppColors.green
+        }
+        let tags = status.tags(customFirmware: midiManager.connectionReport.customFirmware)
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(status.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(status.tone == .problem ? AppColors.red : AppColors.white)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    if status.tone == .received {
+                        Image(systemName: "checkmark")
+                            .accessibilityHidden(true)
+                    }
+                    Text(status.nextStep)
+                }
+                .font(.footnote)
+                .foregroundStyle(status.tone == .received ? AppColors.green : AppColors.textPrimary)
+                ForEach(tags, id: \.self) { tag in
+                    Text(tag)
+                        .font(.caption)
+                        .foregroundStyle(AppColors.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .overlay(Capsule().stroke(AppColors.orange, lineWidth: 1))
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background(AppColors.darkSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("midi.status")
+    }
+
     private var devicePreview: some View {
         VStack(spacing: 0) {
-            Text(isConnected
-                 ? String(localized: "launchpadConnecting")
-                 : String(localized: "midiDevicesNotDetected"))
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(isConnected ? AppColors.textPrimary : AppColors.red)
-                .padding(.top, 20)
-
-            Spacer().frame(height: 12)
-
             // Selected device preview
             VStack(spacing: 8) {
                 if let selectedDevice = midiDevices.first(where: { $0.id == selectedIndex }) {
@@ -157,11 +218,13 @@ struct MidiSelectView: View {
                                 .aspectRatio(contentMode: .fit)
                                 .frame(height: 120)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .accessibilityHidden(true)
                         case .system(let systemName):
                             Image(systemName: systemName)
                                 .font(.system(size: 80))
                                 .foregroundStyle(AppColors.blue)
                                 .frame(height: 120)
+                                .accessibilityHidden(true)
                         }
                     }
 
@@ -171,8 +234,21 @@ struct MidiSelectView: View {
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
+
+                    if status.isConnected, let source = selection.modelSource {
+                        Text(source.text)
+                            .font(.caption)
+                            .foregroundStyle(AppColors.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().stroke(AppColors.divider, lineWidth: 1))
+                            .accessibilityIdentifier("midi.model.source")
+                    }
                 }
             }
+            .padding(.horizontal, 16)
             .padding(.vertical, 16)
             .animation(.easeInOut(duration: 0.3), value: selectedIndex)
 
@@ -217,7 +293,7 @@ struct MidiSelectView: View {
     }
 
     private func startAutorunTimer() {
-        guard selection.startAutorun() else { return }
+        guard selection.startAutorun(for: status) else { return }
         Task {
             while let seconds = remainingSeconds, seconds > 0 {
                 try? await Task.sleep(for: .seconds(1))
@@ -233,16 +309,26 @@ struct MidiSelectView: View {
         selection.cancelAutorun()
     }
 
+    /// Shows the model the connected device runs on and where that choice came from.
+    private func showModel(of driver: MidiDriver) {
+        let manager = MidiManager.shared
+        guard manager.isConnected else {
+            selection.deviceLeft()
+            return
+        }
+        let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) })?.id
+        if !manager.connectionReport.isModelRecognised {
+            selection.unrecognisedModel(device)
+        } else if manager.isDriverDetected || device == nil {
+            selection.detectedModel(device)
+        } else {
+            selection.earlierChoice(device!)
+        }
+    }
+
     private func bindMidiListener() {
-        midiListener.connectedHandler = {
-            isConnected = true
-        }
-        midiListener.disconnectedHandler = {
-            isConnected = false
-        }
         midiListener.driverChangeHandler = { driver in
-            let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) })
-            selection.detectedModel(device?.id)
+            showModel(of: driver)
         }
         MidiManager.shared.listener = midiListener
     }
@@ -258,26 +344,17 @@ struct MidiDevice: Identifiable {
 }
 
 private final class MidiSelectListener: MidiManagerListener {
-    var connectedHandler: (() -> Void)?
-    var disconnectedHandler: (() -> Void)?
     var driverChangeHandler: ((MidiDriver) -> Void)?
-    var logHandler: ((String) -> Void)?
 
-    func onConnected() {
-        connectedHandler?()
-    }
+    func onConnected() {}
 
-    func onDisconnected() {
-        disconnectedHandler?()
-    }
+    func onDisconnected() {}
 
     func onChangeDriver(driver: MidiDriver) {
         driverChangeHandler?(driver)
     }
 
-    func onLog(_ message: String) {
-        logHandler?(message)
-    }
+    func onLog(_ message: String) {}
 }
 
 // MARK: - Device Card
