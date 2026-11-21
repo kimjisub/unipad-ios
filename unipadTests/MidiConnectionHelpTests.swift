@@ -145,8 +145,10 @@ struct MidiConnectionHelpTests {
 
     @Test func firstPadPressIsRecordedOncePerConnection() {
         var report = Self.connected()
-        #expect(report.padPressed())
-        #expect(!report.padPressed())
+        let pressed1 = report.padPressed()
+        #expect(pressed1)
+        let pressed2 = report.padPressed()
+        #expect(!pressed2)
         #expect(report.hasPadInput)
         report.connected(deviceName: "LPX MIDI", isModelRecognised: true, customFirmware: nil, at: Self.connectedAt)
         #expect(!report.hasPadInput, "a new connection starts without input")
@@ -154,12 +156,15 @@ struct MidiConnectionHelpTests {
 
     @Test func padPressesWithoutAConnectionAreNotRecorded() {
         var report = MidiConnectionReport()
-        #expect(!report.padPressed())
+        let pressed3 = report.padPressed()
+        #expect(!pressed3)
         report.openFailed(deviceName: "LPX MIDI")
-        #expect(!report.padPressed())
+        let pressed4 = report.padPressed()
+        #expect(!pressed4)
         report.connected(deviceName: "LPX MIDI", isModelRecognised: true, customFirmware: nil, at: Self.connectedAt)
         report.disconnected()
-        #expect(!report.padPressed())
+        let pressed5 = report.padPressed()
+        #expect(!pressed5)
         #expect(!report.hasPadInput)
     }
 
