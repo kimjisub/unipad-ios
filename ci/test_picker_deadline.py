@@ -12,17 +12,36 @@ class PickerDeadlineTests(unittest.TestCase):
         start = source.index("    static func waitForSettledFrame(")
         end = source.index("    private static func attachPickerDiagnostics", start)
         helper = source[start:end]
+        helper = helper.replace(
+            "        guard waitForArrival(timeout) else { return false }",
+            '''        let began = Date()
+        guard waitForArrival(timeout) else {
+            print("PICKER-WAIT", probeName, "reason=arrival-rejected", "elapsed=", Date().timeIntervalSince(began))
+            return false
+        }''')
+        helper = helper.replace(
+            "        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed",
+            '''        let waitBegan = Date()
+        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
+        let reason = result == .completed ? "completed" : result == .timedOut ? "timed-out" : "other-\\(result.rawValue)"
+        print("PICKER-WAIT", probeName, "reason=", reason,
+              "waitElapsed=", Date().timeIntervalSince(waitBegan), "elapsed=", Date().timeIntervalSince(began))
+        return result == .completed''')
         program = "import Foundation\nimport XCTest\nstruct Support {\n" + helper + "}\n" + r"""
+var probeName = "stable"
 let target = CGRect(x: 740, y: 28, width: 37, height: 36)
 let stable = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in true }, frame: { target })
 let arrivesAt = Date().addingTimeInterval(2.8)
+probeName = "late"
 let late = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in Thread.sleep(until: arrivesAt); return true },
     frame: { Date() >= arrivesAt ? target : nil })
+probeName = "missing"
 let missing = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in false }, frame: { nil })
 var position = 0
+probeName = "moving"
 let moving = Support.waitForSettledFrame(timeout: 3,
     waitForArrival: { _ in true }, frame: {
         position += 1
@@ -43,6 +62,7 @@ exit(stable && late && !missing && !moving ? 0 : 1)
                 capture_output=True, text=True, timeout=120)
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             result = subprocess.run([str(path / "probe")], capture_output=True, text=True, timeout=20)
+            print(result.stdout, end="", flush=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 

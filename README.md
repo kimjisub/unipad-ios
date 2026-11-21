@@ -62,14 +62,23 @@ concurrency code, so a check that passes locally could fail here.
   simulator whose iOS version the selected Xcode supports
   (`ci/pick_simulator.py`), preferring iPhone 17 Pro like local checks, on the
   newest supported iOS that has it. UI tests are excluded. It uses `unipad-ci`,
-  which runs the complete unit test target without attaching a debugger or
-  building the UI test runner. The `unipad` scheme keeps interactive debugging
+  which runs the complete unit test target without attaching a debugger,
+  collecting unused code coverage or building the UI test runner. The `unipad`
+  scheme keeps interactive debugging
   and the existing unit and UI test plans.
 - **Release build and tool tests** runs the tests of the scripts in `ci/`,
   builds Release for iOS Simulator without signing, and checks that the app's
   open source notices list exactly the Swift packages that build compiled (see
   below). None of this needs a simulator, so it does not spend the unit test
   job's time.
+
+Script tests use `ci/run_tool_tests.py`: each file runs in its own process,
+with at most two Swift-compiling files at once and other files filling the
+remaining worker slots. Starts and completed results are printed immediately.
+Cancellation prints unfinished names and partial output before terminating and
+reaping owned children. Counts come from separate result files, so diagnostics
+cannot change them. A failing file, empty file, missing result or count mismatch
+fails the job.
 
 Both jobs have a 30-minute limit and neither waits for the other. Dependencies
 use the committed `Package.resolved` versions.
