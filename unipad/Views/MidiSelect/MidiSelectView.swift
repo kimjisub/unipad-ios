@@ -158,7 +158,7 @@ struct MidiSelectView: View {
     }
 
     private var statusBox: some View {
-        let status = status
+        let status = self.status
         let dotColor: Color = switch status.tone {
         case .problem: AppColors.red
         case .attention: AppColors.orange
