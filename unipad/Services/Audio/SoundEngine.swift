@@ -123,6 +123,10 @@ final class SoundEngine {
         set { gate.hooks.isEngineRunning = newValue }
     }
     #if canImport(UIKit)
+    /// The outputs the session plays to now. A test seam: a simulator cannot plug or unplug an output.
+    var currentOutputPorts: () -> [AVAudioSession.Port] = {
+        AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
+    }
     /// Whether the app is active. A test seam: the test host stays active, and an interruption can end
     /// while the app is still in the background.
     var isAppInFront: () -> Bool = { UIApplication.shared.applicationState == .active }
@@ -692,9 +696,36 @@ final class SoundEngine {
         guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: raw),
               reason == .oldDeviceUnavailable || reason == .noSuitableRouteForCategory else { return }
-        stopAllPlayback()
-        onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
+        let previous = notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
+        if Self.leavesOnlyTheDeviceOutput(
+            reason: reason, previousOutputs: previous?.outputs.map(\.portType), currentOutputs: currentOutputPorts()
+        ) {
+            stopAllPlayback()
+            onInterruption?(.began(whileInterrupted: gate.isInterruptionUnresolved))
+        }
         gate.configurationChanged()
+    }
+
+    /// Whether a lost output leaves the sound on the device itself: the earphones, Bluetooth or USB
+    /// output it played to is gone and nothing external took over. Music apps pause then, so the song
+    /// does not carry on out of the speaker. Moving from one external output to another keeps
+    /// playing. A previous route the notification did not carry counts as external, as the reason says.
+    nonisolated static func leavesOnlyTheDeviceOutput(
+        reason: AVAudioSession.RouteChangeReason,
+        previousOutputs: [AVAudioSession.Port]?,
+        currentOutputs: [AVAudioSession.Port]
+    ) -> Bool {
+        let deviceOutputs: Set<AVAudioSession.Port> = [.builtInSpeaker, .builtInReceiver]
+        func isExternal(_ port: AVAudioSession.Port) -> Bool { !deviceOutputs.contains(port) }
+        switch reason {
+        case .noSuitableRouteForCategory:
+            return true
+        case .oldDeviceUnavailable:
+            let hadExternal = previousOutputs.map { $0.contains(where: isExternal) } ?? true
+            return hadExternal && !currentOutputs.contains(where: isExternal)
+        default:
+            return false
+        }
     }
     #endif
 
