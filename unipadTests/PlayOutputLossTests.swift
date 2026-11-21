@@ -11,12 +11,15 @@ import Testing
 /// progress and the Play button's state, never about audible sound.
 extension PlayUsageRecordTests {
     @MainActor
-    struct PlayOutputLossTests {
+    struct PlayOutputLossTests: PlayAudioSessionTesting {
         /// Pad (1,1) loops forever, (1,2) repeats 500 times (30 s of a 60 ms sample), (1,3) and (2,1)
         /// play once. Autoplay starts all three kinds, then keeps playing (2,1) so its place moves.
         private static let keySound = "1 1 1 a.wav 0\n1 1 2 a.wav 500\n1 1 3 a.wav\n1 2 1 a.wav\n"
         private static let autoPlay = "on 1 1\non 1 2\non 1 3\n"
             + String(repeating: "delay 100\non 2 1\noff 2 1\n", count: 300)
+
+        /// Autoplay has started the loop, the 500 repeats and the one-shot, and moved on.
+        private static let allKindsStarted = 5
 
         private static func run(_ body: (PlayUsageScenario) async throws -> Void) async throws {
             try await PlayUsageScenario.run(keySound: keySound, autoPlay: autoPlay, body)
@@ -63,6 +66,28 @@ extension PlayUsageRecordTests {
                 reason: route.reason, previousOutputs: route.previous, currentOutputs: route.current) == route.pauses)
         }
 
+        /// The engine takes the lost output from the notification: a loss that leaves the speaker
+        /// pauses only when the route before it played to something external.
+        @Test(arguments: [
+            ([AVAudioSession.Port.headphones], true),
+            ([.bluetoothA2DP, .builtInSpeaker], true),
+            ([.builtInSpeaker], false),
+        ])
+        func theLostOutputComesFromTheNotification(previous: [AVAudioSession.Port], pauses: Bool) async throws {
+            try await Self.run { s in
+                try await s.loadReady()
+                let engine = try #require(s.vm.soundEngine)
+                let reports = observeInterruptions(engine)
+                _ = try await startAutoplay(s, reaching: Self.allKindsStarted)
+
+                loseOutput(engine, leaving: [.builtInSpeaker], previous: previous)
+
+                let beginnings = reports.all.filter { if case .began = $0 { return true }; return false }
+                #expect(beginnings.count == (pauses ? 1 : 0))
+                #expect(s.vm.isAutoPlayPlaying == !pauses)
+            }
+        }
+
         // MARK: Losing the output
 
         @Test func autoplayPausesInPlaceAndItsSoundsStop() async throws {
@@ -71,7 +96,7 @@ extension PlayUsageRecordTests {
                 let engine = try #require(s.vm.soundEngine)
                 let held = holdOneShotCompletions(engine)
                 defer { engine.playbackCompletionDelivery = nil }
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 #expect(engine.activeVoiceCount >= 3, "the loop, the repeat and the one-shot were not all playing")
                 #expect(engine.repeatedBuffersScheduled > 0)
                 let stopped = engine.playerNodesStopped
@@ -123,7 +148,7 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 s.press(1, 0) // held through the loss and the reconnection
 
                 loseOutput(engine, leaving: [.builtInSpeaker])
@@ -132,7 +157,7 @@ extension PlayUsageRecordTests {
                 engine.currentOutputPorts = { [.headphones] }
                 postRouteChange(.newDeviceAvailable)
                 engine.handleConfigurationChange()
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
                 try await Task.sleep(for: .milliseconds(500))
 
                 #expect(!s.vm.isAutoPlayPlaying, "reconnecting resumed autoplay")
@@ -150,9 +175,9 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 loseOutput(engine, leaving: [.builtInSpeaker])
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
                 let plays = engine.playsStarted
 
                 if controller { s.vm.controllerPadTouch(x: 0, y: 0, isDown: true) } else { s.press(0, 0) }
@@ -171,14 +196,14 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 loseOutput(engine, leaving: [.builtInSpeaker])
                 let pausedAt = runner.progress
                 if reconnected {
                     engine.currentOutputPorts = { [.bluetoothA2DP] }
                     postRouteChange(.newDeviceAvailable)
                 }
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
                 try await Task.sleep(for: .milliseconds(300))
                 #expect(runner.progress == pausedAt)
 
@@ -203,7 +228,7 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 s.press(0, 0)
                 let reports = observeInterruptions(engine)
 
@@ -238,7 +263,7 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 s.vm.cleanup()
                 #expect(!engine.isObservingSession)
                 let progress = runner.progress
@@ -262,14 +287,14 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 loseOutput(engine, leaving: [.builtInSpeaker])
                 let pausedAt = runner.progress
                 let plays = engine.playsStarted
 
                 loseOutput(engine, leaving: [.builtInSpeaker])
                 loseOutput(engine, leaving: [.builtInSpeaker])
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
 
                 #expect(!s.vm.isAutoPlayPlaying)
                 #expect(runner.progress == pausedAt)
@@ -285,12 +310,12 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 s.vm.autoPlayPause()
                 let pausedAt = runner.progress
 
                 loseOutput(engine, leaving: [.builtInSpeaker])
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
                 try await Task.sleep(for: .milliseconds(300))
 
                 #expect(!s.vm.isAutoPlayPlaying)
@@ -311,7 +336,7 @@ extension PlayUsageRecordTests {
 
                 loseOutput(engine, leaving: [.builtInSpeaker])
                 loseOutput(engine, leaving: [.builtInSpeaker])
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
 
                 #expect(s.vm.playMode == .none, "losing the output chose a mode")
                 #expect(!s.vm.isAutoPlayPlaying)
@@ -332,7 +357,7 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 s.press(0, 0)
                 loseOutput(engine, leaving: [.builtInSpeaker])
                 let pausedAt = runner.progress
@@ -352,7 +377,7 @@ extension PlayUsageRecordTests {
                     engine.activateSessionForRecovery = { try original(); rendering.recover() }
                     engine.handleConfigurationChange()
                 }
-                try await waitForRecovery(s, engine)
+                try await waitForRecovery(s, engine, untilSettled: true)
                 try await Task.sleep(for: .milliseconds(500))
 
                 #expect(!s.vm.isAutoPlayPlaying, "a later recovery resumed autoplay")
@@ -371,7 +396,7 @@ extension PlayUsageRecordTests {
             try await Self.run { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
-                let runner = try await startAutoplay(s)
+                let runner = try await startAutoplay(s, reaching: Self.allKindsStarted)
                 let original = engine.activateSessionForRecovery
                 let rendering = PlayInterruptionTests.RenderingState()
                 engine.isEngineRunningForRecovery = { rendering.isRunning }
@@ -401,51 +426,6 @@ extension PlayUsageRecordTests {
         }
 
         // MARK: Helpers
-
-        /// The session now plays to `ports`, and the system says the old output went away.
-        private func loseOutput(_ engine: SoundEngine, leaving ports: [AVAudioSession.Port]) {
-            engine.currentOutputPorts = { ports }
-            postRouteChange(.oldDeviceUnavailable)
-        }
-
-        private func postRouteChange(_ reason: AVAudioSession.RouteChangeReason) {
-            NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
-                userInfo: [AVAudioSessionRouteChangeReasonKey: reason.rawValue])
-        }
-
-        private func interruption(_ type: AVAudioSession.InterruptionType, shouldResume: Bool = false) -> Notification {
-            var info: [AnyHashable: Any] = [AVAudioSessionInterruptionTypeKey: type.rawValue]
-            if shouldResume {
-                info[AVAudioSessionInterruptionOptionKey] = AVAudioSession.InterruptionOptions.shouldResume.rawValue
-            }
-            return Notification(name: AVAudioSession.interruptionNotification, object: nil, userInfo: info)
-        }
-
-        private func startAutoplay(_ s: PlayUsageScenario) async throws -> AutoPlayRunner {
-            let runner = try #require(s.vm.autoPlayRunner)
-            s.vm.switchPlayMode(.autoPlay)
-            try await s.waitWhile { runner.progress < 5 }
-            try #require(runner.progress >= 5, "autoplay never started")
-            return runner
-        }
-
-        private func waitForRecovery(_ s: PlayUsageScenario, _ engine: SoundEngine) async throws {
-            try await s.waitWhile { engine.isPlaybackSuppressed || engine.isRecoveringPlayback }
-        }
-
-        private func observeInterruptions(_ engine: SoundEngine) -> PlayInterruptionTests.Reports {
-            let reports = PlayInterruptionTests.Reports()
-            let screen = engine.onInterruption
-            engine.onInterruption = { interruption in
-                screen?(interruption)
-                reports.all.append(interruption)
-            }
-            return reports
-        }
-
-        private func isPressedLit(_ s: PlayUsageScenario, x: Int, y: Int) -> Bool {
-            s.vm.channelManager?.get(x: x, y: y, channel: .pressed) != nil
-        }
 
         /// Keeps a finished one-shot's voice counted until the test lets it go, so a 60 ms sample is
         /// still playing when the output goes away however slow the machine is.

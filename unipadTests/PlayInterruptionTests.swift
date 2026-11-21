@@ -11,7 +11,7 @@ import Testing
 /// reaching `play()`), autoplay progress and pad lights, never about audible sound.
 extension PlayUsageRecordTests {
     @MainActor
-    struct PlayInterruptionTests {
+    struct PlayInterruptionTests: PlayAudioSessionTesting {
         enum Boundary: CaseIterable {
             case appAway, covered, audioInterruption, routeLoss, mediaReset
         }
@@ -90,9 +90,7 @@ extension PlayUsageRecordTests {
                 case .appAway: s.vm.onPause()
                 case .covered: s.vm.screenCovered()
                 case .audioInterruption: engine.handleInterruption(interruption(.began))
-                case .routeLoss:
-                    NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
-                        userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+                case .routeLoss: loseOutput(engine, leaving: [.builtInSpeaker])
                 case .mediaReset: engine.handleMediaServicesReset()
                 }
                 let progress = runner.progress
@@ -281,6 +279,7 @@ extension PlayUsageRecordTests {
                 defer { activation.release() }
                 engine.isEngineRunningForRecovery = { rendering.isRunning }
                 engine.activateSessionForRecovery = { try activation.activate() }
+                engine.currentOutputPorts = { [.builtInSpeaker] }
                 engine.handleRouteChange(Notification(name: AVAudioSession.routeChangeNotification,
                     userInfo: [AVAudioSessionRouteChangeReasonKey: (outputLost
                         ? AVAudioSession.RouteChangeReason.oldDeviceUnavailable
@@ -454,8 +453,7 @@ extension PlayUsageRecordTests {
                 if mediaReset {
                     engine.handleMediaServicesReset()
                 } else {
-                    NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: nil,
-                        userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+                    loseOutput(engine, leaving: [.builtInSpeaker])
                 }
                 #expect(!s.vm.isAutoPlayPlaying)
                 #expect(runner.isSuspended)
@@ -563,38 +561,6 @@ extension PlayUsageRecordTests {
             try await PlayUsageScenario.run(keySound: keySound, autoPlay: autoPlay, body)
         }
 
-        private func interruption(_ type: AVAudioSession.InterruptionType, shouldResume: Bool = false) -> Notification {
-            var info: [AnyHashable: Any] = [AVAudioSessionInterruptionTypeKey: type.rawValue]
-            if shouldResume {
-                info[AVAudioSessionInterruptionOptionKey] = AVAudioSession.InterruptionOptions.shouldResume.rawValue
-            }
-            return Notification(name: AVAudioSession.interruptionNotification, object: nil, userInfo: info)
-        }
-
-        private func startAutoplay(_ s: PlayUsageScenario) async throws -> AutoPlayRunner {
-            let runner = try #require(s.vm.autoPlayRunner)
-            s.vm.switchPlayMode(.autoPlay)
-            try await s.waitWhile { runner.progress < 3 }
-            try #require(runner.progress >= 3, "autoplay never started")
-            return runner
-        }
-
-        /// Taking the session back runs on the audio session worker and reports on the main queue.
-        private func waitForRecovery(_ s: PlayUsageScenario, _ engine: SoundEngine) async throws {
-            try await s.waitWhile { engine.isPlaybackSuppressed }
-        }
-
-        /// What the engine reported to the screen, in order, after the screen's own handler ran.
-        private func observeInterruptions(_ engine: SoundEngine) -> Reports {
-            let reports = Reports()
-            let screen = engine.onInterruption
-            engine.onInterruption = { interruption in
-                screen?(interruption)
-                reports.all.append(interruption)
-            }
-            return reports
-        }
-
         /// Waits for a report instead of a fixed time: the worker may be slow on a loaded machine.
         private func waitForReport(
             _ s: PlayUsageScenario, _ reports: Reports, _ matches: (SoundEngine.Interruption) -> Bool
@@ -622,10 +588,6 @@ extension PlayUsageRecordTests {
             #expect(s.vm.playMode == .autoPlay, "the user's choice of autoplay is kept for them to resume")
         }
 
-        final class Reports {
-            var all: [SoundEngine.Interruption] = []
-        }
-
         /// The first try to take the session back fails, as it does in the background; later ones run
         /// `then`. Called on the audio session worker.
         nonisolated final class FailsFirstActivation: @unchecked Sendable {
@@ -642,10 +604,6 @@ extension PlayUsageRecordTests {
                 if call == 1 { throw CocoaError(.featureUnsupported) }
                 try then()
             }
-        }
-
-        private func isPressedLit(_ s: PlayUsageScenario, x: Int, y: Int) -> Bool {
-            s.vm.channelManager?.get(x: x, y: y, channel: .pressed) != nil
         }
 
         /// Apple: a began interruption is not always followed by an ended one; after a call is
