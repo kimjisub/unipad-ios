@@ -4,6 +4,8 @@
   <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store" height="50">
 </a>
 
+If the store page doesn't open in your country, you can play in your browser at https://unipad.io/play.
+
 UniPad is a performance-based rhythm game that enables connection with a launchpad and allows users to create their own beatmaps using the unique "unipack" format, fostering creativity and sharing within the community.
 
 ## Features
