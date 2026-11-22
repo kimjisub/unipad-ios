@@ -243,6 +243,28 @@ extension PlayUsageRecordTests {
             }
         }
 
+        /// Confirming the CoreFW card for a Launchpad S or Mini mk1 keeps the red-green codes on the wire.
+        @Test(arguments: [("LPS (MIDI)", UInt8(63)), ("MINI (MIDI)", 63), ("PRO (MIDI)", 3), ("MK2 (MIDI)", 3), ("LPX (MIDI)", 3)])
+        func confirmingTheCoreFWCardKeepsTheDetectedColours(name: String, white: UInt8) async throws {
+            try await withDevices([name]) { tool, _ in
+                let manager = MidiManager.shared
+                try #require(manager.driver is LaunchpadCoreCFWDriver)
+                manager.applyChosenModel(LaunchpadCoreCFWDriver())
+                #expect(manager.isDriverDetected)
+                let arrivals = tool.folder.appending(path: "arrivals")
+                // Pad (0, 0) is CoreFW note 64 (0x40); pack colour 3 is white. Switching drivers also
+                // turns the pad off, so only a lit message counts.
+                let lit = {
+                    ((try? String(contentsOf: arrivals, encoding: .utf8)) ?? "").split(separator: "\n")
+                        .map(String.init).filter { $0.hasPrefix("90 40 ") && $0 != "90 40 00" }
+                }
+                let start = lit().count
+                manager.driver.sendPadLed(x: 0, y: 0, velocity: 3)
+                try await PlayUsageScenario.waitWhile { lit().count == start }
+                #expect(lit().dropFirst(start).first == "90 40 \(String(format: "%02X", white))", "\(name)")
+            }
+        }
+
         @Test func unknownDeviceIsReportedByItsOwnName() async throws {
             try await withDevices(["Test Synth"]) { _, _ in
                 let report = MidiManager.shared.connectionReport
