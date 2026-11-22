@@ -220,6 +220,9 @@ final class MidiConnectionHelpTests: XCTestCase {
         ])
         let help = app.buttons["midi.help.open"]
         let confirm = app.buttons["midi.confirm"]
+        // The status fills the column at this size; the help button follows it in the same scroll.
+        XCTAssertTrue(UITestSupport.scrollIntoView(help, in: app.scrollViews["midi.selection.column"], app: app,
+                                                   maxSwipes: 4), "the help button is reached by scrolling")
         XCTAssertTrue(help.isHittable)
         XCTAssertTrue(confirm.isHittable)
         XCTAssertTrue(app.windows.firstMatch.frame.contains(help.frame))
@@ -284,11 +287,9 @@ final class MidiConnectionHelpTests: XCTestCase {
             let status = app.descendants(matching: .any)["midi.status"]
             XCTAssertTrue(status.waitForExistence(timeout: 3))
             XCTAssertTrue(status.label.contains(labels.noDevice), status.label)
-            for element in [app.buttons["midi.help.open"], app.buttons["midi.confirm"]] {
-                XCTAssertTrue(UITestSupport.isFullyVisible(element, in: app), "\(name): \(element) outside \(window)")
-            }
+            XCTAssertTrue(UITestSupport.isFullyVisible(app.buttons["midi.confirm"], in: app), "\(name): OK outside \(window)")
             // The largest text makes the status taller than the column; it then scrolls with the
-            // model and starts at the top of the window.
+            // model, with the help button right after it, and starts at the top of the window.
             let statusFrame = try status.snapshot().frame
             if extra.isEmpty {
                 XCTAssertTrue(UITestSupport.isFullyVisible(status, in: app), "\(name): \(statusFrame) outside \(window)")
@@ -297,6 +298,13 @@ final class MidiConnectionHelpTests: XCTestCase {
                 XCTAssertGreaterThan(statusFrame.height, window.height / 2, "\(name): the status did not grow")
             }
             add(Self.windowShot("small-window-\(name)-selection", app: app))
+            if !extra.isEmpty {
+                XCTAssertTrue(UITestSupport.scrollIntoView(app.buttons["midi.help.open"],
+                                                           in: app.scrollViews["midi.selection.column"], app: app,
+                                                           maxSwipes: 6), "\(name): the help button is not reached")
+            }
+            XCTAssertTrue(UITestSupport.isFullyVisible(app.buttons["midi.help.open"], in: app),
+                          "\(name): the help button outside \(window)")
 
             app.buttons["midi.help.open"].tap()
             let close = app.buttons["midi.help.close"]

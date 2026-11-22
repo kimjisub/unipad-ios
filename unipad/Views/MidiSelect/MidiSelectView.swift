@@ -143,6 +143,7 @@ struct MidiSelectView: View {
             }
             .frame(maxHeight: .infinity)
             .accessibilitySortPriority(1)
+            .accessibilityIdentifier("midi.selection.column")
 
             VStack(spacing: 8) {
                 if !statusScrolls {
