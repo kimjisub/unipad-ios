@@ -6,7 +6,7 @@ final class MidiConnectionHelpTests: XCTestCase {
     private var app: XCUIApplication!
 
     private struct Labels {
-        let help, close, reconnect, noDevice, noDeviceNext, now, model, web, customFirmware, linkFailed
+        let help, close, reconnect, noDevice, noDeviceNext, now, model, web, customFirmware, linkFailed: String
         let questions: [String]
 
         init(language: String) {
