@@ -21,6 +21,7 @@ NOT_RUN = [
     "-skip-testing:unipadUITests/AudioOutputUITests",
     "-skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests",
     "-skip-testing:unipadUITests/VirtualMidiPlayScreenUITests",
+    "-skip-testing:unipadUITests/VirtualMidiConnectionStatusUITests",
     "-skip-testing:unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
     "-skip-testing:unipadTests/PlayUsageRecordTests/MidiInputPathTests/virtualDeviceReportsAFailedCommand()",
     "-skip-testing:unipadUITests/NotificationRoundTripUITests",

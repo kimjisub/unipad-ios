@@ -35,22 +35,55 @@ extension View {
             self
         }
     }
+
+    /// Moves a column that starts in a screen's top leading corner down below the window
+    /// controls of a resized window, for content that would wrap or overflow if narrowed beside
+    /// them. Apply it to a view whose top leading corner stays put, such as a whole column.
+    @ViewBuilder
+    func belowWindowControls() -> some View {
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {
+            modifier(WindowControlsClearanceBelow())
+        } else {
+            self
+        }
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
+private enum WindowControlsCorner {
+    /// A window without controls reports its rounded corner, a few points wide, unless it stands
+    /// upright; only the controls reach this.
+    static let smallestControlsWidth: CGFloat = 20
+}
+
+@available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
+private struct WindowControlsClearanceBelow: ViewModifier {
+    @Environment(\.windowFillsScreen) private var windowFillsScreen
+    @State private var corner = CGSize.zero
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.top, !windowFillsScreen && corner.width >= WindowControlsCorner.smallestControlsWidth ? corner.height : 0)
+            // Measured outside the padding, whose corner does not move with it.
+            .onGeometryChange(for: CGSize.self) { proxy in
+                proxy.containerCornerInsets.topLeading
+            } action: { size in
+                corner = size
+            }
+    }
 }
 
 @available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
 private struct WindowControlsAvoidance: ViewModifier {
     /// The controls take touches past the corner the system reports for them.
     private static let touchMargin: CGFloat = 8
-    /// A window without controls reports its rounded corner, a few points wide, unless it stands
-    /// upright; only the controls reach this.
-    private static let smallestControlsWidth: CGFloat = 20
 
     @Environment(\.windowFillsScreen) private var windowFillsScreen
     @State private var cornerWidth: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
-            .padding(.leading, !windowFillsScreen && cornerWidth >= Self.smallestControlsWidth ? Self.touchMargin : 0)
+            .padding(.leading, !windowFillsScreen && cornerWidth >= WindowControlsCorner.smallestControlsWidth ? Self.touchMargin : 0)
             .containerCornerOffset(windowFillsScreen ? [] : .leading, sizeToFit: true)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.containerCornerInsets.topLeading.width

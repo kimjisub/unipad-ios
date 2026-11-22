@@ -36,6 +36,15 @@ final class MidiManager: ObservableObject {
     @Published private(set) var isConnected = false
     @Published private(set) var connectedDeviceName: String?
     @Published private(set) var debugLog: [String] = []
+    @Published private(set) var connectionReport = MidiConnectionReport()
+    /// The driver type discovery chose for the current connection; a manual choice replaces the driver only.
+    private var detectedDriverType: MidiDriver.Type?
+
+    /// True while the current driver is the one discovery chose for the connected device.
+    var isDriverDetected: Bool {
+        guard isConnected, let detectedDriverType else { return false }
+        return ObjectIdentifier(type(of: driver)) == ObjectIdentifier(detectedDriverType)
+    }
 
     private func log(_ message: String) {
         logger.info("\(message)")
@@ -302,7 +311,10 @@ final class MidiManager: ObservableObject {
             best = (i, source, entry)
         }
 
-        guard let best else { return }
+        guard let best else {
+            connectionReport.openFailedDeviceRemoved()
+            return
+        }
         if connectedSource != 0 {
             guard best.source != connectedSource, best.entry.priority.rawValue > connectedPriority.rawValue else {
                 log("Keeping connection to \(connectedDeviceName ?? "?")")
@@ -311,6 +323,36 @@ final class MidiManager: ObservableObject {
             disconnect()
         }
         connectToDevice(sourceIndex: best.index, driverEntry: best.entry)
+    }
+
+    /// The device's own name for the status line: its device name, else what the endpoint shows.
+    private func reportedName(of source: MIDIEndpointRef) -> String {
+        var entity: MIDIEntityRef = 0
+        MIDIEndpointGetEntity(source, &entity)
+        var device: MIDIDeviceRef = 0
+        if entity != 0 { MIDIEntityGetDevice(entity, &device) }
+        if device != 0, let name = getMIDIObjectStringProperty(device, kMIDIPropertyName), !name.isEmpty {
+            return name
+        }
+        return getMIDIObjectStringProperty(source, kMIDIPropertyDisplayName) ?? getMIDIObjectName(source)
+    }
+
+    private static func customFirmware(of driver: MidiDriver) -> MidiConnectionReport.CustomFirmware? {
+        switch driver {
+        case is LaunchpadCoreCFWDriver: .coreFW
+        case is LaunchpadProCFWDriver: .launchpadOpen
+        default: nil
+        }
+    }
+
+    private func connect(_ source: MIDIEndpointRef) -> OSStatus {
+#if DEBUG || UNIPAD_RELEASE_TESTS
+        // Shows the "couldn't open" state in UI checks; CoreMIDI refuses no simulator source by itself.
+        if ProcessInfo.processInfo.arguments.contains("-UniPadMidiRefuseOpen") {
+            return OSStatus(kMIDINoConnection)
+        }
+#endif
+        return MIDIPortConnectSource(inputPort, source, nil)
     }
 
     private func isVirtualSource(name: String) -> Bool {
@@ -481,9 +523,10 @@ final class MidiManager: ObservableObject {
 
         connectedDeviceEntity = discoveredEntity  // keep DAW entity for SysEx routing
 
-        let status = MIDIPortConnectSource(inputPort, source, nil)
+        let status = connect(source)
         guard status == noErr else {
             log("ERROR: Failed to connect to MIDI source: \(status)")
+            connectionReport.openFailed(deviceName: reportedName(of: discoveredSource))
             return
         }
 
@@ -536,7 +579,13 @@ final class MidiManager: ObservableObject {
         // the current LEDs onto the new device) when it is already true, so a hot-plugged
         // Launchpad stayed dark until an unrelated redraw.
         isConnected = true
-        driver = driverEntry.factory()
+        let newDriver = driverEntry.factory()
+        // Before installing the driver: its change listener reads both.
+        detectedDriverType = type(of: newDriver)
+        connectionReport.connected(deviceName: reportedName(of: discoveredSource),
+                                   isModelRecognised: driverEntry.priority != .generic,
+                                   customFirmware: Self.customFirmware(of: newDriver), at: Date())
+        driver = newDriver
         midiInputLogCount = 0
 
         log("Connected: \(driverEntry.name), srcPort=\(connectedSourcePortIndex), dstPort=\(connectedDestinationPortIndex)")
@@ -564,13 +613,25 @@ final class MidiManager: ObservableObject {
         connectedDestinationPortIndex = 0
         connectedDeviceName = nil
         isConnected = false
+        detectedDriverType = nil
+        connectionReport.disconnected()
         driver = NotingDriver()
 
         listener?.onDisconnected()
     }
 
     func overrideDriver(_ newDriver: MidiDriver) {
+        // Before installing the driver: its change listener reads the report.
+        let isDetectedModel = detectedDriverType.map { ObjectIdentifier(type(of: newDriver)) == ObjectIdentifier($0) } ?? false
+        connectionReport.modelApplied(byHand: !isDetectedModel)
         driver = newDriver
+    }
+
+    /// Records the first pad press of a connection. Later presses leave the published report alone,
+    /// so observers are not woken on every press.
+    func notePadPress() {
+        guard connectionReport.awaitsPadInput else { return }
+        connectionReport.padPressed()
     }
 
     func removeController(_ target: MidiController) {
@@ -670,6 +731,7 @@ private final class MidiManagerReceiveAdapter: MidiDriverReceiveSignalListener {
     func onPadTouch(x: Int, y: Int, upDown: Bool, velocity: Int) {
         Task { @MainActor in
             manager?.controller?.onPadTouch(x: x, y: y, upDown: upDown, velocity: velocity)
+            if upDown { manager?.notePadPress() }
         }
     }
 

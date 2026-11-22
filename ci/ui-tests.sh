@@ -32,6 +32,8 @@ not_run=(
   -skip-testing:unipadUITests/VirtualLaunchpadRoundTripUITests
   # Needs virtual MIDI devices: run ci/midi-input-tests.sh with unipadUITests/VirtualMidiPlayScreenUITests.
   -skip-testing:unipadUITests/VirtualMidiPlayScreenUITests
+  # Needs the same devices: run ci/midi-input-tests.sh with unipadUITests/VirtualMidiConnectionStatusUITests.
+  -skip-testing:unipadUITests/VirtualMidiConnectionStatusUITests
   # The release plan selects this suite's parent; it needs the same devices: run ci/midi-input-tests.sh.
   -skip-testing:unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests
   # The one test of this suite that needs those devices; the rest run without them.

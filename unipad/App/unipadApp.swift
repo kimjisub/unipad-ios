@@ -66,6 +66,7 @@ struct unipadApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var router = AppRouter()
     @State private var midiBanner = MidiBannerCoordinator()
+    @State private var midiBannerBottom: CGFloat = 0
 #if DEBUG || UNIPAD_RELEASE_TESTS
     @State private var openedTestLink = false
     @State private var showedTestMidiBanner = false
@@ -139,6 +140,7 @@ struct unipadApp: App {
             }
             .environment(router)
             .environment(modelStoreStatus)
+            .environment(\.midiBannerBottom, midiBanner.isVisible ? midiBannerBottom : 0)
             .publishingWindowFillsScreen()
 #if (DEBUG || UNIPAD_RELEASE_TESTS) && canImport(UIKit)
             .background(alignment: .topLeading) {
@@ -164,6 +166,9 @@ struct unipadApp: App {
                         onDismiss: { midiBanner.dismiss() }
                     )
                         .padding(.top, 16)
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: {
+                            midiBannerBottom = $0
+                        }
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }

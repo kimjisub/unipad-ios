@@ -679,6 +679,23 @@ enum UITestSupport {
         return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
     }
 
+    /// Resizes an iPad app window to about `size` by dragging its bottom-right corner; the window
+    /// stays centred, so both sides move. iPadOS remembers the size per orientation: give the
+    /// screen's own size to fill it again.
+    static func resizeWindow(of app: XCUIApplication, to size: CGSize) {
+        let origin = XCUIApplication(bundleIdentifier: "com.apple.springboard").coordinate(withNormalizedOffset: .zero)
+        let window = app.windows.firstMatch
+        for _ in 0..<3 {
+            let frame = window.frame
+            guard abs(frame.width - size.width) > 20 || abs(frame.height - size.height) > 20 else { return }
+            // The handle sits 6pt inside the corner, and so does the point it is dropped on.
+            origin.withOffset(CGVector(dx: frame.maxX - 6, dy: frame.maxY - 6))
+                .press(forDuration: 0.6, thenDragTo: origin.withOffset(
+                    CGVector(dx: frame.midX + size.width / 2 - 6, dy: frame.midY + size.height / 2 - 6)))
+            sleep(2)
+        }
+    }
+
     static func attachScreenshot(_ name: String, to testCase: XCTestCase) {
         let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         a.name = name

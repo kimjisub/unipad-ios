@@ -173,6 +173,115 @@ extension PlayUsageRecordTests {
             }
         }
 
+        // MARK: What the device screen is told
+
+        @Test func reportNamesTheDeviceAndCountsOnlyItsPadPresses() async throws {
+            try await withDevices(["Launchpad MK2"]) { tool, _ in
+                let manager = MidiManager.shared
+                var report = manager.connectionReport
+                try #require(report.phase == .connected)
+                #expect(report.deviceName == "Launchpad MK2")
+                #expect(report.isModelRecognised)
+                #expect(report.customFirmware == nil)
+                #expect(!report.hasPadInput)
+                #expect(manager.isDriverDetected)
+
+                // A top-row button, a release and a clock are not pad presses.
+                try tool.send(0xB0, 104, 127)
+                try tool.send(0x90, 81, 0)
+                try tool.send([0x10F8_0000])
+                try await Task.sleep(for: .milliseconds(300))
+                #expect(!manager.connectionReport.hasPadInput)
+
+                try tool.send(0x90, 81, 100)
+                try await PlayUsageScenario.waitWhile { !manager.connectionReport.hasPadInput }
+                #expect(manager.connectionReport.hasPadInput)
+
+                try tool.run("close")
+                try await PlayUsageScenario.waitWhile { manager.connectionReport.phase == .connected }
+                report = manager.connectionReport
+                #expect(report.phase == .disconnected)
+                #expect(!report.hasPadInput)
+
+                try tool.run("open Launchpad MK2")
+                try await PlayUsageScenario.waitWhile(timeout: 10) { manager.connectionReport.phase != .connected }
+                #expect(manager.connectionReport.phase == .connected)
+                #expect(!manager.connectionReport.hasPadInput, "a reconnection starts without input")
+            }
+        }
+
+        @Test func inputFromAnotherDeviceIsNotCounted() async throws {
+            // The tool sends from the first device; UniPad connects the Launchpad.
+            try await withDevices(["Test Keyboard", "Launchpad MK2"]) { tool, _ in
+                let manager = MidiManager.shared
+                try #require(manager.driver is LaunchpadMK2Driver)
+                try #require(manager.connectionReport.deviceName == "Launchpad MK2")
+                try tool.send(0x90, 60, 100)
+                try await Task.sleep(for: .milliseconds(300))
+                #expect(!manager.connectionReport.hasPadInput)
+            }
+        }
+
+        @Test(arguments: [("Pro (MIDI)", MidiConnectionReport.CustomFirmware.coreFW),
+                          ("Launchpad Open", .launchpadOpen)])
+        func recognisedFirmwareIsReported(name: String, firmware: MidiConnectionReport.CustomFirmware) async throws {
+            try await withDevices([name]) { _, _ in
+                let report = MidiManager.shared.connectionReport
+                #expect(report.customFirmware == firmware)
+                #expect(report.isModelRecognised)
+            }
+        }
+
+        @Test func choosingAModelByHandNeitherClaimsFirmwareNorDetection() async throws {
+            try await withDevices(["Launchpad MK2"]) { _, _ in
+                let manager = MidiManager.shared
+                manager.overrideDriver(LaunchpadProCFWDriver())
+                #expect(!manager.isDriverDetected)
+                #expect(manager.connectionReport.customFirmware == nil)
+                manager.overrideDriver(LaunchpadMK2Driver())
+                #expect(manager.isDriverDetected, "confirming the recognised model keeps it recognised")
+            }
+        }
+
+        @Test func unknownDeviceIsReportedByItsOwnName() async throws {
+            try await withDevices(["Test Synth"]) { _, _ in
+                let report = MidiManager.shared.connectionReport
+                #expect(report.phase == .connected)
+                #expect(report.deviceName == "Test Synth")
+                #expect(!report.isModelRecognised)
+            }
+        }
+
+        @Test func modelChosenByHandForAnUnknownDeviceIsNoLongerReportedAsAKeyboard() async throws {
+            try await withDevices(["Test Synth"]) { _, _ in
+                let manager = MidiManager.shared
+                #expect(manager.connectionReport.isConnectedAsKeyboard)
+                manager.overrideDriver(LaunchpadMiniMK3Driver())
+                let report = manager.connectionReport
+                #expect(!report.isConnectedAsKeyboard)
+                #expect(report.isModelChosenByHand)
+                #expect(!report.isModelRecognised, "choosing a model does not mean UniPad recognised the device")
+                #expect(report.customFirmware == nil)
+                #expect(MidiConnectionStatus(report, now: Date()) == .waiting(device: "Test Synth", longWait: false))
+            }
+        }
+
+        @Test func deviceThatCannotBeOpenedIsReportedAndLogged() async throws {
+            // A manager that never created its input port cannot open any source.
+            let manager = MidiManager()
+            try await withDevices(["Launchpad X"]) { tool, _ in
+                manager.scanForDevices()
+                #expect(manager.connectionReport.phase == .openFailed)
+                #expect(manager.connectionReport.deviceName == "Launchpad X")
+                #expect(!manager.isConnected)
+                #expect(manager.debugLog.contains { $0.hasPrefix("ERROR: Failed to connect to MIDI source") })
+                try tool.run("close")
+                try await waitForEndpoints([])
+                manager.scanForDevices()
+                #expect(manager.connectionReport.phase == .noDevice)
+            }
+        }
+
         @Test func keyboardRescanKeepsTheConnectionAndReceivesRelease() async throws {
             try await PlayUsageScenario.run { s in
                 try await s.loadReady()

@@ -256,10 +256,11 @@ class ReleaseChecks:
         if self.args.device == "ipad" or stage in {"screen", "unit"}:
             return
         # These suites need one shared live CoreMIDI client. Build the Debug fixture
-        # host once, then run all three against the same virtual-device session.
+        # host once, then run them all against the same virtual-device session.
         suites = ["unipadTests/PlayUsageRecordTests/MidiInputPathTests",
                   "unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
-                  "unipadUITests/VirtualMidiPlayScreenUITests"]
+                  "unipadUITests/VirtualMidiPlayScreenUITests",
+                  "unipadUITests/VirtualMidiConnectionStatusUITests"]
         if stage in {"all", "midi"}:
             self.stage("midi-build", ["xcodebuild", "build-for-testing", "-project", "unipad.xcodeproj",
                                  "-scheme", "unipad", "-configuration", "Debug", "-testPlan", "AllTests",

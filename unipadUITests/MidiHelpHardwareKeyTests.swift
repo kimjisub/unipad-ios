@@ -24,7 +24,7 @@ final class MidiHelpHardwareKeyTests: XCTestCase {
 
         init(language: String) {
             let korean = language == "ko"
-            title = korean ? "연결·불빛 도움말" : "Connection and light help"
+            title = korean ? "연결이 안 되나요?" : "Not connecting?"
             model = korean ? "선택한 기종" : "Selected model"
             close = korean ? "도움말 닫기" : "Close help"
             reconnect = korean ? "런치패드 다시 연결하기" : "Reconnect Launchpad"
