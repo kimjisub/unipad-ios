@@ -252,6 +252,20 @@ extension PlayUsageRecordTests {
             }
         }
 
+        @Test func modelChosenByHandForAnUnknownDeviceIsNoLongerReportedAsAKeyboard() async throws {
+            try await withDevices(["Test Synth"]) { _, _ in
+                let manager = MidiManager.shared
+                #expect(manager.connectionReport.isConnectedAsKeyboard)
+                manager.overrideDriver(LaunchpadMiniMK3Driver())
+                let report = manager.connectionReport
+                #expect(!report.isConnectedAsKeyboard)
+                #expect(report.isModelChosenByHand)
+                #expect(!report.isModelRecognised, "choosing a model does not mean UniPad recognised the device")
+                #expect(report.customFirmware == nil)
+                #expect(MidiConnectionStatus(report, now: Date()) == .waiting(device: "Test Synth", longWait: false))
+            }
+        }
+
         @Test func deviceThatCannotBeOpenedIsReportedAndLogged() async throws {
             // A manager that never created its input port cannot open any source.
             let manager = MidiManager()

@@ -324,9 +324,23 @@ final class MidiConnectionHelpTests: XCTestCase {
     @MainActor
     func testVoiceOverReadsStatusBeforeHelpModelAndList() throws {
         guard #available(iOS 27.0, *) else { throw XCTSkip("VoiceOver automation requires iOS 27") }
+        try checkVoiceOverOrder(name: "voiceover-selection")
+    }
+
+    /// At the largest text size the status and the help button scroll with the model, read in the same order.
+    @MainActor
+    func testVoiceOverKeepsTheOrderAtTheLargestTextSize() throws {
+        guard #available(iOS 27.0, *) else { throw XCTSkip("VoiceOver automation requires iOS 27") }
+        try checkVoiceOverOrder(name: "voiceover-selection-largest-text",
+                                extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+    }
+
+    @available(iOS 27.0, *)
+    @MainActor
+    private func checkVoiceOverOrder(name: String, extra: [String] = []) throws {
         let voiceOver = XCUIDevice.shared.voiceOverService
         for language in ["en", "ko"] {
-            let labels = openSelection(language: language)
+            let labels = openSelection(language: language, extra: extra)
             if !voiceOver.isEnabled { try voiceOver.enable() }
             var speech = try VoiceOverReading.firstSpeech { try voiceOver.moveForward().utterance }
             var transcript = [speech]
@@ -342,7 +356,7 @@ final class MidiConnectionHelpTests: XCTestCase {
             let text = order.joined(separator: "\n")
             let attachment = XCTAttachment(string: "reached by:\n" + transcript.joined(separator: "\n")
                                            + "\n\nreading order:\n" + text)
-            attachment.name = "voiceover-selection-order-\(language)"
+            attachment.name = "\(name)-order-\(language)"
             attachment.lifetime = .keepAlways
             add(attachment)
             func position(_ needle: String) -> Int? { order.firstIndex { $0.contains(needle) } }
@@ -356,7 +370,7 @@ final class MidiConnectionHelpTests: XCTestCase {
             XCTAssertEqual(model, 2, text)
             XCTAssertNotNil(confirm, text)
             if let confirm, let list { XCTAssertLessThan(confirm, list, text) }
-            UITestSupport.attachScreenshot("voiceover-selection-\(language)", to: self)
+            UITestSupport.attachScreenshot("\(name)-\(language)", to: self)
             // The next language opens the screen by taps, which VoiceOver would only focus.
             try voiceOver.disable()
             app.terminate()

@@ -121,9 +121,9 @@ struct MidiSelectView: View {
     // MARK: - Left Panel
 
     private var leftPanel: some View {
-        // The scroll view is its own VoiceOver group, so the status sits outside it to be read
-        // before the help button below. At accessibility text sizes the status scrolls with the
-        // model instead, so it is never cut off on a short landscape screen.
+        // The scroll view is its own VoiceOver group, so the status and the help button sit outside
+        // it to be read before the model. At accessibility text sizes both scroll with the model
+        // instead, in the same order, so the status is never cut off on a short landscape screen.
         let statusScrolls = dynamicTypeSize.isAccessibilitySize
         return VStack(spacing: 0) {
             if !statusScrolls {
@@ -134,6 +134,9 @@ struct MidiSelectView: View {
                 VStack(spacing: 0) {
                     if statusScrolls {
                         statusBox
+                        helpButton
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
                     }
                     devicePreview
                 }
@@ -142,22 +145,11 @@ struct MidiSelectView: View {
             .accessibilitySortPriority(1)
 
             VStack(spacing: 8) {
-                Button {
-                    helpButtonFocused = false
-                    selection.openHelp()
-                } label: {
-                    Text(MidiHelpText.text("midi_help_title"))
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppColors.orange)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
+                if !statusScrolls {
+                    helpButton
+                        // Read right after the status it explains, before the model shown above it.
+                        .accessibilitySortPriority(2)
                 }
-                .accessibilityIdentifier("midi.help.open")
-                .accessibilityFocused($helpButtonFocused)
-                // Read right after the status it explains, before the model shown above it.
-                .accessibilitySortPriority(statusScrolls ? 0 : 2)
 
                 Button {
                     cancelAutorun()
@@ -185,6 +177,23 @@ struct MidiSelectView: View {
         }
         .belowWindowControls()
         .accessibilityElement(children: .contain)
+    }
+
+    private var helpButton: some View {
+        Button {
+            helpButtonFocused = false
+            selection.openHelp()
+        } label: {
+            Text(MidiHelpText.text("midi_help_title"))
+                .font(.body.weight(.semibold))
+                .foregroundStyle(AppColors.orange)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("midi.help.open")
+        .accessibilityFocused($helpButtonFocused)
     }
 
     private var statusBox: some View {
@@ -264,6 +273,7 @@ struct MidiSelectView: View {
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
+                        .accessibilityIdentifier("midi.model.name")
 
                     if status.isConnected, let source = selection.modelSource {
                         Text(source.text)
@@ -347,7 +357,7 @@ struct MidiSelectView: View {
             return
         }
         let device = midiDevices.first(where: { type(of: $0.makeDriver()) == type(of: driver) })?.id
-        if !manager.connectionReport.isModelRecognised {
+        if manager.connectionReport.isConnectedAsKeyboard {
             selection.unrecognisedModel(device)
         } else if manager.isDriverDetected || device == nil {
             selection.detectedModel(device)

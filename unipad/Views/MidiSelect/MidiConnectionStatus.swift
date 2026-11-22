@@ -19,7 +19,7 @@ nonisolated enum MidiConnectionStatus: Equatable {
         case .openFailed: self = .openFailed(device: device)
         case .disconnected: self = .disconnected
         case .connected:
-            if !report.isModelRecognised {
+            if report.isConnectedAsKeyboard {
                 self = .unknownModel(device: device)
             } else if report.hasPadInput {
                 self = .padReceived(device: device)

@@ -200,6 +200,26 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             UITestSupport.attachScreenshot("\(language)-unknown-model-chosen-by-hand", to: self)
             openHelp()
             UITestSupport.attachScreenshot("\(language)-help-unknown-model", to: self)
+            closeHelp()
+
+            // Applied by hand, the chosen model replaces the keyboard fallback until the next plug-in.
+            confirm.tap()
+            let reconnect = app.buttons[labels.reconnect]
+            XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
+            reconnect.tap()
+            XCTAssertTrue(waitForStatus(containing: labels.waiting))
+            XCTAssertFalse(status.label.contains(labels.unknownTag), status.label)
+            XCTAssertTrue(status.label.contains(labels.connected("Test Synth")), status.label)
+            XCTAssertEqual(source.label, labels.manual)
+            XCTAssertEqual(app.staticTexts["midi.model.name"].label, "Launchpad Mini MK3", "the chosen model is shown")
+            XCTAssertEqual(confirm.label, labels.ok, "no automatic confirmation for a model chosen by hand")
+            UITestSupport.attachScreenshot("\(language)-unknown-model-applied-by-hand", to: self)
+
+            try device.run("close")
+            XCTAssertTrue(waitForStatus(containing: labels.disconnected))
+            try device.run("open Test Synth")
+            XCTAssertTrue(waitForStatus(containing: labels.unknownTag), "plugging in again detects it afresh")
+            XCTAssertFalse(source.exists)
             app.terminate()
         }
     }

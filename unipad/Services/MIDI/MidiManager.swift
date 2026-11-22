@@ -621,13 +621,17 @@ final class MidiManager: ObservableObject {
     }
 
     func overrideDriver(_ newDriver: MidiDriver) {
+        // Before installing the driver: its change listener reads the report.
+        let isDetectedModel = detectedDriverType.map { ObjectIdentifier(type(of: newDriver)) == ObjectIdentifier($0) } ?? false
+        connectionReport.modelApplied(byHand: !isDetectedModel)
         driver = newDriver
     }
 
-    /// Records the first pad press of a connection; later presses change nothing.
+    /// Records the first pad press of a connection. Later presses leave the published report alone,
+    /// so observers are not woken on every press.
     func notePadPress() {
-        guard connectionReport.phase == .connected, !connectionReport.hasPadInput else { return }
-        _ = connectionReport.padPressed()
+        guard connectionReport.awaitsPadInput else { return }
+        connectionReport.padPressed()
     }
 
     func removeController(_ target: MidiController) {

@@ -28,6 +28,8 @@ nonisolated struct MidiConnectionReport: Equatable, Sendable {
     private(set) var deviceName: String?
     /// False when no model matched the device and it was connected as a keyboard.
     private(set) var isModelRecognised = false
+    /// A model other than the one detected at connection was applied to this connection by hand.
+    private(set) var isModelChosenByHand = false
     /// Firmware recognised from the device's own endpoint names when it connected.
     private(set) var customFirmware: CustomFirmware?
     private(set) var connectedAt: Date?
@@ -54,9 +56,20 @@ nonisolated struct MidiConnectionReport: Equatable, Sendable {
         self = MidiConnectionReport()
     }
 
+    /// The device runs on the keyboard fallback: no model matched it and none was applied by hand.
+    var isConnectedAsKeyboard: Bool { !isModelRecognised && !isModelChosenByHand }
+
+    var awaitsPadInput: Bool { phase == .connected && !hasPadInput }
+
+    mutating func modelApplied(byHand: Bool) {
+        guard phase == .connected else { return }
+        isModelChosenByHand = byHand
+    }
+
     /// Returns true only for the first press of a connection, so observers change once.
+    @discardableResult
     mutating func padPressed() -> Bool {
-        guard phase == .connected, !hasPadInput else { return false }
+        guard awaitsPadInput else { return false }
         hasPadInput = true
         return true
     }

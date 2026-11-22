@@ -154,6 +154,21 @@ struct MidiConnectionHelpTests {
         #expect(!report.hasPadInput, "a new connection starts without input")
     }
 
+    @Test func modelAppliedByHandToAnUnknownDeviceEndsTheKeyboardStateUntilReconnection() {
+        var report = Self.connected(recognised: false)
+        #expect(MidiConnectionStatus(report, now: Self.connectedAt) == .unknownModel(device: "LPX MIDI"))
+        report.modelApplied(byHand: true)
+        #expect(MidiConnectionStatus(report, now: Self.connectedAt) == .waiting(device: "LPX MIDI", longWait: false))
+        report.modelApplied(byHand: false)
+        #expect(report.isConnectedAsKeyboard, "applying the detected keyboard model again keeps it a keyboard")
+        report.modelApplied(byHand: true)
+        report.connected(deviceName: "LPX MIDI", isModelRecognised: false, customFirmware: nil, at: Self.connectedAt)
+        #expect(report.isConnectedAsKeyboard, "a new connection starts from detection again")
+        var disconnected = MidiConnectionReport()
+        disconnected.modelApplied(byHand: true)
+        #expect(!disconnected.isModelChosenByHand, "nothing is applied without a connection")
+    }
+
     @Test func padPressesWithoutAConnectionAreNotRecorded() {
         var report = MidiConnectionReport()
         let pressed3 = report.padPressed()
