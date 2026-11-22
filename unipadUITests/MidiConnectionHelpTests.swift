@@ -292,9 +292,10 @@ final class MidiConnectionHelpTests: XCTestCase {
             XCTAssertNotNil(confirm, text)
             if let confirm, let list { XCTAssertLessThan(confirm, list, text) }
             UITestSupport.attachScreenshot("voiceover-selection-\(language)", to: self)
+            // The next language opens the screen by taps, which VoiceOver would only focus.
+            try voiceOver.disable()
             app.terminate()
         }
-        try voiceOver.disable()
     }
     #endif
 }
