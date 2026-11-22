@@ -253,6 +253,56 @@ final class MidiConnectionHelpTests: XCTestCase {
         XCTAssertTrue(app.buttons[labels.reconnect].waitForExistence(timeout: 5))
     }
 
+    /// The smallest landscape iPhone screen, 667 by 375 points, in an iPad window of that size: the
+    /// status, the help button and OK stay inside it, also with the largest text, and so does the
+    /// help's header with its Close button.
+    @MainActor
+    func testSmallLandscapeWindowKeepsStatusHelpAndOKInside() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "only an iPad window can be resized")
+        let screen = XCUIScreen.main.screenshot().image.size
+        defer {
+            UITestSupport.resizeWindow(of: app, to: screen)
+            app.terminate()
+        }
+        let largeText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        let cases: [(name: String, language: String, extra: [String])] = [
+            ("en", "en", []), ("ko", "ko", []), ("ko-large-text", "ko", largeText),
+        ]
+        for (name, language, extra) in cases {
+            let labels = openSelection(language: language, extra: extra)
+            UITestSupport.resizeWindow(of: app, to: CGSize(width: 667, height: 375))
+            let window = app.windows.firstMatch.frame
+            XCTAssertEqual(window.width, 667, accuracy: 30, "\(window)")
+            XCTAssertEqual(window.height, 375, accuracy: 30, "\(window)")
+            let status = app.descendants(matching: .any)["midi.status"]
+            XCTAssertTrue(status.waitForExistence(timeout: 3))
+            XCTAssertTrue(status.label.contains(labels.noDevice), status.label)
+            for element in [status, app.buttons["midi.help.open"], app.buttons["midi.confirm"]] {
+                XCTAssertTrue(UITestSupport.isFullyVisible(element, in: app), "\(name): \(element) outside \(window)")
+            }
+            add(Self.windowShot("small-window-\(name)-selection", app: app))
+
+            app.buttons["midi.help.open"].tap()
+            let close = app.buttons["midi.help.close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 3))
+            for header in [app.staticTexts["midi.help.title"], close, app.staticTexts["midi.help.status"]] {
+                XCTAssertTrue(UITestSupport.isFullyVisible(header, in: app), "\(name): \(header) outside \(window)")
+            }
+            XCTAssertTrue(app.staticTexts["midi.help.status"].label.hasSuffix(labels.noDevice))
+            add(Self.windowShot("small-window-\(name)-help", app: app))
+            XCTAssertTrue(UITestSupport.waitUntilHittable(close, timeout: 3))
+            close.tap()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 3))
+        }
+    }
+
+    private static func windowShot(_ name: String, app: XCUIApplication) -> XCTAttachment {
+        let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        return shot
+    }
+
     // VoiceOver automation is supplied by Xcode 27; older compilers lack it.
     #if compiler(>=6.4)
     /// VoiceOver reads the status first, then the help button, the selected model and OK, before the model list.
