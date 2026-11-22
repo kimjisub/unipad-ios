@@ -8,6 +8,7 @@ enum DeviceIcon {
 struct MidiSelectView: View {
     @Environment(AppRouter.self) private var router
     @ObservedObject private var midiManager = MidiManager.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selection = MidiSelectState()
     @AccessibilityFocusState private var helpButtonFocused: Bool
     /// Advanced when the quiet period after a connection ends, so the status can say so.
@@ -106,16 +107,25 @@ struct MidiSelectView: View {
     // MARK: - Left Panel
 
     private var leftPanel: some View {
-        VStack(spacing: 0) {
+        // The scroll view is its own VoiceOver group, so the status sits outside it to be read
+        // before the help button below. At accessibility text sizes the status scrolls with the
+        // model instead, so it is never cut off on a short landscape screen.
+        let statusScrolls = dynamicTypeSize.isAccessibilitySize
+        return VStack(spacing: 0) {
+            if !statusScrolls {
+                statusBox
+                    .accessibilitySortPriority(3)
+            }
             ScrollView {
                 VStack(spacing: 0) {
-                    statusBox
-                        .accessibilitySortPriority(3)
+                    if statusScrolls {
+                        statusBox
+                    }
                     devicePreview
-                        .accessibilitySortPriority(1)
                 }
             }
             .frame(maxHeight: .infinity)
+            .accessibilitySortPriority(1)
 
             VStack(spacing: 8) {
                 Button {
@@ -133,7 +143,7 @@ struct MidiSelectView: View {
                 .accessibilityIdentifier("midi.help.open")
                 .accessibilityFocused($helpButtonFocused)
                 // Read right after the status it explains, before the model shown above it.
-                .accessibilitySortPriority(2)
+                .accessibilitySortPriority(statusScrolls ? 0 : 2)
 
                 Button {
                     cancelAutorun()

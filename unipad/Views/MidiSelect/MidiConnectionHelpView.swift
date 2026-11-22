@@ -195,9 +195,10 @@ struct MidiConnectionHelpView: View {
                 .foregroundStyle(expanded.contains(question) ? AppColors.orange : AppColors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                // On the label, not the group: a group passes its identifier to every row and link inside it.
+                .accessibilityIdentifier("midi.help.q\(question.rawValue)")
         }
         .tint(AppColors.textPrimary)
-        .accessibilityIdentifier("midi.help.q\(question.rawValue)")
     }
 
     private func link(_ key: String, to url: URL, identifier: String) -> some View {
