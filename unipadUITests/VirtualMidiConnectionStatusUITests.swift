@@ -123,7 +123,10 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             XCTAssertFalse(source.exists, "no source once the device is gone")
             XCTAssertEqual(confirm.label, labels.ok)
             UITestSupport.attachScreenshot("\(language)-disconnected", to: self)
+            // The disconnect banner stays for four seconds over every screen; the help's Close
+            // button must still take the tap while it shows.
             openHelp()
+            XCTAssertTrue(app.staticTexts["midi.banner.message"].exists, "the disconnect banner is still shown")
             UITestSupport.attachScreenshot("\(language)-help-disconnected", to: self)
             closeHelp()
 

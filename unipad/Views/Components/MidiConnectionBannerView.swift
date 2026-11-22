@@ -16,6 +16,7 @@ struct MidiConnectionBannerView: View {
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("midi.banner.message")
 
             Button(String(localized: "midi_open_panel"), action: onOpen)
                 .font(.system(size: 12, weight: .semibold))
@@ -34,4 +35,10 @@ struct MidiConnectionBannerView: View {
         .clipShape(Capsule())
         .padding(.horizontal, 20)
     }
+}
+
+extension EnvironmentValues {
+    /// Bottom edge, in global coordinates, of the MIDI connection banner while it is shown; 0 otherwise.
+    /// A window drawn over the screen keeps its controls below it so the banner cannot cover them.
+    @Entry var midiBannerBottom: CGFloat = 0
 }

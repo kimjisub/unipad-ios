@@ -9,6 +9,7 @@ struct MidiSelectView: View {
     @Environment(AppRouter.self) private var router
     @ObservedObject private var midiManager = MidiManager.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.midiBannerBottom) private var midiBannerBottom
     @State private var selection = MidiSelectState()
     @AccessibilityFocusState private var helpButtonFocused: Bool
     /// Advanced when the quiet period after a connection ends, so the status can say so.
@@ -63,6 +64,10 @@ struct MidiSelectView: View {
                             helpButtonFocused = true
                         }
                     }
+                    // The connect/disconnect banner is drawn over every screen; keep the
+                    // help's header (and its Close button) below it while it shows.
+                    .padding(.top, max(0, midiBannerBottom - geometry.frame(in: .global).minY))
+                    .animation(.easeInOut(duration: 0.2), value: midiBannerBottom)
 #if DEBUG || UNIPAD_RELEASE_TESTS
                     .onAppear { ReleaseTestSupport.soundLoadGate?.connectionHelpAppeared() }
 #endif
