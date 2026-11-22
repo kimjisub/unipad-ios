@@ -39,6 +39,8 @@ final class MidiManager: ObservableObject {
     @Published private(set) var connectionReport = MidiConnectionReport()
     /// The driver type discovery chose for the current connection; a manual choice replaces the driver only.
     private var detectedDriverType: MidiDriver.Type?
+    /// Makes the driver discovery chose, with the settings its source name called for.
+    private var detectedDriverFactory: (() -> MidiDriver)?
 
     /// True while the current driver is the one discovery chose for the connected device.
     var isDriverDetected: Bool {
@@ -582,6 +584,7 @@ final class MidiManager: ObservableObject {
         let newDriver = driverEntry.factory()
         // Before installing the driver: its change listener reads both.
         detectedDriverType = type(of: newDriver)
+        detectedDriverFactory = driverEntry.factory
         connectionReport.connected(deviceName: reportedName(of: discoveredSource),
                                    isModelRecognised: driverEntry.priority != .generic,
                                    customFirmware: Self.customFirmware(of: newDriver), at: Date())
@@ -614,10 +617,25 @@ final class MidiManager: ObservableObject {
         connectedDeviceName = nil
         isConnected = false
         detectedDriverType = nil
+        detectedDriverFactory = nil
         connectionReport.disconnected()
         driver = NotingDriver()
 
         listener?.onDisconnected()
+    }
+
+    /// Installs the model confirmed on the selection screen.
+    func applyChosenModel(_ chosen: MidiDriver) {
+        overrideDriver(Self.driver(forChosen: chosen, detected: detectedDriverFactory))
+    }
+
+    /// Confirming the model discovery found keeps the settings discovery gave it: a Launchpad S or
+    /// Mini mk1 running CoreFW shares the CoreFW card but lights in red and green. Any other model is
+    /// installed as chosen.
+    static func driver(forChosen chosen: MidiDriver, detected makeDetected: (() -> MidiDriver)?) -> MidiDriver {
+        guard let detected = makeDetected?(),
+              ObjectIdentifier(type(of: detected)) == ObjectIdentifier(type(of: chosen)) else { return chosen }
+        return detected
     }
 
     func overrideDriver(_ newDriver: MidiDriver) {

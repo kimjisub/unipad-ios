@@ -329,7 +329,7 @@ struct MidiSelectView: View {
     private func applySelection() {
         PreferenceManager.shared.launchpadConnectMethod = selectedIndex
         if let device = midiDevices.first(where: { $0.id == selectedIndex }) {
-            MidiManager.shared.overrideDriver(device.makeDriver())
+            MidiManager.shared.applyChosenModel(device.makeDriver())
         }
     }
 

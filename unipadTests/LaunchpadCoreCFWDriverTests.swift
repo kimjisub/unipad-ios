@@ -144,4 +144,33 @@ struct LaunchpadCoreCFWDriverTests {
         }
         #expect(MidiManager.coreFWDriverEntry(sourceName: "Launchpad Mini") == nil)
     }
+
+    /// The selection screen offers one CoreFW card for every model. Confirming it for a Launchpad S or
+    /// Mini mk1 keeps the red-green format discovery chose; other CoreFW models stay on the palette.
+    @MainActor
+    @Test func confirmingTheCoreFWCardKeepsTheDetectedColourFormat() throws {
+        func velocity(confirmingCoreFWOn name: String) throws -> UInt8? {
+            let detected = try #require(MidiManager.coreFWDriverEntry(sourceName: name))
+            let driver = MidiManager.driver(forChosen: LaunchpadCoreCFWDriver(), detected: detected.factory)
+            let capture = Capture()
+            driver.sendSignalListener = capture
+            driver.sendPadLed(x: 0, y: 0, velocity: 3)
+            return capture.sent.first?.velocity
+        }
+        for name in ["LPS (MIDI)", "LPS (DAW)", "MINI (MIDI)", "MINI (DAW)"] {
+            #expect(try velocity(confirmingCoreFWOn: name) == 63, "\(name)")
+        }
+        for name in ["PRO (MIDI)", "MK2 (MIDI)", "LPX (MIDI)", "MINI MK3 (MIDI)", "PRO MK3 (MIDI)"] {
+            #expect(try velocity(confirmingCoreFWOn: name) == 3, "\(name)")
+        }
+    }
+
+    @MainActor
+    @Test func anotherCardOrNoDetectionInstallsTheChosenDriver() throws {
+        let lps = try #require(MidiManager.coreFWDriverEntry(sourceName: "LPS (MIDI)"))
+        let stock = LaunchpadSDriver()
+        #expect(MidiManager.driver(forChosen: stock, detected: lps.factory) === stock)
+        let chosen = LaunchpadCoreCFWDriver()
+        #expect(MidiManager.driver(forChosen: chosen, detected: nil) === chosen)
+    }
 }
