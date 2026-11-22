@@ -128,6 +128,7 @@ struct MidiConnectionHelpView: View {
                             .keyboardShortcut(.cancelAction)
                             .accessibilityIdentifier("midi.help.close")
                     }
+                    .avoidingWindowControls()
                     Text(String(format: MidiHelpText.text("midi_help_now"), statusTitle))
                         .font(.subheadline)
                         .fixedSize(horizontal: false, vertical: true)

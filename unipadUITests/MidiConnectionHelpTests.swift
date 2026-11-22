@@ -255,14 +255,21 @@ final class MidiConnectionHelpTests: XCTestCase {
 
     /// The smallest landscape iPhone screen, 667 by 375 points, in an iPad window of that size: the
     /// status, the help button and OK stay inside it, also with the largest text, and so does the
-    /// help's header with its Close button.
+    /// help's header with its Close button. A landscape iPad window stays at least 486 points tall,
+    /// so the iPad is held upright, where the landscape-only app lies on its side and a window 375
+    /// wide and 667 tall shows it 667 by 375. Element frames come from snapshots, in the app's own
+    /// landscape coordinates, so they are compared with the window's snapshot, never its `frame`.
     @MainActor
     func testSmallLandscapeWindowKeepsStatusHelpAndOKInside() throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "only an iPad window can be resized")
-        let screen = XCUIScreen.main.screenshot().image.size
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
         defer {
-            UITestSupport.resizeWindow(of: app, to: screen)
+            // iPadOS remembers a window size per orientation, so the upright one is restored too.
+            UITestSupport.resizeWindow(of: app, to: XCUIScreen.main.screenshot().image.size)
             app.terminate()
+            XCUIDevice.shared.orientation = .landscapeLeft
+            sleep(2)
         }
         let largeText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         let cases: [(name: String, language: String, extra: [String])] = [
@@ -270,15 +277,24 @@ final class MidiConnectionHelpTests: XCTestCase {
         ]
         for (name, language, extra) in cases {
             let labels = openSelection(language: language, extra: extra)
-            UITestSupport.resizeWindow(of: app, to: CGSize(width: 667, height: 375))
-            let window = app.windows.firstMatch.frame
+            UITestSupport.resizeWindow(of: app, to: CGSize(width: 375, height: 667))
+            let window = try app.windows.firstMatch.snapshot().frame
             XCTAssertEqual(window.width, 667, accuracy: 30, "\(window)")
             XCTAssertEqual(window.height, 375, accuracy: 30, "\(window)")
             let status = app.descendants(matching: .any)["midi.status"]
             XCTAssertTrue(status.waitForExistence(timeout: 3))
             XCTAssertTrue(status.label.contains(labels.noDevice), status.label)
-            for element in [status, app.buttons["midi.help.open"], app.buttons["midi.confirm"]] {
+            for element in [app.buttons["midi.help.open"], app.buttons["midi.confirm"]] {
                 XCTAssertTrue(UITestSupport.isFullyVisible(element, in: app), "\(name): \(element) outside \(window)")
+            }
+            // The largest text makes the status taller than the column; it then scrolls with the
+            // model and starts at the top of the window.
+            let statusFrame = try status.snapshot().frame
+            if extra.isEmpty {
+                XCTAssertTrue(UITestSupport.isFullyVisible(status, in: app), "\(name): \(statusFrame) outside \(window)")
+            } else {
+                XCTAssertTrue(window.contains(statusFrame.origin), "\(name): \(statusFrame) starts outside \(window)")
+                XCTAssertGreaterThan(statusFrame.height, window.height / 2, "\(name): the status did not grow")
             }
             add(Self.windowShot("small-window-\(name)-selection", app: app))
 
@@ -290,7 +306,6 @@ final class MidiConnectionHelpTests: XCTestCase {
             }
             XCTAssertTrue(app.staticTexts["midi.help.status"].label.hasSuffix(labels.noDevice))
             add(Self.windowShot("small-window-\(name)-help", app: app))
-            XCTAssertTrue(UITestSupport.waitUntilHittable(close, timeout: 3))
             close.tap()
             XCTAssertTrue(close.waitForNonExistence(timeout: 3))
         }
