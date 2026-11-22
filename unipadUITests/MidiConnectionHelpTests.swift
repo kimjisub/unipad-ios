@@ -298,16 +298,16 @@ final class MidiConnectionHelpTests: XCTestCase {
                 XCTAssertGreaterThan(statusFrame.height, window.height / 2, "\(name): the status did not grow")
             }
             add(Self.windowShot("small-window-\(name)-selection", app: app))
-            if !extra.isEmpty {
+            if extra.isEmpty {
+                XCTAssertTrue(UITestSupport.isFullyVisible(app.buttons["midi.help.open"], in: app),
+                              "\(name): the help button outside \(window)")
+            } else {
                 // Drags in this upright window do not scroll the column reliably, so the largest text
                 // checks only that the help button follows the status in the same scroll; reaching it
-                // by scrolling is checked on the iPhone.
+                // by scrolling is checked on the iPhone. Its tap scrolls it into view by itself.
                 let helpFrame = try app.buttons["midi.help.open"].snapshot().frame
                 XCTAssertGreaterThanOrEqual(helpFrame.minY, statusFrame.maxY - 1, "\(name): \(helpFrame) before the status")
-                continue
             }
-            XCTAssertTrue(UITestSupport.isFullyVisible(app.buttons["midi.help.open"], in: app),
-                          "\(name): the help button outside \(window)")
 
             app.buttons["midi.help.open"].tap()
             let close = app.buttons["midi.help.close"]
