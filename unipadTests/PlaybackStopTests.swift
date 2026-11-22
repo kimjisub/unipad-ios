@@ -1024,6 +1024,10 @@ final class PlaybackStopTests: XCTestCase {
     /// A one-shot frees its player node once the node has read the last of it, which can be before the
     /// mix has it. The next pad, pressed at that very moment, takes the same node (the first idle one);
     /// the one-shot still has to reach the mix in full, and the next sound right after it.
+    ///
+    /// Rendered offline: a real-time output skips whatever should have played while the test process
+    /// was paused, and hosted CI simulators pause it. Offline rendering cannot expose a tail cut between
+    /// consumption and output either, so the no-stop assertion guards that case, as in the repeat test.
     func testOneShotPlaysInFullWhenTheNextPadTakesItsVoiceAtOnce() async throws {
         let root = try pack(loop: 1)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1033,21 +1037,41 @@ final class PlaybackStopTests: XCTestCase {
         let vm = try await loaded(root)
         defer { vm.cleanup() }
         let engine = try XCTUnwrap(vm.soundEngine)
-        try await recordingMix(of: engine) { mix, rate in
+        try await recordingOfflineMix(of: engine) { audio, mix, rate in
+            let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: audio.manualRenderingFormat, frameCapacity: 480))
             var firstPlay: Int?
+            var firstSlot: Int?
             var nextPressed = false
-            engine.playbackCompletionDelivery = { playID, _, complete in
+            engine.playbackCompletionDelivery = { playID, failure, complete in
+                XCTAssertNil(failure)
                 complete()
                 guard playID == firstPlay, !nextPressed else { return }
                 nextPressed = true
-                MainActor.assumeIsolated { vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen)) }
+                MainActor.assumeIsolated {
+                    vm.padTouch(x: 0, y: 1, isDown: true, trigger: .pad(.screen))
+                    XCTAssertEqual(try? self.activeVoiceSlot(of: engine), firstSlot, "the next pad did not reuse the freed node")
+                }
             }
             defer { engine.playbackCompletionDelivery = nil }
             vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
             firstPlay = engine.activePlayIDs.first
-            try await wait(for: "the one-shot to free its voice", until: { nextPressed })
-            try await wait(for: "the next pad", until: { engine.activeVoiceCount == 0 })
-            try await wait(for: "the mix after both sounds", until: { mix.silentFramesAfterLastSound(below: 0.01) >= Int(rate * 0.2) })
+            firstSlot = try activeVoiceSlot(of: engine)
+            XCTAssertNotNil(firstPlay)
+            // 400 ms holds both sounds and 200 ms of silence.
+            for _ in 0..<40 {
+                XCTAssertEqual(try audio.renderOffline(480, to: output), .success)
+                XCTAssertEqual(output.frameLength, 480)
+                mix.record(output)
+                if !nextPressed, mix.samples.filter({ abs($0 - 0.125) < 0.02 }).count >= 4_800 {
+                    // The node has read the last of the one-shot. Let its completion press the next pad
+                    // before the output advances any further.
+                    try await wait(for: "the one-shot to free its voice", until: { nextPressed })
+                }
+            }
+            XCTAssertTrue(nextPressed, "the one-shot never freed its voice")
+            try await wait(for: "the next sound to free its voice", until: { engine.activeVoiceCount == 0 })
+            XCTAssertEqual(engine.playsStarted, 2)
+            XCTAssertEqual(engine.playerNodesStopped, 0, "the next pad must take the freed node without stopping it")
 
             let samples = mix.samples
             let first = try XCTUnwrap(stretch(at: 0.125, in: samples))
