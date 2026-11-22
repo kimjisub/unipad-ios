@@ -174,6 +174,7 @@ struct MidiSelectView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
+        .belowWindowControls()
         .accessibilityElement(children: .contain)
     }
 
@@ -221,7 +222,6 @@ struct MidiSelectView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .avoidingWindowControls()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("midi.status")
     }
