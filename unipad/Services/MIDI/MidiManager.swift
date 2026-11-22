@@ -37,7 +37,9 @@ final class MidiManager: ObservableObject {
     @Published private(set) var connectedDeviceName: String?
     @Published private(set) var debugLog: [String] = []
     @Published private(set) var connectionReport = MidiConnectionReport()
-    /// The driver type discovery chose for the current connection; a manual choice replaces the driver only.
+    /// The driver type discovery chose for the current connection, the keyboard fallback when no model matched.
+    /// A model applied by hand replaces the driver but keeps this, so `overrideDriver` can tell a different
+    /// model chosen by hand (recorded in the connection report) from the detected one.
     private var detectedDriverType: MidiDriver.Type?
 
     /// True while the current driver is the one discovery chose for the connected device.

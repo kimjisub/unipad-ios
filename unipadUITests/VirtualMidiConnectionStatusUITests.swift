@@ -81,11 +81,15 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
     }
 
     private func waitForStatus(containing text: String, timeout: TimeInterval = 10) -> Bool {
+        waitForStatus(containingAnyOf: [text], timeout: timeout)
+    }
+
+    private func waitForStatus(containingAnyOf texts: [String], timeout: TimeInterval = 10) -> Bool {
         let shown = XCTNSPredicateExpectation(predicate: NSPredicate { [unowned self] _, _ in
-            self.status.exists && self.status.label.contains(text)
+            self.status.exists && texts.contains { self.status.label.contains($0) }
         }, object: nil)
         let ok = XCTWaiter().wait(for: [shown], timeout: timeout) == .completed
-        if !ok { XCTFail("status never showed \(text); it shows \(status.exists ? status.label : "nothing")") }
+        if !ok { XCTFail("status never showed \(texts); it shows \(status.exists ? status.label : "nothing")") }
         return ok
     }
 
@@ -207,7 +211,9 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             let reconnect = app.buttons[labels.reconnect]
             XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
             reconnect.tap()
-            XCTAssertTrue(waitForStatus(containing: labels.waiting))
+            // The quiet period counts from plugging in, not from reopening the screen, so on a busy Mac
+            // it can already be over here; both texts mean connected on a model with no pad press yet.
+            XCTAssertTrue(waitForStatus(containingAnyOf: [labels.waiting, labels.longWait]))
             XCTAssertFalse(status.label.contains(labels.unknownTag), status.label)
             XCTAssertTrue(status.label.contains(labels.connected("Test Synth")), status.label)
             XCTAssertEqual(source.label, labels.manual)

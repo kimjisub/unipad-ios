@@ -5,7 +5,8 @@ nonisolated enum MidiConnectionStatus: Equatable {
     case noDevice
     case openFailed(device: String)
     case unknownModel(device: String)
-    /// Connected and recognised, no pad press yet. `longWait` after `quietPeriod`; still not a failure.
+    /// Connected with a model it runs on, no pad press yet: a recognised model, or any model applied by hand,
+    /// also to a device no model matched. `longWait` after `quietPeriod`; still not a failure.
     case waiting(device: String, longWait: Bool)
     case padReceived(device: String)
     case disconnected
@@ -48,7 +49,9 @@ nonisolated enum MidiConnectionStatus: Equatable {
         }
     }
 
-    /// Only a connected device whose model was recognised keeps the automatic confirmation.
+    /// A connected device that is not on the keyboard fallback. This includes a model applied by hand, so the
+    /// five-second confirmation also requires the model to have been recognised automatically
+    /// (`MidiSelectState.startAutorun`, `modelSource == .automatic`).
     var allowsAutomaticConfirmation: Bool {
         switch self {
         case .waiting, .padReceived: true
