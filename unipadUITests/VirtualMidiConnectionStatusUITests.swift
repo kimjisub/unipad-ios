@@ -61,10 +61,23 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
         app.buttons[labels.reconnect].tap()
         XCTAssertTrue(status.waitForExistence(timeout: 5))
         if !keepCountdown, confirm.label != labels.ok {
-            app.buttons["midi.help.open"].tap()
-            app.buttons["midi.help.close"].tap()
+            openHelp()
+            closeHelp()
         }
         return labels
+    }
+
+    /// A tap on the help's close button while it is still appearing can be lost, so each step waits.
+    private func openHelp() {
+        app.buttons["midi.help.open"].tap()
+        XCTAssertTrue(app.buttons["midi.help.close"].waitForExistence(timeout: 3), "the help opens")
+    }
+
+    private func closeHelp() {
+        let close = app.buttons["midi.help.close"]
+        XCTAssertTrue(UITestSupport.waitUntilHittable(close, timeout: 3))
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 3), "the help closes")
     }
 
     private func waitForStatus(containing text: String, timeout: TimeInterval = 10) -> Bool {
@@ -92,13 +105,13 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             XCTAssertEqual(source.label, labels.automatic)
             UITestSupport.attachScreenshot("\(language)-connected-before-input", to: self)
 
-            app.buttons["midi.help.open"].tap()
+            openHelp()
             XCTAssertTrue(app.staticTexts["midi.help.status"].label.hasSuffix(labels.connected("Launchpad MK2")))
             XCTAssertTrue(app.staticTexts["midi.help.model"].label.hasSuffix("Launchpad MK2 · " + labels.automatic))
             XCTAssertTrue(app.staticTexts[labels.korean ? "고른 뒤 '확인'을 눌러야 적용돼요." : "Tap OK to apply your choice."].exists,
                           "the 'pressing does nothing' question opens first")
             UITestSupport.attachScreenshot("\(language)-help-connected-before-input", to: self)
-            app.buttons["midi.help.close"].tap()
+            closeHelp()
 
             try device.send(0x90, 81, 100)
             try device.send(0x90, 81, 0)
@@ -110,9 +123,9 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             XCTAssertFalse(source.exists, "no source once the device is gone")
             XCTAssertEqual(confirm.label, labels.ok)
             UITestSupport.attachScreenshot("\(language)-disconnected", to: self)
-            app.buttons["midi.help.open"].tap()
+            openHelp()
             UITestSupport.attachScreenshot("\(language)-help-disconnected", to: self)
-            app.buttons["midi.help.close"].tap()
+            closeHelp()
 
             try device.run("open Launchpad MK2")
             XCTAssertTrue(waitForStatus(containing: labels.waiting), "input resets on reconnection")
@@ -125,7 +138,8 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
     @MainActor
     func testRecognisedLaunchpadKeepsAutomaticConfirmation() throws {
         let labels = try openSelection(with: "Launchpad MK2", keepCountdown: true)
-        XCTAssertTrue(confirm.label.hasPrefix(labels.ok + " ("), confirm.label)
+        // The button reads its title and the seconds left as one label: "OK, (4)".
+        XCTAssertTrue(confirm.label.hasPrefix(labels.ok + ", ("), confirm.label)
         UITestSupport.attachScreenshot("countdown", to: self)
         waitSixSeconds()
         XCTAssertTrue(app.buttons[labels.reconnect].waitForExistence(timeout: 3), "the screen confirms after five seconds")
@@ -175,7 +189,7 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             app.buttons["Launchpad Mini MK3"].firstMatch.tap()
             XCTAssertEqual(source.label, labels.manual)
             UITestSupport.attachScreenshot("\(language)-unknown-model-chosen-by-hand", to: self)
-            app.buttons["midi.help.open"].tap()
+            openHelp()
             UITestSupport.attachScreenshot("\(language)-help-unknown-model", to: self)
             app.terminate()
         }
@@ -190,7 +204,7 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             try device.send(0x90, 81, 100)
             XCTAssertTrue(waitForStatus(containing: labels.received))
             UITestSupport.attachScreenshot("\(language)-custom-firmware-input", to: self)
-            app.buttons["midi.help.open"].tap()
+            openHelp()
             XCTAssertTrue(app.buttons["midi.help.cfwLink"].waitForExistence(timeout: 3),
                           "the custom firmware question opens first")
             UITestSupport.attachScreenshot("\(language)-help-custom-firmware", to: self)
