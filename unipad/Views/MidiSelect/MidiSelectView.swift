@@ -52,7 +52,7 @@ struct MidiSelectView: View {
                     MidiConnectionHelpView(
                         statusTitle: status.title,
                         modelName: midiDevices.first(where: { $0.id == selectedIndex })?.name ?? "",
-                        modelSource: selection.modelSource,
+                        modelSource: status.isConnected ? selection.modelSource : nil,
                         firstQuestion: status.firstHelpQuestion(customFirmware: midiManager.connectionReport.customFirmware)
                     ) {
                         selection.isHelpPresented = false
@@ -110,7 +110,9 @@ struct MidiSelectView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     statusBox
+                        .accessibilitySortPriority(3)
                     devicePreview
+                        .accessibilitySortPriority(1)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -130,6 +132,8 @@ struct MidiSelectView: View {
                 }
                 .accessibilityIdentifier("midi.help.open")
                 .accessibilityFocused($helpButtonFocused)
+                // Read right after the status it explains, before the model shown above it.
+                .accessibilitySortPriority(2)
 
                 Button {
                     cancelAutorun()
@@ -155,6 +159,7 @@ struct MidiSelectView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
+        .accessibilityElement(children: .contain)
     }
 
     private var statusBox: some View {

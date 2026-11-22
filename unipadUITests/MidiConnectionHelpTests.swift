@@ -281,7 +281,8 @@ final class MidiConnectionHelpTests: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
             func position(_ needle: String) -> Int? { order.firstIndex { $0.contains(needle) } }
-            let status = position(labels.noDevice), next = position(labels.noDeviceNext)
+            // VoiceOver automation cuts an utterance short, so the next step is matched by its start.
+            let status = position(labels.noDevice), next = position(String(labels.noDeviceNext.prefix(20)))
             let help = position(labels.help), model = position("Launchpad S")
             let confirm = position(language == "ko" ? "확인" : "OK"), list = position("Launchpad MK2")
             XCTAssertEqual(status, 0, text)
