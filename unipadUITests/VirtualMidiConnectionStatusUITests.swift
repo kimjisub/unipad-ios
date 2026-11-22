@@ -123,11 +123,17 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             XCTAssertFalse(source.exists, "no source once the device is gone")
             XCTAssertEqual(confirm.label, labels.ok)
             UITestSupport.attachScreenshot("\(language)-disconnected", to: self)
-            // The disconnect banner stays for four seconds over every screen; the help's Close
-            // button must still take the tap while it shows.
+            // The disconnect banner stays for four seconds over every screen. The help opens below
+            // it and stays put when it goes, so Close is never covered or moved from under a tap.
             openHelp()
-            XCTAssertTrue(app.staticTexts["midi.banner.message"].exists, "the disconnect banner is still shown")
+            let banner = app.staticTexts["midi.banner.message"]
+            XCTAssertTrue(banner.exists, "the disconnect banner is still shown")
+            let closeFrame = app.buttons["midi.help.close"].frame
+            XCTAssertGreaterThanOrEqual(closeFrame.minY, banner.frame.maxY, "the banner covers Close")
             UITestSupport.attachScreenshot("\(language)-help-disconnected", to: self)
+            XCTAssertTrue(banner.waitForNonExistence(timeout: 8), "the banner goes away")
+            Thread.sleep(forTimeInterval: 0.5)
+            XCTAssertEqual(app.buttons["midi.help.close"].frame, closeFrame, "Close moved when the banner went")
             closeHelp()
 
             try device.run("open Launchpad MK2")

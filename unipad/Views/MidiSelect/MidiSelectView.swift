@@ -10,6 +10,9 @@ struct MidiSelectView: View {
     @ObservedObject private var midiManager = MidiManager.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.midiBannerBottom) private var midiBannerBottom
+    /// The lowest banner bottom seen while the help is open. The help keeps clear of it until it
+    /// closes, so a banner going away never moves the Close button from under a finger.
+    @State private var helpBannerBottom: CGFloat = 0
     @State private var selection = MidiSelectState()
     @AccessibilityFocusState private var helpButtonFocused: Bool
     /// Advanced when the quiet period after a connection ends, so the status can say so.
@@ -65,9 +68,9 @@ struct MidiSelectView: View {
                         }
                     }
                     // The connect/disconnect banner is drawn over every screen; keep the
-                    // help's header (and its Close button) below it while it shows.
-                    .padding(.top, max(0, midiBannerBottom - geometry.frame(in: .global).minY))
-                    .animation(.easeInOut(duration: 0.2), value: midiBannerBottom)
+                    // help's header (and its Close button) below it.
+                    .padding(.top, max(0, helpBannerBottom - geometry.frame(in: .global).minY))
+                    .animation(.easeInOut(duration: 0.2), value: helpBannerBottom)
 #if DEBUG || UNIPAD_RELEASE_TESTS
                     .onAppear { ReleaseTestSupport.soundLoadGate?.connectionHelpAppeared() }
 #endif
@@ -86,6 +89,12 @@ struct MidiSelectView: View {
             }
             bindMidiListener()
             startAutorunTimer()
+        }
+        .onChange(of: selection.isHelpPresented) { _, presented in
+            helpBannerBottom = presented ? midiBannerBottom : 0
+        }
+        .onChange(of: midiBannerBottom) { _, bottom in
+            if selection.isHelpPresented { helpBannerBottom = max(helpBannerBottom, bottom) }
         }
         .onChange(of: status) { _, newStatus in
             selection.statusChanged(to: newStatus)
