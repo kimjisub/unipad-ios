@@ -1,21 +1,7 @@
-Songs now wait for you. After you switch apps, cover the play screen or lose sound, press Play to continue. Your position and practice mode are kept.
-
-Dragging across pads is now optional and off by default. If you play that way, turn on "Slide between pads" in the play menu or Settings.
-
-Also in this update:
-- Pads right under the top edge of the screen respond at once instead of after a delay. While playing, the first swipe from the top or bottom edge goes to the pads; swipe again to reach the system.
-- Sounds: Ogg Vorbis and Ogg Opus sounds play, including Opus inside M4A files. A pad press no longer waits on a sound that has just finished repeating.
-- Packs with very long or very large sounds now open; only the sounds over the limit stay silent. The play screen tells you how many sounds were left out and why. If none of a pack's sounds can play, it says so instead of quietly going back to the list. AIFF, CAF and A-law/μ-law WAV sounds are listed as unreadable.
-- Lights start from the moment you press a pad, and each pad's sound and lights end on their own.
-- Picking a chain wins over a chain jump that is still pending.
-- Guide and step practice keep notes you haven't played yet, including after you pause and play again. Pausing a guide during its last wait no longer ends the practice, and switching from Autoplay to Guide no longer guides a note that already played.
-- Stopping Autoplay leaves the pad you are still holding lit and sounding until you lift your finger.
-- Auto Mapping keeps pads that play together, and you can restore the previous autoplay from the menu.
-- Launchpad and MIDI: presses, releases and lights are read the same way on every supported model; your device stays connected when the list refreshes; it keeps working after you return to UniPad or close a pack that is still loading; and its buttons no longer change settings when a pack finishes loading while UniPad is in the background.
-- Importing: large packs import without running out of memory, files outside the pack are left out, ZIP64 archives import, and an archive with several packs says so.
-- More packs open: an info file that lists a setting twice uses the last value, and sound names that differ only in accented-letter encoding are found.
-- Store downloads resume after a dropped connection and keep going when you reopen the store.
-- iPad: back buttons stay clear of the window controls and the status bar, and long titles get their own line in narrow windows.
-- Packs without a title show their folder name, and the theme logo no longer overlaps a wide chain row.
-- Open source notices are now in Settings.
-- Starting with this version, UniPad can show "Update available" when a newer version is on the App Store. You will first see it when the version after this one comes out.
+- The Launchpad selection screen shows connection status and what to try next, with help tailored to the current state. It stays open when a device is missing, cannot be opened, has an unknown model, or disconnects.
+- Play continues when a disconnected audio output is replaced by another external output. If only the device speaker remains, AutoPlay pauses and playing sounds stop; tap Play to resume AutoPlay.
+- The play options panel uses your theme's accent color. Themes without a custom accent keep the existing colors.
+- Themes without a version in theme.json now import successfully and show version 1.0.
+- "Create your own theme" opens the theme creation guide, in Korean when the app is set to Korean and in English otherwise.
+- Fixed the store's Back button being covered by the status bar in some window positions.
+- Fixed incorrect pad light colors on Launchpad S and Launchpad Mini mk1 running CoreFW after confirming "Launchpad (CoreFW)", either manually or automatically after five seconds.
