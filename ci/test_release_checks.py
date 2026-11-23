@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -140,6 +141,33 @@ class ReleaseRunnerTests(unittest.TestCase):
         self.assertIn("unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests", midi)
         self.assertIn("unipadUITests/VirtualMidiPlayScreenUITests", midi)
         self.assertIn("ci/virtual_launchpad_roundtrip.py", calls[3][1])
+
+    def test_midi_rejects_a_missing_selected_suite_even_when_the_summary_is_green(self):
+        calls = self.exercise("iphone", stage="midi")
+        selected = calls[1][1][4:]
+        built = [arg.removeprefix("-only-testing:") for arg in calls[0][1] if arg.startswith("-only-testing:")]
+        self.assertEqual(built, selected)
+        required = self.checked_bundles[0].args[1]
+        cases = {}
+        for selection in selected:
+            target, suite = selection.split("/", 1)
+            source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
+            pattern = (r"\bfunc\s+(test\w+)\s*\(" if target == "unipadUITests"
+                       else r"@Test(?:\([^\n]*\))?\s+func\s+(\w+)\s*\(")
+            methods = re.findall(pattern, source)
+            self.assertTrue(methods, selection)
+            cases[selection] = [{"nodeType": "Test Case", "nodeIdentifier": f"{suite}/{method}()",
+                                 "result": "Passed"} for method in methods]
+
+        def verify(selections):
+            nodes = [case for selection in selections for case in cases[selection]]
+            summary = dict(totalTestCount=len(nodes), passedTests=len(nodes), failedTests=0, skippedTests=0)
+            verify_results(summary, {"testNodes": nodes}, required)
+
+        verify(selected)
+        for missing in selected:
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, "required test did not run"):
+                verify([selection for selection in selected if selection != missing])
 
     def test_ipad_runs_its_release_plan_with_ipad_exclusions_removed(self):
         calls = self.exercise("ipad")

@@ -21,6 +21,12 @@ from check_ui_results import check_summary
 ROOT = Path(__file__).resolve().parents[1]
 # How long a stage may clean up (e.g. stop its MIDI tools) after a stop request.
 STOP_GRACE_SECONDS = 45
+MIDI_SUITES = (
+    "unipadTests/PlayUsageRecordTests/MidiInputPathTests",
+    "unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
+    "unipadUITests/VirtualMidiPlayScreenUITests",
+    "unipadUITests/VirtualMidiConnectionStatusUITests",
+)
 
 
 def screen_part(value):
@@ -59,15 +65,17 @@ def required_unit_suites(plan):
 
 
 def required_midi_tests():
-    source = (ROOT / "unipadUITests/VirtualMidiPlayScreenUITests.swift").read_text()
-    required = ["VirtualMidiPlayScreenUITests/" + method
-                for method in re.findall(r"\bfunc\s+(test\w+)\s*\(", source)]
-    for suite in ["MidiInputPathTests", "MidiDeviceSelectionTests"]:
-        source = (ROOT / "unipadTests" / f"{suite}.swift").read_text()
-        methods = re.findall(r"@Test(?:\([^\n]*\))?\s+func\s+(\w+)\s*\(", source)
+    required = []
+    for selection in MIDI_SUITES:
+        target, suite = selection.split("/", 1)
+        source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
+        if target == "unipadUITests":
+            methods = re.findall(r"\bfunc\s+(test\w+)\s*\(", source)
+        else:
+            methods = re.findall(r"@Test(?:\([^\n]*\))?\s+func\s+(\w+)\s*\(", source)
         if not methods:
             raise ValueError(f"{suite} has no tests")
-        required.extend(f"PlayUsageRecordTests/{suite}/{method}" for method in methods)
+        required.extend(f"{suite}/{method}" for method in methods)
     return required
 
 
@@ -257,19 +265,15 @@ class ReleaseChecks:
             return
         # These suites need one shared live CoreMIDI client. Build the Debug fixture
         # host once, then run them all against the same virtual-device session.
-        suites = ["unipadTests/PlayUsageRecordTests/MidiInputPathTests",
-                  "unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
-                  "unipadUITests/VirtualMidiPlayScreenUITests",
-                  "unipadUITests/VirtualMidiConnectionStatusUITests"]
         if stage in {"all", "midi"}:
             self.stage("midi-build", ["xcodebuild", "build-for-testing", "-project", "unipad.xcodeproj",
                                  "-scheme", "unipad", "-configuration", "Debug", "-testPlan", "AllTests",
                                  "-destination", f"platform=iOS Simulator,id={self.args.simulator},arch=arm64",
                                  "-derivedDataPath", str(self.derived), "-onlyUsePackageVersionsFromResolvedFile",
                                  "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "UNIPAD_WARNINGS_AS_ERRORS=YES",
-                                 *["-only-testing:" + suite for suite in suites]])
+                                 *["-only-testing:" + suite for suite in MIDI_SUITES]])
             midi = self.output / "midi"
-            self.stage("midi", ["ci/midi-input-tests.sh", self.args.simulator, str(self.derived), str(midi), *suites])
+            self.stage("midi", ["ci/midi-input-tests.sh", self.args.simulator, str(self.derived), str(midi), *MIDI_SUITES])
             self.check_bundle(midi / "MidiInput.xcresult", required_midi_tests())
         if stage in {"all", "roundtrip"}:
             self.stage("roundtrip", [sys.executable, "ci/virtual_launchpad_roundtrip.py", "--simulator", self.args.simulator,
