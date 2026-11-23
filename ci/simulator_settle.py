@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+import simulator_background
+
 LIMIT_CEILING = 360
 WINDOW = 30.0
 TOP = 5
@@ -214,7 +216,7 @@ def read_processes(udid):
     return cpu, names
 
 
-def boot(udid):
+def boot(udid, reduce_background=False):
     listing = subprocess.run(
         ['xcrun', 'simctl', 'list', 'devices', 'available', '--json'],
         check=True, capture_output=True, text=True,
@@ -224,9 +226,15 @@ def boot(udid):
                    if device['udid'] == udid), None)
     if device is None:
         sys.exit(f'Selected simulator {udid} is not available')
+    if reduce_background:
+        if device['state'] != 'Shutdown':
+            raise RuntimeError('background profile requires a shut-down disposable CI simulator')
+        simulator_background.prepare(udid)
     if device['state'] == 'Shutdown':
         subprocess.run(['xcrun', 'simctl', 'boot', udid], check=True)
     subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True)
+    if reduce_background:
+        simulator_background.verify(udid)
 
 
 def main():
@@ -244,8 +252,10 @@ def main():
     parser.add_argument('--job-limit', type=float, default=660,
                         help='seconds after the job started by which the wait ends')
     parser.add_argument('--interval', type=float, default=5)
+    parser.add_argument('--reduce-background-work', action='store_true',
+                        help='disable wallpaper previews and widgets on a disposable CI simulator')
     args = parser.parse_args()
-    boot(args.udid)
+    boot(args.udid, reduce_background=args.reduce_background_work)
     limit, limit_reason = bounded(args.limit, args.job_started, args.job_limit, time.time())
     settle = Settle(args.quiet, args.hold, limit, args.interval, limit_reason)
 
