@@ -125,6 +125,14 @@ struct SoundEngineDecodingTests {
         try await expectPlays(try fixture("vorbis-tone", "ogg"))
     }
 
+    @Test func aVorbisSoundTrimmedAcrossFinalShortBlocksPlays() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "SoundEngineDecodingTests-short-tail-\(UUID().uuidString).ogg")
+        try oggWithFinalGranule(8168, at: fixture("vorbis-short-tail", "ogg")).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await expectPlays(url, recordMix: true)
+    }
+
     @Test func anOggOpusSoundPlays() async throws {
         try await expectPlays(try fixture("opus-tone", "ogg"), recordMix: true)
     }

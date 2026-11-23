@@ -34,6 +34,21 @@ struct OggVorbisDecoderTests {
         #expect(abs(peak - 0.5) < 0.05, "peak \(peak): the tone did not come out as encoded")
     }
 
+    @Test(arguments: [257, 280, 2048])
+    func shortTailDecodesExactlyTheAdmittedFrames(_ trim: Int) throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self)
+            .url(forResource: "vorbis-short-tail", withExtension: "ogg"))
+        let url = try write(oggWithFinalGranule(UInt64(8448 - trim), at: fixture), "short-tail")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let facts = try #require(AudioFileInspection.inspect(url: url).facts)
+        let buffer = try OggVorbisDecoder.decode(url)
+        #expect(facts.frames == 8448 - trim)
+        #expect(Int(buffer.frameLength) == facts.frames)
+        let left = try #require(buffer.floatChannelData?[0])
+        #expect((0..<Int(buffer.frameLength)).contains { abs(left[$0]) > 0.1 })
+    }
+
     /// 601 seconds of stereo 44.1 kHz silence, encoded with libvorbis 1.3.7 (quality -0.1).
     /// Even a forged final granule must not bypass the limit on frames actually decoded.
     @Test(arguments: [false, true])

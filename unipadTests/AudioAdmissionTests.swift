@@ -44,6 +44,25 @@ final class AudioAdmissionTests: XCTestCase {
             }
         }
     }
+    func testVorbisShortTailTrimmingUsesTheLongBlockLimit() throws {
+        // Original generated tone, repacketized with two final 256-frame blocks.
+        // Its packet-derived length is 8,448 frames; the long block is 2,048.
+        let fixture = directory.deletingLastPathComponent()
+            .appendingPathComponent("AudioFormats/vorbis-short-tail.ogg")
+        for trim in [0, 256, 257, 280, 2048, 2049] {
+            let result = AudioFileInspection.inspect(try oggWithFinalGranule(UInt64(8448 - trim), at: fixture))
+            if trim <= 2048 {
+                let facts = try XCTUnwrap(result.facts, "trim \(trim): \(result)")
+                XCTAssertEqual(facts, .init(sampleRate: 44100, channels: 2, frames: 8448 - trim))
+                let cost = AudioAdmission.cost(facts)
+                XCTAssertNil(cost.exclusion)
+                XCTAssertEqual(cost.cost, ((8448 - trim) * 48000 + 44099) / 44100 * 2)
+            } else {
+                XCTAssertEqual(result.exclusion, .invalidFormat, "more than one long block must be refused")
+            }
+        }
+    }
+
     private func wave(rate: Int, channels: Int, frames: Int, claimed: Int) -> Data {
         var b = Data()
         func text(_ s: String) { b.append(contentsOf: s.utf8) }
