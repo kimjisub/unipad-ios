@@ -11,8 +11,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from release_checks import (ReleaseChecks, required_midi_tests, required_ui_tests, required_unit_suites, screen_part,
-                            verify_results)
+from release_checks import (MIDI_SUITES, ReleaseChecks, midi_suite_tests, required_midi_tests, required_ui_tests,
+                            required_unit_suites, screen_part, verify_results)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +63,75 @@ class ResultTests(unittest.TestCase):
         self.assertIn("PlayUsageRecordTests/MidiDeviceSelectionTests/firstConnectionPrefersLaunchpadRegardlessOfSourceOrder", required)
         self.assertIn("PlayUsageRecordTests/MidiInputPathTests/virtualDeviceReportsAFailedCommand", required)
         self.assertIn("VirtualMidiPlayScreenUITests/testLaunchpadInputAndLightsReturnAfterUnpluggingDuringPlay", required)
+
+    def test_midi_manifest_counts_every_source_test_declaration(self):
+        required = required_midi_tests()
+        for selection in MIDI_SUITES:
+            target, suite = selection.split("/", 1)
+            source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
+            declaration = "func test" if target == "unipadUITests" else "@Test"
+            count = sum(declaration in line for line in source.splitlines()
+                        if not line.lstrip().startswith("//"))
+            with self.subTest(suite=suite):
+                self.assertGreater(count, 0)
+                self.assertEqual(len([name for name in required if name.startswith(suite + "/")]), count)
+        self.assertIn("PlayUsageRecordTests/MidiDeviceSelectionTests/recognisedFirmwareIsReported", required)
+
+    def test_midi_source_names_include_multiline_attributes_and_exclude_ui_helpers_and_comments(self):
+        sources = {
+            "unipadTests": ("""
+                @Test func plain() {}
+                @MainActor @Test func attributed() {}
+                @available(iOS 17.0, *) @Test func available() {}
+                @Test nonisolated func nonisolatedTest() {}
+                @Test(arguments: [
+                    (1, 2),
+                    (3, 4)
+                ])
+                func parameterised(value: (Int, Int)) {}
+                // @Test func commentedOut() {}
+                /* @Test func blockCommentedOut() {} */
+                @Test("func decoy()") func namedAfterDescription() {}
+                func helper() {}
+            """, ["Suite/plain", "Suite/attributed", "Suite/available", "Suite/nonisolatedTest",
+                   "Suite/parameterised", "Suite/namedAfterDescription"]),
+            "unipadUITests": ("""
+                func testReal() throws {}
+                func testAsync() async throws {}
+                @MainActor func testAttributed() throws {}
+                @available(iOS 17.0, *) func testAvailable() {}
+                override func testOverridden() {}
+                nonisolated(unsafe) func testNonisolated() {}
+                // func testCommentedOut() {}
+                /* func testBlockCommentedOut() {} */
+                let text = "func testInAString() {}"
+                func testHelper(value: Int) {}
+                func helper() {}
+            """, ["Suite/testReal", "Suite/testAsync", "Suite/testAttributed", "Suite/testAvailable",
+                   "Suite/testOverridden", "Suite/testNonisolated"]),
+        }
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+            root = Path(folder)
+            for target, (source, expected) in sources.items():
+                with self.subTest(target=target):
+                    (root / target).mkdir()
+                    path = root / target / "Suite.swift"
+                    path.write_text(source)
+                    with patch("release_checks.ROOT", root):
+                        self.assertEqual(midi_suite_tests(target + "/Suite"), expected)
+                    path.write_text("// func testCommentedOut() {}\nfunc testHelper(value: Int) {}\n")
+                    with patch("release_checks.ROOT", root), self.assertRaisesRegex(ValueError, "has no tests"):
+                        midi_suite_tests(target + "/Suite")
+
+    def test_midi_reader_accepts_attributed_declarations_used_in_the_repository(self):
+        examples = {
+            "unipadUITests/PlayChainLayoutTests": "PlayChainLayoutTests/testTallPackLogoInNormalMode",
+            "unipadUITests/AppStoreUpdateUITests": "AppStoreUpdateUITests/testNewVersionKeepsExistingPromptAndPackPlayback",
+            "unipadTests/MidiConnectionHelpTests": "MidiConnectionHelpTests/readingHelpKeepsSelectionPreferencesAndDriver",
+        }
+        for selection, expected in examples.items():
+            with self.subTest(selection=selection):
+                self.assertIn(expected, midi_suite_tests(selection))
 
     def test_requires_each_unit_suite_by_name(self):
         summary = dict(totalTestCount=2, passedTests=2, failedTests=0, skippedTests=0)
@@ -140,6 +209,27 @@ class ReleaseRunnerTests(unittest.TestCase):
         self.assertIn("unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests", midi)
         self.assertIn("unipadUITests/VirtualMidiPlayScreenUITests", midi)
         self.assertIn("ci/virtual_launchpad_roundtrip.py", calls[3][1])
+
+    def test_midi_rejects_a_missing_selected_suite_even_when_the_summary_is_green(self):
+        calls = self.exercise("iphone", stage="midi")
+        selected = calls[1][1][4:]
+        built = [arg.removeprefix("-only-testing:") for arg in calls[0][1] if arg.startswith("-only-testing:")]
+        self.assertEqual(built, selected)
+        required = self.checked_bundles[0].args[1]
+        cases = {}
+        for selection in selected:
+            cases[selection] = [{"nodeType": "Test Case", "nodeIdentifier": name + "()", "result": "Passed"}
+                                for name in midi_suite_tests(selection)]
+
+        def verify(selections):
+            nodes = [case for selection in selections for case in cases[selection]]
+            summary = dict(totalTestCount=len(nodes), passedTests=len(nodes), failedTests=0, skippedTests=0)
+            verify_results(summary, {"testNodes": nodes}, required)
+
+        verify(selected)
+        for missing in selected:
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, "required test did not run"):
+                verify([selection for selection in selected if selection != missing])
 
     def test_ipad_runs_its_release_plan_with_ipad_exclusions_removed(self):
         calls = self.exercise("ipad")
