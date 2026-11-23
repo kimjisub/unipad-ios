@@ -67,11 +67,40 @@ def required_unit_suites(plan):
 def midi_suite_tests(selection):
     target, suite = selection.split("/", 1)
     source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
-    if target == "unipadUITests":
-        methods = re.findall(r"(?m)^[ \t]*func[ \t]+(test\w+)[ \t]*\(\s*\)", source)
-    else:
-        # Swift Testing attributes may contain multiline argument lists.
-        methods = re.findall(r"(?ms)^[ \t]*@Test\b.*?\bfunc\s+(\w+)\s*\(", source)
+    # Keep comments and string contents out of declaration matching. Attributes and
+    # modifiers may precede func on the same line or span several lines.
+    tokens = re.findall(r'//[^\n]*|/\*.*?\*/|""".*?"""|"(?:\\.|[^"\\])*"|'
+                        r'@\w+|`[^`]+`|\w+|[^\s]', source, re.S)
+    tokens = [token for token in tokens if not token.startswith(("//", "/*"))]
+    methods = []
+    index, annotated = 0, False
+    while index < len(tokens):
+        token = tokens[index]
+        if token.startswith("@"):
+            annotated = annotated or token == "@Test"
+            index += 1
+            if index < len(tokens) and tokens[index] == "(":
+                depth = 1
+                index += 1
+                while index < len(tokens) and depth:
+                    depth += (tokens[index] == "(") - (tokens[index] == ")")
+                    index += 1
+                if depth:
+                    raise ValueError(f"{suite} has an unclosed test attribute")
+            continue
+        if token == "func":
+            declaration = tokens[index + 1:index + 4]
+            if target == "unipadUITests":
+                if (len(declaration) == 3 and re.fullmatch(r"test\w+", declaration[0])
+                        and declaration[1:] == ["(", ")"]):
+                    methods.append(declaration[0])
+            elif annotated:
+                if (len(declaration) < 2 or not re.fullmatch(r"\w+", declaration[0])
+                        or declaration[1] != "("):
+                    raise ValueError(f"{suite} has an unsupported test declaration: {declaration}")
+                methods.append(declaration[0])
+            annotated = False
+        index += 1
     if not methods:
         raise ValueError(f"{suite} has no tests")
     return [f"{suite}/{method}" for method in methods]

@@ -70,7 +70,8 @@ class ResultTests(unittest.TestCase):
             target, suite = selection.split("/", 1)
             source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
             declaration = "func test" if target == "unipadUITests" else "@Test"
-            count = sum(line.lstrip().startswith(declaration) for line in source.splitlines())
+            count = sum(declaration in line for line in source.splitlines()
+                        if not line.lstrip().startswith("//"))
             with self.subTest(suite=suite):
                 self.assertGreater(count, 0)
                 self.assertEqual(len([name for name in required if name.startswith(suite + "/")]), count)
@@ -80,21 +81,34 @@ class ResultTests(unittest.TestCase):
         sources = {
             "unipadTests": ("""
                 @Test func plain() {}
+                @MainActor @Test func attributed() {}
+                @available(iOS 17.0, *) @Test func available() {}
+                @Test nonisolated func nonisolatedTest() {}
                 @Test(arguments: [
                     (1, 2),
                     (3, 4)
                 ])
                 func parameterised(value: (Int, Int)) {}
                 // @Test func commentedOut() {}
+                /* @Test func blockCommentedOut() {} */
+                @Test("func decoy()") func namedAfterDescription() {}
                 func helper() {}
-            """, ["Suite/plain", "Suite/parameterised"]),
+            """, ["Suite/plain", "Suite/attributed", "Suite/available", "Suite/nonisolatedTest",
+                   "Suite/parameterised", "Suite/namedAfterDescription"]),
             "unipadUITests": ("""
                 func testReal() throws {}
                 func testAsync() async throws {}
+                @MainActor func testAttributed() throws {}
+                @available(iOS 17.0, *) func testAvailable() {}
+                override func testOverridden() {}
+                nonisolated(unsafe) func testNonisolated() {}
                 // func testCommentedOut() {}
+                /* func testBlockCommentedOut() {} */
+                let text = "func testInAString() {}"
                 func testHelper(value: Int) {}
                 func helper() {}
-            """, ["Suite/testReal", "Suite/testAsync"]),
+            """, ["Suite/testReal", "Suite/testAsync", "Suite/testAttributed", "Suite/testAvailable",
+                   "Suite/testOverridden", "Suite/testNonisolated"]),
         }
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
             root = Path(folder)
@@ -108,6 +122,16 @@ class ResultTests(unittest.TestCase):
                     path.write_text("// func testCommentedOut() {}\nfunc testHelper(value: Int) {}\n")
                     with patch("release_checks.ROOT", root), self.assertRaisesRegex(ValueError, "has no tests"):
                         midi_suite_tests(target + "/Suite")
+
+    def test_midi_reader_accepts_attributed_declarations_used_in_the_repository(self):
+        examples = {
+            "unipadUITests/PlayChainLayoutTests": "PlayChainLayoutTests/testTallPackLogoInNormalMode",
+            "unipadUITests/AppStoreUpdateUITests": "AppStoreUpdateUITests/testNewVersionKeepsExistingPromptAndPackPlayback",
+            "unipadTests/MidiConnectionHelpTests": "MidiConnectionHelpTests/readingHelpKeepsSelectionPreferencesAndDriver",
+        }
+        for selection, expected in examples.items():
+            with self.subTest(selection=selection):
+                self.assertIn(expected, midi_suite_tests(selection))
 
     def test_requires_each_unit_suite_by_name(self):
         summary = dict(totalTestCount=2, passedTests=2, failedTests=0, skippedTests=0)
