@@ -222,6 +222,10 @@ final class FirstPackGuideTests: XCTestCase {
     func testPreparedArchiveCanBeSelectedFromRecentItems() throws {
         launch(Self.korean)
         UITestSupport.revealHomeCard(.import, in: app).tap()
+        // Wait for the system picker to finish presenting before absence of a
+        // back button can mean that we have reached Locations.
+        _ = try XCTUnwrap(UITestSupport.settledFilePickerCancelButton(in: app, timeout: 20),
+                          "the file picker must settle before navigating to Recents")
         let recents = UITestSupport.filePickerRecents(in: app)
         // iOS can restore a folder with no tab bar. Return to Locations before
         // selecting Recents, rather than assuming tabs are present in that folder.
