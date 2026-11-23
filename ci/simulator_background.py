@@ -43,7 +43,7 @@ def verify(udid):
                               capture_output=True, text=True).stdout
     print(disabled, flush=True)
     for label in SERVICES:
-        if not re.search(r'"' + re.escape(label) + r'"\s*=>\s*true\b', disabled):
+        if not re.search(r'"' + re.escape(label) + r'"\s*=>\s*(?:true|disabled)\b', disabled):
             raise RuntimeError(f'background profile not applied: {label} is not disabled')
         loaded = subprocess.run(command + ['print', 'system/' + label],
                                 capture_output=True, text=True)

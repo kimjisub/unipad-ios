@@ -40,21 +40,26 @@ class BackgroundTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b'not a plist')
 
     def test_verifies_disabled_flags_and_that_neither_service_is_loaded(self):
-        disabled = 'disabled services = {\n "com.apple.PosterBoard" => true\n "com.apple.chronod" => true\n}'
-        with mock.patch.object(background.subprocess, 'run', side_effect=[
-            mock.Mock(stdout=disabled, returncode=0),
-            mock.Mock(stdout='', returncode=113), mock.Mock(stdout='', returncode=113),
-        ]) as run:
-            background.verify(UDID)
-        self.assertEqual(run.call_args_list[0].args[0],
-                         ['xcrun', 'simctl', 'spawn', UDID, 'launchctl', 'print-disabled', 'system'])
-        self.assertEqual([c.args[0][-1] for c in run.call_args_list[1:]],
-                         ['system/com.apple.PosterBoard', 'system/com.apple.chronod'])
+        for state in ('true', 'disabled'):
+            disabled = (f'disabled services = {{\n "com.apple.PosterBoard" => {state}\n'
+                        f' "com.apple.chronod" => {state}\n}}')
+            with self.subTest(state=state):
+                with mock.patch.object(background.subprocess, 'run', side_effect=[
+                    mock.Mock(stdout=disabled, returncode=0),
+                    mock.Mock(stdout='', returncode=113), mock.Mock(stdout='', returncode=113),
+                ]) as run:
+                    background.verify(UDID)
+                self.assertEqual(run.call_args_list[0].args[0],
+                                 ['xcrun', 'simctl', 'spawn', UDID, 'launchctl', 'print-disabled', 'system'])
+                self.assertEqual([c.args[0][-1] for c in run.call_args_list[1:]],
+                                 ['system/com.apple.PosterBoard', 'system/com.apple.chronod'])
 
     def test_missing_flag_or_loaded_service_fails_verification(self):
         for disabled, status in [
             ('"com.apple.PosterBoard" => false', 113),
+            ('"com.apple.PosterBoard" => enabled\n"com.apple.chronod" => disabled', 113),
             ('"com.apple.PosterBoard" => true\n"com.apple.chronod" => true', 0),
+            ('"com.apple.PosterBoard" => disabled\n"com.apple.chronod" => disabled', 0),
         ]:
             with self.subTest(disabled=disabled, status=status), mock.patch.object(
                 background.subprocess, 'run', side_effect=[
