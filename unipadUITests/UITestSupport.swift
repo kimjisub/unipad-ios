@@ -11,6 +11,15 @@ enum UITestSupport {
 
     static var isReleaseSuite: Bool { ProcessInfo.processInfo.environment["UNIPAD_RELEASE_SUITE"] == "1" }
 
+    /// The first line of the Launchpad help's custom firmware question, shown only while it is open.
+    /// Matched by label: XCTest refuses a subscript string longer than 128 characters.
+    static func helpCustomFirmwareFirstLine(in app: XCUIApplication, language: String) -> XCUIElement {
+        let text = language == "ko"
+            ? "• UniPad는 Launchpad Pro(첫 모델)용 'Launchpad Open'과 CoreFW를 알아봐요. 알아보면 상태 칸에 '커스텀 펌웨어'가 표시돼요."
+            : "• UniPad recognises “Launchpad Open” for the Launchpad Pro (first model) and CoreFW. When it does, the status shows “Custom firmware”."
+        return app.staticTexts.matching(NSPredicate(format: "label == %@", text)).firstMatch
+    }
+
     /// Launch arguments for tests that find controls by their English text
     /// ("Information", "Theme", "Play", option names). The app follows the
     /// simulator's language, so these pin it to English to make the result the

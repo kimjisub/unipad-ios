@@ -129,8 +129,13 @@ final class MidiConnectionHelpTests: XCTestCase {
                 reveal(row)
                 XCTAssertTrue(row.label.contains(title), "question \(index + 1): \(row.label)")
             }
-            reveal(app.buttons["midi.help.web"])
-            XCTAssertEqual(app.buttons["midi.help.web"].label, labels.web)
+            if HelpLinksExpectation.enabled {
+                reveal(app.buttons["midi.help.web"])
+                XCTAssertEqual(app.buttons["midi.help.web"].label, labels.web)
+            } else {
+                XCTAssertFalse(app.buttons["midi.help.web"].exists, "no web link while the guide is not public")
+                XCTAssertFalse(app.buttons[labels.web].exists)
+            }
             XCTAssertFalse(app.buttons["Read the manufacturer's guide"].exists)
             XCTAssertFalse(app.buttons["제조사 설명 보기"].exists)
 
@@ -153,6 +158,16 @@ final class MidiConnectionHelpTests: XCTestCase {
         let chainStep = app.staticTexts["Check in this order."]
         XCTAssertTrue(chainStep.waitForExistence(timeout: 3))
         let web = app.buttons["midi.help.web"]
+        guard HelpLinksExpectation.enabled else {
+            reveal(question(7))
+            XCTAssertFalse(web.exists, "no web link while the guide is not public")
+            XCTAssertTrue(chainStep.exists)
+            UITestSupport.attachScreenshot("web-guide-turned-off", to: self)
+            app.buttons["midi.help.close"].tap()
+            XCTAssertTrue(app.buttons["midi.help.open"].waitForExistence(timeout: 3))
+            XCTAssertEqual(app.buttons["midi.confirm"].label, "OK")
+            return
+        }
         reveal(web)
         UITestSupport.attachScreenshot("web-guide-before-open", to: self)
         web.tap()
@@ -187,23 +202,33 @@ final class MidiConnectionHelpTests: XCTestCase {
             reveal(question(6))
             question(6).tap()
             let firmwareLink = app.buttons["midi.help.cfwLink"]
-            reveal(firmwareLink)
-            XCTAssertEqual(firmwareLink.label, labels.customFirmware)
-            firmwareLink.tap()
             let failure = app.staticTexts["midi.help.linkFailed"]
-            XCTAssertTrue(failure.waitForExistence(timeout: 5))
-            reveal(failure)
-            XCTAssertEqual(failure.label, labels.linkFailed)
-            XCTAssertEqual(app.state, .runningForeground)
-            UITestSupport.attachScreenshot("rejected-firmware-guide-\(language)", to: self)
+            if HelpLinksExpectation.enabled {
+                reveal(firmwareLink)
+                XCTAssertEqual(firmwareLink.label, labels.customFirmware)
+                firmwareLink.tap()
+                XCTAssertTrue(failure.waitForExistence(timeout: 5))
+                reveal(failure)
+                XCTAssertEqual(failure.label, labels.linkFailed)
+                XCTAssertEqual(app.state, .runningForeground)
+                UITestSupport.attachScreenshot("rejected-firmware-guide-\(language)", to: self)
 
-            let web = app.buttons["midi.help.web"]
-            reveal(web)
-            web.tap()
-            XCTAssertTrue(failure.waitForExistence(timeout: 5))
-            XCTAssertEqual(app.staticTexts.matching(identifier: "midi.help.linkFailed").count, 1,
-                           "the failure shows under the link that failed")
-            UITestSupport.attachScreenshot("rejected-web-guide-\(language)", to: self)
+                let web = app.buttons["midi.help.web"]
+                reveal(web)
+                web.tap()
+                XCTAssertTrue(failure.waitForExistence(timeout: 5))
+                XCTAssertEqual(app.staticTexts.matching(identifier: "midi.help.linkFailed").count, 1,
+                               "the failure shows under the link that failed")
+                UITestSupport.attachScreenshot("rejected-web-guide-\(language)", to: self)
+            } else {
+                let firstLine = UITestSupport.helpCustomFirmwareFirstLine(in: app, language: language)
+                XCTAssertTrue(firstLine.waitForExistence(timeout: 3), "the custom firmware question opens")
+                reveal(question(7))
+                XCTAssertFalse(firmwareLink.exists, "no firmware link while the guide is not public")
+                XCTAssertFalse(app.buttons["midi.help.web"].exists, "no web link while the guide is not public")
+                XCTAssertFalse(failure.exists)
+                UITestSupport.attachScreenshot("firmware-guide-turned-off-\(language)", to: self)
+            }
             app.buttons["midi.help.close"].tap()
             app.buttons["midi.help.open"].tap()
             XCTAssertTrue(app.staticTexts["midi.help.model"].label.hasSuffix("Launchpad Mini MK3"))

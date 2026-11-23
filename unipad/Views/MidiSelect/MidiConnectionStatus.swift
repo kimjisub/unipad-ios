@@ -148,9 +148,9 @@ nonisolated enum MidiHelpQuestion: Int, CaseIterable, Identifiable {
 }
 
 /// The help's web pages. Set `isEnabled` to false to ship without both links while the pages are not public;
-/// the addresses themselves stay as approved.
+/// the addresses themselves stay as approved. `HelpLinksExpectation.enabled` in the test support must match.
 nonisolated enum MidiHelpLinks {
-    static let isEnabled = true
+    static let isEnabled = false
     static let guide = URL(string: "https://unipad.io/docs/guide#launchpad")!
     static let customFirmware = URL(string: "https://unipad.io/docs/guide#custom-firmware")!
 }

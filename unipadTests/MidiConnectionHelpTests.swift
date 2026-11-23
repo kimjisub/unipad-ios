@@ -258,6 +258,11 @@ struct MidiConnectionHelpTests {
         #expect(MidiHelpLinks.customFirmware.absoluteString == "https://unipad.io/docs/guide#custom-firmware")
     }
 
+    @Test func uiTestsExpectTheShippedLinkSetting() {
+        #expect(MidiHelpLinks.isEnabled == HelpLinksExpectation.enabled,
+                "change HelpLinksExpectation.enabled together with MidiHelpLinks.isEnabled")
+    }
+
     // MARK: - Texts
 
     @Test(arguments: ["en", "ko"])

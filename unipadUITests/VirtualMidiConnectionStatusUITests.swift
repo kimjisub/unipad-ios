@@ -240,8 +240,14 @@ final class VirtualMidiConnectionStatusUITests: XCTestCase {
             XCTAssertTrue(waitForStatus(containing: labels.received))
             UITestSupport.attachScreenshot("\(language)-custom-firmware-input", to: self)
             openHelp()
-            XCTAssertTrue(app.buttons["midi.help.cfwLink"].waitForExistence(timeout: 3),
-                          "the custom firmware question opens first")
+            if HelpLinksExpectation.enabled {
+                XCTAssertTrue(app.buttons["midi.help.cfwLink"].waitForExistence(timeout: 3),
+                              "the custom firmware question opens first")
+            } else {
+                let firstLine = UITestSupport.helpCustomFirmwareFirstLine(in: app, language: language)
+                XCTAssertTrue(firstLine.waitForExistence(timeout: 3), "the custom firmware question opens first")
+                XCTAssertFalse(app.buttons["midi.help.cfwLink"].exists, "no firmware link while the guide is not public")
+            }
             UITestSupport.attachScreenshot("\(language)-help-custom-firmware", to: self)
             app.terminate()
         }
