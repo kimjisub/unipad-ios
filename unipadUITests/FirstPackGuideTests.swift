@@ -54,11 +54,14 @@ final class FirstPackGuideTests: XCTestCase {
         app.scrollViews["main.packList"].staticTexts.matching(identifier: "Downloaded Fixture")
     }
 
-    private func launch(_ language: Language) {
+    private func launch(_ language: Language, marksWebVisits: Bool = true) {
         app?.terminate()
         app = XCUIApplication()
         app.launchArguments += UITestSupport.launchArguments(language: language.code, locale: language.locale,
                                                               library: "empty", token: token, file: true)
+        if !marksWebVisits, let flag = app.launchArguments.firstIndex(of: "-UniPadFirebaseLocalOnly") {
+            app.launchArguments.removeSubrange(flag...flag + 1)
+        }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "[\(language.code)] home never appeared")
@@ -108,8 +111,8 @@ final class FirstPackGuideTests: XCTestCase {
         }
     }
 
-    private func checkLinkOpensBrowser() {
-        launch(Self.english)
+    private func checkLinkOpensBrowser(marked: Bool = true) {
+        launch(Self.english, marksWebVisits: marked)
         XCTAssertTrue(guideLink.waitForExistence(timeout: 10))
         guideLink.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
@@ -119,6 +122,18 @@ final class FirstPackGuideTests: XCTestCase {
             .firstMatch
         XCTAssertTrue(address.waitForExistence(timeout: 10), "Safari does not show unipad.io")
         checkBrowserGuideText(in: safari)
+        // Focusing the address exposes the path and query that Safari normally abbreviates.
+        address.tap()
+        let field = safari.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "Safari did not expose its full address")
+        let value = field.value as? String ?? ""
+        let fullAddress = value.hasPrefix("http") ? value : "https://" + value
+        let components = URLComponents(string: fullAddress)
+        XCTAssertEqual(components?.host, "unipad.io")
+        XCTAssertTrue(components?.path.hasSuffix("/docs/get-started") == true, "Unexpected guide address: \(value)")
+        let markers = components?.queryItems?.filter { $0.name == "no_analytics" } ?? []
+        XCTAssertEqual(markers.map(\.value), marked ? ["1"] : [], "Unexpected analytics markers: \(value)")
+        UITestSupport.attachScreenshot(marked ? "guide-address-marked" : "guide-address-ordinary", to: self)
         app.activate()
         XCTAssertTrue(home.waitForExistence(timeout: 10), "coming back from Safari never reached home")
         XCTAssertTrue(text(Self.english.title).exists, "the guide went away after coming back from Safari")
@@ -256,7 +271,10 @@ final class FirstPackGuideTests: XCTestCase {
     func testFromEmptyGuideToPlayingAPack() throws {
         try requireEmptyLibrary()
         checkGuideInEveryLanguage()
-        checkLinkOpensBrowser()
+        // The unmarked path is opt-in for a one-off ordinary-launch check; routine UI
+        // runs must never add an unmarked visit to the website's usage counts.
+        let ordinaryLaunchCheck = ProcessInfo.processInfo.environment["UNIPAD_CHECK_UNMARKED_GUIDE"] == "1"
+        checkLinkOpensBrowser(marked: !ordinaryLaunchCheck)
         try importPackThroughPicker(Self.korean, success: "불러오기 성공!")
         checkPlay(Self.korean, opens: true)
         checkPlay(Self.english, opens: true)

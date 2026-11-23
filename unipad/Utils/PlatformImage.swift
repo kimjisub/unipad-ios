@@ -40,6 +40,7 @@ extension View {
 
 enum PlatformHelpers {
     static func openURL(_ url: URL) {
+        let url = ExternalWebLink.url(url)
         #if canImport(UIKit)
         UIApplication.shared.open(url)
         #elseif canImport(AppKit)
