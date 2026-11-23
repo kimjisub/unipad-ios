@@ -3,7 +3,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import re
 import signal
 import subprocess
 import sys
@@ -12,8 +11,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from release_checks import (ReleaseChecks, required_midi_tests, required_ui_tests, required_unit_suites, screen_part,
-                            verify_results)
+from release_checks import (MIDI_SUITES, ReleaseChecks, midi_suite_tests, required_midi_tests, required_ui_tests,
+                            required_unit_suites, screen_part, verify_results)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +63,51 @@ class ResultTests(unittest.TestCase):
         self.assertIn("PlayUsageRecordTests/MidiDeviceSelectionTests/firstConnectionPrefersLaunchpadRegardlessOfSourceOrder", required)
         self.assertIn("PlayUsageRecordTests/MidiInputPathTests/virtualDeviceReportsAFailedCommand", required)
         self.assertIn("VirtualMidiPlayScreenUITests/testLaunchpadInputAndLightsReturnAfterUnpluggingDuringPlay", required)
+
+    def test_midi_manifest_counts_every_source_test_declaration(self):
+        required = required_midi_tests()
+        for selection in MIDI_SUITES:
+            target, suite = selection.split("/", 1)
+            source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
+            declaration = "func test" if target == "unipadUITests" else "@Test"
+            count = sum(line.lstrip().startswith(declaration) for line in source.splitlines())
+            with self.subTest(suite=suite):
+                self.assertGreater(count, 0)
+                self.assertEqual(len([name for name in required if name.startswith(suite + "/")]), count)
+        self.assertIn("PlayUsageRecordTests/MidiDeviceSelectionTests/recognisedFirmwareIsReported", required)
+
+    def test_midi_source_names_include_multiline_attributes_and_exclude_ui_helpers_and_comments(self):
+        sources = {
+            "unipadTests": ("""
+                @Test func plain() {}
+                @Test(arguments: [
+                    (1, 2),
+                    (3, 4)
+                ])
+                func parameterised(value: (Int, Int)) {}
+                // @Test func commentedOut() {}
+                func helper() {}
+            """, ["Suite/plain", "Suite/parameterised"]),
+            "unipadUITests": ("""
+                func testReal() throws {}
+                func testAsync() async throws {}
+                // func testCommentedOut() {}
+                func testHelper(value: Int) {}
+                func helper() {}
+            """, ["Suite/testReal", "Suite/testAsync"]),
+        }
+        with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+            root = Path(folder)
+            for target, (source, expected) in sources.items():
+                with self.subTest(target=target):
+                    (root / target).mkdir()
+                    path = root / target / "Suite.swift"
+                    path.write_text(source)
+                    with patch("release_checks.ROOT", root):
+                        self.assertEqual(midi_suite_tests(target + "/Suite"), expected)
+                    path.write_text("// func testCommentedOut() {}\nfunc testHelper(value: Int) {}\n")
+                    with patch("release_checks.ROOT", root), self.assertRaisesRegex(ValueError, "has no tests"):
+                        midi_suite_tests(target + "/Suite")
 
     def test_requires_each_unit_suite_by_name(self):
         summary = dict(totalTestCount=2, passedTests=2, failedTests=0, skippedTests=0)
@@ -150,14 +194,8 @@ class ReleaseRunnerTests(unittest.TestCase):
         required = self.checked_bundles[0].args[1]
         cases = {}
         for selection in selected:
-            target, suite = selection.split("/", 1)
-            source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
-            pattern = (r"\bfunc\s+(test\w+)\s*\(" if target == "unipadUITests"
-                       else r"@Test(?:\([^\n]*\))?\s+func\s+(\w+)\s*\(")
-            methods = re.findall(pattern, source)
-            self.assertTrue(methods, selection)
-            cases[selection] = [{"nodeType": "Test Case", "nodeIdentifier": f"{suite}/{method}()",
-                                 "result": "Passed"} for method in methods]
+            cases[selection] = [{"nodeType": "Test Case", "nodeIdentifier": name + "()", "result": "Passed"}
+                                for name in midi_suite_tests(selection)]
 
         def verify(selections):
             nodes = [case for selection in selections for case in cases[selection]]

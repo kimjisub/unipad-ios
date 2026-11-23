@@ -64,19 +64,21 @@ def required_unit_suites(plan):
     return [entry["name"] for key in ["suites", "xctestClasses"] for entry in selected.get(key, [])]
 
 
+def midi_suite_tests(selection):
+    target, suite = selection.split("/", 1)
+    source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
+    if target == "unipadUITests":
+        methods = re.findall(r"(?m)^[ \t]*func[ \t]+(test\w+)[ \t]*\(\s*\)", source)
+    else:
+        # Swift Testing attributes may contain multiline argument lists.
+        methods = re.findall(r"(?ms)^[ \t]*@Test\b.*?\bfunc\s+(\w+)\s*\(", source)
+    if not methods:
+        raise ValueError(f"{suite} has no tests")
+    return [f"{suite}/{method}" for method in methods]
+
+
 def required_midi_tests():
-    required = []
-    for selection in MIDI_SUITES:
-        target, suite = selection.split("/", 1)
-        source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
-        if target == "unipadUITests":
-            methods = re.findall(r"\bfunc\s+(test\w+)\s*\(", source)
-        else:
-            methods = re.findall(r"@Test(?:\([^\n]*\))?\s+func\s+(\w+)\s*\(", source)
-        if not methods:
-            raise ValueError(f"{suite} has no tests")
-        required.extend(f"{suite}/{method}" for method in methods)
-    return required
+    return [name for selection in MIDI_SUITES for name in midi_suite_tests(selection)]
 
 
 def verify_results(summary, tree, required, suites=()):
