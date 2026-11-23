@@ -825,6 +825,73 @@ final class PlaybackStopTests: XCTestCase {
         )
     }
 
+    /// The engine makes its player nodes itself, so a test gives them this class in place to see the
+    /// options each buffer is scheduled with. It adds no stored properties, which keeps that safe.
+    private nonisolated final class OptionRecordingPlayerNode: AVAudioPlayerNode, @unchecked Sendable {
+        private static let lock = NSLock()
+        nonisolated(unsafe) private static var recorded: [ObjectIdentifier: [AVAudioPlayerNodeBufferOptions]] = [:]
+
+        static func options(of nodes: [AVAudioPlayerNode]) -> [AVAudioPlayerNodeBufferOptions] {
+            lock.withLock { nodes.flatMap { recorded[ObjectIdentifier($0)] ?? [] } }
+        }
+
+        static func forget(_ nodes: [AVAudioPlayerNode]) {
+            lock.withLock { for node in nodes { recorded[ObjectIdentifier(node)] = nil } }
+        }
+
+        private func record(_ options: AVAudioPlayerNodeBufferOptions) {
+            Self.lock.withLock { Self.recorded[ObjectIdentifier(self), default: []].append(options) }
+        }
+
+        override func scheduleBuffer(
+            _ buffer: AVAudioPCMBuffer,
+            at when: AVAudioTime?,
+            options: AVAudioPlayerNodeBufferOptions = [],
+            completionHandler: (@Sendable () -> Void)? = nil
+        ) {
+            record(options)
+            super.scheduleBuffer(buffer, at: when, options: options, completionHandler: completionHandler)
+        }
+
+        override func scheduleBuffer(
+            _ buffer: AVAudioPCMBuffer,
+            at when: AVAudioTime?,
+            options: AVAudioPlayerNodeBufferOptions = [],
+            completionCallbackType callbackType: AVAudioPlayerNodeCompletionCallbackType,
+            completionHandler: (@Sendable (AVAudioPlayerNodeCompletionCallbackType) -> Void)? = nil
+        ) {
+            record(options)
+            super.scheduleBuffer(buffer, at: when, options: options, completionCallbackType: callbackType, completionHandler: completionHandler)
+        }
+    }
+
+    /// A one-shot frees its node once the node has read the last of it, and the next pad takes that
+    /// node while the end of the one-shot may still be on its way to the speaker. An interrupting
+    /// option on the next buffer would drop that end. Offline rendering reads and outputs in one call,
+    /// so it cannot show the cut; the options are checked where the real engine schedules them.
+    func testOneShotQueuesBehindWhatItsVoiceStillPlays() async throws {
+        let root = try pack(loop: 1)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vm = try await loaded(root)
+        defer { vm.cleanup() }
+        let engine = try XCTUnwrap(vm.soundEngine)
+        let nodes = try XCTUnwrap(Mirror(reflecting: engine).children.first { $0.label == "playerNodes" }?.value as? [AVAudioPlayerNode])
+        XCTAssertFalse(nodes.isEmpty)
+        for node in nodes { object_setClass(node, OptionRecordingPlayerNode.self) }
+        defer {
+            for node in nodes { object_setClass(node, AVAudioPlayerNode.self) }
+            OptionRecordingPlayerNode.forget(nodes)
+        }
+        vm.padTouch(x: 0, y: 0, isDown: true, trigger: .pad(.screen))
+        XCTAssertEqual(engine.playsStarted, 1)
+        let options = OptionRecordingPlayerNode.options(of: nodes)
+        XCTAssertFalse(options.isEmpty, "the one-shot was not scheduled on one of the engine's nodes")
+        XCTAssertTrue(
+            options.allSatisfy(\.isEmpty),
+            "raw options \(options.map(\.rawValue)); 1 loops, 2 interrupts, 4 interrupts at loop"
+        )
+    }
+
     /// Runs `work` on the audio worker, where the engine's taps and its start and stop belong.
     private func onAudioWorker(_ work: @escaping @Sendable () -> Void) async {
         await withCheckedContinuation { continuation in
