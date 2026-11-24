@@ -263,10 +263,20 @@ final class FirstPackGuideTests: XCTestCase {
         launch(language)
         assertGuide(language)
         shot(language, "01-empty-guide")
-        // These locale checks cover navigation; the English flow also checks the live page text.
-        checkLinkOpensBrowser(language, checkPageText: false)
         try importPackThroughPicker(language, success: success)
         checkPlay(language, opens: true)
+    }
+
+    // Keep live web navigation separate from the app's local import and play flow.
+    // The English flow also checks the live page text.
+    @MainActor
+    func testIndonesianGuideLinkOpensBrowser() {
+        checkLinkOpensBrowser(Self.indonesian, checkPageText: false)
+    }
+
+    @MainActor
+    func testBrazilianPortugueseGuideLinkOpensBrowser() {
+        checkLinkOpensBrowser(Self.portuguese, checkPageText: false)
     }
 
     @MainActor
