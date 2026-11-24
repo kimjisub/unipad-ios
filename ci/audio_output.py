@@ -12,13 +12,14 @@ from pathlib import Path
 import sys
 import wave
 
-THRESHOLDS = {"version": 3, "signal_dbfs": -50, "quiet_dbfs": -65,
+THRESHOLDS = {"version": 4, "signal_dbfs": -50, "quiet_dbfs": -65,
               "baseline_gain_db": 20, "fit_fraction": 0.85, "component_fraction": 0.15,
               "minimum_tone_seconds": 0.75, "minimum_overlap_seconds": 0.25,
               "minimum_loop_seconds": 1.05,
               "maximum_one_shot_seconds": 1.16,
               "stop_tail_seconds": 0.1, "chunk_seconds": 0.04,
-              "envelope_seconds": 0.01}
+              "envelope_seconds": 0.01, "partial_resolution_seconds": 0.04,
+              "restart_probe_seconds": 0.005, "restart_dip_fraction": 0.15}
 
 
 def select_process(entries):
@@ -96,6 +97,82 @@ def partial_reference_fit(values, rate, frequencies):
     return explained / energy if energy else 0
 
 
+def reference_restart(window, rate, frequencies, start, stop):
+    """Find a fade to a low-energy trough and a fresh reference onset.
+
+    A loop boundary can fall inside an audible chunk. Compare 5 ms energy
+    probes against reference-bearing flanks 10 ms away; a steady detuned tone
+    has no such trough. Require both flanks to contain the shared references.
+    """
+    probe = int(rate * THRESHOLDS["restart_probe_seconds"])
+    flank = int(rate * THRESHOLDS["envelope_seconds"])
+    for at in range(2 * flank, len(window) - 2 * flank - probe + 1, max(1, probe // 2)):
+        if not start <= at + probe // 2 < stop:
+            continue
+        left = window[at - 2 * flank:at - flank]
+        right = window[at + probe + flank:at + probe + 2 * flank]
+        trough = math.sumprod(window[at:at + probe], window[at:at + probe]) / probe
+        surrounding = min(math.sumprod(left, left), math.sumprod(right, right)) / flank
+        if not surrounding or trough >= surrounding * THRESHOLDS["restart_dip_fraction"]:
+            continue
+        fractions = [[fit(side, rate, hz) for hz in frequencies] for side in (left, right)]
+        if all(sum(side) >= THRESHOLDS["fit_fraction"]
+               and all(value >= THRESHOLDS["component_fraction"] for value in side)
+               for side in fractions):
+            return True
+    return False
+
+
+def boundary_partial_windows(windows, rate, frequencies):
+    """Budget one chunk per observed reference onset/fade, checking its waveform.
+
+    None marks an audible nonmatching window; an empty set marks silence.
+    Skip unknown windows when counting component changes, so interruptions do
+    not manufacture fresh onsets/fades of the same reference. Each contiguous
+    unknown group must also fit its own edge budget: unused onset allowance
+    cannot excuse a sustained wrong tone at the end.
+    """
+    previous = set()
+    limit = 0
+    for _, _, components in windows:
+        if components is not None:
+            limit += len(previous ^ components)
+            previous = components
+    limit += len(previous)
+
+    allowed = set()
+    index = 0
+    while index < len(windows):
+        if windows[index][2] is not None:
+            index += 1
+            continue
+        start = index
+        while index < len(windows) and windows[index][2] is None:
+            index += 1
+        left = windows[start - 1][2] if start else set()
+        right = windows[index][2] if index < len(windows) else set()
+        edge_limit = len(left ^ right)
+        shared = left & right
+        if shared:
+            # Include the neighbouring full chunks so a trough close to a
+            # chunk boundary still has both of its reference-bearing flanks.
+            region = [value for _, window, _ in windows[max(0, start - 1):index + 1]
+                      for value in window]
+            prefix = len(windows[start - 1][1]) if start else 0
+            end = prefix + sum(len(window) for _, window, _ in windows[start:index])
+            if reference_restart(region, rate, shared, prefix, end):
+                restarts = 2 * len(shared)
+                edge_limit += restarts
+                limit += restarts
+        if index - start > edge_limit:
+            continue
+        for at, window, _ in windows[start:index]:
+            if (len(allowed) < limit
+                    and partial_reference_fit(window, rate, frequencies) >= THRESHOLDS["fit_fraction"]):
+                allowed.add(at)
+    return allowed, limit
+
+
 def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
     result = {"status": "environment_unverified", "thresholds": THRESHOLDS,
               "expected_hz": expected, "channels": []}
@@ -137,7 +214,8 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
         baseline = values[int((before - 0.5) * rate):int(before * rate)]
         tail = values[-int(0.5 * rate):]
         measurement = {"baseline": levels(baseline), "whole": levels(values),
-                       "tail": levels(tail), "tones": {str(hz): 0.0 for hz in frequencies}}
+                       "tail": levels(tail), "tones": {str(hz): 0.0 for hz in frequencies},
+                       "partial_windows": 0, "partial_window_limit": 0}
         result["channels"].append(measurement)
         if not quiet(baseline):
             return finish("environment_unverified", "audio preceded the current screen input")
@@ -152,27 +230,35 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
         matches = set()
         unmatched_windows = set()
         active = []
+        windows = []
         baseline_rms = measurement["baseline"]["rms_dbfs"]
         for at in range(int(before * rate), len(values) - chunk + 1, chunk):
             window = values[at:at + chunk]
             power = levels(window)["rms_dbfs"]
             if power is None or power < THRESHOLDS["signal_dbfs"]:
+                windows.append((at, window, set()))
                 continue
             if baseline_rms is not None and power < baseline_rms + THRESHOLDS["baseline_gain_db"]:
+                windows.append((at, window, set()))
                 continue
             fractions = [fit(window, rate, hz) for hz in frequencies]
             if sum(fractions) < THRESHOLDS["fit_fraction"]:
-                # Verify the actual partial waveform; it cannot contribute to
-                # the minimum full-tone or overlap durations below.
-                if partial_reference_fit(window, rate, frequencies) < THRESHOLDS["fit_fraction"]:
-                    unmatched_windows.add(at)
+                windows.append((at, window, None))
+                unmatched_windows.add(at)
                 continue
+            components = {hz for hz, fraction in zip(frequencies, fractions)
+                          if fraction >= THRESHOLDS["component_fraction"]}
+            windows.append((at, window, components))
             for hz, fraction in zip(frequencies, fractions):
                 if fraction >= THRESHOLDS["component_fraction"]:
                     measurement["tones"][str(hz)] += chunk / rate
             if all(fraction >= THRESHOLDS["component_fraction"] for fraction in fractions):
                 matches.add(at)
                 active.extend(window)
+        # Partial windows never contribute to tone or overlap duration.
+        partial, limit = boundary_partial_windows(windows, rate, frequencies)
+        measurement.update(partial_windows=len(partial), partial_window_limit=limit)
+        unmatched_windows -= partial
         measurement["unexpected_seconds"] = len(unmatched_windows) * chunk / rate
         if unmatched_windows:
             return finish("fail", f"unexpected waveform on channel {channel}")

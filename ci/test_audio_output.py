@@ -72,6 +72,53 @@ class AudioOutputTests(unittest.TestCase):
                         self.assertEqual(result["status"], "fail", result)
                         self.assertIn("unexpected waveform", result["reason"])
 
+    def shifted_capture(self, rate, offset, seconds, wrong_channel, wrong_at=1.8):
+        data = array.array("h")
+        for frame in range(4 * rate):
+            for channel, correct in enumerate((440, 880)):
+                hz = correct if round(0.8 * rate) <= frame < round(1.8 * rate) else 0
+                if (round(wrong_at * rate) <= frame < round((wrong_at + seconds) * rate)
+                        and wrong_channel in (None, channel)):
+                    hz = correct + offset
+                data.append(round(8000 * math.sin(2 * math.pi * hz * frame / rate)) if hz else 0)
+        with wave.open(str(self.path), "wb") as sound:
+            sound.setparams((2, 2, rate, 0, "NONE", "not compressed"))
+            sound.writeframes(data.tobytes())
+
+    def test_sustained_near_reference_audio_is_rejected(self):
+        for rate in (8000, 48000):
+            for offset in (-60, -40, -20, -10, 10, 20, 40, 60):
+                for seconds in (0.1, 0.25, 1.0):
+                    for channel in (0, 1, None):
+                        with self.subTest(rate=rate, offset=offset, seconds=seconds, channel=channel):
+                            self.shifted_capture(rate, offset, seconds, channel)
+                            result = self.verdict()
+                            self.assertEqual(result["status"], "fail", result)
+                            self.assertIn("unexpected waveform", result["reason"])
+
+    def test_one_boundary_window_remains_a_reported_resolution_limit(self):
+        for rate in (8000, 48000):
+            for channel in (0, 1, None):
+                with self.subTest(rate=rate, channel=channel):
+                    self.shifted_capture(rate, 40, 0.04, channel)
+                    result = self.verdict()
+                    self.assertEqual(result["status"], "pass", result)
+                    for index, measurement in enumerate(result["channels"]):
+                        self.assertEqual(measurement["partial_windows"],
+                                         1 if channel in (None, index) else 0)
+                        self.assertEqual(measurement["partial_window_limit"], 2)
+                    self.assertEqual(result["thresholds"]["partial_resolution_seconds"], 0.04)
+
+    def test_near_reference_window_inside_steady_tone_is_not_an_edge(self):
+        for rate in (8000, 48000):
+            with self.subTest(rate=rate):
+                self.shifted_capture(rate, 10, 0.04, None, wrong_at=1.2)
+                result = self.verdict()
+                self.assertEqual(result["status"], "fail", result)
+                self.assertIn("unexpected waveform", result["reason"])
+                self.assertEqual(result["channels"][0]["partial_windows"], 0)
+                self.assertEqual(result["channels"][0]["partial_window_limit"], 2)
+
     def test_partial_reference_windows_at_onset_and_fade_still_pass(self):
         for onset in (0.801, 0.819, 0.837):
             with self.subTest(onset=onset):
@@ -149,6 +196,19 @@ class AudioOutputTests(unittest.TestCase):
                         result = self.verdict()
                         self.assertEqual(result["status"], "fail", result)
                         self.assertIn("unexpected waveform", result["reason"])
+
+    def test_loop_restart_adds_measured_edges_to_partial_budget(self):
+        # The repeat's fade/restart lies inside a chunk, with no silent chunk.
+        # A one-shot and a two-play loop must derive different edge budgets.
+        for duration, edges in ((1, 2), (1.2, 4)):
+            with self.subTest(duration=duration):
+                self.write(["pad-a.wav"], onset=0.826, repeat_for=duration)
+                self.input["completed_ns"] = 102_200_000_000
+                result = self.verdict(stopped=duration > 1)
+                self.assertEqual(result["status"], "pass", result)
+                for channel in result["channels"]:
+                    self.assertEqual(channel["partial_window_limit"], edges)
+                    self.assertLessEqual(channel["partial_windows"], edges)
 
     def test_short_click_and_stale_audio_do_not_pass(self):
         self.write(["pad-a.wav"], onset=0)
