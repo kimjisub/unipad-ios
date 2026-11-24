@@ -111,7 +111,7 @@ final class FirstPackGuideTests: XCTestCase {
         }
     }
 
-    private func checkLinkOpensBrowser(marked: Bool = true) {
+    private func checkLinkOpensBrowser(marked: Bool = true) throws {
         launch(Self.english, marksWebVisits: marked)
         XCTAssertTrue(guideLink.waitForExistence(timeout: 10))
         guideLink.tap()
@@ -126,14 +126,40 @@ final class FirstPackGuideTests: XCTestCase {
         address.tap()
         let field = safari.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), "Safari did not expose its full address")
-        let value = field.value as? String ?? ""
+        // Safari can expose only the host as its accessibility value even while
+        // drawing the full URL. Read the rendered text inside the address field;
+        // text elsewhere on the page must not satisfy the URL assertions.
+        let image = safari.screenshot()
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["en-US"]
+        request.usesLanguageCorrection = false
+        request.minimumTextHeight = 0
+        try VNImageRequestHandler(data: image.pngRepresentation, options: [:]).perform([request])
+        let screen = safari.frame
+        let fieldFrame = field.frame
+        let lines = (request.results ?? []).filter { observation in
+            let box = observation.boundingBox
+            return fieldFrame.contains(CGPoint(x: screen.minX + box.midX * screen.width,
+                                               y: screen.minY + (1 - box.midY) * screen.height))
+        }.compactMap { $0.topCandidates(1).first?.string }
+        let screenshot = XCTAttachment(screenshot: image)
+        screenshot.name = marked ? "guide-address-marked" : "guide-address-ordinary"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let reading = XCTAttachment(string: "Accessibility: \(field.value as? String ?? "")\nRecognized: \(lines.joined(separator: "\n"))")
+        reading.name = "guide-address-recognition"
+        reading.lifetime = .keepAlways
+        add(reading)
+        let value = try XCTUnwrap(lines.first { $0.lowercased().contains("unipad.io") },
+                                  "Safari's rendered address was not readable")
+            .components(separatedBy: .whitespacesAndNewlines).joined()
         let fullAddress = value.hasPrefix("http") ? value : "https://" + value
         let components = URLComponents(string: fullAddress)
         XCTAssertEqual(components?.host, "unipad.io")
         XCTAssertTrue(components?.path.hasSuffix("/docs/get-started") == true, "Unexpected guide address: \(value)")
         let markers = components?.queryItems?.filter { $0.name == "no_analytics" } ?? []
         XCTAssertEqual(markers.map(\.value), marked ? ["1"] : [], "Unexpected analytics markers: \(value)")
-        UITestSupport.attachScreenshot(marked ? "guide-address-marked" : "guide-address-ordinary", to: self)
         app.activate()
         XCTAssertTrue(home.waitForExistence(timeout: 10), "coming back from Safari never reached home")
         XCTAssertTrue(text(Self.english.title).exists, "the guide went away after coming back from Safari")
@@ -274,7 +300,7 @@ final class FirstPackGuideTests: XCTestCase {
         // The unmarked path is opt-in for a one-off ordinary-launch check; routine UI
         // runs must never add an unmarked visit to the website's usage counts.
         let ordinaryLaunchCheck = ProcessInfo.processInfo.environment["UNIPAD_CHECK_UNMARKED_GUIDE"] == "1"
-        checkLinkOpensBrowser(marked: !ordinaryLaunchCheck)
+        try checkLinkOpensBrowser(marked: !ordinaryLaunchCheck)
         try importPackThroughPicker(Self.korean, success: "불러오기 성공!")
         checkPlay(Self.korean, opens: true)
         checkPlay(Self.english, opens: true)
