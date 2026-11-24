@@ -3,7 +3,7 @@
 //  unipadUITests
 //
 //  Walks an isolated empty library from the guide to a playing pack:
-//  the guide in English, Korean, Spanish and German, its link opening the
+//  the guide in translated languages and German, its link opening the
 //  browser, importing a generated archive through the file picker, the guide going away,
 //  and the Play label in each language.
 //
@@ -37,6 +37,12 @@ final class FirstPackGuideTests: XCTestCase {
     private static let german = Language(
         code: "de", locale: "de_DE", title: english.title,
         noLaunchpad: english.noLaunchpad, link: english.link, play: english.play)
+    private static let indonesian = Language(
+        code: "id", locale: "id_ID", title: "Mainkan UniPack pertama Anda",
+        noLaunchpad: "Tidak punya Launchpad? Cukup ketuk pad di layar.", link: "Panduan memulai", play: "Play")
+    private static let portuguese = Language(
+        code: "pt-BR", locale: "pt_BR", title: "Toque seu primeiro UniPack",
+        noLaunchpad: "Não tem Launchpad? Basta tocar nos pads na tela.", link: "Guia para começar", play: "Play")
     private static let all = [english, korean, spanish, german]
 
     private let token = UUID().uuidString
@@ -108,8 +114,8 @@ final class FirstPackGuideTests: XCTestCase {
         }
     }
 
-    private func checkLinkOpensBrowser() {
-        launch(Self.english)
+    private func checkLinkOpensBrowser(_ language: Language = FirstPackGuideTests.english, checkPageText: Bool = true) {
+        launch(language)
         XCTAssertTrue(guideLink.waitForExistence(timeout: 10))
         guideLink.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
@@ -118,10 +124,11 @@ final class FirstPackGuideTests: XCTestCase {
             .matching(NSPredicate(format: "value CONTAINS[c] 'unipad.io' OR label CONTAINS[c] 'unipad.io'"))
             .firstMatch
         XCTAssertTrue(address.waitForExistence(timeout: 10), "Safari does not show unipad.io")
-        checkBrowserGuideText(in: safari)
+        shot(language, "02-guide-link-browser")
+        if checkPageText { checkBrowserGuideText(in: safari) }
         app.activate()
         XCTAssertTrue(home.waitForExistence(timeout: 10), "coming back from Safari never reached home")
-        XCTAssertTrue(text(Self.english.title).exists, "the guide went away after coming back from Safari")
+        XCTAssertTrue(text(language.title).exists, "the guide went away after coming back from Safari")
     }
 
     /// The heading of unipad.io/docs/get-started in each language the site serves.
@@ -250,6 +257,26 @@ final class FirstPackGuideTests: XCTestCase {
         XCTAssertTrue(text("불러오기 성공!").waitForExistence(timeout: 60))
         app.buttons["main.importResult.ok"].tap()
         XCTAssertTrue(packTitles.element(boundBy: 0).waitForExistence(timeout: 10))
+    }
+
+    private func checkLocalizedGuideToPlaying(_ language: Language, success: String) throws {
+        launch(language)
+        assertGuide(language)
+        shot(language, "01-empty-guide")
+        // These locale checks cover navigation; the English flow also checks the live page text.
+        checkLinkOpensBrowser(language, checkPageText: false)
+        try importPackThroughPicker(language, success: success)
+        checkPlay(language, opens: true)
+    }
+
+    @MainActor
+    func testIndonesianGuideToPlayingAPack() throws {
+        try checkLocalizedGuideToPlaying(Self.indonesian, success: "Pack berhasil diimpor!")
+    }
+
+    @MainActor
+    func testBrazilianPortugueseGuideToPlayingAPack() throws {
+        try checkLocalizedGuideToPlaying(Self.portuguese, success: "Pack importado!")
     }
 
     @MainActor

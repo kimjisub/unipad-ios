@@ -112,11 +112,11 @@
 "guide_download_new" = "Unduh pack baru";
 "guide_import_external" = "Impor pack yang diunduh";
 "guide_restore_packs" = "Pulihkan pack yang hilang";
-"main_empty_title" = "Play your first UniPack";
-"main_empty_step_get_pack" = "Get a pack: tap **Download new packs** to use the Store, or **Import downloaded packs** for a .zip you already have.";
-"main_empty_step_play" = "Tap the pack in the list, then tap **Play**.";
-"main_empty_step_no_launchpad" = "No Launchpad? Just tap the pads on screen.";
-"main_empty_guide_link" = "Getting started guide";
+"main_empty_title" = "Mainkan UniPack pertama Anda";
+"main_empty_step_get_pack" = "Dapatkan pack: ketuk **Unduh pack baru** untuk memakai Toko, atau **Impor pack yang diunduh** untuk file .zip yang sudah Anda miliki.";
+"main_empty_step_play" = "Ketuk pack di daftar, lalu ketuk **Play**.";
+"main_empty_step_no_launchpad" = "Tidak punya Launchpad? Cukup ketuk pad di layar.";
+"main_empty_guide_link" = "Panduan memulai";
 "unipack_play" = "Play";
 
 /* Launchpad */
