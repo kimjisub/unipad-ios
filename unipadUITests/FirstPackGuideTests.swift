@@ -240,13 +240,9 @@ final class FirstPackGuideTests: XCTestCase {
         if !foundRecents { shot(Self.korean, "picker-recents-missing") }
         _ = try XCTUnwrap(foundRecents ? recents : nil, "the picker must offer Recents at Locations")
         // The native tab can report isHittable == false while accepting taps.
-        // A Locations row opens a Recents screen instead of staying selected.
+        // Verify the selection after tapping instead of asserting that hint.
         recents.tap()
-        let recentsTitle = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"].staticTexts
-            .matching(NSPredicate(format: "label IN %@", ["Recents", "최근 항목"])).firstMatch
-        let selected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            (recents.exists && recents.isSelected) || recentsTitle.exists
-        }, object: nil)
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: recents)
         XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed,
                        "the picker must show Recents before selecting the prepared archive")
         shot(Self.korean, "picker-recents")

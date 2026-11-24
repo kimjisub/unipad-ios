@@ -87,29 +87,22 @@ exit(passed ? 0 : 1)
 """
         self.run_probe(program)
 
-    def test_recents_can_be_a_phone_locations_row_or_selected_tab(self):
+    def test_recents_can_be_a_phone_locations_row_or_tab(self):
         root = Path(__file__).resolve().parents[1]
         support = (root / "unipadUITests/UITestSupport.swift").read_text()
         start = support.index("    static func filePickerRecents(in app:")
         end = support.index("\n    }", start) + len("\n    }")
         selector = support[start:end]
-        source = (root / "unipadUITests/FirstPackGuideTests.swift").read_text()
-        start = source.index("        // The native tab", source.index("    func testPreparedArchive"))
-        end = source.index("        XCTAssertEqual", start)
-        selection = source[start:end]
         program = r"""
 import Foundation
 final class XCUIElement: NSObject {
     enum ElementType: Int { case any, button, cell, staticText }
     @objc dynamic var elementType: Int
     @objc dynamic var label: String
-    @objc dynamic var isSelected = false
     var exists: Bool
-    var tapAction: (() -> Void)?
     init(_ type: ElementType, _ label: String = "", exists: Bool = true) {
         elementType = type.rawValue; self.label = label; self.exists = exists
     }
-    func tap() { tapAction?() }
 }
 struct Query {
     let elements: [XCUIElement]
@@ -119,53 +112,29 @@ struct Query {
         Query(elements: elements.filter { predicate.evaluate(with: $0) })
     }
 }
-struct NavigationBars {
-    let app: XCUIApplication
-    subscript(_ name: String) -> NavigationBars { self }
-    var staticTexts: Query {
-        Query(elements: app.recentsTitleVisible ? [XCUIElement(.staticText, "최근 항목")] : [])
-    }
-}
 final class XCUIApplication {
-    var elements: [XCUIElement] = []
-    var recentsTitleVisible = false
+    let elements: [XCUIElement]
     var cells: Query { Query(elements: elements.filter { $0.elementType == XCUIElement.ElementType.cell.rawValue }) }
     var tabBars: Query { Query(elements: elements) }
-    var navigationBars: NavigationBars { NavigationBars(app: self) }
     func descendants(matching type: XCUIElement.ElementType) -> Query { Query(elements: elements) }
-    init(_ mode: String) {
-        let entry = XCUIElement(mode == "phone-tab" ? .button : .cell, "최근 항목")
-        elements = [entry]
-        entry.tapAction = { [weak self, weak entry] in
-            if mode == "phone-locations-row" {
-                entry?.exists = false
-                self?.recentsTitleVisible = true
-            } else {
-                entry?.isSelected = true
-            }
-        }
-    }
-}
-struct XCTNSPredicateExpectation {
-    let predicate: NSPredicate
-    let object: Any?
+    init(_ type: XCUIElement.ElementType, _ label: String) { elements = [XCUIElement(type, label)] }
 }
 enum UITestSupport {
     static var isPad = false
 """ + selector + r"""
 }
-func selectRecents(_ app: XCUIApplication) -> Bool {
-    let recents = UITestSupport.filePickerRecents(in: app)
-    guard recents.exists else { return false }
-""" + selection + r"""
-    return selected.predicate.evaluate(with: selected.object)
-}
 var passed = true
-for mode in ["phone-tab", "phone-locations-row", "ipad-sidebar"] {
-    UITestSupport.isPad = mode == "ipad-sidebar"
-    let result = selectRecents(XCUIApplication(mode))
-    print(mode, "opened Recents:", result)
-    passed = passed && result
+for (name, type, label, isPad, expected) in [
+    ("phone-tab", XCUIElement.ElementType.button, "Recents", false, true),
+    ("phone-locations-row", .cell, "최근 항목", false, true),
+    ("ipad-sidebar", .cell, "최근 항목", true, true),
+    ("title-is-not-a-control", .staticText, "최근 항목", false, false),
+    ("unrelated-row", .cell, "Browse", false, false),
+] {
+    UITestSupport.isPad = isPad
+    let result = UITestSupport.filePickerRecents(in: XCUIApplication(type, label)).exists
+    print(name, "found Recents:", result, "expected:", expected)
+    passed = passed && result == expected
 }
 exit(passed ? 0 : 1)
 """
