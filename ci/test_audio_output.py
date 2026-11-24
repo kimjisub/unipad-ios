@@ -1,4 +1,5 @@
 import array
+import math
 from pathlib import Path
 import tempfile
 import unittest
@@ -50,6 +51,48 @@ class AudioOutputTests(unittest.TestCase):
         self.assertEqual(self.verdict()["status"], "fail")
         self.write(["pad-a.wav"], swap=True)
         self.assertEqual(self.verdict()["status"], "fail")
+
+    def test_unrelated_audio_before_or_after_the_reference_is_rejected(self):
+        for rate in (8000, 48000):
+            for correct_at, wrong_at in ((0.8, 1.8), (1.8, 0.8)):
+                for wrong_channel in (0, 1, None):
+                    with self.subTest(rate=rate, correct_at=correct_at, wrong_channel=wrong_channel):
+                        data = array.array("h")
+                        for frame in range(4 * rate):
+                            for channel, (correct, wrong) in enumerate(((440, 662), (880, 998))):
+                                hz = correct if correct_at <= frame / rate < correct_at + 1 else 0
+                                if wrong_at <= frame / rate < wrong_at + 1 and wrong_channel in (None, channel):
+                                    hz = wrong
+                                data.append(round(8000 * math.sin(2 * math.pi * hz * frame / rate)) if hz else 0)
+                        with wave.open(str(self.path), "wb") as f:
+                            f.setparams((2, 2, rate, 0, "NONE", "not compressed"))
+                            f.writeframes(data.tobytes())
+                        result = self.verdict()
+                        self.assertEqual(result["status"], "fail", result)
+                        self.assertIn("unexpected waveform", result["reason"])
+
+    def test_partial_reference_windows_at_onset_and_fade_still_pass(self):
+        for onset in (0.801, 0.819, 0.837):
+            with self.subTest(onset=onset):
+                self.write(["pad-a.wav"], onset=onset)
+                result = self.verdict()
+                self.assertEqual(result["status"], "pass", result)
+
+    def test_transition_tolerance_cannot_hide_isolated_or_consecutive_wrong_windows(self):
+        for onset, seconds in ((2.2, 0.04), (1.8, 0.08), (1.2, 0.08)):
+            with self.subTest(onset=onset, seconds=seconds):
+                self.write(["pad-a.wav"])
+                with wave.open(str(self.path), "rb") as f:
+                    data = array.array("h", f.readframes(f.getnframes()))
+                tone = self.sound("pad-b.wav")[:int(seconds * 48000) * 2]
+                start = int(onset * 48000) * 2
+                data[start:start + len(tone)] = tone
+                with wave.open(str(self.path), "wb") as f:
+                    f.setparams((2, 2, 48000, 0, "NONE", "not compressed"))
+                    f.writeframes(data.tobytes())
+                result = self.verdict()
+                self.assertEqual(result["status"], "fail", result)
+                self.assertIn("unexpected waveform", result["reason"])
 
     def test_silence_fails_normal_but_passes_explicit_silent_control(self):
         self.write()

@@ -12,7 +12,7 @@ from pathlib import Path
 import sys
 import wave
 
-THRESHOLDS = {"version": 1, "signal_dbfs": -50, "quiet_dbfs": -65,
+THRESHOLDS = {"version": 2, "signal_dbfs": -50, "quiet_dbfs": -65,
               "baseline_gain_db": 20, "fit_fraction": 0.85, "component_fraction": 0.15,
               "minimum_tone_seconds": 0.75, "minimum_overlap_seconds": 0.25,
               "minimum_loop_seconds": 1.05,
@@ -112,6 +112,8 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
         if stopped and not quiet(values[int((after + THRESHOLDS["stop_tail_seconds"]) * rate):]):
             return finish("fail", "loop remained audible after gesture completion")
         matches = set()
+        reference_windows = set()
+        unmatched_windows = set()
         active = []
         baseline_rms = measurement["baseline"]["rms_dbfs"]
         for at in range(int(before * rate), len(values) - chunk + 1, chunk):
@@ -123,13 +125,24 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
                 continue
             fractions = [fit(window, rate, hz) for hz in frequencies]
             if sum(fractions) < THRESHOLDS["fit_fraction"]:
+                unmatched_windows.add(at)
                 continue
+            reference_windows.add(at)
             for hz, fraction in zip(frequencies, fractions):
                 if fraction >= THRESHOLDS["component_fraction"]:
                     measurement["tones"][str(hz)] += chunk / rate
             if all(fraction >= THRESHOLDS["component_fraction"] for fraction in fractions):
                 matches.add(at)
                 active.extend(window)
+        # An onset, fade or loop seam can occupy part of one analysis window.
+        # Only that immediately adjacent window is tolerated; unrelated audio
+        # elsewhere, or two consecutive nonmatching windows, must fail.
+        unexpected = {at for at in unmatched_windows
+                      if (at - chunk not in reference_windows and at + chunk not in reference_windows)
+                      or at - chunk in unmatched_windows or at + chunk in unmatched_windows}
+        measurement["unexpected_seconds"] = len(unexpected) * chunk / rate
+        if unexpected:
+            return finish("fail", f"unexpected waveform on channel {channel}")
         measurement["active"] = levels(active)
         measurement["matched_seconds"] = len(matches) * chunk / rate
         tone_minimum = THRESHOLDS["minimum_loop_seconds"] if stopped else THRESHOLDS["minimum_tone_seconds"]
