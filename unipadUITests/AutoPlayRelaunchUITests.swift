@@ -7,7 +7,7 @@ final class AutoPlayRelaunchUITests: XCTestCase {
         try withPlayScreen(library: "wormhole-song-time", title: "Wormhole Song Time Fixture",
                            launchArguments: ["-SelectedTheme", "default"]) { app, grid, idle in
             choose("Autoplay", app: app)
-            waitForSongEnd(app)
+            waitForTransportToGo(app, timeout: 15, "The short wormhole fixture must finish")
             UITestSupport.attachScreenshot("wormhole-early-press-page", to: self)
             XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,3"],
                            "The press at 1 ms must use page 1's light, not page 2's marker at 1,4")
