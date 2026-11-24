@@ -24,13 +24,14 @@ class AudioOutputTests(unittest.TestCase):
         with wave.open(str(root / name), "rb") as f:
             return array.array("h", f.readframes(f.getnframes()))
 
-    def write(self, sounds=(), onset=0.8, swap=False, repeat_for=1):
+    def write(self, sounds=(), onset=0.8, swap=False, repeat_for=1, delays=None):
         data = array.array("h", [0]) * (48000 * 4 * 2)
-        for name in sounds:
+        for index, name in enumerate(sounds):
+            start = onset + (delays[index] if delays else 0)
             tone = self.sound(name)
             tone = (tone * 2)[:int(repeat_for * 48000) * 2]
             for i, value in enumerate(tone):
-                at = int(onset * 48000) * 2 + (i ^ 1 if swap else i)
+                at = int(start * 48000) * 2 + (i ^ 1 if swap else i)
                 data[at] += value
         with wave.open(str(self.path), "wb") as f:
             f.setparams((2, 2, 48000, 0, "NONE", "not compressed"))
@@ -78,7 +79,7 @@ class AudioOutputTests(unittest.TestCase):
                 result = self.verdict()
                 self.assertEqual(result["status"], "pass", result)
 
-    def test_transition_tolerance_cannot_hide_isolated_or_consecutive_wrong_windows(self):
+    def test_isolated_or_consecutive_wrong_windows_are_rejected(self):
         for onset, seconds in ((2.2, 0.04), (1.8, 0.08), (1.2, 0.08)):
             with self.subTest(onset=onset, seconds=seconds):
                 self.write(["pad-a.wav"])
@@ -110,6 +111,44 @@ class AudioOutputTests(unittest.TestCase):
         self.assertEqual(self.verdict(expected=expected, mixed=True)["status"], "pass")
         self.write(["pad-a.wav"])
         self.assertEqual(self.verdict(expected=expected, mixed=True)["status"], "fail")
+
+    def test_staggered_reference_onsets_and_fades_pass(self):
+        for onset in (0.801, 0.819, 0.832, 0.837):
+            for delay in (0.001, 0.01, 0.02, 0.031):
+                for delays in ((0, delay), (delay, 0)):
+                    with self.subTest(onset=onset, delays=delays):
+                        self.write(["pad-a.wav", "pad-b.wav"], onset=onset, delays=delays)
+                        result = self.verdict(expected=((440, 662), (880, 998)), mixed=True)
+                        self.assertEqual(result["status"], "pass", result)
+
+    def test_single_and_repeated_wrong_windows_beside_reference_are_rejected(self):
+        for rate in (8000, 48000):
+            for wrong_channel in (0, 1, None):
+                # One adjacent wrong chunk before, after and inside a normal
+                # tone, then eight wrong chunks alternating with normal ones.
+                for wrong_at in ((0.76,), (1.6,), (1.2,),
+                                 tuple(1.6 + 0.08 * index for index in range(8))):
+                    with self.subTest(rate=rate, wrong_channel=wrong_channel, wrong_at=wrong_at):
+                        data = array.array("h")
+                        wrong_frames = {frame for start in wrong_at
+                                        for frame in range(round(start * rate), round((start + 0.04) * rate))}
+                        normal_frames = set(range(round(0.8 * rate), round(1.6 * rate)))
+                        alternating_frames = (set(range(round(1.6 * rate), round(2.24 * rate)))
+                                              if len(wrong_at) > 1 else set())
+                        for frame in range(4 * rate):
+                            for channel, (correct, wrong) in enumerate(((440, 662), (880, 998))):
+                                affected = wrong_channel in (None, channel)
+                                hz = correct if (frame in normal_frames or
+                                                 affected and frame in alternating_frames) else 0
+                                if frame in wrong_frames and affected:
+                                    hz = wrong
+                                data.append(round(8000 * math.sin(2 * math.pi * hz * frame / rate)) if hz else 0)
+                        with wave.open(str(self.path), "wb") as f:
+                            f.setparams((2, 2, rate, 0, "NONE", "not compressed"))
+                            f.writeframes(data.tobytes())
+                        result = self.verdict()
+                        self.assertEqual(result["status"], "fail", result)
+                        self.assertIn("unexpected waveform", result["reason"])
 
     def test_short_click_and_stale_audio_do_not_pass(self):
         self.write(["pad-a.wav"], onset=0)

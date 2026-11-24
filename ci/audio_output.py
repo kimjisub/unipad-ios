@@ -12,12 +12,13 @@ from pathlib import Path
 import sys
 import wave
 
-THRESHOLDS = {"version": 2, "signal_dbfs": -50, "quiet_dbfs": -65,
+THRESHOLDS = {"version": 3, "signal_dbfs": -50, "quiet_dbfs": -65,
               "baseline_gain_db": 20, "fit_fraction": 0.85, "component_fraction": 0.15,
               "minimum_tone_seconds": 0.75, "minimum_overlap_seconds": 0.25,
               "minimum_loop_seconds": 1.05,
               "maximum_one_shot_seconds": 1.16,
-              "stop_tail_seconds": 0.1, "chunk_seconds": 0.04}
+              "stop_tail_seconds": 0.1, "chunk_seconds": 0.04,
+              "envelope_seconds": 0.01}
 
 
 def select_process(entries):
@@ -56,6 +57,43 @@ def fit(values, rate, hz):
     sine, cosine = basis(rate, hz, len(values))
     # Both phases are fitted: an output device may shift the reference's phase.
     return 2 * (math.sumprod(values, sine) ** 2 + math.sumprod(values, cosine) ** 2) / (len(values) * energy)
+
+
+@lru_cache(maxsize=128)
+def envelope_basis(rate, frequencies, count):
+    # Within 10 ms, each reference can ramp independently. Orthonormalize the
+    # constant and linear envelopes together so overlapping frequencies/phases
+    # are fitted jointly, without counting their shared energy twice.
+    vectors = []
+    for hz in frequencies:
+        for phase in basis(rate, hz, count):
+            for ramp in (False, True):
+                vector = [value * (i / max(1, count - 1) if ramp else 1)
+                          for i, value in enumerate(phase)]
+                for previous in vectors:
+                    projection = math.sumprod(vector, previous)
+                    vector = [value - projection * ref for value, ref in zip(vector, previous)]
+                norm = math.sqrt(math.sumprod(vector, vector))
+                if norm > 1e-9:
+                    vectors.append([value / norm for value in vector])
+    return vectors
+
+
+def partial_reference_fit(values, rate, frequencies):
+    """Fit onsets/fades by their waveform, never by a neighbouring verdict."""
+    floor = 32768 * 10 ** (THRESHOLDS["quiet_dbfs"] / 20)
+    audible = [i for i, value in enumerate(values) if abs(value) >= floor]
+    if not audible:
+        return 0
+    values = values[audible[0]:audible[-1] + 1]
+    step = int(rate * THRESHOLDS["envelope_seconds"])
+    energy = math.sumprod(values, values)
+    explained = 0
+    for at in range(0, len(values), step):
+        window = values[at:at + step]
+        vectors = envelope_basis(rate, tuple(frequencies), len(window))
+        explained += sum(math.sumprod(window, vector) ** 2 for vector in vectors)
+    return explained / energy if energy else 0
 
 
 def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
@@ -112,7 +150,6 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
         if stopped and not quiet(values[int((after + THRESHOLDS["stop_tail_seconds"]) * rate):]):
             return finish("fail", "loop remained audible after gesture completion")
         matches = set()
-        reference_windows = set()
         unmatched_windows = set()
         active = []
         baseline_rms = measurement["baseline"]["rms_dbfs"]
@@ -125,23 +162,19 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
                 continue
             fractions = [fit(window, rate, hz) for hz in frequencies]
             if sum(fractions) < THRESHOLDS["fit_fraction"]:
-                unmatched_windows.add(at)
+                # Verify the actual partial waveform; it cannot contribute to
+                # the minimum full-tone or overlap durations below.
+                if partial_reference_fit(window, rate, frequencies) < THRESHOLDS["fit_fraction"]:
+                    unmatched_windows.add(at)
                 continue
-            reference_windows.add(at)
             for hz, fraction in zip(frequencies, fractions):
                 if fraction >= THRESHOLDS["component_fraction"]:
                     measurement["tones"][str(hz)] += chunk / rate
             if all(fraction >= THRESHOLDS["component_fraction"] for fraction in fractions):
                 matches.add(at)
                 active.extend(window)
-        # An onset, fade or loop seam can occupy part of one analysis window.
-        # Only that immediately adjacent window is tolerated; unrelated audio
-        # elsewhere, or two consecutive nonmatching windows, must fail.
-        unexpected = {at for at in unmatched_windows
-                      if (at - chunk not in reference_windows and at + chunk not in reference_windows)
-                      or at - chunk in unmatched_windows or at + chunk in unmatched_windows}
-        measurement["unexpected_seconds"] = len(unexpected) * chunk / rate
-        if unexpected:
+        measurement["unexpected_seconds"] = len(unmatched_windows) * chunk / rate
+        if unmatched_windows:
             return finish("fail", f"unexpected waveform on channel {channel}")
         measurement["active"] = levels(active)
         measurement["matched_seconds"] = len(matches) * chunk / rate
