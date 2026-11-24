@@ -77,6 +77,19 @@ class ResultTests(unittest.TestCase):
                 self.assertEqual(len([name for name in required if name.startswith(suite + "/")]), count)
         self.assertIn("PlayUsageRecordTests/MidiDeviceSelectionTests/recognisedFirmwareIsReported", required)
 
+    def test_connection_status_cases_cannot_disappear_from_a_green_midi_result(self):
+        required = required_midi_tests()
+        status = [name for name in required if name.startswith("VirtualMidiConnectionStatusUITests/")]
+        self.assertEqual(len(status), 7)
+        self.assertEqual(set(status), set(midi_suite_tests("unipadUITests/VirtualMidiConnectionStatusUITests")))
+        for missing in [status, *[[name] for name in status]]:
+            with self.subTest(missing=missing):
+                nodes = [{"nodeType": "Test Case", "nodeIdentifier": name, "result": "Passed"}
+                         for name in required if name not in missing]
+                summary = dict(totalTestCount=len(nodes), passedTests=len(nodes), failedTests=0, skippedTests=0)
+                with self.assertRaisesRegex(ValueError, "required test did not run"):
+                    verify_results(summary, {"testNodes": nodes}, required)
+
     def test_midi_source_names_include_multiline_attributes_and_exclude_ui_helpers_and_comments(self):
         sources = {
             "unipadTests": ("""
@@ -149,6 +162,33 @@ class ResultTests(unittest.TestCase):
         for suite in ["MainListReadTests", "LedRunnerTests", "PlayUsageRecordTests", "MultiTouchPlayTests"]:
             self.assertIn(suite, suites)
         self.assertEqual(required_unit_suites("IPadReleaseFeatures"), [])
+
+    def test_release_plans_require_the_theme_option_screens(self):
+        expected = {"PlayOptionThemeUITests/" + method + "()" for method in (
+            "testDefaultThemeKeepsOrange", "testThemeWithoutOptionAccentKeepsOrange",
+            "testExplicitOptionAccentColorsEnabledSwitch")}
+        for plan in ("ReleaseFeatures", "IPadReleaseFeatures"):
+            required = required_ui_tests(plan)
+            with self.subTest(plan=plan):
+                self.assertTrue(expected <= set(required))
+                nodes = [{"nodeType": "Test Case", "nodeIdentifier": name, "result": "Passed"}
+                         for name in required if name not in expected]
+                summary = dict(totalTestCount=len(nodes), passedTests=len(nodes), failedTests=0, skippedTests=0)
+                with self.assertRaisesRegex(ValueError, "required test did not run"):
+                    verify_results(summary, {"testNodes": nodes}, required)
+
+    def test_release_unit_plan_requires_the_new_regression_suites(self):
+        expected = {"PlayOptionThemeTests", "ThemeGuideLinkTests", "ThemeMetadataTests",
+                    "StatusBarOverlapTests", "ReleaseTestSoundLoadGateTests"}
+        required = required_unit_suites("ReleaseFeatures")
+        self.assertTrue(expected <= set(required))
+        for missing in expected:
+            nodes = [{"nodeType": "Test Suite", "name": name, "result": "Passed", "children": [
+                {"nodeType": "Test Case", "nodeIdentifier": name + "/one()", "result": "Passed"}]}
+                for name in required if name != missing]
+            summary = dict(totalTestCount=len(nodes), passedTests=len(nodes), failedTests=0, skippedTests=0)
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, "required unit suite did not run"):
+                verify_results(summary, {"testNodes": nodes}, [], required)
 
     def test_unit_stage_is_iphone_only(self):
         with tempfile.TemporaryDirectory(dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
