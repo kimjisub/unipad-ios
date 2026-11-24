@@ -39,17 +39,36 @@ def prepare(udid, store=STORE):
 
 def verify(udid):
     command = ['xcrun', 'simctl', 'spawn', udid, 'launchctl']
-    disabled = subprocess.run(command + ['print-disabled', 'system'], check=True,
-                              capture_output=True, text=True).stdout
-    print(disabled, flush=True)
+
+    def query(*arguments):
+        result = subprocess.run(command + list(arguments), capture_output=True, text=True)
+        print(f'launchctl {" ".join(arguments)}: exit {result.returncode}\n'
+              f'{result.stdout}{result.stderr}', flush=True)
+        return result
+
+    manager = query('manageruid')
+    uid = manager.stdout.strip()
+    if manager.returncode != 0 or not re.fullmatch(r'[1-9][0-9]*', uid):
+        raise RuntimeError('cannot determine the simulator user domain')
+    user_domain = f'user/{uid}'
+    # These services belong to the simulator's user domain. Establish that the
+    # domain exists before treating a missing-service error as evidence of absence.
+    if query('print', user_domain).returncode != 0:
+        raise RuntimeError(f'cannot inspect simulator domain {user_domain}')
+    for domain in ('system', user_domain):
+        disabled = query('print-disabled', domain)
+        if disabled.returncode != 0:
+            raise RuntimeError(f'cannot inspect disabled services in {domain}')
+        for label in SERVICES:
+            if not re.search(r'"' + re.escape(label) + r'"\s*=>\s*(?:true|disabled)\b',
+                             disabled.stdout):
+                raise RuntimeError(f'background profile not applied: {domain}/{label} is not disabled')
+            loaded = query('print', f'{domain}/{label}')
+            # A missing domain or an unrelated query error is not proof that a
+            # service is absent, even when launchctl returns the same exit code.
+            if (loaded.returncode not in (3, 113)
+                    or 'Could not find service' not in loaded.stderr):
+                raise RuntimeError(f'background profile not verified: {domain}/{label}')
     for label in SERVICES:
-        if not re.search(r'"' + re.escape(label) + r'"\s*=>\s*(?:true|disabled)\b', disabled):
-            raise RuntimeError(f'background profile not applied: {label} is not disabled')
-        loaded = subprocess.run(command + ['print', 'system/' + label],
-                                capture_output=True, text=True)
-        # launchctl reports a missing service as 113 (or 3 on older runtimes).
-        # Other failures do not establish that the service is absent.
-        if loaded.returncode not in (3, 113):
-            raise RuntimeError(f'background profile not verified: {label}, exit {loaded.returncode}: '
-                               f'{loaded.stdout}{loaded.stderr}')
-        print(f'Simulator background profile verified: {label} disabled and not loaded', flush=True)
+        print(f'Simulator background profile verified: {label} disabled and not loaded '
+              f'in system and {user_domain}', flush=True)

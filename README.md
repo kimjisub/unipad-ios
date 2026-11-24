@@ -94,8 +94,11 @@ with time limits that run then fail on time alone. For this disposable CI device
 only, `--reduce-background-work` disables PosterBoard's wallpaper previews and
 chronod's widgets before boot by merging their entries into CoreSimulator's
 per-device launchd override store. This is an undocumented CoreSimulator detail;
-after boot, the script requires both services to be disabled and absent from the
-live launchd service list. Its output is saved in `simulator-background.log`.
+after boot, the script reads the simulator's launchd manager UID, confirms that
+its user domain exists, and requires both services to be disabled and absent in
+both the system and user domains. Query errors stop verification rather than
+counting as missing services. The queried domains, exit codes and raw output are
+saved in `simulator-background.log`.
 App and test services, audio, networking and diagnostics stay enabled. Local
 shared simulators do not use this option. Remove the option to return to the
 ordinary profile on the next fresh CI runner.
