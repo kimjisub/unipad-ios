@@ -276,10 +276,11 @@ enum UITestSupport {
                       height: bottom - search.frame.maxY - 4)
     }
 
-    /// The picker's Recents entry: a tab on an iPhone, a row of the sidebar on an iPad.
+    /// The picker's Recents entry: a tab or a row in Locations/the iPad sidebar.
     static func filePickerRecents(in app: XCUIApplication) -> XCUIElement {
-        let isRecents = NSPredicate(format: "label IN %@", ["Recents", "최근 항목"])
-        return (isPad ? app.cells : app.tabBars.buttons).matching(isRecents).firstMatch
+        let types = [XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.cell.rawValue] as NSArray
+        let isRecents = NSPredicate(format: "elementType IN %@ AND label IN %@", types, ["Recents", "최근 항목"])
+        return app.descendants(matching: .any).matching(isRecents).firstMatch
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself
