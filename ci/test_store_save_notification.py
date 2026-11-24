@@ -85,11 +85,20 @@ actor Spy: DownloadAccounting {
         for _ in 0..<100 { await Task.yield() }
         let afterFailure = await spy.completed
         guard afterFailure == 1 && failedVM.storeItems[0].downloadFailed else { exit(3) }
-        print("Store save notification: published save 1, failed save 0, displayed count unchanged")
+        let missingVM = StoreViewModel()
+        let missingReceipt = Task<DownloadReceipt?, Never> { nil }
+        let missingDelegate = MISSING_CONSTRUCTOR
+        missingDelegate.onInstallComplete(folder: URL(fileURLWithPath: "/saved-without-receipt"))
+        for _ in 0..<100 { await Task.yield() }
+        let afterMissingReceipt = await spy.completed
+        guard afterMissingReceipt == 1 && missingVM.storeItems[0].downloaded &&
+              missingVM.storeItems[0].downloadCount == 123 else { exit(4) }
+        print("Store save notification: published save 1, failed save 0, missing receipt still saves, displayed count unchanged")
     }
 }
 '''
         program = program.replace("FAILED_CONSTRUCTOR", constructor.replace("vm,", "failedVM,").replace("receipt: receipt", "receipt: failedReceipt"))
+        program = program.replace("MISSING_CONSTRUCTOR", constructor.replace("vm,", "missingVM,").replace("receipt: receipt", "receipt: missingReceipt"))
         program = program.replace("CONSTRUCTOR", constructor)
         with tempfile.TemporaryDirectory(prefix="store-save-") as temporary:
             folder = Path(temporary)

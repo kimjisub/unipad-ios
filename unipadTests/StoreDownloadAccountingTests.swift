@@ -9,9 +9,14 @@ struct StoreDownloadAccountingTests {
         var savedCodes: [String] = []
         var installedWhenSaved = false
         let installedFolder: URL
-        init(_ folder: URL) { installedFolder = folder }
+        let receiptAvailable: Bool
+        init(_ folder: URL, receiptAvailable: Bool) {
+            installedFolder = folder
+            self.receiptAvailable = receiptAvailable
+        }
         func issueReceipt(code: String) -> DownloadReceipt? {
             issued.append(code)
+            guard receiptAvailable else { return nil }
             return DownloadReceipt(receipt: "receipt-\(issued.count)", expiresAt: Date() + 1000)
         }
         func saved(code: String, receipt: DownloadReceipt, at completion: Date) {
@@ -20,7 +25,8 @@ struct StoreDownloadAccountingTests {
         }
     }
 
-    @Test func onlyPublishedPacksSendCompletionAndTheDisplayedCountIsUnchanged() async throws {
+    @Test(arguments: [true, false])
+    func onlyPublishedPacksSendCompletionAndTheDisplayedCountIsUnchanged(receiptAvailable: Bool) async throws {
         let code = "accounting-\(UUID().uuidString)"
         let host = "\(code).test"
         let folder = WorkspaceManager.shared.downloadWorkspace.url.appendingPathComponent(code)
@@ -34,7 +40,7 @@ struct StoreDownloadAccountingTests {
             try? FileManager.default.removeItem(at: folder)
             try? FileManager.default.removeItem(at: staging)
         }
-        let accounting = Accounting(folder)
+        let accounting = Accounting(folder, receiptAvailable: receiptAvailable)
         let vm = StoreViewModel(accounting: accounting) {
             UniPackDownloader(session: session, stagingRoot: staging, waitBeforeRetry: { _ in })
         }
@@ -54,13 +60,15 @@ struct StoreDownloadAccountingTests {
         StubURLProtocol.register(host: host, .init(status: 200, chunks: [zip]))
         vm.startDownload(vm.storeItems[0])
         try await wait { !vm.storeItems[0].downloading }
-        let deadline = ContinuousClock.now + .seconds(10)
-        while await accounting.savedCodes.isEmpty, ContinuousClock.now < deadline { await Task.yield() }
+        if receiptAvailable {
+            let deadline = ContinuousClock.now + .seconds(10)
+            while await accounting.savedCodes.isEmpty, ContinuousClock.now < deadline { await Task.yield() }
+        }
         #expect(vm.storeItems[0].downloaded)
         #expect(vm.storeItems[0].downloadCount == 123)
         #expect(await accounting.issued == [code, code])
-        #expect(await accounting.savedCodes == [code])
-        #expect(await accounting.installedWhenSaved)
+        #expect(await accounting.savedCodes == (receiptAvailable ? [code] : []))
+        #expect(await accounting.installedWhenSaved == receiptAvailable)
     }
 
     @Test func productionRequiresAllInstallationChecks() {
