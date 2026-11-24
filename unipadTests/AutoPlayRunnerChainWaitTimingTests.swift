@@ -14,8 +14,9 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
         var scheduled: [Int64] = []
         var guides: [Int64] = []
         var hints: [Int] = []
+        var chainChanges: [(time: Int64, chain: Int)] = []
 
-        init() {
+        init(elements suppliedElements: [AutoPlay.Element]? = nil) {
             let pack = UniPack()
             var elements: [AutoPlay.Element] = [.delay(delay: 1000), .chain(c: 1)]
             for index in 0..<3 {
@@ -24,7 +25,7 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
             }
             // Keep the runner alive through the trailing delay while each deadline is sampled.
             elements.append(.off(x: 0, y: 0, currChain: 1))
-            pack.autoPlayTable = AutoPlay(elements: elements)
+            pack.autoPlayTable = AutoPlay(elements: suppliedElements ?? elements)
             runner = AutoPlayRunner(unipack: pack, listener: self, chain: chain,
                 clock: { [unowned self] in now }, sleep: { [unowned self] _ in
                     await withCheckedContinuation { continuation = $0; iteration += 1 }
@@ -78,7 +79,7 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
         func onPadTouchOn(x: Int, y: Int, inputID: UUID, scheduledAtMs: Int64) {
             presses.append(now); scheduled.append(scheduledAtMs)
         }
-        func onChainChange(c: Int) { chain.setValue(c) }
+        func onChainChange(c: Int) { chainChanges.append((now, c)); chain.setValue(c) }
         func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) { guides.append(targetWallTimeMs) }
         func onGuidePadOff(x: Int, y: Int) {}
         func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
@@ -86,6 +87,60 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
         func onRemoveGuide() {}
         func chainButsRefresh() {}
         func onProgressUpdate(progress: Int) {}
+    }
+
+    private var delayedSwitch: [AutoPlay.Element] {
+        [.on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 100), .chain(c: 1),
+         .delay(delay: 900)]
+    }
+
+    func testPendingSwitchPausesWithSongTime() async throws {
+        let playback = Playback(elements: delayedSwitch); defer { playback.stop() }
+        playback.runner.launch()
+        try await playback.waitForIteration(1)
+        try await playback.tick(1020)
+        XCTAssertTrue(playback.chainChanges.isEmpty)
+        playback.runner.playmode = false
+        try await playback.tick(5020)
+        XCTAssertTrue(playback.chainChanges.isEmpty)
+        playback.runner.playmode = true
+        try await playback.tick(5099)
+        XCTAssertTrue(playback.chainChanges.isEmpty)
+        try await playback.tick(5100)
+        XCTAssertEqual(playback.chainChanges.map(\.chain), [1])
+    }
+
+    func testStoppingDiscardsASwitchStillInsideTheDelay() async throws {
+        let playback = Playback(elements: delayedSwitch)
+        playback.runner.launch()
+        try await playback.waitForIteration(1)
+        try await playback.tick(1020)
+        playback.stop()
+        playback.now = 1170
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertTrue(playback.chainChanges.isEmpty)
+        XCTAssertFalse(playback.runner.active)
+    }
+
+    func testPracticeUsesTheOriginalPageBeforeTheSwitch() async throws {
+        let playback = Playback(elements: [
+            .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 1),
+            .on(x: 0, y: 1, currChain: 0, num: 0), .delay(delay: 99), .chain(c: 1),
+            .delay(delay: 1000), .on(x: 0, y: 0, currChain: 1, num: 0), .delay(delay: 1000),
+        ]); defer { playback.stop() }
+        playback.runner.practiceGuide = true
+        playback.runner.launch()
+        try await playback.waitForIteration(1)
+        XCTAssertEqual(playback.guides, [1000, 1001])
+        XCTAssertTrue(playback.hints.isEmpty)
+        try await playback.tick(1300)
+        XCTAssertEqual(playback.hints, [1])
+        try await playback.tick(5300)
+        XCTAssertTrue(playback.chainChanges.isEmpty)
+        playback.chain.setValue(1)
+        try await playback.tick()
+        try await playback.tick()
+        XCTAssertEqual(playback.guides.last, 6100)
     }
 
     private func assertThreePresses(_ playback: Playback) async throws {

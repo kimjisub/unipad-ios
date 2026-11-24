@@ -125,6 +125,21 @@ nonisolated enum ReleaseTestSupport {
                     try "on 1 1 a \(velocity)\ndelay 10000\noff 1 1\n"
                         .write(to: pack.appendingPathComponent("keyLed/2 1 1 \(number)"), atomically: true, encoding: .utf8)
                 }
+            case "wormhole-song-time":
+                let pack = library.appendingPathComponent("WormholeSongTime")
+                try makePack(at: pack, title: "Wormhole Song Time Fixture", chains: 2)
+                try "1 1 1 silence.wav 1 2\n1 1 2 silence.wav\n2 1 2 silence.wav\n"
+                    .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
+                try "d 1000\non 1 1\nd 1\nt 1 2\nd 199\n"
+                    .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
+                try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
+                try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
+                // A long silent marker shows which page supplied the early press, after the short
+                // transition has finished. Exact deadlines are covered by the parser/runner tests.
+                for (page, column, velocity) in [(1, 3, 21), (2, 4, 5)] {
+                    try "on 1 \(column) a \(velocity)\nd 60000\nf 1 \(column)\n"
+                        .write(to: pack.appendingPathComponent("keyLed/\(page) 1 2 1"), atomically: true, encoding: .utf8)
+                }
             case "chain-layout":
                 // INF-002 of the public conformance corpus: the smallest grid with the most chains.
                 let small = library.appendingPathComponent("Conformance")

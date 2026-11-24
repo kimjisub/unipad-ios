@@ -54,18 +54,18 @@ final class UniPackAutoMapper {
     private nonisolated enum Step: Sendable {
         case chain(Int)
         case delay(Int)
-        /// `movesToChain` is the chain the sound's wormhole leads to, which the pack reader follows
-        /// again from the `t` line alone.
-        case press(x: Int, y: Int, sound: URL?, movesToChain: Int?)
+        case press(x: Int, y: Int, sound: URL?)
     }
 
     private func run() async {
         listener?.onStart()
         do {
-            guard let elements = unipack.autoPlayTable?.elements, let autoPlayFile = unipack.autoPlayFile else {
+            guard let autoPlay = unipack.autoPlayTable, let autoPlayFile = unipack.autoPlayFile else {
                 throw AutoMapperError.noAutoPlay
             }
-            let steps = steps(of: elements)
+            // Derived switches must be recalculated against the rewritten song time, rather than
+            // copied as explicit chains that would cancel other pending sound switches.
+            let steps = steps(of: autoPlay.sourceElements ?? autoPlay.elements)
             listener?.onGetWorkSize(steps.count(where: { if case .press = $0 { return true }; return false }))
 
             try await Self.remap(steps, into: autoPlayFile, replacer: replacer, soundLength: soundLength) { progress in
@@ -87,8 +87,8 @@ final class UniPackAutoMapper {
             case .delay(let d): .delay(d)
             case .on(let x, let y, let chain, let num):
                 unipack.soundGet(c: chain, x: x, y: y, num: num).map { sound in
-                    .press(x: x, y: y, sound: sound.file, movesToChain: sound.wormhole == Sound.noWormhole ? nil : sound.wormhole)
-                } ?? .press(x: x, y: y, sound: nil, movesToChain: nil)
+                    .press(x: x, y: y, sound: sound.file)
+                } ?? .press(x: x, y: y, sound: nil)
             case .off: nil
             }
         }
@@ -114,8 +114,8 @@ final class UniPackAutoMapper {
             case .delay(let d):
                 writer.wait(d)
 
-            case .press(let x, let y, let sound, let movesToChain):
-                writer.press(x: x, y: y, lengthMs: sound.flatMap(soundLength).flatMap(wholeMilliseconds), movesToChain: movesToChain)
+            case .press(let x, let y, let sound):
+                writer.press(x: x, y: y, lengthMs: sound.flatMap(soundLength).flatMap(wholeMilliseconds))
                 pressed += 1
                 await progress(pressed)
             }
@@ -171,27 +171,20 @@ nonisolated struct AutoPlayWriter {
     private var held: [Held] = []
     private var pressed = false
     private var lastLengthMs: Int?
-    /// The chain the last press's sound moves to, while nothing has come after that press.
-    private var pendingMove: Int?
-
     mutating func chain(_ c: Int) {
-        // The parser lists the chain a press's sound moves to right after the press.
-        if pendingMove != c { held.append(.chain(c)) }
-        pendingMove = nil
+        held.append(.chain(c))
     }
 
     mutating func wait(_ milliseconds: Int) {
         held.append(.wait(milliseconds))
-        pendingMove = nil
     }
 
-    mutating func press(x: Int, y: Int, lengthMs: Int?, movesToChain: Int?) {
+    mutating func press(x: Int, y: Int, lengthMs: Int?) {
         lines += pressed ? heldLinesBeforePress() : leadIn()
         held = []
         lines.append("t \(x + 1) \(y + 1)")
         pressed = true
         lastLengthMs = lengthMs
-        pendingMove = movesToChain
     }
 
     func finished() -> String {
