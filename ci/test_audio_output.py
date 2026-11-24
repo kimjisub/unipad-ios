@@ -197,6 +197,69 @@ class AudioOutputTests(unittest.TestCase):
                         self.assertEqual(result["status"], "fail", result)
                         self.assertIn("unexpected waveform", result["reason"])
 
+    def test_stopped_subcycle_residual_is_independent_of_chunk_alignment(self):
+        rate = 48000
+        # A captured hard stop leaves less than one 880 Hz cycle, including
+        # the resampler's brief ringing. Move the analysis grid, not the audio.
+        residual = [-3941, -3212, -2287, -1383, -576, 577, 1115, 2561, 2583,
+                    60, -160, 169, -145, 106, -61, 20, 13, -34, 42, -39, 29]
+        data = array.array("h", [0]) * (rate * 4 * 2)
+        for frame in range(round(0.8 * rate), 2 * rate):
+            for channel, hz in enumerate((440, 880)):
+                data[frame * 2 + channel] = round(8000 * math.sin(2 * math.pi * hz * frame / rate - 0.515))
+        for frame, value in enumerate(residual, 2 * rate):
+            data[frame * 2 + 1] = value
+        with wave.open(str(self.path), "wb") as sound:
+            sound.setparams((2, 2, rate, 0, "NONE", "not compressed"))
+            sound.writeframes(data.tobytes())
+        for milliseconds in range(40):
+            with self.subTest(milliseconds=milliseconds):
+                self.input = {"invoked_ns": 100_600_000_000 + milliseconds * 1_000_000,
+                              "completed_ns": 102_100_000_000}
+                result = self.verdict(stopped=True)
+                self.assertEqual(result["status"], "pass", result)
+
+    def test_stopped_residual_fit_cannot_hide_a_longer_wrong_waveform(self):
+        self.input["completed_ns"] = 102_100_000_000
+        for channel in (0, 1, None):
+            for milliseconds in (0, 2, 3, 4):
+                with self.subTest(channel=channel, milliseconds=milliseconds):
+                    self.write(["pad-a.wav"], repeat_for=1.2)
+                    with wave.open(str(self.path), "rb") as sound:
+                        data = array.array("h", sound.readframes(sound.getnframes()))
+                    replay = self.sound("pad-b.wav")[:2000]
+                    start = round(2.002 * 48000) * 2
+                    for index, value in enumerate(replay):
+                        if channel in (None, index % 2):
+                            data[start + index] += value
+                    with wave.open(str(self.path), "wb") as sound:
+                        sound.setparams((2, 2, 48000, 0, "NONE", "not compressed"))
+                        sound.writeframes(data.tobytes())
+                    self.input["invoked_ns"] = 100_600_000_000 + milliseconds * 1_000_000
+                    result = self.verdict(stopped=True)
+                    self.assertEqual(result["status"], "fail", result)
+                    self.assertIn("unexpected waveform", result["reason"])
+
+    def test_ended_pad_cannot_use_another_pads_fade_allowance(self):
+        expected = ((440, 662), (880, 998))
+        for replay_channel in (0, 1, None):
+            with self.subTest(channel=replay_channel):
+                self.write(["pad-a.wav", "pad-b.wav"], delays=(0, 0.2))
+                self.assertEqual(self.verdict(expected=expected, mixed=True)["status"], "pass")
+                with wave.open(str(self.path), "rb") as sound:
+                    data = array.array("h", sound.readframes(sound.getnframes()))
+                replay = self.sound("pad-a.wav")[:2000]
+                start = round(2.002 * 48000) * 2
+                for index, value in enumerate(replay):
+                    if replay_channel in (None, index % 2):
+                        data[start + index] += value
+                with wave.open(str(self.path), "wb") as sound:
+                    sound.setparams((2, 2, 48000, 0, "NONE", "not compressed"))
+                    sound.writeframes(data.tobytes())
+                result = self.verdict(expected=expected, mixed=True)
+                self.assertEqual(result["status"], "fail", result)
+                self.assertIn("unexpected waveform", result["reason"])
+
     def test_loop_restart_adds_measured_edges_to_partial_budget(self):
         # The repeat's fade/restart lies inside a chunk, with no silent chunk.
         # A one-shot and a two-play loop must derive different edge budgets.

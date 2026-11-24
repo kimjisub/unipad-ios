@@ -12,14 +12,15 @@ from pathlib import Path
 import sys
 import wave
 
-THRESHOLDS = {"version": 4, "signal_dbfs": -50, "quiet_dbfs": -65,
+THRESHOLDS = {"version": 5, "signal_dbfs": -50, "quiet_dbfs": -65,
               "baseline_gain_db": 20, "fit_fraction": 0.85, "component_fraction": 0.15,
               "minimum_tone_seconds": 0.75, "minimum_overlap_seconds": 0.25,
               "minimum_loop_seconds": 1.05,
               "maximum_one_shot_seconds": 1.16,
               "stop_tail_seconds": 0.1, "chunk_seconds": 0.04,
               "envelope_seconds": 0.01, "partial_resolution_seconds": 0.04,
-              "restart_probe_seconds": 0.005, "restart_dip_fraction": 0.15}
+              "restart_probe_seconds": 0.005, "restart_dip_fraction": 0.15,
+              "stop_residual_cycles": 1}
 
 
 def select_process(entries):
@@ -97,6 +98,26 @@ def partial_reference_fit(values, rate, frequencies):
     return explained / energy if energy else 0
 
 
+def stopped_tail_fit(window, rate, frequencies):
+    """Fit a reference cut off within a subcycle trailing hard-stop residual.
+
+    A resampler can ring after the reference is cut off. Try that cut position
+    explicitly instead of fitting the ringing as a reference envelope. The full
+    residual energy stays in the denominator: everything after the cut counts
+    as unexplained, and the ordinary fit threshold and edge budget still apply.
+    Longer tails must fit independently, without a hard-stop exception.
+    """
+    floor = 32768 * 10 ** (THRESHOLDS["quiet_dbfs"] / 20)
+    end = next((i + 1 for i in range(len(window) - 1, -1, -1)
+                if abs(window[i]) >= floor), 0)
+    if not end or end > rate * THRESHOLDS["stop_residual_cycles"] / max(frequencies):
+        return 0
+    energy = math.sumprod(window, window)
+    return max(partial_reference_fit(window[:cut], rate, frequencies)
+               * math.sumprod(window[:cut], window[:cut]) / energy
+               for cut in range(1, end + 1))
+
+
 def reference_restart(window, rate, frequencies, start, stop):
     """Find a fade to a low-energy trough and a fresh reference onset.
 
@@ -123,7 +144,7 @@ def reference_restart(window, rate, frequencies, start, stop):
     return False
 
 
-def boundary_partial_windows(windows, rate, frequencies):
+def boundary_partial_windows(windows, rate, *, stopped=False):
     """Budget one chunk per observed reference onset/fade, checking its waveform.
 
     None marks an audible nonmatching window; an empty set marks silence.
@@ -166,9 +187,14 @@ def boundary_partial_windows(windows, rate, frequencies):
                 limit += restarts
         if index - start > edge_limit:
             continue
+        # A pad absent on both sides cannot borrow another pad's edge.
+        frequencies = tuple(sorted(left | right))
         for at, window, _ in windows[start:index]:
-            if (len(allowed) < limit
-                    and partial_reference_fit(window, rate, frequencies) >= THRESHOLDS["fit_fraction"]):
+            score = partial_reference_fit(window, rate, frequencies)
+            if (score < THRESHOLDS["fit_fraction"] and stopped and left and not right
+                    and index - start == 1):
+                score = stopped_tail_fit(window, rate, frequencies)
+            if len(allowed) < limit and score >= THRESHOLDS["fit_fraction"]:
                 allowed.add(at)
     return allowed, limit
 
@@ -256,7 +282,7 @@ def assess(path, ready, gesture, expected, *, stopped=False, mixed=False):
                 matches.add(at)
                 active.extend(window)
         # Partial windows never contribute to tone or overlap duration.
-        partial, limit = boundary_partial_windows(windows, rate, frequencies)
+        partial, limit = boundary_partial_windows(windows, rate, stopped=stopped)
         measurement.update(partial_windows=len(partial), partial_window_limit=limit)
         unmatched_windows -= partial
         measurement["unexpected_seconds"] = len(unmatched_windows) * chunk / rate
