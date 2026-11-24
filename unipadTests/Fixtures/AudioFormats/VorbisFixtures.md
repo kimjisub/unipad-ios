@@ -17,3 +17,9 @@ and recompute the CRC to cover trimming by 256, 257, 280, 2,048 and
 2,049 frames. Trimming through one long block is accepted; trimming
 more is rejected. Decoder tests also require the accepted frame count
 and nonzero samples, so admission and the reference decoder agree.
+
+`vorbis-zero-tail.ogg` keeps the same headers, repeats the first audio
+packet five times on the final page and sets its granule to zero, with a
+recomputed CRC. Its five 256-frame blocks produce 512 frames before end
+trimming. Structural inspection accepts that bounded trim, but decoding
+must reject the empty final result with `noAudio`.

@@ -50,6 +50,7 @@ nonisolated enum OggVorbisDecoder {
            frames < Int(buffer.frameLength) {
             buffer.frameLength = AVAudioFrameCount(frames)
         }
+        guard buffer.frameLength > 0 else { throw DecodeError.noAudio }
         return buffer
     }
 
