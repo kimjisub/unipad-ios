@@ -411,6 +411,37 @@ def alive(pid):
 
 
 class StopRequestTests(unittest.TestCase):
+    def test_a_second_stop_during_timestamp_capture_cannot_replace_the_first(self):
+        for starting in [False, True]:
+            for second in [signal.SIGHUP, signal.SIGTERM]:
+                with self.subTest(starting=starting, second=second.name), tempfile.TemporaryDirectory(
+                        dir=os.environ.get("UNIPAD_TEST_TMPDIR")) as folder:
+                    run = ReleaseChecks(argparse.Namespace(
+                        simulator="none", device="iphone", output=Path(folder) / "results",
+                        derived_data=Path(folder) / "dd"))
+                    run.starting = starting
+                    run.child = None if starting else object()
+                    interrupted = False
+
+                    def clock():
+                        nonlocal interrupted
+                        if not interrupted:
+                            interrupted = True
+                            run.request_stop(second)
+                        return 123.0
+
+                    with patch("release_checks.time.monotonic", side_effect=clock) as read_clock, patch.object(
+                            run, "signal_stage") as forward:
+                        run.request_stop(signal.SIGTERM)
+                    read_clock.assert_called_once_with()
+                    self.assertEqual(run.stop_signal, signal.SIGTERM)
+                    self.assertEqual(run.stop_requested, 123.0)
+                    if starting:
+                        self.assertEqual(run.pending_stop, signal.SIGTERM)
+                        forward.assert_not_called()
+                    else:
+                        forward.assert_called_once_with(signal.SIGTERM)
+
     def interrupt(self, mode, grace, sig=signal.SIGINT):
         return self.interrupt_command(lambda folder: [sys.executable, "-c", STOP_CHILD.replace("{mode}", mode),
                                                       str(folder / "started")], grace, sig)
