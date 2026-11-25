@@ -74,9 +74,11 @@ final class StoreDownloadAccountingUITests: XCTestCase {
             .containing(NSPredicate(format: "label == %@", title)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        UITestSupport.attachScreenshot("accounting-before-download", to: self)
         let download = app.buttons["Download"].firstMatch
-        XCTAssertTrue(download.waitForExistence(timeout: 5))
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"), object: download)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        UITestSupport.attachScreenshot("accounting-before-download", to: self)
         download.tap()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(row.staticTexts[status].waitForExistence(timeout: 60), "download never reached \(status)")
