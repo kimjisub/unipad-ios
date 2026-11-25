@@ -13,7 +13,7 @@ class PlatformImageCompilationTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1] / 'unipad/Utils/PlatformImage.swift'
         with tempfile.TemporaryDirectory(dir=os.environ.get('UNIPAD_TEST_TMPDIR')) as directory:
             probe = Path(directory) / 'PlatformImage.swift'
-            probe.write_text(source.read_text() + '''
+            probe.write_text(source.with_name('ExternalWebLink.swift').read_text() + source.read_text() + '''
 func loadNamedPlatformImage(_ name: String) -> PlatformImage? {
     PlatformImage(named: name)
 }
