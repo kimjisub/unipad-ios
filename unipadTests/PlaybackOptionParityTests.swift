@@ -120,8 +120,9 @@ extension PlayUsageRecordTests {
             }
         }
 
-        @Test func autoplayDoesNotScheduleASoundsSecondChainChange() async throws {
-            try await PlayUsageScenario.run(keySound: "1 1 1 a.wav 1 2\n", autoPlay: "on 1 1\nd 50\nc 3\nd 1000\n",
+        @Test(arguments: [50, 150])
+        func autoplayDoesNotScheduleASoundsSecondChainChange(_ explicitDelay: Int) async throws {
+            try await PlayUsageScenario.run(keySound: "1 1 1 a.wav 1 2\n", autoPlay: "on 1 1\nd \(explicitDelay)\nc 3\nd 1000\n",
                                             grid: .init(chain: 3)) { s in
                 try await s.loadReady()
                 let engine = try #require(s.vm.soundEngine)
@@ -134,7 +135,8 @@ extension PlayUsageRecordTests {
                 try await s.waitWhile { s.vm.chain.value != 2 }
                 try #require(s.vm.chain.value == 2)
                 #expect(scheduled == 0)
-                #expect(chains == [1, 2], "only the parsed wormhole and explicit chain may change the chain")
+                let expected = explicitDelay < 100 ? [2] : [1, 2]
+                #expect(chains == expected, "an explicit chain cancels pending moves; autoplay must never queue a second move")
             }
         }
 

@@ -684,7 +684,7 @@ final class PlayViewModel {
                 autoPlayRunner?.stepPadPressed(x: x, y: y)
             }
 
-            // Autoplay's parsed timeline already follows the sound's chain change at this tick.
+            // Autoplay's parsed timeline owns the switch's song-time deadline.
             soundEngine?.soundOn(x: x, y: y, inputID: owner, followWormhole: trigger != .autoplay)
 
             if scbRecord.checked {

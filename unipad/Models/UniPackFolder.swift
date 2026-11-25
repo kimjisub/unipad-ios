@@ -507,10 +507,26 @@ nonisolated class UniPackFolder: UniPack {
         autoPlayTable = autoPlay
         var map = Array(repeating: [Int](repeating: 0, count: buttonY), count: buttonX)
         var currChain = 0
+        var songTime: Int64 = 0
+        var pending: [(time: Int64, chain: Int)] = []
+        var sourceElements: [AutoPlay.Element] = []
         func moveToChain(_ c: Int) {
             currChain = c
             autoPlay.elements.append(.chain(c: currChain))
             for i in 0..<map.count { map[i] = [Int](repeating: 0, count: map[i].count) }
+        }
+        func applySwitches(through end: Int64) {
+            var applied = 0
+            for next in pending {
+                guard next.time <= end else { break }
+                if next.time > songTime {
+                    autoPlay.elements.append(.delay(delay: Int(next.time - songTime)))
+                    songTime = next.time
+                }
+                moveToChain(next.chain)
+                applied += 1
+            }
+            pending.removeFirst(applied)
         }
 
         for rawLine in Self.lines(of: data) {
@@ -555,34 +571,57 @@ nonisolated class UniPackFolder: UniPack {
                 addErr("autoPlay : [\(s)] format is incorrect"); continue
             }
 
-            // `touch` is `on` and `off` in one line: both count the pad's next sound and follow
-            // that sound's wormhole.
+            // Only valid commands reach here. Deadlines win ties with file commands; invalid lines
+            // cannot bring a switch forward. A touch releases on its press's page.
+            applySwitches(through: songTime)
             switch option {
             case "on", "o", "touch", "t":
-                autoPlay.elements.append(.on(x: x, y: y, currChain: currChain, num: map[x][y]))
+                let press = AutoPlay.Element.on(x: x, y: y, currChain: currChain, num: map[x][y])
+                autoPlay.elements.append(press)
+                sourceElements.append(press)
                 if option == "touch" || option == "t" {
                     autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
+                    sourceElements.append(.off(x: x, y: y, currChain: currChain))
                 }
                 let sound = soundGet(c: currChain, x: x, y: y, num: map[x][y])
                 map[x][y] += 1
                 if let sound, sound.wormhole != Sound.noWormhole {
-                    moveToChain(sound.wormhole)
+                    let deadline = songTime + 100
+                    if let last = pending.last, deadline < last.time {
+                        let index = pending.firstIndex { $0.time > deadline } ?? pending.endIndex
+                        pending.insert((deadline, sound.wormhole), at: index)
+                    } else {
+                        pending.append((deadline, sound.wormhole))
+                    }
                 }
 
             case "off", "f":
                 autoPlay.elements.append(.off(x: x, y: y, currChain: currChain))
+                sourceElements.append(.off(x: x, y: y, currChain: currChain))
 
             case "chain", "c":
+                pending.removeAll()
                 moveToChain(chainVal)
+                sourceElements.append(.chain(c: chainVal))
 
             case "delay", "d":
-                autoPlay.elements.append(.delay(delay: delay))
+                sourceElements.append(.delay(delay: delay))
+                let end = songTime + Int64(delay)
+                applySwitches(through: end)
+                if songTime != end || delay == 0 {
+                    autoPlay.elements.append(.delay(delay: Int(end - songTime)))
+                }
+                songTime = end
 
             default:
                 break
             }
         }
 
+        // Normal EOF settles remaining moves without adding time. Stop cancels the runner before
+        // it reaches these elements, so a stopped song never flushes its outstanding switches.
+        for next in pending { moveToChain(next.chain) }
+        autoPlay.sourceElements = sourceElements
         autoPlayTable = autoPlay
     }
 

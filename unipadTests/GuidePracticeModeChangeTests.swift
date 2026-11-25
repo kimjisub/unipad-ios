@@ -24,6 +24,40 @@ extension PlayUsageRecordTests {
             return { songMs in try await screen.tick(at: origin + songMs) }
         }
 
+        @Test func slowStepInputAfterAWormholeKeepsThePlayedNote() async throws {
+            let text = "on 1 1\nd 1\nt 1 2\nd 199\non 1 3\nd 1000\n"
+            let mapping = "1 1 1 a.wav 1 2\n1 1 2 a.wav\n2 1 3 a.wav\n"
+            try await PlayUsageScenario.run(keySound: mapping, autoPlay: text,
+                                            grid: .init(buttonX: 8, buttonY: 8, chain: 2)) { s in
+                let screen = GatedScreen(s)
+                try await s.loadReady()
+                defer { screen.stop() }
+                let tick = try await Self.start(.stepPractice, on: screen)
+                try #require(screen.isGuided(Pad(x: 0, y: 0)))
+                try #require(screen.isGuided(Pad(x: 0, y: 1)))
+                s.press(0, 0)
+                s.release(0, 0)
+                try await tick(50)
+                try #require(!screen.isGuided(Pad(x: 0, y: 0)))
+                // The real sound engine owns this wall-time move, even while the song waits.
+                try await s.waitWhile { s.vm.chain.value != 1 }
+                try #require(s.vm.chain.value == 1)
+                try await tick(100)
+                try await Task.sleep(for: .milliseconds(300))
+                try await tick(400)
+                s.vm.selectChain(0)
+                try await tick(400)
+                #expect(!screen.isGuided(Pad(x: 0, y: 0)), "the played wormhole input was guided again")
+                #expect(screen.isGuided(Pad(x: 0, y: 1)))
+                s.press(0, 1)
+                s.release(0, 1)
+                try await tick(450)
+                s.vm.selectChain(1)
+                try await tick(450)
+                #expect(screen.isGuided(Pad(x: 0, y: 2)), "the next written group was not reached")
+            }
+        }
+
         /// Autoplay has played pad (1,1); the guide that starts now begins at the next line.
         @Test func theGuideStartsAtTheNextUnplayedLine() async throws {
             let text = "o 1 1\nf 1 1\nd 1000\no 1 2\nf 1 2\nd 1000\no 2 1\nf 2 1\nd 1000\n"

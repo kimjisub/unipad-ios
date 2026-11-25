@@ -1,7 +1,59 @@
 import XCTest
 
-/// Covers autoplay completion, restart, and step practice with the silent PlaybackStop fixture.
+/// Covers autoplay completion, restart, mapping, and step practice with silent playback fixtures.
 final class AutoPlayRelaunchUITests: XCTestCase {
+    @MainActor
+    func testMappingKeepsThePageAfterTheWormhole() throws {
+        try withPlayScreen(library: "wormhole-mapping", title: "Wormhole Song Time Fixture",
+                           launchArguments: ["-SelectedTheme", "default"]) { app, grid, idle in
+            openOptions(in: app)
+            app.buttons["autoMapping"].tap()
+            let question = app.alerts["Fit the autoplay?"]
+            XCTAssertTrue(question.waitForExistence(timeout: 5))
+            question.buttons["Fit"].tap()
+            XCTAssertTrue(app.staticTexts["Autoplay saved. You can restore the previous version from the menu."].waitForExistence(timeout: 20))
+            app.buttons["Autoplay"].firstMatch.tap()
+            waitForTransportToGo(app, timeout: 15, "The mapped wormhole fixture must finish")
+            UITestSupport.attachScreenshot("mapping-wormhole-press-page", to: self)
+            XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,4"],
+                           "Mapping a short sound must keep the second press on page 2")
+        }
+    }
+
+    @MainActor
+    func testEarlyPressUsesThePageBeforeTheWormhole() throws {
+        try withPlayScreen(library: "wormhole-song-time", title: "Wormhole Song Time Fixture",
+                           launchArguments: ["-SelectedTheme", "default"]) { app, grid, idle in
+            choose("Autoplay", app: app)
+            waitForTransportToGo(app, timeout: 15, "The short wormhole fixture must finish")
+            UITestSupport.attachScreenshot("wormhole-early-press-page", to: self)
+            XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,3"],
+                           "The press at 1 ms must use page 1's light, not page 2's marker at 1,4")
+        }
+    }
+
+    @MainActor
+    func testSlowStepInputAfterAWormholeDoesNotRepeatThePlayedPad() throws {
+        try withPlayScreen(library: "wormhole-song-time", title: "Wormhole Song Time Fixture",
+                           launchArguments: ["-SelectedTheme", "default"]) { app, grid, _ in
+            choose("Step", app: app)
+            XCTAssertEqual(try guidePads(attachGuideScreenshot(grid, name: "slow-step-01-first-group")),
+                           ["1,1", "1,2"])
+            pressTopRow(grid, columns: 0..<1)
+            let secondPage = app.buttons["playChain.2"]
+            let moved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"),
+                                                  object: secondPage)
+            XCTAssertEqual(XCTWaiter().wait(for: [moved], timeout: 5), .completed,
+                           "The hand-played sound must still move the page after 100 ms")
+            Thread.sleep(forTimeInterval: 0.3)
+            app.buttons["playChain.1"].tap()
+            XCTAssertEqual(try guidePads(attachGuideScreenshot(grid, name: "slow-step-02-return-to-song-page")),
+                           ["1,2"], "Only the unplayed input may be guided after returning to page 1")
+            pressTopRow(grid, columns: 1..<2)
+            waitForTransportToGo(app, timeout: 15, "The remaining input must finish step practice")
+        }
+    }
+
     @MainActor
     func testGuideStartsAfterSongEndAndCanSwitchToAutoplay() {
         continueAfterFailure = false
