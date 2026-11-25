@@ -53,6 +53,7 @@ struct AutoMappingChainTimingTests {
         func onException(_ error: Error) { self.error = error }
     }
 
+    @MainActor
     private struct Pack {
         let root: URL
 
