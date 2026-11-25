@@ -44,6 +44,8 @@ not_run=(
   -skip-testing:unipadUITests/LedAutoplayUITests
   # Downloads from the real store over the network; this script answers from fixtures.
   -skip-testing:unipadUITests/StoreDownloadTests/testDownloadingAStorePackInstallsIt
+  # Requires the local demo Firebase emulators; see "Store download completion accounting".
+  -skip-testing:unipadUITests/StoreDownloadAccountingUITests
 )
 # The iPad release command runs the same screens plus the window/pointer checks.
 if [[ ${UNIPAD_UI_TEST_DEVICE:-iphone} != ipad ]]; then

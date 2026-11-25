@@ -44,13 +44,16 @@ final class StoreViewModel {
 
     private let store: any FirestoreServiceProtocol
     private let workspaceManager = WorkspaceManager.shared
+    private let accounting: any DownloadAccounting
     private let makeDownloader: () -> UniPackDownloader
 
     init(
         store: (any FirestoreServiceProtocol)? = nil,
+        accounting: any DownloadAccounting = DownloadAccountingService.shared,
         makeDownloader: @escaping () -> UniPackDownloader = { UniPackDownloader() }
     ) {
         self.store = store ?? FirebaseManager.shared.firestore
+        self.accounting = accounting
         self.makeDownloader = makeDownloader
     }
 
@@ -147,10 +150,18 @@ final class StoreViewModel {
         let downloader = makeDownloader()
 
         Task {
-            let delegate = StoreDownloadDelegate(viewModel: self, itemId: itemId)
+            let receipt = Task { await accounting.issueReceipt(code: itemId) }
+            let delegate = StoreDownloadDelegate(viewModel: self, itemId: itemId, accounting: accounting, receipt: receipt)
+            let resolvedURL: String
+            do {
+                resolvedURL = try await StoreDownloadURL.resolve(downloadURL)
+            } catch {
+                delegate.onError(error)
+                return
+            }
             await downloader.download(
                 title: title,
-                url: downloadURL,
+                url: resolvedURL,
                 workspace: workspace,
                 folderName: itemId,
                 preKnownFileSize: fileSize,
@@ -173,8 +184,12 @@ final class StoreViewModel {
 private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecked Sendable {
     private weak var viewModel: StoreViewModel?
     private let itemId: String
+    private let accounting: any DownloadAccounting
+    private let receipt: Task<DownloadReceipt?, Never>
 
-    init(viewModel: StoreViewModel, itemId: String) {
+    init(viewModel: StoreViewModel, itemId: String, accounting: any DownloadAccounting, receipt: Task<DownloadReceipt?, Never>) {
+        self.accounting = accounting
+        self.receipt = receipt
         self.viewModel = viewModel
         self.itemId = itemId
     }
@@ -208,6 +223,12 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
     }
 
     @MainActor func onInstallComplete(folder: URL) {
+        let completion = Date()
+        Task { [accounting, receipt, itemId] in
+            if let receipt = await receipt.value {
+                await accounting.saved(code: itemId, receipt: receipt, at: completion)
+            }
+        }
         UsageAnalytics.shared.packImportSucceeded(source: .store)
         updateItem {
             $0.downloading = false
@@ -218,6 +239,7 @@ private final class StoreDownloadDelegate: UniPackDownloader.Delegate, @unchecke
     }
 
     @MainActor func onError(_ error: Error) {
+        receipt.cancel()
         UsageAnalytics.shared.packImportFailed(source: .store, error: error)
         updateItem {
             $0.downloading = false

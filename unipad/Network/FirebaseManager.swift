@@ -140,7 +140,7 @@ final class RealtimeDatabaseService: FirestoreServiceProtocol {
     }
 
     func incrementDownloadCount(for itemId: String) async throws {
-        // Store download count updates are handled by backend download endpoint in current architecture.
+        // Kept for existing conformers; store saves use DownloadAccounting instead of the legacy counter.
     }
 
     private func fetchRealtimeData(path: String) async throws -> Data {

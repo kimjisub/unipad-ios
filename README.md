@@ -583,3 +583,42 @@ installation eligibility, storage, and transport. `AppStoreUpdateUITests` uses
 home/play screens with isolated offline packs. These overrides compile only in
 Debug or `UNIPAD_RELEASE_TESTS` builds and are absent from store builds. Injected
 responses do not verify an actual store installation or TestFlight receipt.
+
+## Store download completion accounting
+
+Store saves request an opaque receipt independently of the archive transfer and
+report it only after the pack is published in the library. Failed downloads,
+invalid archives, failed saves and external imports never report completion.
+The displayed download count still comes from the next catalog refresh.
+Pending completions survive restart for the earlier of the server's expiry and
+seven days after saving, with at most 1,000 records and three attempts per rolling
+24 hours, at least one minute apart. Retries run only while the app is active.
+
+Production requests require a verified production `AppTransaction` for the running
+bundle. Debug, simulator and explicit release-check builds cannot use production
+accounting. To connect such a build to the local demo Firebase emulators, pass
+`-UniPadDownloadAccountingEmulator YES`. The endpoint is fixed to
+`http://127.0.0.1:5051/demo-unipad/us-central1/`; there is no production fallback.
+Any HTTP permission needed by the local test installation belongs in that test
+installation's configuration, never the store app's transport policy.
+
+The offline checks run with `python3 -m unittest discover -s ci -p 'test_*accounting.py'`
+and `python3 -m unittest discover -s ci -p test_store_save_notification.py`.
+The latter can reproduce the missing notification on an older revision using
+`UNIPAD_STORE_DELEGATE_REVISION=<commit>`.
+For a real server integration check, compile the app's two accounting source files
+and `ci/download_accounting_emulator.swift` with `swiftc -parse-as-library -D DEBUG`,
+then run the executable with a scratch directory under
+`firebase emulators:exec --project demo-unipad`. It requires the functions emulator
+on port 5051, the database emulator on 9051 and demo database rules that allow the
+emulator owner to seed test data. It refuses other project or database hosts.
+Use a short temporary directory on macOS if the functions emulator's Unix socket
+path exceeds the platform limit.
+
+`StoreDownloadAccountingUITests` checks the installed app against those local
+emulators. Set `TEST_RUNNER_UNIPAD_DOWNLOAD_ACCOUNTING_EMULATOR=1` and select that
+suite explicitly. It resets only the `demo-unipad` store and accounting fixtures,
+then checks separate saves, interrupted transfers, termination before saving,
+failed transfers and disabled accounting. It enables CFNetwork diagnostics for the
+test app. The ordinary UI runner leaves this suite out because it does not start
+the emulators.

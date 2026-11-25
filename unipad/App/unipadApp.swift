@@ -190,6 +190,7 @@ struct unipadApp: App {
             }
             .onAppear {
                 midiBanner.start()
+                Task { await DownloadAccountingService.shared.setActive(scenePhase == .active) }
 #if DEBUG || UNIPAD_RELEASE_TESTS
                 if !openedTestLink, ReleaseTestSupport.root != nil,
                    let link = UserDefaults.standard.string(forKey: "UniPadReleaseURL"), let url = URL(string: link) {
@@ -204,6 +205,7 @@ struct unipadApp: App {
             }
             .onChange(of: scenePhase) { _, newPhase in
                 midiBanner.handleScenePhaseChanged(newPhase, router: router)
+                Task { await DownloadAccountingService.shared.setActive(newPhase == .active) }
             }
 #if DEBUG || UNIPAD_RELEASE_TESTS
             .onChange(of: router.currentRoute) { _, route in
