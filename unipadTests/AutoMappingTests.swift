@@ -233,7 +233,7 @@ extension PlayUsageRecordTests {
 
             await UniPackAutoMapper(unipack: pack.unipack, listener: RecordingListener()).start().value
 
-            #expect(try pack.autoPlay() == "d 1000\nt 1 1\nd 60\nt 1 1\n")
+            #expect(try pack.autoPlay() == "d 1000\nt 1 1\nd 80\nt 1 1\n")
         }
 
         @Test func anExplicitChainMatchingAPendingWormholeIsKept() async throws {
@@ -245,22 +245,6 @@ extension PlayUsageRecordTests {
             await UniPackAutoMapper(unipack: pack.unipack, listener: RecordingListener()).start().value
 
             #expect(try pack.autoPlay() == "d 1000\nt 1 1\nc 2\nd 60\nt 1 1\n")
-        }
-
-        @Test func mappingRecalculatesSwitchesAfterChangingTheWait() async throws {
-            let pack = try MapperPack(
-                keySound: "1 1 1 a.wav 0 2\n1 1 2 a.wav\n2 1 2 a.wav\n",
-                autoPlay: "on 1 1\nd 250\non 1 2\n", grid: PlayUsageScenario.PackGrid(chain: 2))
-            defer { pack.remove() }
-
-            await UniPackAutoMapper(unipack: pack.unipack, listener: RecordingListener()).start().value
-
-            #expect(try pack.autoPlay() == "d 1000\nt 1 1\nd 60\nt 1 2\n")
-            let presses = pack.unipack.autoPlayTable?.elements.compactMap { element -> Int? in
-                if case .on(_, _, let chain, _) = element { return chain }
-                return nil
-            }
-            #expect(presses == [0, 0], "the rewritten wait is shorter than the switch deadline")
         }
 
         /// Chain changes keep their place around the wait that replaces the ones before a press.

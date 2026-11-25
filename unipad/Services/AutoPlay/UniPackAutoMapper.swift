@@ -53,7 +53,7 @@ final class UniPackAutoMapper {
 
     private nonisolated enum Step: Sendable {
         case chain(Int)
-        case delay(Int)
+        case delay(Int, preservingSwitches: Bool)
         case press(x: Int, y: Int, sound: URL?)
     }
 
@@ -63,8 +63,8 @@ final class UniPackAutoMapper {
             guard let autoPlay = unipack.autoPlayTable, let autoPlayFile = unipack.autoPlayFile else {
                 throw AutoMapperError.noAutoPlay
             }
-            // Derived switches must be recalculated against the rewritten song time, rather than
-            // copied as explicit chains that would cancel other pending sound switches.
+            // Keep waits before pending sound switches so rereading the rewritten file selects
+            // the same page and queue. Derived switches must not become explicit chain commands.
             let steps = steps(of: autoPlay.sourceElements ?? autoPlay.elements)
             listener?.onGetWorkSize(steps.count(where: { if case .press = $0 { return true }; return false }))
 
@@ -81,17 +81,40 @@ final class UniPackAutoMapper {
     }
 
     private func steps(of elements: [AutoPlay.Element]) -> [Step] {
-        elements.compactMap { element -> Step? in
+        var result: [Step] = []
+        var songTime: Int64 = 0
+        // Keeping time through the last pending move also keeps every earlier move in place.
+        var pendingUntil: Int64?
+        for element in elements {
+            if let deadline = pendingUntil, deadline <= songTime { pendingUntil = nil }
             switch element {
-            case .chain(let c): .chain(c)
-            case .delay(let d): .delay(d)
+            case .chain(let c):
+                pendingUntil = nil
+                result.append(.chain(c))
+            case .delay(let d):
+                let end = songTime + Int64(d)
+                if let deadline = pendingUntil {
+                    let keptEnd = min(deadline, end)
+                    if keptEnd > songTime {
+                        result.append(.delay(Int(keptEnd - songTime), preservingSwitches: true))
+                        songTime = keptEnd
+                    }
+                    if deadline <= end { pendingUntil = nil }
+                }
+                if songTime != end || d == 0 {
+                    result.append(.delay(Int(end - songTime), preservingSwitches: pendingUntil != nil))
+                }
+                songTime = end
             case .on(let x, let y, let chain, let num):
-                unipack.soundGet(c: chain, x: x, y: y, num: num).map { sound in
-                    .press(x: x, y: y, sound: sound.file)
-                } ?? .press(x: x, y: y, sound: nil)
-            case .off: nil
+                let sound = unipack.soundGet(c: chain, x: x, y: y, num: num)
+                result.append(.press(x: x, y: y, sound: sound?.file))
+                if let sound, sound.wormhole != Sound.noWormhole {
+                    pendingUntil = max(pendingUntil ?? songTime, songTime + 100)
+                }
+            case .off: break
             }
         }
+        return result
     }
 
     @concurrent private static func remap(
@@ -111,8 +134,8 @@ final class UniPackAutoMapper {
             case .chain(let c):
                 writer.chain(c)
 
-            case .delay(let d):
-                writer.wait(d)
+            case .delay(let d, let preservingSwitches):
+                writer.wait(d, preservingSwitches: preservingSwitches)
 
             case .press(let x, let y, let sound):
                 writer.press(x: x, y: y, lengthMs: sound.flatMap(soundLength).flatMap(wholeMilliseconds))
@@ -159,12 +182,14 @@ final class UniPackAutoMapper {
 /// at the end of the wait. When that length is unknown the waits stay as they were, each on its
 /// side of any chain change. The first press is always preceded by `firstWaitMs`, after any chain
 /// change that comes before it. Presses with no wait between them stay at the same time.
+/// Waits while sound switches are pending keep their original length. Only the remainder after
+/// those switches can be replaced, subtracting the time already kept since the previous press.
 nonisolated struct AutoPlayWriter {
     static let firstWaitMs = 1000
 
     private enum Held {
         case chain(Int)
-        case wait(Int)
+        case wait(Int, preservingSwitches: Bool)
     }
 
     private var lines: [String] = []
@@ -175,8 +200,8 @@ nonisolated struct AutoPlayWriter {
         held.append(.chain(c))
     }
 
-    mutating func wait(_ milliseconds: Int) {
-        held.append(.wait(milliseconds))
+    mutating func wait(_ milliseconds: Int, preservingSwitches: Bool = false) {
+        held.append(.wait(milliseconds, preservingSwitches: preservingSwitches))
     }
 
     mutating func press(x: Int, y: Int, lengthMs: Int?) {
@@ -206,6 +231,7 @@ nonisolated struct AutoPlayWriter {
         var result: [String] = []
         var waitOfThisStretch: Int?
         var replaced = false
+        var keptSincePress = 0
         func flushWait() {
             if let waitOfThisStretch { result += Self.delayLines(waitOfThisStretch) }
             waitOfThisStretch = nil
@@ -215,9 +241,13 @@ nonisolated struct AutoPlayWriter {
             case .chain(let c):
                 flushWait()
                 result.append(Self.chainLine(c))
-            case .wait(let milliseconds):
-                if let lastLengthMs {
-                    if !replaced { result += Self.delayLines(lastLengthMs) }
+            case .wait(let milliseconds, let preservingSwitches):
+                if preservingSwitches {
+                    flushWait()
+                    result += Self.delayLines(milliseconds)
+                    keptSincePress += milliseconds
+                } else if let lastLengthMs {
+                    if !replaced { result += Self.delayLines(max(0, lastLengthMs - keptSincePress)) }
                     replaced = true
                 } else {
                     waitOfThisStretch = (waitOfThisStretch ?? 0) + milliseconds

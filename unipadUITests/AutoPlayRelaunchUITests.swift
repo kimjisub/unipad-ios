@@ -3,6 +3,24 @@ import XCTest
 /// Covers autoplay completion, restart, and step practice with the silent PlaybackStop fixture.
 final class AutoPlayRelaunchUITests: XCTestCase {
     @MainActor
+    func testMappingKeepsThePageAfterTheWormhole() throws {
+        try withPlayScreen(library: "wormhole-mapping", title: "Wormhole Song Time Fixture",
+                           launchArguments: ["-SelectedTheme", "default"]) { app, grid, idle in
+            openOptions(in: app)
+            app.buttons["autoMapping"].tap()
+            let question = app.alerts["Fit the autoplay?"]
+            XCTAssertTrue(question.waitForExistence(timeout: 5))
+            question.buttons["Fit"].tap()
+            XCTAssertTrue(app.staticTexts["Autoplay saved. You can restore the previous version from the menu."].waitForExistence(timeout: 20))
+            app.buttons["Autoplay"].firstMatch.tap()
+            waitForTransportToGo(app, timeout: 15, "The mapped wormhole fixture must finish")
+            UITestSupport.attachScreenshot("mapping-wormhole-press-page", to: self)
+            XCTAssertEqual(try PadPixels.settled(grid).changedPads(comparedWith: idle), ["1,4"],
+                           "Mapping a short sound must keep the second press on page 2")
+        }
+    }
+
+    @MainActor
     func testEarlyPressUsesThePageBeforeTheWormhole() throws {
         try withPlayScreen(library: "wormhole-song-time", title: "Wormhole Song Time Fixture",
                            launchArguments: ["-SelectedTheme", "default"]) { app, grid, idle in

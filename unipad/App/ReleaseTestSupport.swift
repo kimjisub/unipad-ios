@@ -125,13 +125,14 @@ nonisolated enum ReleaseTestSupport {
                     try "on 1 1 a \(velocity)\ndelay 10000\noff 1 1\n"
                         .write(to: pack.appendingPathComponent("keyLed/2 1 1 \(number)"), atomically: true, encoding: .utf8)
                 }
-            case "wormhole-song-time":
+            case "wormhole-song-time", "wormhole-mapping":
                 let pack = library.appendingPathComponent("WormholeSongTime")
                 try makePack(at: pack, title: "Wormhole Song Time Fixture", chains: 2)
                 try "1 1 1 silence.wav 1 2\n1 1 2 silence.wav\n2 1 2 silence.wav\n"
                     .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
                 // A leading wait would split these nearby inputs into separate practice steps.
-                try "on 1 1\nd 1\nt 1 2\nd 199\n"
+                let gap = kind == "wormhole-mapping" ? 250 : 1
+                try "on 1 1\nd \(gap)\nt 1 2\nd 199\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
                 try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
