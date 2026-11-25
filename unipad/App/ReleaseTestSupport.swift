@@ -130,7 +130,8 @@ nonisolated enum ReleaseTestSupport {
                 try makePack(at: pack, title: "Wormhole Song Time Fixture", chains: 2)
                 try "1 1 1 silence.wav 1 2\n1 1 2 silence.wav\n2 1 2 silence.wav\n"
                     .write(to: pack.appendingPathComponent("keySound"), atomically: true, encoding: .utf8)
-                try "d 1000\non 1 1\nd 1\nt 1 2\nd 199\n"
+                // A leading wait would split these nearby inputs into separate practice steps.
+                try "on 1 1\nd 1\nt 1 2\nd 199\n"
                     .write(to: pack.appendingPathComponent("autoPlay"), atomically: true, encoding: .utf8)
                 try fm.removeItem(at: pack.appendingPathComponent("keyLed"))
                 try fm.createDirectory(at: pack.appendingPathComponent("keyLed"), withIntermediateDirectories: true)
