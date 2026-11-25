@@ -614,3 +614,10 @@ on port 5051, the database emulator on 9051 and demo database rules that allow t
 emulator owner to seed test data. It refuses other project or database hosts.
 Use a short temporary directory on macOS if the functions emulator's Unix socket
 path exceeds the platform limit.
+
+`StoreDownloadAccountingUITests` checks the installed app against those local
+emulators. Set `TEST_RUNNER_UNIPAD_DOWNLOAD_ACCOUNTING_EMULATOR=1` and select that
+suite explicitly. It resets only the `demo-unipad` store and accounting fixtures,
+then checks separate saves, interrupted transfers, failed transfers and disabled
+accounting. It enables CFNetwork diagnostics for the test app. The ordinary UI
+runner leaves this suite out because it does not start the emulators.
