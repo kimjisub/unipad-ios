@@ -15,6 +15,28 @@ final class AutoPlayRelaunchUITests: XCTestCase {
     }
 
     @MainActor
+    func testSlowStepInputAfterAWormholeDoesNotRepeatThePlayedPad() throws {
+        try withPlayScreen(library: "wormhole-song-time", title: "Wormhole Song Time Fixture",
+                           launchArguments: ["-SelectedTheme", "default"]) { app, grid, _ in
+            choose("Step", app: app)
+            XCTAssertEqual(try guidePads(attachGuideScreenshot(grid, name: "slow-step-01-first-group")),
+                           ["1,1", "1,2"])
+            pressTopRow(grid, columns: 0..<1)
+            let secondPage = app.buttons["playChain.2"]
+            let moved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"),
+                                                  object: secondPage)
+            XCTAssertEqual(XCTWaiter().wait(for: [moved], timeout: 5), .completed,
+                           "The hand-played sound must still move the page after 100 ms")
+            Thread.sleep(forTimeInterval: 0.3)
+            app.buttons["playChain.1"].tap()
+            XCTAssertEqual(try guidePads(attachGuideScreenshot(grid, name: "slow-step-02-return-to-song-page")),
+                           ["1,2"], "Only the unplayed input may be guided after returning to page 1")
+            pressTopRow(grid, columns: 1..<2)
+            waitForTransportToGo(app, timeout: 15, "The remaining input must finish step practice")
+        }
+    }
+
+    @MainActor
     func testGuideStartsAfterSongEndAndCanSwitchToAutoplay() {
         continueAfterFailure = false
         let orientation = XCUIDevice.shared.orientation

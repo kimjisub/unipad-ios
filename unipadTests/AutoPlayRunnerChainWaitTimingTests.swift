@@ -13,6 +13,8 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
         var presses: [Int64] = []
         var scheduled: [Int64] = []
         var guides: [Int64] = []
+        var guidePads: [Int] = []
+        var litGuides: Set<Int> = []
         var hints: [Int] = []
         var chainChanges: [(time: Int64, chain: Int)] = []
 
@@ -80,11 +82,15 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
             presses.append(now); scheduled.append(scheduledAtMs)
         }
         func onChainChange(c: Int) { chainChanges.append((now, c)); chain.setValue(c) }
-        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) { guides.append(targetWallTimeMs) }
-        func onGuidePadOff(x: Int, y: Int) {}
+        func onGuidePadOn(x: Int, y: Int, targetWallTimeMs: Int64) {
+            guides.append(targetWallTimeMs)
+            guidePads.append(x * 256 + y)
+            litGuides.insert(x * 256 + y)
+        }
+        func onGuidePadOff(x: Int, y: Int) { litGuides.remove(x * 256 + y) }
         func onGuideLedUpdate(x: Int, y: Int, velocity: Int) {}
         func onGuideChainOn(c: Int) { hints.append(c) }
-        func onRemoveGuide() {}
+        func onRemoveGuide() { litGuides.removeAll() }
         func chainButsRefresh() {}
         func onProgressUpdate(progress: Int) {}
     }
@@ -141,6 +147,46 @@ final class AutoPlayRunnerChainWaitTimingTests: XCTestCase {
         try await playback.tick()
         try await playback.tick()
         XCTAssertEqual(playback.guides.last, 6100)
+    }
+
+    func testSlowStepInputAfterAChainMoveKeepsAlreadyPlayedNotes() async throws {
+        for pressed in [0, 1] {
+            let pending = 1 - pressed
+            let playback = Playback(elements: [
+                .on(x: 0, y: 0, currChain: 0, num: 0), .delay(delay: 1),
+                .on(x: 0, y: 1, currChain: 0, num: 0), .delay(delay: 99), .chain(c: 1),
+                .delay(delay: 200), .on(x: 0, y: 2, currChain: 1, num: 0), .delay(delay: 1000),
+            ]); defer { playback.stop() }
+            playback.runner.practiceGuide = true
+            playback.runner.stepMode = true
+            playback.runner.playmode = false
+            playback.runner.launch()
+            try await playback.waitForIteration(1)
+            XCTAssertEqual(playback.litGuides, [0, 1])
+            playback.runner.stepPadPressed(x: 0, y: pressed)
+            try await playback.tick(1050)
+            XCTAssertEqual(playback.litGuides, [pending])
+
+            // A hand-played sound moves the page after 100 ms of wall time. The next
+            // written input still belongs to the original page while step practice waits.
+            playback.chain.setValue(1)
+            try await playback.tick(1100)
+            XCTAssertEqual(playback.hints.last, 0)
+            try await playback.tick(1400)
+            let beforeReturn = playback.guidePads.count
+            playback.chain.setValue(0)
+            try await playback.tick()
+            XCTAssertEqual(Array(playback.guidePads.dropFirst(beforeReturn)), [pending],
+                           "Returning to the song's page must not guide an already played note")
+            XCTAssertEqual(playback.litGuides, [pending])
+
+            playback.runner.stepPadPressed(x: 0, y: pending)
+            try await playback.tick(1450)
+            XCTAssertEqual(playback.hints.last, 1)
+            playback.chain.setValue(1)
+            try await playback.tick(1500)
+            XCTAssertEqual(playback.litGuides, [2], "The next group must still be reachable")
+        }
     }
 
     private func assertThreePresses(_ playback: Playback) async throws {

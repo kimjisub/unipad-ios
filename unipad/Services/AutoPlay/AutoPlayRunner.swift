@@ -531,12 +531,11 @@ final class AutoPlayRunner {
 
                         let currentChain = self.chain.value
 
-                        // A chain change rewinds the current step for another scan.
+                        // Rescan the current group on a page change, keeping notes already played.
                         let chainChanged = currentChain != self._stepChainValue && self._stepChainValue >= 0
                         var rewindTo: Int? = nil
                         if chainChanged && self._stepScanned {
                             rewindTo = self._stepStartProgress
-                            self.stepPlayedLines = self.stepPlayedLines.filter { $0 < self._stepStartProgress }
                             self._stepPendingPads.removeAll()
                             self._stepScanned = false
                         }
@@ -758,7 +757,7 @@ final class AutoPlayRunner {
         var totalDelayMs: Int64 = 0
 
         scanLoop: while progress < autoPlay.elements.count {
-            if skippedGuideLines.contains(progress) {
+            if skippedGuideLines.contains(progress) || stepPlayedLines.contains(progress) {
                 progress += 1
                 continue
             }
