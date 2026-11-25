@@ -35,7 +35,7 @@ final class PlayPadLayoutTests: XCTestCase {
                 // card has only the two indicator labels. Cache row positions once.
                 let labels = list.staticTexts.allElementsBoundByIndex.filter { $0.exists }
                 let textRows = labels.filter {
-                    !$0.label.isEmpty && $0.label != "LED ●" && $0.label != "AUTOPLAY ●"
+                    !$0.label.isEmpty && !$0.label.hasSuffix(" ●")
                 }.map { $0.frame.midY }
                 return labels.filter { indicator in
                     guard indicator.label == "LED ●" else { return false }

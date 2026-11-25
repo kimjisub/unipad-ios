@@ -84,7 +84,7 @@ struct UnipackListItemView: View {
 
                     VStack(alignment: .trailing, spacing: 1) {
                         IndicatorLabel(text: "LED", isOn: hasLed, fontSize: indicatorFontSize)
-                        IndicatorLabel(text: "AUTOPLAY", isOn: hasAutoPlay, fontSize: indicatorFontSize)
+                        IndicatorLabel(text: String(localized: "autoPlay"), isOn: hasAutoPlay, fontSize: indicatorFontSize)
                     }
                     .padding(.trailing, 15)
                 }
