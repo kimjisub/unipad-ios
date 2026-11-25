@@ -5,6 +5,21 @@ import AVFoundation
 @testable import unipad
 #endif
 
+/// Change the final PCM position and CRC without changing the preceding audio packets.
+func oggWithFinalGranule(_ frames: UInt64, at url: URL) throws -> Data {
+    var bytes = try Data(contentsOf: url)
+    let page = try XCTUnwrap(bytes.range(of: Data("OggS".utf8), options: .backwards)).lowerBound
+    for i in 0..<8 { bytes[page + 6 + i] = UInt8(truncatingIfNeeded: frames >> (i * 8)) }
+    bytes.replaceSubrange((page + 22)..<(page + 26), with: [UInt8](repeating: 0, count: 4))
+    var crc: UInt32 = 0
+    for byte in bytes[page...] {
+        crc ^= UInt32(byte) << 24
+        for _ in 0..<8 { crc = (crc &<< 1) ^ (crc & 0x8000_0000 == 0 ? 0 : 0x04C1_1DB7) }
+    }
+    for i in 0..<4 { bytes[page + 22 + i] = UInt8(truncatingIfNeeded: crc >> (i * 8)) }
+    return bytes
+}
+
 /// The shared corpus pins structural admission, not decoded duration or device memory safety.
 final class AudioAdmissionTests: XCTestCase {
     private var directory: URL {
@@ -44,6 +59,25 @@ final class AudioAdmissionTests: XCTestCase {
             }
         }
     }
+    func testVorbisShortTailTrimmingUsesTheLongBlockLimit() throws {
+        // Original generated tone, repacketized with two final 256-frame blocks.
+        // Its packet-derived length is 8,448 frames; the long block is 2,048.
+        let fixture = directory.deletingLastPathComponent()
+            .appendingPathComponent("AudioFormats/vorbis-short-tail.ogg")
+        for trim in [0, 256, 257, 280, 2048, 2049] {
+            let result = AudioFileInspection.inspect(try oggWithFinalGranule(UInt64(8448 - trim), at: fixture))
+            if trim <= 2048 {
+                let facts = try XCTUnwrap(result.facts, "trim \(trim): \(result)")
+                XCTAssertEqual(facts, .init(sampleRate: 44100, channels: 2, frames: 8448 - trim))
+                let cost = AudioAdmission.cost(facts)
+                XCTAssertNil(cost.exclusion)
+                XCTAssertEqual(cost.cost, ((8448 - trim) * 48000 + 44099) / 44100 * 2)
+            } else {
+                XCTAssertEqual(result.exclusion, .invalidFormat, "more than one long block must be refused")
+            }
+        }
+    }
+
     private func wave(rate: Int, channels: Int, frames: Int, claimed: Int) -> Data {
         var b = Data()
         func text(_ s: String) { b.append(contentsOf: s.utf8) }

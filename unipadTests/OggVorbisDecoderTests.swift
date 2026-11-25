@@ -34,6 +34,21 @@ struct OggVorbisDecoderTests {
         #expect(abs(peak - 0.5) < 0.05, "peak \(peak): the tone did not come out as encoded")
     }
 
+    @Test(arguments: [257, 280, 2048])
+    func shortTailDecodesExactlyTheAdmittedFrames(_ trim: Int) throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self)
+            .url(forResource: "vorbis-short-tail", withExtension: "ogg"))
+        let url = try write(oggWithFinalGranule(UInt64(8448 - trim), at: fixture), "short-tail")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let facts = try #require(AudioFileInspection.inspect(url: url).facts)
+        let buffer = try OggVorbisDecoder.decode(url)
+        #expect(facts.frames == 8448 - trim)
+        #expect(Int(buffer.frameLength) == facts.frames)
+        let left = try #require(buffer.floatChannelData?[0])
+        #expect((0..<Int(buffer.frameLength)).contains { abs(left[$0]) > 0.1 })
+    }
+
     /// 601 seconds of stereo 44.1 kHz silence, encoded with libvorbis 1.3.7 (quality -0.1).
     /// Even a forged final granule must not bypass the limit on frames actually decoded.
     @Test(arguments: [false, true])
@@ -44,6 +59,16 @@ struct OggVorbisDecoderTests {
         defer { if underreported { try? FileManager.default.removeItem(at: url) } }
 
         #expect(throws: SoundFileLimits.Violation.tooLong) { try OggVorbisDecoder.decode(url) }
+    }
+
+    @Test func rejectsAudioWhoseValidatedTailTrimsEveryFrame() throws {
+        let fixture = try #require(Bundle(for: OnePadPack.self)
+            .url(forResource: "vorbis-zero-tail", withExtension: "ogg"))
+        #expect(AudioFileInspection.inspect(url: fixture).facts?.frames == 0)
+        do {
+            _ = try OggVorbisDecoder.decode(fixture)
+            Issue.record("a stream trimmed to zero frames must be rejected as no audio")
+        } catch OggVorbisDecoder.DecodeError.noAudio { }
     }
 
     @Test func aSoundExactlyAtTheDurationLimitUsesOnePCMBuffer() throws {
@@ -124,22 +149,6 @@ struct OggVorbisDecoderTests {
             }
         }
     }
-}
-
-/// Change only the last page's declared PCM position and recompute its Ogg CRC. The earlier audio
-/// pages still decode, so this exercises counting real frames rather than trusting ov_pcm_total.
-func oggWithFinalGranule(_ frames: UInt64, at url: URL) throws -> Data {
-    var bytes = try Data(contentsOf: url)
-    let page = try #require(bytes.range(of: Data("OggS".utf8), options: .backwards)).lowerBound
-    for i in 0..<8 { bytes[page + 6 + i] = UInt8(truncatingIfNeeded: frames >> (i * 8)) }
-    bytes.replaceSubrange((page + 22)..<(page + 26), with: [UInt8](repeating: 0, count: 4))
-    var crc: UInt32 = 0
-    for byte in bytes[page...] {
-        crc ^= UInt32(byte) << 24
-        for _ in 0..<8 { crc = (crc &<< 1) ^ (crc & 0x8000_0000 == 0 ? 0 : 0x04C1_1DB7) }
-    }
-    for i in 0..<4 { bytes[page + 22 + i] = UInt8(truncatingIfNeeded: crc >> (i * 8)) }
-    return bytes
 }
 
 private struct SplitMix64 {

@@ -97,7 +97,6 @@ nonisolated enum OggAudioInspection {
                         try AudioRead.require(mode < modes.count)
                         let block = modes[mode] ? longBlock : shortBlock
                         if modes[mode] { try bits.skip(2) }
-                        lastPacketFrames = block
                         if previousBlock != 0 { calculated = try AudioRead.add(calculated, (previousBlock + block) / 4) }
                         previousBlock = block
                     }
@@ -115,7 +114,9 @@ nonisolated enum OggAudioInspection {
                 granule = current
             } else { try AudioRead.require(completed == 0) }
             if flags & 4 != 0 {
-                try AudioRead.require(!unset && packetSize == 0 && calculated > 0 && granule >= preSkip && calculated - granule <= lastPacketFrames)
+                // Vorbis can trim across final short blocks, up to one long block.
+                let maximumTrim = opus ? lastPacketFrames : longBlock
+                try AudioRead.require(!unset && packetSize == 0 && calculated > 0 && granule >= preSkip && calculated - granule <= maximumTrim)
                 ended = true
             }
             at += pageSize

@@ -39,7 +39,19 @@ nonisolated enum OggVorbisDecoder {
         _ url: URL,
         admitting admit: (AVAudioFormat, AVAudioFrameCount) throws -> Void = { _, _ in }
     ) throws -> AVAudioPCMBuffer {
-        try withOpenFile(url) { file, info, format in try decode(file, info: info, format: format, admitting: admit) }
+        let (buffer, declaredFrames) = try withOpenFile(url) { file, info, format in
+            (try decode(file, info: info, format: format, admitting: admit), ov_pcm_total(file, -1))
+        }
+        // libvorbis can deliver final short blocks before learning how far the last granule
+        // trims them. Only a structurally validated stream may shorten that decoded tail.
+        // Decode and count every frame first, so forged lengths cannot bypass resource limits.
+        if Int64(buffer.frameLength) > declaredFrames,
+           let frames = AudioFileInspection.inspect(url: url).facts?.frames,
+           frames < Int(buffer.frameLength) {
+            buffer.frameLength = AVAudioFrameCount(frames)
+        }
+        guard buffer.frameLength > 0 else { throw DecodeError.noAudio }
+        return buffer
     }
 
     /// Opens the file and reads its layout, refusing one playback cannot use.
