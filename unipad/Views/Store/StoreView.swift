@@ -275,7 +275,7 @@ private struct StorePackPanel: View {
                 // Feature badges
                 HStack(spacing: 8) {
                     FeatureBadge(label: "LED", enabled: item.isLED)
-                    FeatureBadge(label: "AUTOPLAY", enabled: item.isAutoPlay)
+                    FeatureBadge(label: String(localized: "autoPlay"), enabled: item.isAutoPlay)
                 }
 
                 Spacer().frame(height: 12)

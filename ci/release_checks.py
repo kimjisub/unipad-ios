@@ -172,7 +172,10 @@ class ReleaseChecks:
         """
         if self.stop_signal is not None:
             return
-        self.stop_signal, self.stop_requested = sig, time.monotonic()
+        # Latch before calling the clock: another signal can re-enter this handler
+        # during the call and must not forward a second stop into stage cleanup.
+        self.stop_signal = sig
+        self.stop_requested = time.monotonic()
         if self.child is not None:
             self.signal_stage(sig)
         elif self.starting:

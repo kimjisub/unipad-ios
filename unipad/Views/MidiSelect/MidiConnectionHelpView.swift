@@ -206,7 +206,7 @@ struct MidiConnectionHelpView: View {
         VStack(alignment: .leading, spacing: 4) {
             Button(MidiHelpText.text(key)) {
                 failedLink = nil
-                externalOpener(url) { accepted in
+                externalOpener(ExternalWebLink.url(url)) { accepted in
                     if !accepted { failedLink = url }
                 }
             }

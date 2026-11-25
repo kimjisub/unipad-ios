@@ -85,6 +85,21 @@
           },
           {
             "name": "SystemTerminationReporterTests"
+          },
+          {
+            "name": "PlayOptionThemeTests"
+          },
+          {
+            "name": "ThemeGuideLinkTests"
+          },
+          {
+            "name": "ThemeMetadataTests"
+          },
+          {
+            "name": "StatusBarOverlapTests"
+          },
+          {
+            "name": "ReleaseTestSoundLoadGateTests"
           }
         ],
         "xctestClasses": [
@@ -153,6 +168,9 @@
           },
           {
             "name": "PlayChainLayoutTests"
+          },
+          {
+            "name": "PlayOptionThemeUITests"
           },
           {
             "name": "PlayThemeLayoutTests"

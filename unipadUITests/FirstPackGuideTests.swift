@@ -60,11 +60,14 @@ final class FirstPackGuideTests: XCTestCase {
         app.scrollViews["main.packList"].staticTexts.matching(identifier: "Downloaded Fixture")
     }
 
-    private func launch(_ language: Language) {
+    private func launch(_ language: Language, marksWebVisits: Bool = true) {
         app?.terminate()
         app = XCUIApplication()
         app.launchArguments += UITestSupport.launchArguments(language: language.code, locale: language.locale,
                                                               library: "empty", token: token, file: true)
+        if !marksWebVisits, let flag = app.launchArguments.firstIndex(of: "-UniPadFirebaseLocalOnly") {
+            app.launchArguments.removeSubrange(flag...flag + 1)
+        }
         app.launch()
         UITestSupport.dismissSystemAlerts()
         XCTAssertTrue(home.waitForExistence(timeout: 30), "[\(language.code)] home never appeared")
@@ -114,8 +117,9 @@ final class FirstPackGuideTests: XCTestCase {
         }
     }
 
-    private func checkLinkOpensBrowser(_ language: Language = FirstPackGuideTests.english, checkPageText: Bool = true) {
-        launch(language)
+    private func checkLinkOpensBrowser(_ language: Language = FirstPackGuideTests.english,
+                                       checkPageText: Bool = true, marked: Bool = true) throws {
+        launch(language, marksWebVisits: marked)
         XCTAssertTrue(guideLink.waitForExistence(timeout: 10))
         guideLink.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
@@ -126,6 +130,47 @@ final class FirstPackGuideTests: XCTestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 10), "Safari does not show unipad.io")
         shot(language, "02-guide-link-browser")
         if checkPageText { checkBrowserGuideText(in: safari) }
+        // Focusing the address exposes the path and query that Safari normally abbreviates.
+        address.tap()
+        let field = safari.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "Safari did not expose its full address")
+        // Safari can expose only the host as its accessibility value even while
+        // drawing the full URL. Read the rendered text inside the address field;
+        // text elsewhere on the page must not satisfy the URL assertions.
+        // Safari's application screenshot can be cropped to portrait bounds
+        // after opening from our landscape app. Capture the whole display so
+        // its coordinates match the landscape accessibility frames.
+        let image = XCUIScreen.main.screenshot()
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["en-US"]
+        request.usesLanguageCorrection = false
+        request.minimumTextHeight = 0
+        try VNImageRequestHandler(data: image.pngRepresentation, options: [:]).perform([request])
+        let screen = safari.frame
+        let fieldFrame = field.frame
+        let lines = (request.results ?? []).filter { observation in
+            let box = observation.boundingBox
+            return fieldFrame.contains(CGPoint(x: screen.minX + box.midX * screen.width,
+                                               y: screen.minY + (1 - box.midY) * screen.height))
+        }.compactMap { $0.topCandidates(1).first?.string }
+        let screenshot = XCTAttachment(screenshot: image)
+        screenshot.name = marked ? "guide-address-marked" : "guide-address-ordinary"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let reading = XCTAttachment(string: "Accessibility: \(field.value as? String ?? "")\nScreen: \(screen)\nField: \(fieldFrame)\nImage: \(image.image.size)\nRecognized: \(lines.joined(separator: "\n"))")
+        reading.name = "guide-address-recognition"
+        reading.lifetime = .keepAlways
+        add(reading)
+        let value = try XCTUnwrap(lines.first { $0.lowercased().contains("unipad.io") },
+                                  "Safari's rendered address was not readable")
+            .components(separatedBy: .whitespacesAndNewlines).joined()
+        let fullAddress = value.hasPrefix("http") ? value : "https://" + value
+        let components = URLComponents(string: fullAddress)
+        XCTAssertEqual(components?.host, "unipad.io")
+        XCTAssertTrue(components?.path.hasSuffix("/docs/get-started") == true, "Unexpected guide address: \(value)")
+        let markers = components?.queryItems?.filter { $0.name == "no_analytics" } ?? []
+        XCTAssertEqual(markers.map(\.value), marked ? ["1"] : [], "Unexpected analytics markers: \(value)")
         app.activate()
         XCTAssertTrue(home.waitForExistence(timeout: 10), "coming back from Safari never reached home")
         XCTAssertTrue(text(language.title).exists, "the guide went away after coming back from Safari")
@@ -270,13 +315,13 @@ final class FirstPackGuideTests: XCTestCase {
     // Keep live web navigation separate from the app's local import and play flow.
     // The English flow also checks the live page text.
     @MainActor
-    func testIndonesianGuideLinkOpensBrowser() {
-        checkLinkOpensBrowser(Self.indonesian, checkPageText: false)
+    func testIndonesianGuideLinkOpensBrowser() throws {
+        try checkLinkOpensBrowser(Self.indonesian, checkPageText: false)
     }
 
     @MainActor
-    func testBrazilianPortugueseGuideLinkOpensBrowser() {
-        checkLinkOpensBrowser(Self.portuguese, checkPageText: false)
+    func testBrazilianPortugueseGuideLinkOpensBrowser() throws {
+        try checkLinkOpensBrowser(Self.portuguese, checkPageText: false)
     }
 
     @MainActor
@@ -293,7 +338,10 @@ final class FirstPackGuideTests: XCTestCase {
     func testFromEmptyGuideToPlayingAPack() throws {
         try requireEmptyLibrary()
         checkGuideInEveryLanguage()
-        checkLinkOpensBrowser()
+        // The unmarked path is opt-in for a one-off ordinary-launch check; routine UI
+        // runs must never add an unmarked visit to the website's usage counts.
+        let ordinaryLaunchCheck = ProcessInfo.processInfo.environment["UNIPAD_CHECK_UNMARKED_GUIDE"] == "1"
+        try checkLinkOpensBrowser(marked: !ordinaryLaunchCheck)
         try importPackThroughPicker(Self.korean, success: "불러오기 성공!")
         checkPlay(Self.korean, opens: true)
         checkPlay(Self.english, opens: true)

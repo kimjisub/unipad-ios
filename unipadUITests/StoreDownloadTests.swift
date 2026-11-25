@@ -91,7 +91,7 @@ final class StoreDownloadTests: XCTestCase {
     }
 
     /// Titles of the store rows the list has built, top first. A row shows its flag text (only
-    /// while selected), then its title above its producer, then "LED ●" and "AUTOPLAY ●"; the
+    /// while selected), then its title above its producer, then the LED and localized autoplay indicators; the
     /// title is the top text of the column right of the flag.
     private func storeRowTitles(in list: XCUIElement) throws -> [String] {
         func rows(in snapshot: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
