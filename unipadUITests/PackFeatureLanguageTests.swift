@@ -43,6 +43,10 @@ final class PackFeatureLanguageTests: XCTestCase {
         check(language: "en", locale: "en_US", autoplay: "Autoplay", large: false)
     }
 
+    @MainActor func testGerman() {
+        check(language: "de", locale: "de_DE", autoplay: "Automatische Wiedergabe", large: false)
+    }
+
     @MainActor func testKorean() {
         check(language: "ko", locale: "ko_KR", autoplay: "자동재생", large: false)
     }

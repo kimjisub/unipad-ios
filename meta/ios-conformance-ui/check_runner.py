@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import struct
 import subprocess
 import sys
@@ -701,6 +702,40 @@ class RunnerChecks(unittest.TestCase):
         self.assertEqual(self.receipt()['unchangedProductFiles'], len(self.baseline_files))
         self.assertTrue(self.receipt()['libraryRestored'])
         self.assertTrue(self.receipt()['success'])
+
+
+class BlankTitleIndicatorChecks(unittest.TestCase):
+    def test_localized_indicators_leave_blank_title_row_without_text(self):
+        # Execute the overlay's actual Swift filter against the same blank-title
+        # shape used by RunnerChecks, plus a named row that must stay distinct.
+        overlay = Path(__file__).with_name('PlayPadLayoutTests.swift').read_text()
+        predicate = re.search(r'let textRows = labels.filter \{(.*?)\}.map', overlay, re.S)
+        self.assertIsNotNone(predicate)
+        translations = []
+        resources = Path(__file__).resolve().parents[2] / 'unipad/Resources'
+        for strings in sorted(resources.glob('*.lproj/Localizable.strings')):
+            match = re.search(r'^"autoPlay" = "(.*?)";', strings.read_text(), re.M)
+            self.assertIsNotNone(match, str(strings))
+            translations.append(match[1] + ' ●')
+        self.assertEqual(len(translations), 18)
+        labels = json.dumps(translations + ['AUTOPLAY ●'], ensure_ascii=False)
+        program = '''
+import Foundation
+struct Label { let label: String }
+for autoplay in AUTOPLAY_LABELS {
+    let labels = [Label(label: "LED ●"), Label(label: autoplay), Label(label: "")]
+    let textRows = labels.filter { PREDICATE }
+    guard textRows.isEmpty else { print("Blank title mistaken for text: " + autoplay); exit(1) }
+    let named = [Label(label: "Named pack"), Label(label: "Producer")].filter { PREDICATE }
+    guard named.count == 2 else { print("Named row lost its text"); exit(1) }
+}
+print("Blank title selection: 18 localized indicators and legacy indicator passed")
+'''.replace('AUTOPLAY_LABELS', labels).replace('PREDICATE', predicate.group(1))
+        with tempfile.TemporaryDirectory(dir=os.environ['PAPERCLIP_RUN_SCRATCH_DIR']) as folder:
+            script = Path(folder) / 'selection.swift'
+            script.write_text(program)
+            result = subprocess.run(['swift', str(script)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':
