@@ -43,6 +43,25 @@ struct AutoMappingChainTimingTests {
         #expect((try pack.presses()) == original)
     }
 
+    /// Rewinding song time while a move is pending must survive the rewrite, with or
+    /// without a readable sound length, so the next press still uses the original page.
+    @Test(arguments: [false, true])
+    func mappingKeepsNegativeWaitsBeforeAPendingMove(knownLength: Bool) async throws {
+        let pack = try Pack(
+            keySound: "1 1 1 move.wav 1 2\n1 1 2 voice.wav\n2 1 2 drum.wav\n",
+            autoPlay: "on 1 1\nd -50\nd 120\nt 1 2\n")
+        defer { pack.remove() }
+        let original = try pack.presses()
+        #expect(original.last == "0:0:1:0:voice.wav")
+        #expect((try pack.pressTimes()) == [0, 70])
+
+        for _ in 0..<2 {
+            try await pack.map(lengths: knownLength ? ["move.wav": 500] : [:])
+            #expect((try pack.presses()) == original)
+            #expect((try pack.pressTimes()) == [1000, 1070])
+        }
+    }
+
     private final class Listener: UniPackAutoMapperListener {
         var error: Error?
         var done = false

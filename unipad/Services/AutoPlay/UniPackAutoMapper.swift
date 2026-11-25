@@ -244,7 +244,9 @@ nonisolated struct AutoPlayWriter {
             case .wait(let milliseconds, let preservingSwitches):
                 if preservingSwitches {
                     flushWait()
-                    result += Self.delayLines(milliseconds)
+                    // A negative wait rewinds song time while the move is pending too.
+                    // Keep its sign so later presses stay on the same side of the deadline.
+                    result += milliseconds < 0 ? ["d \(milliseconds)"] : Self.delayLines(milliseconds)
                     keptSincePress += milliseconds
                 } else if let lastLengthMs {
                     if !replaced { result += Self.delayLines(max(0, lastLengthMs - keptSincePress)) }

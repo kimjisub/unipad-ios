@@ -1,6 +1,6 @@
 import XCTest
 
-/// Covers autoplay completion, restart, and step practice with the silent PlaybackStop fixture.
+/// Covers autoplay completion, restart, mapping, and step practice with silent playback fixtures.
 final class AutoPlayRelaunchUITests: XCTestCase {
     @MainActor
     func testMappingKeepsThePageAfterTheWormhole() throws {

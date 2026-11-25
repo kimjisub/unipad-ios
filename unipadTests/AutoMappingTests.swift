@@ -223,9 +223,9 @@ extension PlayUsageRecordTests {
             #expect(try pack.autoPlay() == example.mapped)
         }
 
-        /// A press that moves to another chain through its sound is followed by that move when the
-        /// pack is read again, so writing it as well would add a chain change the pack never had.
-        @Test func aSoundsChainMoveIsNotWrittenTwice() async throws {
+        /// A press before the pending move keeps its original page and 80 ms wait. The sound's
+        /// move is derived again on reload, so mapping must not write it as an explicit chain.
+        @Test func aPressBeforeTheSoundsChainMoveKeepsItsWait() async throws {
             let pack = try MapperPack(
                 keySound: "1 1 1 a.wav 0 2\n2 1 1 a.wav\n", autoPlay: "on 1 1\nd 80\non 1 1\n",
                 grid: PlayUsageScenario.PackGrid(chain: 2))
