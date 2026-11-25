@@ -703,8 +703,6 @@ class RunnerChecks(unittest.TestCase):
         self.assertTrue(self.receipt()['libraryRestored'])
         self.assertTrue(self.receipt()['success'])
 
-
-class BlankTitleIndicatorChecks(unittest.TestCase):
     def test_localized_indicators_leave_blank_title_row_without_text(self):
         # Execute the overlay's actual Swift filter against the same blank-title
         # shape used by RunnerChecks, plus a named row that must stay distinct.
@@ -731,10 +729,9 @@ for autoplay in AUTOPLAY_LABELS {
 }
 print("Blank title selection: 18 localized indicators and legacy indicator passed")
 '''.replace('AUTOPLAY_LABELS', labels).replace('PREDICATE', predicate.group(1))
-        with tempfile.TemporaryDirectory(dir=os.environ['PAPERCLIP_RUN_SCRATCH_DIR']) as folder:
-            script = Path(folder) / 'selection.swift'
-            script.write_text(program)
-            result = subprocess.run(['swift', str(script)], capture_output=True, text=True, timeout=120)
+        script = self.root / 'selection.swift'
+        script.write_text(program)
+        result = subprocess.run(['swift', str(script)], capture_output=True, text=True, timeout=120)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
