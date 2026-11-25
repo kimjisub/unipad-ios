@@ -129,7 +129,10 @@ final class FirstPackGuideTests: XCTestCase {
         // Safari can expose only the host as its accessibility value even while
         // drawing the full URL. Read the rendered text inside the address field;
         // text elsewhere on the page must not satisfy the URL assertions.
-        let image = safari.screenshot()
+        // Safari's application screenshot can be cropped to portrait bounds
+        // after opening from our landscape app. Capture the whole display so
+        // its coordinates match the landscape accessibility frames.
+        let image = XCUIDevice.shared.screenshot()
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["en-US"]
@@ -147,7 +150,7 @@ final class FirstPackGuideTests: XCTestCase {
         screenshot.name = marked ? "guide-address-marked" : "guide-address-ordinary"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        let reading = XCTAttachment(string: "Accessibility: \(field.value as? String ?? "")\nRecognized: \(lines.joined(separator: "\n"))")
+        let reading = XCTAttachment(string: "Accessibility: \(field.value as? String ?? "")\nScreen: \(screen)\nField: \(fieldFrame)\nImage: \(image.image.size)\nRecognized: \(lines.joined(separator: "\n"))")
         reading.name = "guide-address-recognition"
         reading.lifetime = .keepAlways
         add(reading)
