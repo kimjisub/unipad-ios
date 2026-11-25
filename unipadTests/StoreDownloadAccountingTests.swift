@@ -4,6 +4,13 @@ import Testing
 
 @MainActor
 struct StoreDownloadAccountingTests {
+    @Test func durableQueueLimitsAndExpiry() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try await DownloadAccountingChecks.run(in: root)
+    }
+
     actor Accounting: DownloadAccounting {
         var issued: [String] = []
         var savedCodes: [String] = []
