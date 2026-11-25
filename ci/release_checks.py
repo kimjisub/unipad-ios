@@ -21,6 +21,12 @@ from check_ui_results import check_summary
 ROOT = Path(__file__).resolve().parents[1]
 # How long a stage may clean up (e.g. stop its MIDI tools) after a stop request.
 STOP_GRACE_SECONDS = 45
+MIDI_SUITES = (
+    "unipadTests/PlayUsageRecordTests/MidiInputPathTests",
+    "unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
+    "unipadUITests/VirtualMidiPlayScreenUITests",
+    "unipadUITests/VirtualMidiConnectionStatusUITests",
+)
 
 
 def screen_part(value):
@@ -58,17 +64,50 @@ def required_unit_suites(plan):
     return [entry["name"] for key in ["suites", "xctestClasses"] for entry in selected.get(key, [])]
 
 
+def midi_suite_tests(selection):
+    target, suite = selection.split("/", 1)
+    source = (ROOT / target / f"{suite.split('/')[-1]}.swift").read_text()
+    # Keep comments and string contents out of declaration matching. Attributes and
+    # modifiers may precede func on the same line or span several lines.
+    tokens = re.findall(r'//[^\n]*|/\*.*?\*/|""".*?"""|"(?:\\.|[^"\\])*"|'
+                        r'@\w+|`[^`]+`|\w+|[^\s]', source, re.S)
+    tokens = [token for token in tokens if not token.startswith(("//", "/*"))]
+    methods = []
+    index, annotated = 0, False
+    while index < len(tokens):
+        token = tokens[index]
+        if token.startswith("@"):
+            annotated = annotated or token == "@Test"
+            index += 1
+            if index < len(tokens) and tokens[index] == "(":
+                depth = 1
+                index += 1
+                while index < len(tokens) and depth:
+                    depth += (tokens[index] == "(") - (tokens[index] == ")")
+                    index += 1
+                if depth:
+                    raise ValueError(f"{suite} has an unclosed test attribute")
+            continue
+        if token == "func":
+            declaration = tokens[index + 1:index + 4]
+            if target == "unipadUITests":
+                if (len(declaration) == 3 and re.fullmatch(r"test\w+", declaration[0])
+                        and declaration[1:] == ["(", ")"]):
+                    methods.append(declaration[0])
+            elif annotated:
+                if (len(declaration) < 2 or not re.fullmatch(r"\w+", declaration[0])
+                        or declaration[1] != "("):
+                    raise ValueError(f"{suite} has an unsupported test declaration: {declaration}")
+                methods.append(declaration[0])
+            annotated = False
+        index += 1
+    if not methods:
+        raise ValueError(f"{suite} has no tests")
+    return [f"{suite}/{method}" for method in methods]
+
+
 def required_midi_tests():
-    source = (ROOT / "unipadUITests/VirtualMidiPlayScreenUITests.swift").read_text()
-    required = ["VirtualMidiPlayScreenUITests/" + method
-                for method in re.findall(r"\bfunc\s+(test\w+)\s*\(", source)]
-    for suite in ["MidiInputPathTests", "MidiDeviceSelectionTests"]:
-        source = (ROOT / "unipadTests" / f"{suite}.swift").read_text()
-        methods = re.findall(r"@Test(?:\([^\n]*\))?\s+func\s+(\w+)\s*\(", source)
-        if not methods:
-            raise ValueError(f"{suite} has no tests")
-        required.extend(f"PlayUsageRecordTests/{suite}/{method}" for method in methods)
-    return required
+    return [name for selection in MIDI_SUITES for name in midi_suite_tests(selection)]
 
 
 def verify_results(summary, tree, required, suites=()):
@@ -133,7 +172,10 @@ class ReleaseChecks:
         """
         if self.stop_signal is not None:
             return
-        self.stop_signal, self.stop_requested = sig, time.monotonic()
+        # Latch before calling the clock: another signal can re-enter this handler
+        # during the call and must not forward a second stop into stage cleanup.
+        self.stop_signal = sig
+        self.stop_requested = time.monotonic()
         if self.child is not None:
             self.signal_stage(sig)
         elif self.starting:
@@ -257,19 +299,15 @@ class ReleaseChecks:
             return
         # These suites need one shared live CoreMIDI client. Build the Debug fixture
         # host once, then run them all against the same virtual-device session.
-        suites = ["unipadTests/PlayUsageRecordTests/MidiInputPathTests",
-                  "unipadTests/PlayUsageRecordTests/MidiDeviceSelectionTests",
-                  "unipadUITests/VirtualMidiPlayScreenUITests",
-                  "unipadUITests/VirtualMidiConnectionStatusUITests"]
         if stage in {"all", "midi"}:
             self.stage("midi-build", ["xcodebuild", "build-for-testing", "-project", "unipad.xcodeproj",
                                  "-scheme", "unipad", "-configuration", "Debug", "-testPlan", "AllTests",
                                  "-destination", f"platform=iOS Simulator,id={self.args.simulator},arch=arm64",
                                  "-derivedDataPath", str(self.derived), "-onlyUsePackageVersionsFromResolvedFile",
                                  "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "UNIPAD_WARNINGS_AS_ERRORS=YES",
-                                 *["-only-testing:" + suite for suite in suites]])
+                                 *["-only-testing:" + suite for suite in MIDI_SUITES]])
             midi = self.output / "midi"
-            self.stage("midi", ["ci/midi-input-tests.sh", self.args.simulator, str(self.derived), str(midi), *suites])
+            self.stage("midi", ["ci/midi-input-tests.sh", self.args.simulator, str(self.derived), str(midi), *MIDI_SUITES])
             self.check_bundle(midi / "MidiInput.xcresult", required_midi_tests())
         if stage in {"all", "roundtrip"}:
             self.stage("roundtrip", [sys.executable, "ci/virtual_launchpad_roundtrip.py", "--simulator", self.args.simulator,
