@@ -134,7 +134,7 @@ final class FirstPackGuideTests: XCTestCase {
         // each address control to settle before tapping it or reading its pixels.
         XCTAssertTrue(UITestSupport.waitForSettledFrame(timeout: 10,
             waitForArrival: { address.waitForExistence(timeout: $0) },
-            frame: { UITestSupport.currentFrame(of: address) }))
+            frame: { UITestSupport.currentFrame(of: address) }), "Safari address control did not settle before focusing")
         // Focusing the address exposes the path and query that Safari normally abbreviates.
         address.tap()
         let field = safari.textFields.firstMatch

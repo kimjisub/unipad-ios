@@ -131,7 +131,7 @@ enum UITestSupport {
         let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen", "Telusuri", "Explorar"])).firstMatch
         if browse.exists { browse.tap() }
         let localNames = ["On My iPhone", "나의 iPhone", "Auf meinem iPhone", "Di iPhone Saya", "No Meu iPhone",
-                          "On My iPad", "나의 iPad", "Auf meinem iPad"]
+                          "On My iPad", "나의 iPad", "Auf meinem iPad", "Di iPad Saya", "No Meu iPad"]
         let localStorage = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label IN %@", localNames)).firstMatch
         // On iOS 27 Browse restores its last folder after switching from Recents.
