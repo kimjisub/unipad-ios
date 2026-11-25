@@ -132,7 +132,7 @@ final class FirstPackGuideTests: XCTestCase {
         // Safari's application screenshot can be cropped to portrait bounds
         // after opening from our landscape app. Capture the whole display so
         // its coordinates match the landscape accessibility frames.
-        let image = XCUIDevice.shared.screenshot()
+        let image = XCUIScreen.main.screenshot()
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["en-US"]
