@@ -618,6 +618,7 @@ path exceeds the platform limit.
 `StoreDownloadAccountingUITests` checks the installed app against those local
 emulators. Set `TEST_RUNNER_UNIPAD_DOWNLOAD_ACCOUNTING_EMULATOR=1` and select that
 suite explicitly. It resets only the `demo-unipad` store and accounting fixtures,
-then checks separate saves, interrupted transfers, failed transfers and disabled
-accounting. It enables CFNetwork diagnostics for the test app. The ordinary UI
-runner leaves this suite out because it does not start the emulators.
+then checks separate saves, interrupted transfers, termination before saving,
+failed transfers and disabled accounting. It enables CFNetwork diagnostics for the
+test app. The ordinary UI runner leaves this suite out because it does not start
+the emulators.

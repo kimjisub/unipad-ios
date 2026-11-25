@@ -35,6 +35,31 @@ final class StoreDownloadAccountingUITests: XCTestCase {
     }
 
     @MainActor
+    func testTerminationBeforeSavingDoesNotAddOne() async throws {
+        try await seed(enabled: true)
+        // Keep the transfer running long enough to stop it before publication.
+        launch(arguments: ["-UniPadReleaseSlowDownload", "YES", "-UniPadReleaseSlowDownloadMB", "24"])
+        let row = try startDownload("Downloaded Fixture")
+        let progress = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '%%' AND label CONTAINS 'MB'")).firstMatch
+        XCTAssertTrue(progress.waitForExistence(timeout: 15))
+        XCTAssertFalse(row.staticTexts["Downloaded"].exists)
+        UITestSupport.attachScreenshot("accounting-terminated-during-transfer", to: self)
+        app.terminate()
+        try await Task.sleep(for: .seconds(6))
+        let beforeRelaunch = try await count("saved")
+        XCTAssertEqual(beforeRelaunch, 100)
+        // Reuse the same launch arguments and library, without starting a new download.
+        app.launch()
+        UITestSupport.dismissSystemAlerts()
+        XCTAssertTrue(app.buttons["gearshape"].waitForExistence(timeout: 30))
+        try await Task.sleep(for: .seconds(6))
+        let afterRelaunch = try await count("saved")
+        XCTAssertEqual(afterRelaunch, 100)
+        UITestSupport.attachScreenshot("accounting-relaunched-without-completion", to: self)
+    }
+
+    @MainActor
     func testFailedTransferDoesNotAddOne() async throws {
         try await seed(enabled: true)
         launch()
@@ -69,6 +94,13 @@ final class StoreDownloadAccountingUITests: XCTestCase {
 
     @MainActor
     private func download(_ title: String, expecting status: String) throws {
+        let row = try startDownload(title)
+        XCTAssertTrue(row.staticTexts[status].waitForExistence(timeout: 60), "download never reached \(status)")
+        UITestSupport.attachScreenshot("accounting-after-download", to: self)
+    }
+
+    @MainActor
+    private func startDownload(_ title: String) throws -> XCUIElement {
         let list = UITestSupport.openStore(in: app, testCase: self)
         let row = UITestSupport.storeRows(in: list)
             .containing(NSPredicate(format: "label == %@", title)).firstMatch
@@ -81,8 +113,7 @@ final class StoreDownloadAccountingUITests: XCTestCase {
         UITestSupport.attachScreenshot("accounting-before-download", to: self)
         download.tap()
         UITestSupport.dismissSystemAlerts()
-        XCTAssertTrue(row.staticTexts[status].waitForExistence(timeout: 60), "download never reached \(status)")
-        UITestSupport.attachScreenshot("accounting-after-download", to: self)
+        return row
     }
 
     @MainActor
