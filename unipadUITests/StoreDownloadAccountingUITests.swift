@@ -41,7 +41,7 @@ final class StoreDownloadAccountingUITests: XCTestCase {
         launch(arguments: ["-UniPadReleaseSlowDownload", "YES", "-UniPadReleaseSlowDownloadMB", "24"])
         let row = try startDownload("Downloaded Fixture")
         let progress = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS '%%' AND label CONTAINS 'MB'")).firstMatch
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "%", "MB")).firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 15))
         XCTAssertFalse(row.staticTexts["Downloaded"].exists)
         UITestSupport.attachScreenshot("accounting-terminated-during-transfer", to: self)
