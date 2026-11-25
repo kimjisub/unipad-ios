@@ -79,6 +79,43 @@ struct StoreDownloadAccountingTests {
         }
     }
 
+    @Test func failedPublicationDoesNotSendCompletion() async throws {
+        // A valid archive cannot be published under a name longer than a file-system component.
+        let code = String(repeating: "a", count: 300)
+        let host = "accounting-\(UUID().uuidString).test"
+        let folder = WorkspaceManager.shared.downloadWorkspace.url.appendingPathComponent(code)
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        defer {
+            StubURLProtocol.remove(host: host)
+            session.invalidateAndCancel()
+            try? FileManager.default.removeItem(at: staging)
+        }
+        let accounting = Accounting(folder, receiptAvailable: true)
+        let vm = StoreViewModel(accounting: accounting) {
+            UniPackDownloader(session: session, stagingRoot: staging, waitBeforeRetry: { _ in })
+        }
+        vm.storeItems = [.init(id: code, title: "Accounting", producerName: "Test",
+                              downloadURL: "https://\(host)/pack.zip", downloadCount: 123,
+                              isLED: false, isAutoPlay: false, downloaded: false)]
+        let zip = TestZip.stored([
+            ("info", Data("title=Accounting\nproducerName=Test\nbuttonX=8\nbuttonY=8\nchain=1\n".utf8)),
+            ("keySound", Data("1 1 1 a.wav\n".utf8)),
+            ("sounds/a.wav", Data(repeating: 0, count: 8192))
+        ])
+        StubURLProtocol.register(host: host, .init(status: 200, chunks: [zip]))
+        vm.startDownload(vm.storeItems[0])
+        try await wait { !vm.storeItems[0].downloading }
+        #expect(vm.storeItems[0].downloadFailed)
+        #expect(!vm.storeItems[0].downloaded)
+        #expect(vm.storeItems[0].downloadCount == 123)
+        #expect(await accounting.issued == [code])
+        #expect(await accounting.savedCodes.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
     @Test func legacyFallbackResolvesWithHeadAndNeverGetsTheCountingAddress() async throws {
         let host = "us-central1-unipad-e41ab.cloudfunctions.net"
         let config = URLSessionConfiguration.ephemeral
