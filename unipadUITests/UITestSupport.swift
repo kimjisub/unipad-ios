@@ -278,9 +278,12 @@ enum UITestSupport {
 
     /// The picker's Recents entry: a tab or a row in Locations/the iPad sidebar.
     static func filePickerRecents(in app: XCUIApplication) -> XCUIElement {
-        let types = [XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.cell.rawValue] as NSArray
-        let isRecents = NSPredicate(format: "elementType IN %@ AND label IN %@", types, ["Recents", "최근 항목"])
-        return app.descendants(matching: .any).matching(isRecents).firstMatch
+        let labels = ["Recents", "최근 항목"]
+        let tab = app.tabBars.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        if tab.exists { return tab }
+        // File cells can have the same label. Only the system's sidebar item is navigation.
+        let identifiers = labels.map { "DOC.sidebar.item.\($0)" }
+        return app.cells.matching(NSPredicate(format: "identifier IN %@ AND label IN %@", identifiers, labels)).firstMatch
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself

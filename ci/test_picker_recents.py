@@ -96,17 +96,26 @@ exit(passed ? 0 : 1)
         program = r"""
 import Foundation
 final class XCUIElement: NSObject {
-    enum ElementType: Int { case any, button, cell, staticText }
+    enum ElementType: Int { case any, button, cell, staticText, tabBar }
     @objc dynamic var elementType: Int
     @objc dynamic var label: String
+    @objc dynamic var identifier: String
     var exists: Bool
-    init(_ type: ElementType, _ label: String = "", exists: Bool = true) {
-        elementType = type.rawValue; self.label = label; self.exists = exists
+    let children: [XCUIElement]
+    init(_ type: ElementType, _ label: String = "", identifier: String = "",
+         exists: Bool = true, children: [XCUIElement] = []) {
+        elementType = type.rawValue; self.label = label; self.identifier = identifier
+        self.exists = exists; self.children = children
     }
+    var descendants: [XCUIElement] { children.flatMap { [$0] + $0.descendants } }
 }
 struct Query {
     let elements: [XCUIElement]
-    var buttons: Query { Query(elements: elements.filter { $0.elementType == XCUIElement.ElementType.button.rawValue }) }
+    var buttons: Query {
+        Query(elements: elements.flatMap { $0.descendants }.filter {
+            $0.elementType == XCUIElement.ElementType.button.rawValue
+        })
+    }
     var firstMatch: XCUIElement { elements.first(where: { $0.exists }) ?? XCUIElement(.any, exists: false) }
     func matching(_ predicate: NSPredicate) -> Query {
         Query(elements: elements.filter { predicate.evaluate(with: $0) })
@@ -114,27 +123,45 @@ struct Query {
 }
 final class XCUIApplication {
     let elements: [XCUIElement]
-    var cells: Query { Query(elements: elements.filter { $0.elementType == XCUIElement.ElementType.cell.rawValue }) }
-    var tabBars: Query { Query(elements: elements) }
-    func descendants(matching type: XCUIElement.ElementType) -> Query { Query(elements: elements) }
-    init(_ type: XCUIElement.ElementType, _ label: String) { elements = [XCUIElement(type, label)] }
+    var cells: Query { descendants(matching: .cell) }
+    var tabBars: Query { descendants(matching: .tabBar) }
+    func descendants(matching type: XCUIElement.ElementType) -> Query {
+        let all = elements.flatMap { [$0] + $0.descendants }
+        return Query(elements: all.filter { type == .any || $0.elementType == type.rawValue })
+    }
+    init(_ elements: [XCUIElement]) { self.elements = elements }
 }
 enum UITestSupport {
     static var isPad = false
 """ + selector + r"""
 }
 var passed = true
-for (name, type, label, isPad, expected) in [
-    ("phone-tab", XCUIElement.ElementType.button, "Recents", false, true),
-    ("phone-locations-row", .cell, "최근 항목", false, true),
-    ("ipad-sidebar", .cell, "최근 항목", true, true),
-    ("title-is-not-a-control", .staticText, "최근 항목", false, false),
-    ("unrelated-row", .cell, "Browse", false, false),
-] {
-    UITestSupport.isPad = isPad
-    let result = UITestSupport.filePickerRecents(in: XCUIApplication(type, label)).exists
-    print(name, "found Recents:", result, "expected:", expected)
-    passed = passed && result == expected
+for language in ["Recents", "최근 항목"] {
+    let file = XCUIElement(.cell, language, identifier: "DOC.item.\(language)")
+    let fileButton = XCUIElement(.button, language, identifier: "DOC.item.\(language)")
+    let tab = XCUIElement(.button, language)
+    let tabBar = XCUIElement(.tabBar, children: [tab])
+    let row = XCUIElement(.cell, language, identifier: "DOC.sidebar.item.\(language)")
+    let title = XCUIElement(.staticText, language)
+    let unrelated = XCUIElement(.cell, "Browse", identifier: "DOC.sidebar.item.Browse")
+    for (name, elements, isPad, expected) in [
+        ("phone-tab", [tabBar], false, tab),
+        ("phone-locations-row", [row], false, row),
+        ("ipad-sidebar", [row], true, row),
+        ("file-before-phone-tab", [file, fileButton, tabBar], false, tab),
+        ("file-before-phone-row", [file, fileButton, row], false, row),
+        ("file-before-ipad-row", [file, fileButton, row], true, row),
+        ("file-without-navigation", [file, fileButton], false, nil),
+        ("ipad-file-without-navigation", [file, fileButton], true, nil),
+        ("title-is-not-a-control", [title], false, nil),
+        ("unrelated-row", [unrelated], false, nil),
+    ] as [(String, [XCUIElement], Bool, XCUIElement?)] {
+        UITestSupport.isPad = isPad
+        let result = UITestSupport.filePickerRecents(in: XCUIApplication(elements))
+        let correct = expected.map { result === $0 } ?? !result.exists
+        print(language, name, "selected navigation only:", correct)
+        passed = passed && correct
+    }
 }
 exit(passed ? 0 : 1)
 """

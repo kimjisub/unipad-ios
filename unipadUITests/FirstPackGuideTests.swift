@@ -226,7 +226,7 @@ final class FirstPackGuideTests: XCTestCase {
         // back button can mean that we have reached Locations.
         _ = try XCTUnwrap(UITestSupport.settledFilePickerCancelButton(in: app, timeout: 20),
                           "the file picker must settle before navigating to Recents")
-        let recents = UITestSupport.filePickerRecents(in: app)
+        var recents = UITestSupport.filePickerRecents(in: app)
         // iOS can restore a folder with no tab bar. Return to Locations before
         // selecting Recents, rather than assuming tabs are present in that folder.
         for _ in 0..<4 {
@@ -235,6 +235,7 @@ final class FirstPackGuideTests: XCTestCase {
             guard back.exists && back.isEnabled else { break }
             XCTAssertTrue(UITestSupport.waitUntilHittable(back, timeout: 5))
             back.tap()
+            recents = UITestSupport.filePickerRecents(in: app)
         }
         let foundRecents = recents.waitForExistence(timeout: 20)
         if !foundRecents { shot(Self.korean, "picker-recents-missing") }
@@ -242,6 +243,8 @@ final class FirstPackGuideTests: XCTestCase {
         // The native tab can report isHittable == false while accepting taps.
         // Verify the selection after tapping instead of asserting that hint.
         recents.tap()
+        // On iPhone the Locations row opens Recents with its selected tab.
+        recents = UITestSupport.filePickerRecents(in: app)
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: recents)
         XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed,
                        "the picker must show Recents before selecting the prepared archive")
