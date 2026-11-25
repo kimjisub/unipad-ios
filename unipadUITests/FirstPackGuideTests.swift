@@ -130,10 +130,17 @@ final class FirstPackGuideTests: XCTestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 10), "Safari does not show unipad.io")
         shot(language, "02-guide-link-browser")
         if checkPageText { checkBrowserGuideText(in: safari) }
+        // Safari can still be expanding its toolbar after navigation. Wait for
+        // each address control to settle before tapping it or reading its pixels.
+        XCTAssertTrue(UITestSupport.waitForSettledFrame(timeout: 10,
+            waitForArrival: { address.waitForExistence(timeout: $0) },
+            frame: { UITestSupport.currentFrame(of: address) }))
         // Focusing the address exposes the path and query that Safari normally abbreviates.
         address.tap()
         let field = safari.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "Safari did not expose its full address")
+        XCTAssertTrue(UITestSupport.waitForSettledFrame(timeout: 10,
+            waitForArrival: { field.waitForExistence(timeout: $0) },
+            frame: { UITestSupport.currentFrame(of: field) }), "Safari did not expose a settled full address")
         // Safari can expose only the host as its accessibility value even while
         // drawing the full URL. Read the rendered text inside the address field;
         // text elsewhere on the page must not satisfy the URL assertions.
