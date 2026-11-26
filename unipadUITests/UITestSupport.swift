@@ -286,6 +286,26 @@ enum UITestSupport {
         return app.cells.matching(NSPredicate(format: "identifier IN %@ AND label IN %@", identifiers, labels)).firstMatch
     }
 
+    /// A Locations row can disappear before the phone's Recents tab arrives.
+    /// Rebuild the query while waiting instead of keeping the missing row's query.
+    static func waitForFilePickerRecents(in app: XCUIApplication, timeout: TimeInterval,
+                                         selected: Bool = false) -> XCUIElement? {
+        var recents: XCUIElement?
+        let ready = NSPredicate { _, _ in
+            let candidate = filePickerRecents(in: app)
+            guard candidate.exists else { return false }
+            if selected {
+                // A phone row opens the tab; only iPad sidebar rows stay selected.
+                guard isPad || candidate.elementType == .button, candidate.isSelected else { return false }
+            }
+            recents = candidate
+            return true
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: ready, object: nil)
+        guard XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed else { return nil }
+        return recents
+    }
+
     /// Clears system alerts left over the app when a test starts. The app itself
     /// asks for notification permission only when a store download starts, never
     /// at launch, so on a fresh install there is normally nothing to clear here.

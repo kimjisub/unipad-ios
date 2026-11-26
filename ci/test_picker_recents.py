@@ -53,8 +53,13 @@ struct Element {
     }
     func tap() { if back && exists { picker.depth -= 1 } }
 }
+typealias XCUIElement = Element
 struct UITestSupport {
     static func filePickerRecents(in app: Picker) -> Element { Element(picker: app, back: false) }
+    static func waitForFilePickerRecents(in app: Picker, timeout: TimeInterval) -> Element? {
+        let element = filePickerRecents(in: app)
+        return element.waitForExistence(timeout: timeout) ? element : nil
+    }
     static func waitUntilHittable(_ element: Element, timeout: TimeInterval) -> Bool { element.exists }
     static func settledFilePickerCancelButton(in app: Picker, timeout: TimeInterval) -> Element? {
         // Model the existing helper's successful arrival and stable navigation bar.
@@ -64,7 +69,7 @@ struct UITestSupport {
 }
 func navigate(_ app: Picker) throws -> Bool {
 """ + navigation + r"""
-    return recents.exists && app.earlyBackReads == 0
+    return recents?.exists == true && app.earlyBackReads == 0
 }
 var passed = true
 for (name, arrival, depth, sidebar) in [
@@ -160,6 +165,144 @@ for language in ["Recents", "최근 항목"] {
         let result = UITestSupport.filePickerRecents(in: XCUIApplication(elements))
         let correct = expected.map { result === $0 } ?? !result.exists
         print(language, name, "selected navigation only:", correct)
+        passed = passed && correct
+    }
+}
+exit(passed ? 0 : 1)
+"""
+        self.run_probe(program)
+
+    def test_refreshes_recents_queries_after_back_and_row_transitions(self):
+        root = Path(__file__).resolve().parents[1]
+        support = (root / "unipadUITests/UITestSupport.swift").read_text()
+        start = support.index("    static func filePickerRecents(in app:")
+        end = support.index("    /// Clears system alerts", start)
+        helpers = support[start:end]
+        source = (root / "unipadUITests/FirstPackGuideTests.swift").read_text()
+        start = source.index("        var recents", source.index("func testPreparedArchiveCanBeSelectedFromRecentItems"))
+        end = source.index('        shot(Self.korean, "picker-recents")', start)
+        navigation = source[start:end]
+        program = r"""
+import Foundation
+var now: TimeInterval = 0
+enum Failure: Error { case assertion }
+var assertionsPassed = true
+func XCTAssertTrue(_ value: Bool, _ message: String = "") { assertionsPassed = assertionsPassed && value }
+func XCTAssertEqual<T: Equatable>(_ value: T, _ expected: T, _ message: String = "") {
+    assertionsPassed = assertionsPassed && value == expected
+}
+func XCTUnwrap<T>(_ value: T?, _ message: String = "") throws -> T {
+    guard let value else { throw Failure.assertion }
+    return value
+}
+func shot() {}
+final class XCTNSPredicateExpectation {
+    let predicate: NSPredicate
+    let object: Any?
+    init(predicate: NSPredicate, object: Any?) { self.predicate = predicate; self.object = object }
+}
+struct XCTWaiter {
+    enum Result { case completed, timedOut }
+    func wait(for expectations: [XCTNSPredicateExpectation], timeout: TimeInterval) -> Result {
+        let end = now + timeout
+        repeat {
+            if expectations.allSatisfy({ $0.predicate.evaluate(with: $0.object) }) { return .completed }
+            now += 0.25
+        } while now <= end
+        return .timedOut
+    }
+}
+final class XCUIElement: NSObject {
+    enum ElementType { case button, cell, tabBar }
+    let elementType: ElementType
+    @objc dynamic let label: String
+    @objc dynamic let identifier: String
+    let present: () -> Bool
+    let selected: () -> Bool
+    let action: () -> Void
+    let children: [XCUIElement]
+    @objc dynamic var exists: Bool { present() }
+    @objc dynamic var isSelected: Bool { exists && selected() }
+    var isEnabled: Bool { exists }
+    init(_ type: ElementType, _ label: String = "", identifier: String = "",
+         present: @escaping () -> Bool = { true }, selected: @escaping () -> Bool = { false },
+         action: @escaping () -> Void = {}, children: [XCUIElement] = []) {
+        elementType = type; self.label = label; self.identifier = identifier
+        self.present = present; self.selected = selected; self.action = action; self.children = children
+    }
+    var descendants: [XCUIElement] { children.flatMap { [$0] + $0.descendants } }
+    func tap() { if exists { action() } }
+    func waitForExistence(timeout: TimeInterval) -> Bool {
+        XCTWaiter().wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in self.exists }, object: nil)], timeout: timeout) == .completed
+    }
+}
+struct Query {
+    let resolve: () -> [XCUIElement]
+    var buttons: Query { Query { resolve().flatMap { $0.descendants }.filter { $0.elementType == .button } } }
+    var firstMatch: XCUIElement {
+        // Model XCUITest's lazy query: the element can arrive later, but its query scope stays fixed.
+        XCUIElement(resolve().first?.elementType ?? .cell,
+            present: { self.resolve().contains(where: { $0.exists }) },
+            selected: { self.resolve().first(where: { $0.exists })?.isSelected ?? false },
+            action: { self.resolve().first(where: { $0.exists })?.tap() })
+    }
+    func matching(_ predicate: NSPredicate) -> Query {
+        Query { resolve().filter { predicate.evaluate(with: $0) } }
+    }
+    subscript(_ identifier: String) -> XCUIElement {
+        matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
+    }
+}
+final class XCUIApplication {
+    var elements: [XCUIElement] = []
+    var cells: Query { Query { self.elements.filter { $0.elementType == .cell } } }
+    var tabBars: Query { Query { self.elements.filter { $0.elementType == .tabBar } } }
+    var buttons: Query { Query { self.elements.filter { $0.elementType == .button } } }
+}
+enum UITestSupport {
+    static var isPad = false
+    static func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool { element.exists }
+""" + helpers + r"""
+}
+func navigate(_ app: XCUIApplication) throws {
+""" + navigation.replace('shot(Self.korean, "picker-recents-missing")', "shot()") + r"""
+}
+var passed = true
+for language in ["Recents", "최근 항목"] {
+    for (name, backDelay, tabDelay, pad, missing) in [
+        ("phone-row-to-immediate-tab", 0.0, 0.0, false, false),
+        ("phone-row-to-late-tab", 0.0, 1.0, false, false),
+        ("phone-back-to-late-tab", 1.0, 0.0, false, false),
+        ("phone-back-to-later-tab", 3.0, 0.0, false, false),
+        ("phone-back-to-late-row-and-tab", 1.0, 1.0, false, false),
+        ("ipad-selected-sidebar", 0.0, 0.0, true, false),
+        ("missing-tab-after-row", 0.0, 100.0, false, true),
+    ] {
+        now = 0; assertionsPassed = true; UITestSupport.isPad = pad
+        var backed = backDelay == 0
+        var rowTapped = false
+        var tabTapped = false
+        var backAt: TimeInterval = 0
+        var rowAt: TimeInterval = 0
+        let app = XCUIApplication()
+        let back = XCUIElement(.button, identifier: "DOC.navBarButton.backInHistory",
+            present: { !backed }, action: { backed = true; backAt = now })
+        let row = XCUIElement(.cell, language, identifier: "DOC.sidebar.item.\(language)",
+            present: { backed && now >= backAt + backDelay &&
+                (!rowTapped || pad || now < rowAt + tabDelay) && (tabDelay > 0 || backDelay == 0 || pad) },
+            selected: { rowTapped }, action: { rowTapped = true; rowAt = now })
+        let tab = XCUIElement(.button, language,
+            present: { !pad && backed && now >= backAt + backDelay &&
+                ((backDelay > 0 && tabDelay == 0) || (rowTapped && now >= rowAt + tabDelay)) },
+            selected: { rowTapped || tabTapped }, action: { tabTapped = true })
+        let tabs = XCUIElement(.tabBar, children: [tab])
+        // This file must never satisfy a wait, including while navigation is absent.
+        let file = XCUIElement(.cell, language, identifier: "DOC.item.\(language)", selected: { true })
+        app.elements = [file, back, row, tabs]
+        do { try navigate(app) } catch { assertionsPassed = false }
+        let correct = missing ? !assertionsPassed : assertionsPassed && (pad ? row.isSelected : tab.isSelected)
+        print(language, name, "expected outcome:", correct, "elapsed:", now)
         passed = passed && correct
     }
 }
