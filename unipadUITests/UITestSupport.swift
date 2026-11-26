@@ -128,10 +128,10 @@ enum UITestSupport {
             XCTAssertTrue(waitUntilHittable(icon, timeout: 5))
             tapOnScreen(icon, in: app)
         }
-        let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen"])).firstMatch
+        let browse = app.buttons.matching(NSPredicate(format: "label IN %@", ["Browse", "둘러보기", "Durchsuchen", "Telusuri", "Explorar"])).firstMatch
         if browse.exists { browse.tap() }
-        let localNames = ["On My iPhone", "나의 iPhone", "Auf meinem iPhone",
-                          "On My iPad", "나의 iPad", "Auf meinem iPad"]
+        let localNames = ["On My iPhone", "나의 iPhone", "Auf meinem iPhone", "Di iPhone Saya", "No Meu iPhone",
+                          "On My iPad", "나의 iPad", "Auf meinem iPad", "Di iPad Saya", "No Meu iPad"]
         let localStorage = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label IN %@", localNames)).firstMatch
         // On iOS 27 Browse restores its last folder after switching from Recents.
@@ -382,7 +382,7 @@ enum UITestSupport {
     static func settledFilePickerCancelButton(in app: XCUIApplication, timeout: TimeInterval) -> XCUIElement? {
         let bar = app.navigationBars[isPad ? "DOCSidebarView" : fullPickerBar]
         let cancel = bar.buttons
-            .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen"]))
+            .matching(NSPredicate(format: "label IN %@", ["Cancel", "취소", "Cancelar", "Abbrechen", "Batalkan"]))
             .firstMatch
         let screenWidth = app.windows.firstMatch.frame.width
         let didSettle = waitForSettledFrame(timeout: timeout,
