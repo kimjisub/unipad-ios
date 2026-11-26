@@ -90,7 +90,20 @@ The unit tests are built first (`build-for-testing`), and only then does
 background slowed dependency resolution and the builds by more than the boot
 saved. After its first boot, the simulator's system services (PosterBoard and its
 wallpaper extensions among them) keep the runner saturated for minutes, and tests
-with time limits that run then fail on time alone. The script reads the CPU time
+with time limits that run then fail on time alone. For this disposable CI device
+only, `--reduce-background-work` disables PosterBoard's wallpaper previews and
+chronod's widgets before boot by merging their entries into CoreSimulator's
+per-device launchd override store. This is an undocumented CoreSimulator detail;
+after boot, the script reads the simulator's launchd manager UID, confirms that
+its user domain exists, and requires both services to be disabled and absent in
+both the system and user domains. Query errors stop verification rather than
+counting as missing services. The queried domains, exit codes and raw output are
+saved in `simulator-background.log`.
+App and test services, audio, networking and diagnostics stay enabled. Local
+shared simulators do not use this option. Remove the option to return to the
+ordinary profile on the next fresh CI runner.
+
+The script reads the CPU time
 of the simulator's processes with `ps` and waits until all of them together have
 used at most 40 CPU seconds in the last 30 seconds, held for 30 seconds of real
 time. The wait ends after at most 6 minutes, or 11 minutes after the job

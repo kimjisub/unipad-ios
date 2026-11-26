@@ -45,6 +45,13 @@ class SimulatorBootWorkflowTests(unittest.TestCase):
         self.assertNotIn('xcodebuild test ', unit)
         self.assertIn('-only-testing:unipadTests', unit)
 
+    def test_background_profile_is_enabled_only_in_the_unit_test_job_and_logged(self):
+        unit, release = self.jobs()
+        self.assertIn('--reduce-background-work', self.step(SETTLE_STEP))
+        self.assertIn('tee "$RUNNER_TEMP/simulator-background.log"', self.step(SETTLE_STEP))
+        self.assertIn('${{ runner.temp }}/simulator-background.log', unit)
+        self.assertNotIn('--reduce-background-work', release)
+
     def test_the_job_start_is_recorded_before_anything_else_runs(self):
         unit, _ = self.jobs()
         steps = unit.split('\n    steps:\n', 1)[1]

@@ -90,7 +90,8 @@ jobs:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
           python3 ci/simulator_settle.py "$SIMULATOR_UDID" --trace "$RUNNER_TEMP/settle.log" \
-            --job-started "$JOB_STARTED_AT" --job-limit 660
+            --job-started "$JOB_STARTED_AT" --job-limit 660 --reduce-background-work \
+            2>&1 | tee "$RUNNER_TEMP/simulator-background.log"
 
       - name: Run unit tests without UI tests
         env:
@@ -130,6 +131,7 @@ jobs:
           path: |
             ${{ runner.temp }}/unit-tests-build.log
             ${{ runner.temp }}/settle.log
+            ${{ runner.temp }}/simulator-background.log
             ${{ runner.temp }}/unit-tests.log
             ${{ runner.temp }}/test-summary.json
             ${{ runner.temp }}/UnitTests.xcresult
