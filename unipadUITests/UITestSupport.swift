@@ -276,10 +276,34 @@ enum UITestSupport {
                       height: bottom - search.frame.maxY - 4)
     }
 
-    /// The picker's Recents entry: a tab on an iPhone, a row of the sidebar on an iPad.
+    /// The picker's Recents entry: a tab or a row in Locations/the iPad sidebar.
     static func filePickerRecents(in app: XCUIApplication) -> XCUIElement {
-        let isRecents = NSPredicate(format: "label IN %@", ["Recents", "최근 항목"])
-        return (isPad ? app.cells : app.tabBars.buttons).matching(isRecents).firstMatch
+        let labels = ["Recents", "최근 항목"]
+        let tab = app.tabBars.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        if tab.exists { return tab }
+        // File cells can have the same label. Only the system's sidebar item is navigation.
+        let identifiers = labels.map { "DOC.sidebar.item.\($0)" }
+        return app.cells.matching(NSPredicate(format: "identifier IN %@ AND label IN %@", identifiers, labels)).firstMatch
+    }
+
+    /// A Locations row can disappear before the phone's Recents tab arrives.
+    /// Rebuild the query while waiting instead of keeping the missing row's query.
+    static func waitForFilePickerRecents(in app: XCUIApplication, timeout: TimeInterval,
+                                         selected: Bool = false) -> XCUIElement? {
+        var recents: XCUIElement?
+        let ready = NSPredicate { _, _ in
+            let candidate = filePickerRecents(in: app)
+            guard candidate.exists else { return false }
+            if selected {
+                // A phone row opens the tab; only iPad sidebar rows stay selected.
+                guard isPad || candidate.elementType == .button, candidate.isSelected else { return false }
+            }
+            recents = candidate
+            return true
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: ready, object: nil)
+        guard XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed else { return nil }
+        return recents
     }
 
     /// Clears system alerts left over the app when a test starts. The app itself

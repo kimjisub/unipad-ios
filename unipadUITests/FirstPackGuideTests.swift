@@ -266,25 +266,30 @@ final class FirstPackGuideTests: XCTestCase {
     func testPreparedArchiveCanBeSelectedFromRecentItems() throws {
         launch(Self.korean)
         UITestSupport.revealHomeCard(.import, in: app).tap()
-        let recents = UITestSupport.filePickerRecents(in: app)
+        // Wait for the system picker to finish presenting before absence of a
+        // back button can mean that we have reached Locations.
+        _ = try XCTUnwrap(UITestSupport.settledFilePickerCancelButton(in: app, timeout: 20),
+                          "the file picker must settle before navigating to Recents")
+        var recents: XCUIElement?
         // iOS can restore a folder with no tab bar. Return to Locations before
         // selecting Recents, rather than assuming tabs are present in that folder.
         for _ in 0..<4 {
-            if recents.waitForExistence(timeout: 2) { break }
+            recents = UITestSupport.waitForFilePickerRecents(in: app, timeout: 2)
+            if recents != nil { break }
             let back = app.buttons["DOC.navBarButton.backInHistory"]
             guard back.exists && back.isEnabled else { break }
             XCTAssertTrue(UITestSupport.waitUntilHittable(back, timeout: 5))
             back.tap()
         }
-        let foundRecents = recents.waitForExistence(timeout: 20)
-        if !foundRecents { shot(Self.korean, "picker-recents-missing") }
-        _ = try XCTUnwrap(foundRecents ? recents : nil, "the picker must offer Recents at Locations")
+        let foundRecents = recents ?? UITestSupport.waitForFilePickerRecents(in: app, timeout: 20)
+        if foundRecents == nil { shot(Self.korean, "picker-recents-missing") }
+        let entry = try XCTUnwrap(foundRecents, "the picker must offer Recents at Locations")
         // The native tab can report isHittable == false while accepting taps.
         // Verify the selection after tapping instead of asserting that hint.
-        recents.tap()
-        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: recents)
-        XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed,
-                       "the picker must show Recents before selecting the prepared archive")
+        entry.tap()
+        // On iPhone the Locations row opens Recents with its selected tab.
+        _ = try XCTUnwrap(UITestSupport.waitForFilePickerRecents(in: app, timeout: 5, selected: true),
+                          "the picker must show Recents before selecting the prepared archive")
         shot(Self.korean, "picker-recents")
         let tree = XCTAttachment(string: app.debugDescription)
         tree.name = "picker-recents-tree"
